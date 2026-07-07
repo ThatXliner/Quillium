@@ -1,10 +1,12 @@
+mod app_log;
 pub mod db;
 pub mod embeddings;
 mod keychain;
 mod pdf_export;
 
-use std::{fs, sync::Mutex};
+use std::{fs, path::PathBuf, sync::Mutex};
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 use db::{
     documents::{
@@ -657,6 +659,181 @@ fn cmd_export_text(path: String, content: String) -> Result<(), String> {
     fs::write(path, content).map_err(|err| err.to_string())
 }
 
+fn selected_export_path(
+    window: &tauri::Window,
+    default_name: String,
+    filter_name: String,
+    extension: String,
+) -> Result<Option<PathBuf>, String> {
+    let app = window.app_handle().clone();
+    let details = serde_json::json!({
+        "defaultName": &default_name,
+        "extension": &extension,
+    })
+    .to_string();
+    let _ = app_log::log_event(
+        &app,
+        "info",
+        "export",
+        "save dialog opening",
+        Some(&details),
+    );
+
+    let extensions = [extension.as_str()];
+    let mut dialog = window
+        .dialog()
+        .file()
+        .set_file_name(default_name)
+        .add_filter(filter_name, &extensions);
+    #[cfg(desktop)]
+    {
+        dialog = dialog.set_parent(window);
+    }
+
+    let Some(file_path) = dialog.blocking_save_file() else {
+        let _ = app_log::log_event(&app, "info", "export", "save dialog cancelled", None);
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|err| err.to_string())?;
+    let details = serde_json::json!({ "path": path.display().to_string() }).to_string();
+    let _ = app_log::log_event(
+        &app,
+        "info",
+        "export",
+        "save dialog selected",
+        Some(&details),
+    );
+    Ok(Some(path))
+}
+
+#[tauri::command]
+async fn cmd_export_text_with_dialog(
+    window: tauri::Window,
+    default_name: String,
+    extension: String,
+    filter_name: String,
+    content: String,
+) -> Result<bool, String> {
+    let app = window.app_handle().clone();
+    let details = serde_json::json!({
+        "defaultName": &default_name,
+        "extension": &extension,
+        "chars": content.chars().count(),
+    })
+    .to_string();
+    let _ = app_log::log_event(
+        &app,
+        "info",
+        "export",
+        "text export started",
+        Some(&details),
+    );
+
+    let Some(path) = selected_export_path(&window, default_name, filter_name, extension)? else {
+        return Ok(false);
+    };
+    match fs::write(&path, content) {
+        Ok(()) => {
+            let details = serde_json::json!({ "path": path.display().to_string() }).to_string();
+            let _ = app_log::log_event(
+                &app,
+                "info",
+                "export",
+                "text export finished",
+                Some(&details),
+            );
+            Ok(true)
+        }
+        Err(err) => {
+            let details = serde_json::json!({
+                "path": path.display().to_string(),
+                "error": err.to_string(),
+            })
+            .to_string();
+            let _ = app_log::log_event(
+                &app,
+                "error",
+                "export",
+                "text export failed",
+                Some(&details),
+            );
+            Err(err.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn cmd_export_pdf_with_dialog(
+    window: tauri::Window,
+    default_name: String,
+    payload: PdfExportPayload,
+) -> Result<bool, String> {
+    let app = window.app_handle().clone();
+    let details = serde_json::json!({
+        "defaultName": &default_name,
+        "paragraphs": payload.body_paragraphs.len(),
+        "annotations": payload.annotations.len(),
+    })
+    .to_string();
+    let _ = app_log::log_event(&app, "info", "export", "pdf export started", Some(&details));
+
+    let Some(path) =
+        selected_export_path(&window, default_name, "PDF".to_string(), "pdf".to_string())?
+    else {
+        return Ok(false);
+    };
+    let path_string = path.to_string_lossy().to_string();
+    match export_pdf_to_path(&path_string, &payload) {
+        Ok(()) => {
+            let details = serde_json::json!({ "path": path.display().to_string() }).to_string();
+            let _ = app_log::log_event(
+                &app,
+                "info",
+                "export",
+                "pdf export finished",
+                Some(&details),
+            );
+            Ok(true)
+        }
+        Err(err) => {
+            let details = serde_json::json!({
+                "path": path.display().to_string(),
+                "error": &err,
+            })
+            .to_string();
+            let _ =
+                app_log::log_event(&app, "error", "export", "pdf export failed", Some(&details));
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+fn cmd_log_app_event(
+    app: tauri::AppHandle,
+    level: String,
+    target: String,
+    message: String,
+    details: Option<String>,
+) -> Result<(), String> {
+    app_log::log_event(&app, &level, &target, &message, details.as_deref())
+}
+
+#[tauri::command]
+fn cmd_read_app_log(app: tauri::AppHandle) -> Result<String, String> {
+    app_log::read(&app)
+}
+
+#[tauri::command]
+fn cmd_clear_app_log(app: tauri::AppHandle) -> Result<(), String> {
+    app_log::clear(&app)
+}
+
+#[tauri::command]
+fn cmd_app_log_path(app: tauri::AppHandle) -> Result<String, String> {
+    app_log::path(&app)
+}
+
 // ── Debug reset command ───────────────────────────────────────────
 
 /// Wipes all user data from the database (documents, drafts, events,
@@ -888,6 +1065,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let help_menu = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id("feedback", "Send Feedback…").build(app)?)
+        .item(&MenuItemBuilder::with_id("app-logs", "App Logs…").build(app)?)
         .build()?;
 
     let menu = Menu::with_items(
@@ -906,6 +1084,8 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Handle custom menu events by emitting them to the frontend.
     app.on_menu_event(move |app_handle, event| {
         let id = event.id().as_ref();
+        let details = serde_json::json!({ "id": id }).to_string();
+        let _ = app_log::log_event(app_handle, "info", "menu", "menu event", Some(&details));
         match id {
             "settings"
             | "history"
@@ -914,6 +1094,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             | "open-in-new-window"
             | "licenses"
             | "feedback"
+            | "app-logs"
             | "export-txt"
             | "export-txt-json"
             | "export-json"
@@ -967,6 +1148,10 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            if let Err(err) = app_log::init(app) {
+                eprintln!("[app_log] init failed: {err}");
+            }
+
             // Allow override for testing (e.g. running two instances with separate DBs)
             let db_path = match std::env::var("QUILLIUM_DATA_DIR") {
                 Ok(dir) => std::path::PathBuf::from(dir),
@@ -978,6 +1163,15 @@ pub fn run() {
             std::fs::create_dir_all(&db_path).expect("failed to create app data dir");
             let db_file = db_path.join("quillium.db");
             let conn = open_db(&db_file).expect("failed to open database");
+            let db_details =
+                serde_json::json!({ "path": db_file.display().to_string() }).to_string();
+            let _ = app_log::log_event(
+                app.handle(),
+                "info",
+                "rust",
+                "database opened",
+                Some(&db_details),
+            );
             // Auto-purge expired trash on startup.
             if let Ok(Some(days)) = get_trash_retention(&conn) {
                 let _ = purge_expired_trash(&conn, days);
@@ -1024,6 +1218,12 @@ pub fn run() {
             cmd_get_trash_retention,
             cmd_export_pdf,
             cmd_export_text,
+            cmd_export_text_with_dialog,
+            cmd_export_pdf_with_dialog,
+            cmd_log_app_event,
+            cmd_read_app_log,
+            cmd_clear_app_log,
+            cmd_app_log_path,
             cmd_set_trash_retention,
             cmd_purge_expired_trash,
             cmd_list_documents,

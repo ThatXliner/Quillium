@@ -3,7 +3,6 @@ import type { VersionState } from "$lib/editor/plugins/annotations/models";
 import { exportDocument, exportDocumentById } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorHarness } from "../helpers/EditorHarness";
 
@@ -28,32 +27,34 @@ vi.mock("$lib/editor/replay", () => ({
     replayEvents: vi.fn((state) => state),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
-    invoke: vi
-        .fn()
-        .mockImplementation(
-            async (
-                command: string,
-                args?: { path?: string; content?: string; payload?: unknown },
-            ) => {
-                if (command === "cmd_export_text") {
-                    invokedTextPath = args?.path ?? "";
-                    savedContent = args?.content ?? "";
-                }
-                if (command === "cmd_export_pdf") {
-                    invokedPdfPath = args?.path ?? "";
-                    invokedPdfPayload = args?.payload;
-                }
-            },
-        ),
+vi.mock("$lib/appLog", () => ({
+    logAppEvent: vi.fn(async () => {}),
 }));
 
-// Mock Tauri dialog plugin
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-    save: vi.fn().mockImplementation(async (opts: { defaultPath: string }) => {
-        savedPath = opts.defaultPath;
-        return `/fake/path/${opts.defaultPath}`;
-    }),
+vi.mock("@tauri-apps/api/core", () => ({
+    invoke: vi.fn().mockImplementation(
+        async (
+            command: string,
+            args?: {
+                defaultName?: string;
+                content?: string;
+                payload?: unknown;
+            },
+        ) => {
+            if (command === "cmd_export_text_with_dialog") {
+                savedPath = args?.defaultName ?? "";
+                invokedTextPath = `/fake/path/${savedPath}`;
+                savedContent = args?.content ?? "";
+                return true;
+            }
+            if (command === "cmd_export_pdf_with_dialog") {
+                savedPath = args?.defaultName ?? "";
+                invokedPdfPath = `/fake/path/${savedPath}`;
+                invokedPdfPayload = args?.payload;
+                return true;
+            }
+        },
+    ),
 }));
 
 beforeEach(() => {
@@ -98,8 +99,10 @@ describe("exportDocument", () => {
             expect(savedPath).toBe("Test Document.txt");
             expect(invokedTextPath).toBe("/fake/path/Test Document.txt");
             expect(savedContent).toBe("Hello world");
-            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_text", {
-                path: "/fake/path/Test Document.txt",
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_text_with_dialog", {
+                defaultName: "Test Document.txt",
+                extension: "txt",
+                filterName: "Text",
                 content: "Hello world",
             });
         });
@@ -258,14 +261,13 @@ describe("exportDocument", () => {
     describe("PDF export", () => {
         it("writes a plain PDF without annotations through the Rust command", async () => {
             h = EditorHarness.create("Hello world");
-            vi.mocked(save).mockClear();
             await exportDocument(h.view, "pdf");
 
             expect(savedPath).toBe("Test Document.pdf");
             expect(invokedPdfPath).toBe("/fake/path/Test Document.pdf");
             expect(savedContent).toBe("");
-            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_pdf", {
-                path: "/fake/path/Test Document.pdf",
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_pdf_with_dialog", {
+                defaultName: "Test Document.pdf",
                 payload: {
                     title: "Test Document",
                     bodyParagraphs: ["Hello world"],

@@ -9,15 +9,15 @@
  *   - PDF (.pdf) — document content only
  *   - PDF + annotations (.pdf) — document content plus styled annotation cards
  *
- * Uses native save dialog via Tauri's dialog plugin.
+ * Uses native save dialog + file writes through Rust commands.
  */
 
 import type { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
+import { logAppEvent } from "./appLog";
 import { annotationField } from "./editor/plugins/annotations";
 import {
     type GenericAnnotation,
@@ -56,6 +56,10 @@ function exportErrorDescription(error: unknown): string {
 
 function reportExportFailure(format: ExportFormat, error: unknown): void {
     console.error("[export] export failed", { format, error });
+    void logAppEvent("error", "export", "export failed", {
+        format,
+        error: exportErrorDescription(error),
+    });
     toast.error("Export failed", {
         description: exportErrorDescription(error),
     });
@@ -77,23 +81,37 @@ export async function saveWithDialog(
                 : extension === "pdf"
                   ? "PDF"
                   : "Text";
-    const path = await save({
-        defaultPath: defaultName,
-        filters: [{ name: filterName, extensions: [extension] }],
+    await logAppEvent("info", "export", "text export command starting", {
+        defaultName,
+        extension,
+        chars: content.length,
     });
-    if (!path) return false;
-    await invoke("cmd_export_text", { path, content });
-    return true;
+    const saved = await invoke<boolean>("cmd_export_text_with_dialog", {
+        content,
+        defaultName,
+        extension,
+        filterName,
+    });
+    await logAppEvent("info", "export", "text export command finished", {
+        defaultName,
+        extension,
+        saved,
+    });
+    return saved;
 }
 
 async function savePdfWithDialog(payload: PdfExportPayload, defaultName: string): Promise<boolean> {
-    const path = await save({
-        defaultPath: defaultName,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
+    await logAppEvent("info", "export", "pdf export command starting", {
+        defaultName,
+        paragraphs: payload.bodyParagraphs.length,
+        annotations: payload.annotations.length,
     });
-    if (!path) return false;
-    await invoke("cmd_export_pdf", { path, payload });
-    return true;
+    const saved = await invoke<boolean>("cmd_export_pdf_with_dialog", { defaultName, payload });
+    await logAppEvent("info", "export", "pdf export command finished", {
+        defaultName,
+        saved,
+    });
+    return saved;
 }
 
 export function sanitizeFilename(title: string): string {
@@ -382,6 +400,12 @@ export async function exportDocument(view: EditorView, format: ExportFormat): Pr
     try {
         const rawTitle = get(currentDocumentTitle).trim() || "document";
         const safeTitle = sanitizeFilename(rawTitle);
+        await logAppEvent("info", "export", "export requested", {
+            format,
+            source: "editor",
+            title: rawTitle,
+            chars: view.state.doc.length,
+        });
         const saved =
             format === "pdf" || format === "pdf+annotations"
                 ? await savePdfWithDialog(
@@ -417,7 +441,13 @@ export async function exportDocumentById(
         const { annotationField } = await import("./editor/plugins/annotations");
 
         const activeDraftId = await resolveActiveDraftId(docId);
-        if (!activeDraftId) return false;
+        if (!activeDraftId) {
+            await logAppEvent("warn", "export", "export cancelled without active draft", {
+                docId,
+                format,
+            });
+            return false;
+        }
 
         const loaded = await loadDocumentState(docId, activeDraftId);
 
@@ -443,6 +473,13 @@ export async function exportDocumentById(
 
         const rawTitle = docTitle.trim() || "document";
         const safeTitle = sanitizeFilename(rawTitle);
+        await logAppEvent("info", "export", "export requested", {
+            format,
+            source: "library",
+            docId,
+            title: rawTitle,
+            chars: state.doc.length,
+        });
         const saved =
             format === "pdf" || format === "pdf+annotations"
                 ? await savePdfWithDialog(

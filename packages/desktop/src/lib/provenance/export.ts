@@ -15,6 +15,7 @@
  */
 
 import { sanitizeFilename, saveWithDialog } from "$lib/export";
+import { logAppEvent } from "$lib/appLog";
 import posthog from "$lib/posthog";
 import { type ProvenanceReport, generateProvenanceReport } from "$lib/provenance/report";
 import { toast } from "svelte-sonner";
@@ -171,6 +172,11 @@ export async function exportAuthorshipReport(
     format: ReportFormat,
 ): Promise<boolean> {
     try {
+        await logAppEvent("info", "export", "authorship export requested", {
+            draftId,
+            format,
+            title: documentTitle,
+        });
         const report = await generateProvenanceReport(draftId, documentTitle);
         const content =
             format === "json" ? JSON.stringify(report, null, 2) : buildReportMarkdown(report);
@@ -182,6 +188,11 @@ export async function exportAuthorshipReport(
         return saved;
     } catch (error) {
         console.error("[provenance] authorship report export failed", error);
+        void logAppEvent("error", "export", "authorship export failed", {
+            draftId,
+            format,
+            error: error instanceof Error ? error.message : String(error),
+        });
         toast.error("Export failed", {
             description:
                 error instanceof Error ? error.message : "The report could not be written.",
