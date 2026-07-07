@@ -98,18 +98,21 @@ and in the `_deleteVersionFromRevision` reducer; they must agree today.
 
 ## Medium value
 
-### 5. Share the annotation schema with `@quillium/share`
+### 5. Annotation wire schema — mostly done; validate at the read boundary
 
-`packages/share/src/types.ts` hand-mirrors annotation shapes that desktop
-already defines as zod schemas in `models.ts` (plus `collab/annotationSchema.ts`
-for the Yjs form, and `collab/sharePayload.ts` for the wire form). Any change to
-annotation shape now has four representations that drift silently — the share
-view renders someone's document on the web, so drift shows up as user-visible
-rendering bugs, not type errors.
+*Correction to the original writeup:* the share wire types
+(`SerializedAnnotation` et al.) already live in `@quillium/share`, and both
+desktop (`collab/sharePayload.ts`) and landing (`server/publicShare.ts`) import
+them — the schema **is** shared. What actually remained:
 
-**Suggestion:** move the raw/serialized zod schemas into a small shared package
-(`@quillium/schema` or into `@quillium/share` itself, which desktop already
-depends on) and derive both sides' types from it.
+- ✅ `sharePayload.ts` contained two near-identical serializers (raw shape vs.
+  live shape). Consolidated: the live path now converts via `selection.toJSON()`
+  and both share one doc→wire mapping (`serializeParsedAnnotationMap`).
+- ⏳ `publicShare.ts` casts `published_annotations` straight from the database
+  to `SerializedAnnotation[]` with no runtime validation. A zod schema for the
+  wire shape (living in `@quillium/share`, next to the types) would let landing
+  reject malformed rows instead of rendering them. Requires adding zod as a
+  dependency of the share package — a small decision, hence left open.
 
 ### 6. Split the big Rust DB module
 
