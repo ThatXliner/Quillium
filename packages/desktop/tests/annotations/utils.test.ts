@@ -2,7 +2,6 @@ import type { Annotations, GenericAnnotation } from "$lib/editor/plugins/annotat
 import {
     canCreateNewComment,
     cleanRangesOf,
-    equalAnnotationsSignature,
     positionIntersects,
 } from "$lib/editor/plugins/annotations/utils";
 import { ChangeSet, EditorSelection, EditorState } from "@codemirror/state";
@@ -94,28 +93,6 @@ describe("positionIntersects", () => {
 
     it("returns false for a position after the range", () => {
         expect(positionIntersects(16, range)).toBe(false);
-    });
-});
-
-// ── equalAnnotationsSignature ─────────────────────────────────────────────────
-
-describe("equalAnnotationsSignature", () => {
-    it("returns true for annotations with same type and selection", () => {
-        const a = makeComment(0, 0, 10);
-        const b = makeComment(1, 0, 10); // different id, same selection+type
-        expect(equalAnnotationsSignature(a, b)).toBe(true);
-    });
-
-    it("returns false when types differ", () => {
-        const a = makeComment(0, 0, 10);
-        const b = makeRevision(1, 0, 10);
-        expect(equalAnnotationsSignature(a, b)).toBe(false);
-    });
-
-    it("returns false when selections differ", () => {
-        const a = makeComment(0, 0, 10);
-        const b = makeComment(1, 5, 15);
-        expect(equalAnnotationsSignature(a, b)).toBe(false);
     });
 });
 

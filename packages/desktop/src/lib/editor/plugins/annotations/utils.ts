@@ -64,11 +64,6 @@ export function cleanRangesOf(selection: EditorSelection, allowEmpty = false) {
     return newRanges.length > 0 ? EditorSelection.create(newRanges, clampedMain) : null;
 }
 
-// Equal type and selection
-export function equalAnnotationsSignature(a: GenericAnnotation, b: GenericAnnotation) {
-    return a.selection.eq(b.selection) && a._type === b._type;
-}
-
 export function positionIntersects(position: number, selection: SelectionRange) {
     return selection.from <= position && position <= selection.to;
 }
