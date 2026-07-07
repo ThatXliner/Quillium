@@ -12,6 +12,14 @@ import {
 
 const STORAGE_KEY = "quillium-app-settings";
 
+// Clamp bounds + default for the floating annotation panel width. Exported so
+// Annotations.svelte's resize handle, reset button, and "is custom" check use
+// the same numbers as the persisted default below — a hardcoded copy in the
+// component could silently drift from DEFAULTS.annotationPanelWidth.
+export const ANNOTATION_PANEL_MIN_WIDTH = 180;
+export const ANNOTATION_PANEL_MAX_WIDTH = 420;
+export const ANNOTATION_PANEL_DEFAULT_WIDTH = 280;
+
 export type CustomQuickAction = {
     label: string;
     prompt: string;
@@ -85,7 +93,7 @@ const DEFAULTS: AppSettings = {
     checkForUpdates: true,
     grammarCheckEnabled: true,
     grammarDialect: "american",
-    annotationPanelWidth: 280,
+    annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     annotationLayout: "visual-split",

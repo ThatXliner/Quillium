@@ -10,7 +10,13 @@ import {
 } from "$lib/editor/plugins/annotations";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import {
+    ANNOTATION_PANEL_DEFAULT_WIDTH,
+    ANNOTATION_PANEL_MAX_WIDTH,
+    ANNOTATION_PANEL_MIN_WIDTH,
+    appSettings,
+    persistSettings,
+} from "$lib/settings.svelte";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { type PointerDragHandle, startPointerDrag } from "$lib/ui/pointerDrag";
@@ -93,9 +99,6 @@ const effectiveLayout = $derived(appSettings.aiEnabled ? "single" : appSettings.
  * decoration opens a modal instead of the floating card.
  */
 const MIN_ANNOTATION_WIDTH = 150;
-const MIN_PANEL_WIDTH = 180;
-const MAX_PANEL_WIDTH = 420;
-const DEFAULT_PANEL_WIDTH = 280;
 // Minimum gap kept between the left annotation column and the window edge.
 const LEFT_MARGIN = 16;
 let narrowMode = $state(false);
@@ -256,7 +259,10 @@ function getAnnotationLeft(): number {
 
 /** Current annotation panel width, clamped to its allowed range. */
 function getPanelWidth(): number {
-    return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth));
+    return Math.min(
+        ANNOTATION_PANEL_MAX_WIDTH,
+        Math.max(ANNOTATION_PANEL_MIN_WIDTH, appSettings.annotationPanelWidth),
+    );
 }
 
 /**
@@ -779,8 +785,8 @@ function startPanelResize(e: PointerEvent) {
         cursor: "ew-resize",
         onMove: (dx) => {
             appSettings.annotationPanelWidth = Math.min(
-                MAX_PANEL_WIDTH,
-                Math.max(MIN_PANEL_WIDTH, Math.round(startWidth + dx)),
+                ANNOTATION_PANEL_MAX_WIDTH,
+                Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(startWidth + dx)),
             );
         },
         onEnd: () => {
@@ -791,10 +797,12 @@ function startPanelResize(e: PointerEvent) {
     });
 }
 
-const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== DEFAULT_PANEL_WIDTH);
+const isCustomPanelWidth = $derived(
+    appSettings.annotationPanelWidth !== ANNOTATION_PANEL_DEFAULT_WIDTH,
+);
 
 function resetPanelWidth() {
-    appSettings.annotationPanelWidth = DEFAULT_PANEL_WIDTH;
+    appSettings.annotationPanelWidth = ANNOTATION_PANEL_DEFAULT_WIDTH;
     persistSettings();
 }
 
