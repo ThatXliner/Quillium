@@ -95,7 +95,7 @@ export function getActiveAnnotation<T extends AnnotationType>(
         if (type !== undefined && !isAnnotationOfType(annotation, type)) continue;
         if (type === undefined) {
             // Active-state checks below use thread/version length as a proxy for
-            // "pending" state; a proper FSM would make this more explicit (see #38).
+            // "pending" state; a proper FSM would make this more explicit (see #302).
             if (isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0)
                 return annotation;
             if (isAnnotationOfType(annotation, "revision") && annotation.versions.length === 0) {

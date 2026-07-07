@@ -82,7 +82,7 @@ export function createNewAnnotation<T extends AnnotationType>(
 type CommentAnnotation = BaseAnnotation & {
     _type: "comment";
 };
-// See issue #38: annotation status / FSM for active-state tracking.
+// See issue #302: annotation status / FSM for active-state tracking.
 export type SuggestionReplacement = {
     text: string;
     rationale?: string;

@@ -12,7 +12,7 @@ Ordered roughly by value-for-effort within each section.
 
 ## High value
 
-### 1. Consolidate the two word-diff implementations
+### 1. ✅ Consolidate the two word-diff implementations *(done — one module in `src/lib/editor/diff.ts`)*
 
 - `src/lib/editor/plugins/annotations/diff.ts` (`tokenize`/`diffTokens`, `DiffOp`)
 - `src/lib/editor/history/diff.ts` (`wordDiff`, `DiffSegment`)
@@ -31,7 +31,7 @@ a single module, and adapt the annotation call sites. The op-type rename is
 mechanical; `DiffOp` is re-exported from the annotations barrel, so keep an
 alias there for compatibility.
 
-### 2. Extract a shared "reconstruct draft state" helper
+### 2. ✅ Extract a shared "reconstruct draft state" helper *(done — `reconstructState()` in `replay.ts`)*
 
 The recipe *load snapshot JSON → `EditorState.fromJSON` with fallback to empty
 state → `replayEvents(state, eventsSince)`* is hand-rolled in at least:
@@ -132,7 +132,7 @@ It inflates event volume and adds work to the caret hot path.
 **Suggestion:** once the investigation closes, delete it or gate it behind a
 sample (e.g. `Math.random() < 0.01`) / the debug panel.
 
-### 8. Test-only exports in `annotations/utils.ts` and `models.ts`
+### 8. ✅ Test-only exports in `annotations/utils.ts` and `models.ts` *(done — `equalAnnotationsSignature` deleted)*
 
 `equalAnnotationsSignature` has no production callers (only
 `tests/annotations/utils.test.ts`). `positionIntersects` is exported but only
@@ -140,7 +140,7 @@ used internally + tests. Either delete `equalAnnotationsSignature` (git keeps
 it) or move such helpers into a test-utils module so the public barrel reflects
 the real API.
 
-### 9. `getActiveAnnotation`'s "pending" heuristics
+### 9. `getActiveAnnotation`'s "pending" heuristics *(filed as [#302](https://github.com/ThatXliner/Quillium/issues/302))*
 
 The function returns any pending comment/empty revision *regardless of cursor
 position*, using `thread.length === 0` / `versions.length === 0` as a proxy for
@@ -149,7 +149,7 @@ status field (or FSM) would remove the proxy checks scattered across
 `utils.ts`, `invertedAnnotationFieldEffects` (`thread.length === 0` ⇒ pending
 comment), and the UI components that re-derive the same notion.
 
-### 10. `modalStack` bookkeeping duplication (`stores.ts`)
+### 10. ✅ `modalStack` bookkeeping duplication (`stores.ts`) *(done — `trimModalAnnotationStores()`)*
 
 `pop`, `popTo`, and `popToAndRebuild` each re-implement "trim
 `_modalAnnotationStores` above index N". A private
