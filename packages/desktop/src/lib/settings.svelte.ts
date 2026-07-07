@@ -18,7 +18,7 @@ export type CustomQuickAction = {
     panel: "revise" | "feedback" | "chat";
 };
 
-type AppSettings = {
+export type AppSettings = {
     selectTextInNestedEditor: boolean;
     showNestedEditor: boolean;
     atomicRevisions: boolean;
