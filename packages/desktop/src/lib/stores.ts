@@ -307,6 +307,20 @@ export const settingsOpen = writable<false | true | string>(false);
  */
 export const statsOpen = writable(false);
 
+/**
+ * Drops per-modal annotation state for stack indices [fromIndex, toIndex).
+ * Every stack-shrinking operation must call this so a closed modal's
+ * annotation state can't leak into a future modal at the same index.
+ */
+function trimModalAnnotationStores(fromIndex: number, toIndex = fromIndex + 1): void {
+    if (toIndex <= fromIndex || fromIndex < 0) return;
+    _modalAnnotationStores.update((m) => {
+        const copy = { ...m };
+        for (let i = fromIndex; i < toIndex; i++) delete copy[i];
+        return copy;
+    });
+}
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>
@@ -340,31 +354,17 @@ export const modalStack = {
         }),
     pop: () =>
         _modalStack.update((s) => {
-            if (s.length > 0) {
-                _modalAnnotationStores.update((m) => {
-                    const copy = { ...m };
-                    delete copy[s.length - 1];
-                    return copy;
-                });
-            }
+            trimModalAnnotationStores(s.length - 1);
             return s.slice(0, -1);
         }),
     popTo: (index: number) =>
         _modalStack.update((s) => {
-            _modalAnnotationStores.update((m) => {
-                const copy = { ...m };
-                for (let i = index + 1; i < s.length; i++) delete copy[i];
-                return copy;
-            });
+            trimModalAnnotationStores(index + 1, s.length);
             return s.slice(0, index + 1);
         }),
     popToAndRebuild: (index: number) =>
         _modalStack.update((s) => {
-            _modalAnnotationStores.update((m) => {
-                const copy = { ...m };
-                for (let i = index + 1; i < s.length; i++) delete copy[i];
-                return copy;
-            });
+            trimModalAnnotationStores(index + 1, s.length);
             const trimmed = s.slice(0, index + 1);
             const target = trimmed[index];
             if (!target) return trimmed;
