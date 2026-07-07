@@ -16,6 +16,12 @@
     <key>com.apple.security.network.client</key>
     <true/>
 
+    <!-- Powerbox access for NSSavePanel/NSOpenPanel (document export).
+         Without this, the sandboxed build crashes when the save dialog opens
+         because the ViewBridge connection to the panel service is denied. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
     <!-- Keychain access for storing API keys -->
     <key>keychain-access-groups</key>
     <array>
