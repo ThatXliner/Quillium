@@ -11,6 +11,20 @@ type AuthConnectionState = "idle" | "connecting" | "online" | "offline";
 
 const AUTH_INIT_ATTEMPTS = 3;
 const AUTH_INIT_TIMEOUT_MS = 2500;
+const SESSION_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * getSession() can stall indefinitely: supabase-js serializes it behind the
+ * processLock and initializePromise, both of which can be wedged by an
+ * in-flight token refresh on a bad connection. This marks the race timeout so
+ * callers can land in "offline" (retryable) instead of hanging the UI forever.
+ */
+class SessionFetchTimeoutError extends Error {
+    constructor() {
+        super(`auth session fetch timed out after ${SESSION_FETCH_TIMEOUT_MS}ms`);
+        this.name = "SessionFetchTimeoutError";
+    }
+}
 
 // Reactive state
 let user = $state<User | null>(null);
@@ -66,6 +80,15 @@ async function fetchCurrentSession(): Promise<Session | null> {
     return result.data.session;
 }
 
+function fetchCurrentSessionWithTimeout(): Promise<Session | null> {
+    return Promise.race([
+        fetchCurrentSession(),
+        new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new SessionFetchTimeoutError()), SESSION_FETCH_TIMEOUT_MS);
+        }),
+    ]);
+}
+
 async function loadSessionWithRetries(run: number): Promise<boolean> {
     connectionState = "connecting";
     loading = true;
@@ -87,7 +110,7 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
     if (run !== initRun) return false;
 
     try {
-        const existingSession = await fetchCurrentSession();
+        const existingSession = await fetchCurrentSessionWithTimeout();
         if (run !== initRun) return false;
 
         session = existingSession;
@@ -95,6 +118,17 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
     } catch (error) {
         console.error("[auth] Failed to get session:", error);
         if (run !== initRun) return false;
+
+        if (error instanceof SessionFetchTimeoutError) {
+            // Land in "offline" so the UI keeps a clickable Reconnect button;
+            // leaving loading=true would pin the disabled "Reconnecting" pill
+            // with no way for the user to retry.
+            session = null;
+            user = null;
+            connectionState = "offline";
+            loading = false;
+            return false;
+        }
 
         session = null;
         user = null;
