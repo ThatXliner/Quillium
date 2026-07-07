@@ -11,6 +11,7 @@ type AuthConnectionState = "idle" | "connecting" | "online" | "offline";
 
 const AUTH_INIT_ATTEMPTS = 3;
 const AUTH_INIT_TIMEOUT_MS = 2500;
+const AUTH_RETRY_DELAY_MS = 750;
 const SESSION_FETCH_TIMEOUT_MS = 10_000;
 
 /**
@@ -89,6 +90,10 @@ function fetchCurrentSessionWithTimeout(): Promise<Session | null> {
     ]);
 }
 
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function loadSessionWithRetries(run: number): Promise<boolean> {
     connectionState = "connecting";
     loading = true;
@@ -105,6 +110,10 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
             loading = false;
             return false;
         }
+        // Back-to-back retries all land inside the same network blip; give
+        // transient failures (sleep-wake, DNS warmup) a moment to clear.
+        await sleep(AUTH_RETRY_DELAY_MS);
+        if (run !== initRun) return false;
     }
 
     if (run !== initRun) return false;
