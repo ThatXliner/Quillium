@@ -51,6 +51,13 @@ import Comment from "./Comment.svelte";
 import PreComment from "./PreComment.svelte";
 import Revision from "./Revision.svelte";
 import Suggestion from "./Suggestion.svelte";
+import {
+    type ColumnSide,
+    balanceColumns,
+    idSignature,
+    layoutColumnPositions,
+    sidesEqual,
+} from "./annotationLayout";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -284,7 +291,7 @@ let panelResizeStartWidth = 0;
 // Computed inside updateAnnotationPositions (NOT $derived — it calls
 // coordsAtPos, which can trigger a measure cycle that writes to stores).
 // The template reads this to decide which column renders each card.
-let cardSide = $state<{ [id: number]: "left" | "right" }>({});
+let cardSide = $state<{ [id: number]: ColumnSide }>({});
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -400,78 +407,28 @@ function getAnnotationViewportX(annotation: GenericAnnotation): number {
     }
 }
 
-/**
- * Pure balancing core for the "visual-split" layout: assign each card to
- * the column whose running bottom is higher up (more open vertical room
- * near this card's Y), so the two columns stay roughly even and cards land
- * near their text. Ties break toward the side the text sits on, then by id
- * for stability. Deterministic — no randomness — so assignments are stable
- * across re-renders given stable inputs.
- *
- * Exported-style pure function (kept module-local but DOM-free) so it can
- * be unit-tested without a CodeMirror view.
- */
-function balanceColumns(
-    items: { id: number; viewportY: number; height: number; viewportX: number }[],
-    viewportCenterX: number,
-): { [id: number]: "left" | "right" } {
-    const MIN_SPACING = 8;
-    const TOP_CLAMP = 64;
-    const sorted = [...items].sort((a, b) =>
-        a.viewportY !== b.viewportY ? a.viewportY - b.viewportY : a.id - b.id,
-    );
-    const side: { [id: number]: "left" | "right" } = {};
-    let leftBottom = TOP_CLAMP;
-    let rightBottom = TOP_CLAMP;
-    for (const item of sorted) {
-        let chosen: "left" | "right";
-        if (leftBottom < rightBottom) {
-            chosen = "left";
-        } else if (rightBottom < leftBottom) {
-            chosen = "right";
-        } else {
-            // Even columns: prefer the side the text leans toward.
-            chosen = item.viewportX <= viewportCenterX ? "left" : "right";
-        }
-        side[item.id] = chosen;
-        const top = Math.max(item.viewportY, chosen === "left" ? leftBottom : rightBottom);
-        const nextBottom = top + item.height + MIN_SPACING;
-        if (chosen === "left") leftBottom = nextBottom;
-        else rightBottom = nextBottom;
-    }
-    return side;
-}
-
 // Memoized visual-split assignment plus the id-set signature it was computed
 // for. The balance is recomputed ONLY when the set of annotations changes
 // (add/remove); clicking, activating, or resizing reuses the cached map so
 // cards never jump columns just because the active card expanded. Combined
 // with getBalanceHeight (collapsed heights), assignment is fully
-// activation-invariant.
-let balancedSides: { [id: number]: "left" | "right" } = {};
+// activation-invariant. balanceColumns itself lives in annotationLayout.ts.
+let balancedSides: { [id: number]: ColumnSide } = {};
 let balancedSignature = "";
-
-/** Stable signature of the current annotation id set (order-independent). */
-function idSignature(positions: Positioned[]): string {
-    return positions
-        .map((p) => p.annotation.id)
-        .sort((a, b) => a - b)
-        .join(",");
-}
 
 /**
  * Decide each card's column for the current render mode. Returns the new
  * side map. Pure relative to the DOM read of card heights / coords.
  */
-function computeCardSides(positions: Positioned[]): { [id: number]: "left" | "right" } {
+function computeCardSides(positions: Positioned[]): { [id: number]: ColumnSide } {
     if (renderMode !== "two-column") {
         // Single / modal: everything nominally on the right.
-        const side: { [id: number]: "left" | "right" } = {};
+        const side: { [id: number]: ColumnSide } = {};
         for (const { annotation } of positions) side[annotation.id] = "right";
         return side;
     }
     if (effectiveLayout === "by-type") {
-        const side: { [id: number]: "left" | "right" } = {};
+        const side: { [id: number]: ColumnSide } = {};
         for (const { annotation } of positions) {
             side[annotation.id] = isAnnotationOfType(annotation, "comment") ? "left" : "right";
         }
@@ -479,7 +436,7 @@ function computeCardSides(positions: Positioned[]): { [id: number]: "left" | "ri
     }
     // visual-split: only rebalance when the annotation set changes, so an
     // active card growing taller can't flip later cards between columns.
-    const signature = idSignature(positions);
+    const signature = idSignature(positions.map((p) => p.annotation.id));
     if (signature === balancedSignature) return balancedSides;
 
     const center = resolvedView
@@ -627,109 +584,31 @@ function updateAnnotationPositions() {
     }
 }
 
-/** Shallow equality of two side maps. */
-function sidesEqual(
-    a: { [id: number]: "left" | "right" },
-    b: { [id: number]: "left" | "right" },
-): boolean {
-    const ak = Object.keys(a);
-    const bk = Object.keys(b);
-    if (ak.length !== bk.length) return false;
-    for (const k of ak) {
-        if (a[k as unknown as number] !== b[k as unknown as number]) return false;
-    }
-    return true;
-}
-
 /**
- * Core layout algorithm for one floating column: assigns each card a top
- * position aligned to its annotation's viewport Y.
- *
- * Google Docs-style: the active card anchors at its natural text Y first.
- * Cards above it are pushed upward to avoid overlap; cards below it are
- * pushed downward. This ensures the selected card always sits next to its
- * highlighted text rather than being displaced by earlier cards.
- *
- * Operates purely on the column's own card list / container, so each
- * column keeps its own scrollTop, overhead, and inner height.
+ * Lay out one floating column: measure card heights, run the pure
+ * positioning algorithm (layoutColumnPositions in annotationLayout.ts),
+ * then apply the results to the DOM. Operates purely on the column's own
+ * card list / container, so each column keeps its own scrollTop, overhead,
+ * and inner height.
  */
 function layoutColumn(col: Column) {
     if (!resolvedView || !isFloating) return;
 
-    const MIN_SPACING = 8;
-    const TOP_CLAMP = 64;
-
-    const sortedByPos = [...col.cards].sort((a, b) => a.viewportY - b.viewportY);
-    const adjustedY: { [id: number]: number } = {};
-
-    // Find the active card index in this column (if it lives here).
-    const activeIdx = resolvedActiveAnnotation
-        ? sortedByPos.findIndex((p) => p.annotation.id === resolvedActiveAnnotation?.id)
-        : -1;
-
-    if (activeIdx === -1) {
-        // No active card: simple top-to-bottom pass (original behaviour)
-        let lastBottom = TOP_CLAMP;
-        for (const { annotation, viewportY } of sortedByPos) {
-            const height = getCardHeight(annotation.id);
-            const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
-            adjustedY[annotation.id] = y;
-            lastBottom = y + height + MIN_SPACING;
-        }
-    } else {
-        // Active card anchors at its natural text Y
-        const activeItem = sortedByPos[activeIdx];
-        const activeHeight = getCardHeight(activeItem.annotation.id);
-        const activeY = activeItem.viewportY;
-        adjustedY[activeItem.annotation.id] = activeY;
-
-        // Walk cards ABOVE the active card upward (reverse order).
-        // Prefer natural Y; push up past the top edge if needed —
-        // the scroll container will hide them until the user scrolls.
-        {
-            let ceiling = activeY - MIN_SPACING;
-            for (let i = activeIdx - 1; i >= 0; i--) {
-                const { annotation, viewportY } = sortedByPos[i];
-                const height = getCardHeight(annotation.id);
-                const y = Math.min(viewportY, ceiling - height);
-                adjustedY[annotation.id] = y;
-                ceiling = y - MIN_SPACING;
-            }
-        }
-
-        // Walk cards BELOW the active card downward.
-        // Prefer natural Y; push down past the bottom if needed.
-        let lastBottom = activeY + activeHeight + MIN_SPACING;
-        for (let i = activeIdx + 1; i < sortedByPos.length; i++) {
-            const { annotation, viewportY } = sortedByPos[i];
-            const height = getCardHeight(annotation.id);
-            const y = Math.max(viewportY, lastBottom);
-            adjustedY[annotation.id] = y;
-            lastBottom = y + height + MIN_SPACING;
-        }
-    }
-
-    // Shift all positions so the minimum Y is 0, adding an overhead
-    // buffer so cards pushed above the active card are reachable by
-    // scrolling. The scroll container is then scrolled by exactly
-    // `overhead` so the active card (or the topmost card when nothing
-    // is active) lands at its correct viewport position.
-    const yValues = Object.values(adjustedY);
-    const minY = yValues.length ? Math.min(...yValues) : 0;
-    const overhead = minY < 0 ? -minY : 0;
-    for (const id of Object.keys(adjustedY) as unknown as number[]) {
-        adjustedY[id] += overhead;
-    }
-
-    // Compute total inner height
-    let maxBottom = 0;
-    for (const { annotation } of sortedByPos) {
-        const height = getCardHeight(annotation.id);
-        maxBottom = Math.max(maxBottom, (adjustedY[annotation.id] ?? 0) + height + MIN_SPACING);
-    }
+    const items = col.cards.map(({ annotation, viewportY }) => ({
+        id: annotation.id,
+        viewportY,
+        height: getCardHeight(annotation.id),
+    }));
+    // The active card anchors at its natural Y only if it lives in this column.
+    const activeId =
+        resolvedActiveAnnotation &&
+        col.cards.some((p) => p.annotation.id === resolvedActiveAnnotation.id)
+            ? resolvedActiveAnnotation.id
+            : null;
+    const { adjustedY, overhead, maxBottom } = layoutColumnPositions(items, activeId);
 
     updateScrollContainerSize(col, maxBottom);
-    applyCardPositions(sortedByPos, adjustedY);
+    applyCardPositions(col.cards, adjustedY);
 
     // Scroll so the active card sits at its natural viewport Y.
     // When nothing is active, restore scroll to 0 (top of column).
