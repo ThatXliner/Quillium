@@ -134,6 +134,19 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `draft_scrapped` | Draft scrapped | `Save.svelte` |
 | `delete_toast_view_history` | Delete undo toast opens history | `Editor.svelte` |
 
+## Collaboration
+
+| Event | When | File |
+|-------|------|------|
+| `collab_went_live` | Owner starts a live session | `liveSession.svelte.ts` |
+| `collab_go_live_failed` | Going live failed (relay/auth/sync error) | `liveSession.svelte.ts` |
+| `collab_room_joined` | Joiner connects to a shared room | `liveSession.svelte.ts` |
+| `collab_join_failed` | Joining a room failed | `liveSession.svelte.ts` |
+| `collab_session_ended` | Session ended (`role`, `reason`: manual/owner_left) | `liveSession.svelte.ts` |
+| `collab_reconnect_started` | Connection lost, first retry begins | `liveSession.svelte.ts` |
+| `collab_reconnected` | Reconnected after retries (`attempts`) | `liveSession.svelte.ts` |
+| `collab_reconnect_failed` | Retries exhausted, session torn down (`attempts`) | `liveSession.svelte.ts` |
+
 ## Sharing & Provenance
 
 | Event | When | File |

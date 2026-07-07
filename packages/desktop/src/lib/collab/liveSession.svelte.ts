@@ -14,6 +14,7 @@
  * (ownerLeftSignal, collabState) into handleOwnerLeft/trackCollabState.
  */
 
+import { logAppEvent } from "$lib/appLog";
 import { getSession, getUser } from "$lib/auth/auth.svelte";
 import {
     disableCollab,
@@ -24,6 +25,7 @@ import {
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
+import posthog, { captureException } from "$lib/posthog";
 import { currentDraftId, editorView, lastPersistedEventId } from "$lib/stores";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
@@ -32,8 +34,11 @@ export class LiveSessionController {
     isLive = $state(false);
     connecting = $state(false);
 
-    // Plain field — only read/written inside trackCollabState, never rendered.
+    // Plain fields — only read/written inside trackCollabState, never rendered.
     #prevCollabState = "disconnected";
+    // Last nonzero attempt seen while reconnecting: by the time collabState flips
+    // to "connected" the store has already been reset to 0 in the same batch.
+    #lastReconnectAttempt = 0;
 
     /** Owner ended the session (ownerLeftSignal fired while we were live). */
     handleOwnerLeft() {
@@ -46,18 +51,29 @@ export class LiveSessionController {
         }
         this.isLive = false;
         toast.error("The owner ended the session");
+        posthog.capture("collab_session_ended", { role: "joiner", reason: "owner_left" });
     }
 
     /** React to collabState transitions (reconnect toasts + failure teardown). */
     trackCollabState(state: string, attempt: number) {
+        if (state === "reconnecting" && attempt > 0) {
+            this.#lastReconnectAttempt = attempt;
+        }
+
         // Reconnected successfully
         if (this.#prevCollabState === "reconnecting" && state === "connected") {
             toast.success("Reconnected");
+            posthog.capture("collab_reconnected", { attempts: this.#lastReconnectAttempt });
+            this.#lastReconnectAttempt = 0;
         }
 
         // Reconnection failed (error state after reconnecting)
         if (this.#prevCollabState === "reconnecting" && state === "error") {
             toast.error("Connection lost. Please go live again to reconnect.");
+            posthog.capture("collab_reconnect_failed", {
+                attempts: attempt > 0 ? attempt : this.#lastReconnectAttempt,
+            });
+            this.#lastReconnectAttempt = 0;
             const view = get(editorView);
             if (view) {
                 disableCollab(view);
@@ -70,6 +86,7 @@ export class LiveSessionController {
         // Started reconnecting (first attempt)
         if (this.#prevCollabState !== "reconnecting" && state === "reconnecting" && attempt === 1) {
             toast("Connection lost, reconnecting...");
+            posthog.capture("collab_reconnect_started");
         }
 
         this.#prevCollabState = state;
@@ -124,9 +141,15 @@ export class LiveSessionController {
 
             this.isLive = true;
             toast.success("Joined shared document");
+            posthog.capture("collab_room_joined");
             return true;
         } catch (err) {
             console.error("[collab] Failed to join:", err);
+            void logAppEvent("error", "collab", "failed to join room", {
+                error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+            });
+            captureException(err);
+            posthog.capture("collab_join_failed");
             const view = get(editorView);
             if (view) {
                 disableCollab(view);
@@ -163,6 +186,10 @@ export class LiveSessionController {
             // D-103: restoreJoinerPriorView is called by disableCollab automatically
             // for joiners. Owners stay on current document (no navigation).
             toast.success(wasJoiner ? "Left live room" : "Session ended");
+            posthog.capture("collab_session_ended", {
+                role: wasJoiner ? "joiner" : "owner",
+                reason: "manual",
+            });
         } else {
             // Go live -- snapshot first (D-58)
             this.connecting = true;
@@ -190,8 +217,14 @@ export class LiveSessionController {
 
                 this.isLive = true;
                 toast.success("You're live!");
+                posthog.capture("collab_went_live");
             } catch (err) {
                 console.error("[collab] Failed to go live:", err);
+                void logAppEvent("error", "collab", "failed to go live", {
+                    error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+                });
+                captureException(err);
+                posthog.capture("collab_go_live_failed");
                 const view = get(editorView);
                 if (view) {
                     disableCollab(view);

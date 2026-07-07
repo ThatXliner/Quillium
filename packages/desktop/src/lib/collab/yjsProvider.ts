@@ -1,3 +1,4 @@
+import { logAppEvent } from "$lib/appLog";
 import { getSession } from "$lib/auth/auth.svelte";
 import type { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
@@ -106,6 +107,11 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // Track connection state via provider events
     provider.on("status", ({ status }: { status: string }) => {
         console.log(`[yjsProvider] Status: ${status}`);
+        void logAppEvent("info", "collab", "provider status", {
+            status,
+            attempt: currentAttemptCount,
+            docId,
+        });
         if (status === "connecting") {
             // Only set "connecting" on initial connection, not during reconnection
             if (currentAttemptCount === 0) {
@@ -127,6 +133,11 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // Sync event indicates successful initial sync with server
     provider.on("sync", (isSynced: boolean) => {
         console.log(`[yjsProvider] Sync: ${isSynced}`);
+        void logAppEvent("info", "collab", "provider sync", {
+            synced: isSynced,
+            attempt: currentAttemptCount,
+            docId,
+        });
         if (isSynced && currentProvider === provider) {
             collabState.set("connected");
             currentAttemptCount = 0;
@@ -142,6 +153,10 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     };
     providerWithConnectionClose.on("connection-close", () => {
         console.log(`[yjsProvider] Connection closed (attempt ${currentAttemptCount})`);
+        void logAppEvent("warn", "collab", "connection closed", {
+            attempt: currentAttemptCount,
+            docId,
+        });
         if (currentProvider === provider && currentAttemptCount > 0) {
             // Already in reconnection mode, increment attempt
             currentAttemptCount += 1;
@@ -149,6 +164,10 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
 
             if (currentAttemptCount >= MAX_RECONNECT_ATTEMPTS) {
                 // Per D-104: Exhausted retries, set error state
+                void logAppEvent("error", "collab", "reconnect attempts exhausted", {
+                    attempts: currentAttemptCount,
+                    docId,
+                });
                 collabState.set("error");
                 // Per D-105: Stop reconnection - user must manually Go Live again
                 // Use setTimeout to avoid calling disconnect inside close handler (stack overflow)
@@ -176,6 +195,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
  */
 export function disconnectYjsProvider(): void {
     if (currentProvider) {
+        void logAppEvent("info", "collab", "provider disconnected", { docId: currentDocId });
         currentProvider.destroy();
         currentProvider = null;
     }
@@ -216,6 +236,7 @@ export function getYDoc(): Y.Doc | null {
  */
 export function handleOwnerLeft(): void {
     console.log("[yjsProvider] Owner left, disconnecting");
+    void logAppEvent("info", "collab", "owner left session", { docId: currentDocId });
     ownerLeftSignal.update((n) => n + 1);
     disconnectYjsProvider();
 }
