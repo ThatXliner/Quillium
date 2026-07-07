@@ -1,47 +1,35 @@
 <!--
-    GoLiveButton.svelte -- Top-right collab toggle.
+    GoLiveButton.svelte -- Top-right collab toggle and share modal shell.
 
     Per D-56: "Go Live" toggle in top-right area (near AuthButton).
     Per D-57: Live Room mode only -- session ends when owner leaves.
     Per D-58: Snapshot before pulling remote state.
     Per D-59: Manual toggle for owner's own documents.
     Per D-70: Updated for Yjs migration.
+
+    Composition:
+      - LiveSessionController (liveSession.svelte.ts) owns the go-live /
+        join / leave lifecycle; thin $effects here forward store signals.
+      - ReadonlySharePublisher (readonlySharePublisher.svelte.ts) owns the
+        public-link state and publish/disable flow; the staleness
+        fingerprints stay here because they derive from reactive stores.
+      - ShareModalPreviewTab / ShareModalCollabTab render the two tabs.
 -->
 <script lang="ts">
-import { getSession, getUser, isAuthenticated } from "$lib/auth/auth.svelte";
+import { getUser, isAuthenticated } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
-import {
-    MAX_RECONNECT_ATTEMPTS,
-    collabState,
-    disableCollab,
-    enableCollab,
-    ownerLeftSignal,
-    reconnectAttempt,
-    registerDocumentForCollab,
-    relayConfigured,
-    restoreJoinerPriorView,
-} from "$lib/collab";
+import { collabState, ownerLeftSignal, reconnectAttempt, relayConfigured } from "$lib/collab";
+import ShareModalCollabTab from "$lib/collab/ShareModalCollabTab.svelte";
+import ShareModalPreviewTab from "$lib/collab/ShareModalPreviewTab.svelte";
+import { LiveSessionController } from "$lib/collab/liveSession.svelte";
 import {
     READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
-    READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS,
-    READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS,
     normalizeReadonlyShareAutoUpdateDebounceMs,
     shouldScheduleReadonlyShareAutoUpdate,
 } from "$lib/collab/readonlyShareAutoUpdate";
-import {
-    type ReadonlyShare,
-    buildReadonlyShareUrl,
-    buildSharePreviewText,
-    disableReadonlyShare,
-    getReadonlyShare,
-    publishReadonlyShare,
-    readonlyShareState,
-} from "$lib/collab/share";
+import { ReadonlySharePublisher } from "$lib/collab/readonlySharePublisher.svelte";
+import { buildReadonlyShareUrl, buildSharePreviewText } from "$lib/collab/share";
 import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
-import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
-import { OMNI_WAITLIST_URL } from "$lib/constants";
-import { createNamedSnapshot } from "$lib/db";
-import { savedFields } from "$lib/editor/extensions";
 import { annotationField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
@@ -52,21 +40,8 @@ import {
     currentDraftId,
     documentContent,
     editorView,
-    lastPersistedEventId,
 } from "$lib/stores";
-import {
-    ArrowLeftRight,
-    Cloud,
-    Copy,
-    ExternalLink,
-    Link,
-    Loader2,
-    LogIn,
-    Radio,
-    RefreshCcw,
-    Share2,
-    X,
-} from "lucide-svelte";
+import { Loader2, RefreshCcw, Share2, X } from "lucide-svelte";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 
@@ -74,20 +49,14 @@ const { onauthclick }: { onauthclick?: () => void } = $props();
 
 type ShareTab = "preview" | "collaborate";
 
-let isLive = $state(false);
-let connecting = $state(false);
+const session = new LiveSessionController();
+const publisher = new ReadonlySharePublisher();
+
 let modalOpen = $state(false);
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
-let joinIdInput = $state("");
-let prevCollabState = $state<string>("disconnected");
 let activeTab = $state<ShareTab>("preview");
 let tabTrackEl = $state<HTMLElement | undefined>(undefined);
 let tabPillStyle = $state("");
-let shareLoading = $state(false);
-let shareBusy = $state(false);
-let readonlyShare = $state<ReadonlyShare | null>(null);
-let autoSharePublishQueued = $state(false);
-let autoSharePublishFailedFingerprint = $state("");
 
 function shouldShowForScreenshot(): boolean {
     return (
@@ -107,6 +76,7 @@ const currentId = $derived($currentDraftId ?? "");
 // document id (rather than adding a multi-tab payload) keeps the door open for
 // Omni rendering multiple tabs later without changing the share identity.
 const shareId = $derived($currentDocumentId ?? "");
+const readonlyShare = $derived(publisher.share);
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
 const shareComparisonPayload = $derived(
     readonlyShare?.enabled
@@ -144,33 +114,13 @@ const autoUpdateDebounceMs = $derived(
 );
 const autoUpdateDelaySeconds = $derived(Math.round(autoUpdateDebounceMs / 1000));
 const autoUpdatePausedAfterFailure = $derived(
-    autoSharePublishFailedFingerprint !== "" &&
-        autoSharePublishFailedFingerprint === currentShareFingerprint,
+    publisher.failedFingerprint !== "" && publisher.failedFingerprint === currentShareFingerprint,
 );
 const draftAnnotationCount = $derived(
     modalOpen && activeTab === "preview" && !readonlyShare?.enabled
         ? serializeAnnotations($documentContent, $annotations).length
         : 0,
 );
-
-async function refreshReadonlyShare() {
-    if (!authenticated || !shareId) {
-        readonlyShare = null;
-        readonlyShareState.set(null);
-        return;
-    }
-
-    shareLoading = true;
-    try {
-        readonlyShare = await getReadonlyShare(shareId);
-        readonlyShareState.set(readonlyShare);
-    } catch (err) {
-        console.error("[share] Failed to load readonly share:", err);
-        toast.error("Couldn't load public link settings");
-    } finally {
-        shareLoading = false;
-    }
-}
 
 $effect(() => {
     if (modalOpen && dialogEl && !dialogEl.open) {
@@ -187,15 +137,17 @@ $effect(() => {
     tabPillStyle = `--share-pill-width: ${btn.offsetWidth}px; --share-pill-x: ${btn.offsetLeft - 3}px;`;
 });
 
+// Load (or drop) the share row when auth/document context changes.
 $effect(() => {
     if (!authenticated || !shareId) {
-        readonlyShare = null;
-        readonlyShareState.set(null);
+        publisher.clear();
         return;
     }
-    refreshReadonlyShare();
+    publisher.refresh(shareId);
 });
 
+// Auto-update scheduler: when enabled and the published snapshot is stale,
+// publish after the debounce window (cancelled if inputs change meanwhile).
 $effect(() => {
     const debounceMs = autoUpdateDebounceMs;
     const fingerprint = currentShareFingerprint;
@@ -205,77 +157,40 @@ $effect(() => {
         shareId,
         shareEnabled: readonlyShare?.enabled ?? false,
         shareNeedsUpdate,
-        shareBusy,
-        shareLoading,
+        shareBusy: publisher.busy,
+        shareLoading: publisher.loading,
         currentFingerprint: fingerprint,
-        lastFailedFingerprint: autoSharePublishFailedFingerprint,
+        lastFailedFingerprint: publisher.failedFingerprint,
     });
 
     if (!shouldAutoPublish) {
-        autoSharePublishQueued = false;
+        publisher.queued = false;
         return;
     }
 
-    autoSharePublishQueued = true;
+    publisher.queued = true;
     const timer = window.setTimeout(() => {
-        autoSharePublishQueued = false;
+        publisher.queued = false;
         void publishCurrentSnapshot({ automatic: true });
     }, debounceMs);
 
     return () => {
         window.clearTimeout(timer);
-        autoSharePublishQueued = false;
+        publisher.queued = false;
     };
 });
 
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
 $effect(() => {
-    if ($ownerLeftSignal > 0 && isLive) {
-        const view = get(editorView);
-        if (view) {
-            disableCollab(view);
-        } else {
-            restoreJoinerPriorView();
-        }
-        isLive = false;
-        toast.error("The owner ended the session");
+    if ($ownerLeftSignal > 0 && session.isLive) {
+        session.handleOwnerLeft();
     }
 });
 
 // React to reconnection state changes
 $effect(() => {
-    const state = $collabState;
-    const attempt = $reconnectAttempt;
-
-    // Reconnected successfully
-    if (prevCollabState === "reconnecting" && state === "connected") {
-        toast.success("Reconnected");
-    }
-
-    // Reconnection failed (error state after reconnecting)
-    if (prevCollabState === "reconnecting" && state === "error") {
-        toast.error("Connection lost. Please go live again to reconnect.");
-        const view = get(editorView);
-        if (view) {
-            disableCollab(view);
-        } else {
-            restoreJoinerPriorView();
-        }
-        isLive = false;
-    }
-
-    // Started reconnecting (first attempt)
-    if (prevCollabState !== "reconnecting" && state === "reconnecting" && attempt === 1) {
-        toast("Connection lost, reconnecting...");
-    }
-
-    prevCollabState = state;
+    session.trackCollabState($collabState, $reconnectAttempt);
 });
-
-function copyId() {
-    navigator.clipboard.writeText(currentId);
-    toast.success("Document ID copied");
-}
 
 function closeModal() {
     modalOpen = false;
@@ -298,14 +213,6 @@ function openAuth() {
     onauthclick?.();
 }
 
-function formatShareTimestamp(value: string | null): string {
-    if (!value) return "Not published yet";
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-    }).format(new Date(value));
-}
-
 function buildPublishPayload() {
     const view = get(editorView);
     // Content + annotations come from the live editor view — i.e. the last
@@ -326,7 +233,7 @@ function buildPublishPayload() {
 function setReadonlyShareAutoUpdate(enabled: boolean) {
     appSettings.readonlyShareAutoUpdate = enabled;
     appSettings.readonlyShareAutoUpdateDebounceMs = autoUpdateDebounceMs;
-    autoSharePublishFailedFingerprint = "";
+    publisher.failedFingerprint = "";
     persistSettings();
     posthog.capture("readonly_share_auto_update_toggled", { enabled });
 }
@@ -365,42 +272,7 @@ async function publishCurrentSnapshot(options: { automatic?: boolean } = {}) {
         payload.content,
         payload.annotations,
     );
-
-    shareBusy = true;
-    try {
-        const hadShare = readonlyShare?.enabled ?? false;
-        const publishedShare = await publishReadonlyShare(payload);
-        readonlyShare = {
-            ...publishedShare,
-            publishedTitle: payload.title.trim() || "Untitled",
-            publishedContent: payload.content,
-            publishedAnnotations: payload.annotations,
-        };
-        readonlyShareState.set(readonlyShare);
-        autoSharePublishFailedFingerprint = "";
-        posthog.capture(
-            options.automatic
-                ? "readonly_share_auto_updated"
-                : hadShare
-                  ? "readonly_share_updated"
-                  : "readonly_share_published",
-        );
-        if (!options.automatic) {
-            toast.success(hadShare ? "Public page updated" : "Public page published");
-        }
-    } catch (err) {
-        console.error("[share] Failed to publish readonly share:", err);
-        if (options.automatic) {
-            autoSharePublishFailedFingerprint = payloadFingerprint;
-        }
-        toast.error(
-            options.automatic
-                ? "Couldn't auto-update your public page"
-                : "Couldn't publish your public page",
-        );
-    } finally {
-        shareBusy = false;
-    }
+    await publisher.publish(payload, payloadFingerprint, options);
 }
 
 async function updateWebPreviewQuickAction() {
@@ -413,148 +285,7 @@ async function toggleReadonlyShare() {
         await publishCurrentSnapshot();
         return;
     }
-
-    shareBusy = true;
-    try {
-        readonlyShare = await disableReadonlyShare(shareId);
-        readonlyShareState.set(readonlyShare);
-        posthog.capture("readonly_share_disabled");
-        toast.success("Public link turned off");
-    } catch (err) {
-        console.error("[share] Failed to disable readonly share:", err);
-        toast.error("Couldn't turn off the public link");
-    } finally {
-        shareBusy = false;
-    }
-}
-
-async function joinById() {
-    const id = joinIdInput.trim();
-    if (!id) return;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-        toast.error("Invalid document ID format");
-        return;
-    }
-
-    connecting = true;
-    try {
-        const view = get(editorView);
-        const user = getUser();
-        const session = getSession();
-        if (!view || !user || !session) {
-            throw new Error("Missing required state");
-        }
-
-        // Disconnect current session if live
-        if (isLive) {
-            disableCollab(view);
-            isLive = false;
-        }
-
-        // D-100: Capture prior view state BEFORE joining
-        const priorDraftId = get(currentDraftId);
-        joinerPriorView.set({
-            draftId: priorDraftId,
-            viewType: "editor", // We're in the editor if this button is visible
-            editorStateJson: view.state.toJSON(savedFields),
-        });
-
-        // D-100: Clear local draft ID -- joiner is NOT editing a local doc.
-        // The collab view is ephemeral and backed entirely by the room's Y.Doc.
-        // Setting to null ensures persistence listeners skip this session.
-        // Note: We still pass `id` to enableCollab for room identification.
-        currentDraftId.set(null);
-
-        // Mark this client as an ephemeral joiner BEFORE connecting so the
-        // persistence listener skips Yjs-driven document updates. Joiners in
-        // Live Room mode don't own the document -- the owner's local store is
-        // authoritative, so we don't write the shared ID to our event log.
-        isCollabJoiner.set(true);
-
-        // Connect as joiner -- relay's content becomes source of truth
-        await enableCollab(view, id, user.id, false);
-
-        joinIdInput = "";
-        isLive = true;
-        toast.success("Joined shared document");
-    } catch (err) {
-        console.error("[collab] Failed to join:", err);
-        const view = get(editorView);
-        if (view) {
-            disableCollab(view);
-        }
-        // Reset joiner state on failure
-        const prior = get(joinerPriorView);
-        joinerPriorView.set(null);
-        isCollabJoiner.set(false);
-        // Restore draft ID on failure
-        if (prior?.draftId) {
-            currentDraftId.set(prior.draftId);
-        }
-        const message =
-            err instanceof Error && err.message.includes("relay")
-                ? "Couldn't connect to relay server"
-                : "Failed to join document";
-        toast.error(message);
-    } finally {
-        connecting = false;
-    }
-}
-
-async function handleToggle() {
-    if (isLive) {
-        // Go offline
-        const view = get(editorView);
-        const wasJoiner = get(isCollabJoiner);
-        if (view) {
-            disableCollab(view);
-        }
-        isLive = false;
-        // D-103: restoreJoinerPriorView is called by disableCollab automatically
-        // for joiners. Owners stay on current document (no navigation).
-        toast.success(wasJoiner ? "Left live room" : "Session ended");
-    } else {
-        // Go live -- snapshot first (D-58)
-        connecting = true;
-        try {
-            const view = get(editorView);
-            const draftId = get(currentDraftId);
-            const eventId = get(lastPersistedEventId);
-            const user = getUser();
-            const session = getSession();
-
-            if (!view || !draftId || !user || !session) {
-                throw new Error("Missing required state");
-            }
-
-            // Per D-58: Snapshot before pulling remote state
-            const stateJson = JSON.stringify(view.state.toJSON(savedFields));
-            await createNamedSnapshot(draftId, stateJson, eventId, "Before going live (auto)");
-
-            // Register document with relay's sync_documents table (auto-creates if missing)
-            await registerDocumentForCollab(draftId, user.id, "Untitled");
-
-            // Per D-50: clientID is user.id for per-user undo
-            // Version comes from relay's initial state
-            await enableCollab(view, draftId, user.id);
-
-            isLive = true;
-            toast.success("You're live!");
-        } catch (err) {
-            console.error("[collab] Failed to go live:", err);
-            const view = get(editorView);
-            if (view) {
-                disableCollab(view);
-            }
-            const message =
-                err instanceof Error && err.message.includes("relay")
-                    ? "Couldn't connect to relay server"
-                    : "Failed to go live";
-            toast.error(message);
-        } finally {
-            connecting = false;
-        }
-    }
+    await publisher.disable(shareId);
 }
 </script>
 
@@ -577,7 +308,7 @@ async function handleToggle() {
             >
                 <span
                     class="inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2
-                        {isLive
+                        {session.isLive
                             ? 'bg-emerald-500 text-white hover:bg-emerald-600'
                             : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
                 >
@@ -602,9 +333,9 @@ async function handleToggle() {
                 type="button"
                 class="pointer-events-none inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-blue-500/15 bg-blue-500/10 px-3 text-xs font-[650] text-blue-700 shadow-[0_10px_28px_rgba(59,130,246,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] opacity-0 transition-[background,color,transform,opacity,visibility] duration-150 invisible -translate-y-2 scale-95 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:scale-100 group-focus-within:opacity-100 hover:bg-blue-500/20 hover:text-blue-800 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:pointer-events-auto max-[520px]:visible max-[520px]:translate-y-0 max-[520px]:scale-100 max-[520px]:opacity-100"
                 onclick={updateWebPreviewQuickAction}
-                disabled={shareBusy || shareLoading || !shareId}
+                disabled={publisher.busy || publisher.loading || !shareId}
             >
-                {#if shareBusy}
+                {#if publisher.busy}
                     <span class="animate-spin" aria-hidden="true">
                         <Loader2 size={13} />
                     </span>
@@ -677,414 +408,32 @@ async function handleToggle() {
 
                 <section class="m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
                     {#if activeTab === "preview"}
-                        {#if authenticated}
-                            <div class="grid gap-4">
-                                <div class="flex items-start gap-3">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
-                                        <Link size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Anyone with the link can read your document</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Publish a read-only web page with Quillium branding. Keep updates manual
-                                            or let them publish after your edits settle.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center justify-between gap-4 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
-                                    <div>
-                                        <div class="text-[13px] font-bold text-black/75">Public link</div>
-                                        <div class="mt-1 text-xs/[1.45] text-black/50">
-                                            {#if readonlyShare?.enabled}
-                                                On. Readers can open the last published snapshot.
-                                            {:else}
-                                                Off. Your document stays private until you publish it.
-                                            {/if}
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        class={`relative h-[31px] w-[52px] rounded-full p-[3px] transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 ${readonlyShare?.enabled ? "bg-[linear-gradient(135deg,rgba(16,185,129,0.95),rgba(5,150,105,0.95))]" : "bg-black/10"}`}
-                                        role="switch"
-                                        aria-checked={readonlyShare?.enabled ?? false}
-                                        aria-label="Toggle public read-only link"
-                                        onclick={toggleReadonlyShare}
-                                        disabled={shareBusy || shareLoading || !shareId}
-                                    >
-                                        <span class={`block size-[25px] rounded-full bg-white shadow-[0_3px_10px_rgba(0,0,0,0.18)] transition-transform duration-200 ease-out ${readonlyShare?.enabled ? "translate-x-[21px]" : "translate-x-0"}`}></span>
-                                    </button>
-                                </div>
-
-                                <div class="grid gap-2.5 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
-                                    <div class="flex items-center justify-between gap-4">
-                                        <div>
-                                            <div class="text-[13px] font-bold text-black/75">Auto update</div>
-                                            <div class="mt-1 text-xs/[1.45] text-black/50">
-                                                {#if appSettings.readonlyShareAutoUpdate}
-                                                    {#if readonlyShare?.enabled}
-                                                        {autoUpdatePausedAfterFailure
-                                                            ? "Paused after a failed update."
-                                                            : autoSharePublishQueued
-                                                              ? "Waiting for edits to settle."
-                                                              : "On. Local changes publish after a short pause."}
-                                                    {:else}
-                                                        On. Publish the link once to start automatic updates.
-                                                    {/if}
-                                                {:else}
-                                                    Off. Use the update button when you want to refresh the web page.
-                                                {/if}
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            class={`relative h-[31px] w-[52px] shrink-0 rounded-full p-[3px] transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 ${appSettings.readonlyShareAutoUpdate ? "bg-[linear-gradient(135deg,rgba(37,99,235,0.95),rgba(29,78,216,0.95))]" : "bg-black/10"}`}
-                                            role="switch"
-                                            aria-checked={appSettings.readonlyShareAutoUpdate}
-                                            aria-label="Toggle automatic public link updates"
-                                            onclick={() =>
-                                                setReadonlyShareAutoUpdate(
-                                                    !appSettings.readonlyShareAutoUpdate,
-                                                )}
-                                            disabled={shareBusy || shareLoading || !shareId}
-                                        >
-                                            <span class={`block size-[25px] rounded-full bg-white shadow-[0_3px_10px_rgba(0,0,0,0.18)] transition-transform duration-200 ease-out ${appSettings.readonlyShareAutoUpdate ? "translate-x-[21px]" : "translate-x-0"}`}></span>
-                                        </button>
-                                    </div>
-
-                                    {#if appSettings.readonlyShareAutoUpdate}
-                                        <div class="grid gap-2 border-t border-black/[0.06] pt-2.5">
-                                            <div class="flex items-center justify-between gap-3">
-                                                <label
-                                                    for="readonly-share-auto-delay"
-                                                    class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40"
-                                                >
-                                                    Delay: {autoUpdateDelaySeconds}s
-                                                </label>
-                                                {#if autoUpdateDebounceMs !== READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS}
-                                                    <button
-                                                        type="button"
-                                                        class="text-[11px] font-[650] text-blue-600 transition-colors hover:text-blue-700"
-                                                        onclick={resetAutoUpdateDebounce}
-                                                        disabled={shareBusy || shareLoading || !shareId}
-                                                    >
-                                                        Reset
-                                                    </button>
-                                                {/if}
-                                            </div>
-                                            <input
-                                                id="readonly-share-auto-delay"
-                                                type="range"
-                                                min={READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS / 1000}
-                                                max={READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS / 1000}
-                                                step="1"
-                                                value={autoUpdateDelaySeconds}
-                                                oninput={handleAutoUpdateDebounceInput}
-                                                disabled={shareBusy || shareLoading || !shareId}
-                                                class="h-2 w-full accent-blue-600 disabled:opacity-45"
-                                            />
-                                        </div>
-                                    {/if}
-                                </div>
-
-                                <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
-                                    <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Public URL</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
-                                    </div>
-                                    <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Last published</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
-                                    </div>
-                                    <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Snapshot status</span>
-                                        <strong class={`break-words text-[13px]/[1.45] ${shareUpToDate ? "text-black/50" : "text-black/75"}`}>{readonlyShare?.enabled
-                                            ? shareUpToDate
-                                                ? "Already up to date"
-                                                : "Local draft has unpublished changes"
-                                            : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${draftAnnotationCount} annotation${draftAnnotationCount === 1 ? "" : "s"}` : ""}`}</strong>
-                                    </div>
-                                </div>
-
-                                <div class="mt-1 flex flex-wrap gap-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
-                                    <button
-                                        class={`inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 max-[520px]:w-full ${shareUpToDate ? "bg-black/20 text-white/90" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-45`}
-                                        onclick={() => publishCurrentSnapshot()}
-                                        disabled={shareBusy || shareLoading || !shareId || shareUpToDate}
-                                    >
-                                        {#if shareBusy}
-                                            <span class="animate-spin" aria-hidden="true">
-                                                <Loader2 size={15} />
-                                            </span>
-                                            Saving
-                                        {:else if readonlyShare?.enabled && shareUpToDate}
-                                            <RefreshCcw size={15} />
-                                            Already up to date
-                                        {:else if readonlyShare?.enabled}
-                                            <RefreshCcw size={15} />
-                                            Update shared version
-                                        {:else}
-                                            <Link size={15} />
-                                            Publish link
-                                        {/if}
-                                    </button>
-
-                                    <button
-                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-black/[0.055] px-4 text-[13px] font-[650] text-black/70 transition-[background,color] duration-150 hover:bg-black/[0.085] hover:text-black/80 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
-                                        onclick={copyReadonlyLink}
-                                        disabled={!readonlyShare?.enabled || !shareUrl}
-                                    >
-                                        <Copy size={15} />
-                                        Copy link
-                                    </button>
-                                </div>
-
-                                {#if shareLoading}
-                                    <p class="mt-1 text-xs/[1.45] text-black/50">Loading your public link settings…</p>
-                                {:else if readonlyShare?.enabled}
-                                    <p class="mt-1 text-xs/[1.45] text-black/50">
-                                        {#if shareUpToDate}
-                                            The public page already matches this draft.
-                                        {:else if autoUpdatePausedAfterFailure}
-                                            Auto update hit an error. Use
-                                            <strong>Update shared version</strong> to retry this draft.
-                                        {:else if appSettings.readonlyShareAutoUpdate}
-                                            Auto update will refresh the public page after edits settle.
-                                        {:else}
-                                            Readers keep seeing the current snapshot until you click
-                                            <strong>Update shared version</strong>.
-                                        {/if}
-                                    </p>
-                                {/if}
-                            </div>
-                        {:else}
-                            <div class="flex items-start gap-3">
-                                <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
-                                    <LogIn size={18} />
-                                </div>
-                                <div>
-                                    <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Sign in to publish a public link</h3>
-                                    <p class="m-0 text-xs/[1.45] text-black/50">
-                                        Read-only sharing uses your Quillium account so you can turn links on and off.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div class="mt-[18px] grid gap-2.5">
-                                <button
-                                    onclick={openAuth}
-                                    class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-blue-600 px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-80 disabled:bg-black/[0.04] disabled:text-black/30"
-                                >
-                                    Sign in
-                                </button>
-                            </div>
-                        {/if}
+                        <ShareModalPreviewTab
+                            {authenticated}
+                            {publisher}
+                            {shareId}
+                            {shareUrl}
+                            {shareUpToDate}
+                            {autoUpdateDelaySeconds}
+                            {autoUpdateDebounceMs}
+                            {autoUpdatePausedAfterFailure}
+                            {draftAnnotationCount}
+                            hasPreviewText={buildSharePreviewText($documentContent).length > 0}
+                            onpublish={() => publishCurrentSnapshot()}
+                            ontoggleshare={toggleReadonlyShare}
+                            oncopylink={copyReadonlyLink}
+                            onsetautoupdate={setReadonlyShareAutoUpdate}
+                            ondebounceinput={handleAutoUpdateDebounceInput}
+                            onresetdebounce={resetAutoUpdateDebounce}
+                            onopenauth={openAuth}
+                        />
                     {:else}
-                        {#if authenticated}
-                            <div class="grid gap-4">
-                                <div class="flex items-start gap-3">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
-                                        <Cloud size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Live collaboration</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Bring another writer into this draft right now. Omni will expand this into
-                                            persistent sync later, but this room flow still works today.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="flex items-center justify-between gap-[18px] pt-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
-                                <div class="flex items-center gap-3">
-                                    <div class={`grid size-9 shrink-0 place-items-center rounded-[10px] ${isLive ? "bg-emerald-500/10 text-emerald-600" : "bg-black/[0.055] text-black/35"}`}>
-                                        <Radio size={17} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">{isLive ? ($isCollabJoiner ? "You're in a Live Room" : "Live Room is open") : "Live Room is off"}</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">Invite another writer into this draft.</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onclick={handleToggle}
-                                    disabled={!isLive && !(authenticated && relayConfigured && !!currentId && !connecting)}
-                                    class={`inline-flex min-h-[38px] min-w-[142px] items-center justify-center gap-[7px] rounded-[10px] border px-4 text-[13px] font-[650] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[background,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full ${isLive ? "border-black/[0.08] bg-black/[0.055] text-black/65 hover:bg-black/[0.085] hover:text-black/80" : "border-emerald-500/20 bg-emerald-500/10 text-black/70 hover:bg-emerald-500/20 hover:text-emerald-800"}`}
-                                >
-                                    {#if connecting}
-                                        <span class="animate-spin" aria-hidden="true">
-                                            <Loader2 size={15} />
-                                        </span>
-                                        Connecting
-                                    {:else if $collabState === "reconnecting"}
-                                        <span class="animate-spin" aria-hidden="true">
-                                            <Loader2 size={15} />
-                                        </span>
-                                        Retrying {Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/{MAX_RECONNECT_ATTEMPTS}
-                                    {:else if isLive}
-                                        {$isCollabJoiner ? "Leave" : "End session"}
-                                    {:else}
-                                        <Radio size={15} />
-                                        Start live room
-                                    {/if}
-                                </button>
-                            </div>
-
-                            <div class="mt-[14px] border-t border-black/[0.065] pt-[14px]">
-                                <div class="grid gap-0.5">
-                                    <span class="text-[13px] font-bold text-black/70">Room details</span>
-                                    <span class="text-xs/[1.4] text-black/[0.44]">Copy this room ID or join another room</span>
-                                </div>
-
-                                <div class="mt-3 grid gap-3">
-                                    <div>
-                                        <div class="mb-1.5 block text-[11px] font-[650] text-black/50">Room ID</div>
-                                        <div class="flex gap-2 max-[520px]:flex-col">
-                                            <input
-                                                readonly
-                                                value={currentId}
-                                                aria-label="Current document room ID"
-                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-blue-600/[0.04] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                                            />
-                                            <button
-                                                onclick={copyId}
-                                                disabled={!currentId}
-                                                aria-label="Copy document room ID"
-                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
-                                            >
-                                                <Copy size={14} />
-                                                Copy
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <form
-                                        onsubmit={(e) => {
-                                            e.preventDefault();
-                                            joinById();
-                                        }}
-                                    >
-                                        <label for="join-id" class="mb-1.5 block text-[11px] font-[650] text-black/50">Join with room ID</label>
-                                        <div class="flex gap-2 max-[520px]:flex-col">
-                                            <input
-                                                id="join-id"
-                                                bind:value={joinIdInput}
-                                                placeholder="Paste UUID..."
-                                                autocomplete="off"
-                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-black/[0.035] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                                            />
-                                            <button
-                                                type="submit"
-                                                disabled={connecting || !joinIdInput.trim()}
-                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
-                                            >
-                                                Join
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-
-                            <div class="mt-[14px] flex items-center justify-end max-[520px]:justify-start">
-                                <a
-                                    href={OMNI_WAITLIST_URL}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-[650] text-black/50 transition-colors duration-150 hover:text-black/70"
-                                >
-                                    Learn about Omni
-                                    <ExternalLink size={14} />
-                                </a>
-                            </div>
-
-                            <div class="mt-[18px] border-t border-black/[0.065] pt-4">
-                                <div class="mb-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-black/35">In the making</div>
-                                <div class="flex items-start gap-3 rounded-xl bg-black/[0.035] p-3 opacity-70">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
-                                        <ArrowLeftRight size={17} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Async Collaboration</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Stored on our servers to stay available even after you close Quillium.
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="mt-2 flex items-start gap-3 rounded-xl bg-black/[0.035] p-3 opacity-70">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
-                                        <Cloud size={17} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Cloud Sync</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">Make this document available on all of your devices.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        {:else}
-                            <div class="grid gap-4">
-                                <div class="flex items-start gap-3">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
-                                        <Cloud size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Collaboration is part of Quillium Omni</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Live Room, shared invites, cloud sync, and the rest of Quillium's collaboration
-                                            features are available exclusively to Omni users.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
-                                    <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Account</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">Not signed in</strong>
-                                    </div>
-                                    <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Status</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">Omni is currently waitlist only</strong>
-                                    </div>
-                                    <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Access</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">You can't sign up for Omni directly yet. Join the waitlist to get access.</strong>
-                                    </div>
-                                </div>
-
-                                <div class="mt-1 flex flex-wrap gap-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
-                                    <a
-                                        href={OMNI_WAITLIST_URL}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        class="inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] bg-blue-600 px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 hover:bg-blue-700"
-                                    >
-                                        <ExternalLink size={15} />
-                                        Join the Omni waitlist
-                                    </a>
-
-                                    <button
-                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-black/[0.055] px-4 text-[13px] font-[650] text-black/70 transition-[background,color] duration-150 hover:bg-black/[0.085] hover:text-black/80 max-[520px]:w-full"
-                                        onclick={openAuth}
-                                    >
-                                        <LogIn size={15} />
-                                        Sign in
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="mt-[18px] border-t border-black/[0.065] pt-4">
-                                <div class="flex items-start gap-3">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
-                                        <ArrowLeftRight size={17} />
-                                    </div>
-                                    <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Already have access?</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Sign in with the account tied to your Omni invite once access has been enabled for you.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        {/if}
+                        <ShareModalCollabTab
+                            {authenticated}
+                            {session}
+                            {currentId}
+                            onopenauth={openAuth}
+                        />
                     {/if}
                 </section>
             </div>
