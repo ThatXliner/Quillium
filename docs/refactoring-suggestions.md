@@ -52,6 +52,15 @@ snapshot-parse/fallback core.
 
 ### 3. Split the giant Svelte components
 
+> **Status (July 2026):** each split now lives on its own branch, ready for
+> per-component review/merge:
+> - `refactor/split-settings-modal` — sections + SettingToggle/Segmented/Slider/FontPickerRow primitives
+> - `refactor/split-ai-sidebar` — PanelResizeController + ContextInfoButton
+> - `refactor/split-annotations-panel` — annotationLayout.ts pure layout math (+ unit tests)
+> - `refactor/split-go-live` — LiveSessionController + ReadonlySharePublisher + tab components
+> - `refactor/split-revision-modal` — RevisionBreadcrumbs + RevisionContextPanel (FSM untouched)
+> - `refactor/split-editor` — DocumentTitleBar + TabDraftController
+
 Line counts are a proxy, but these components each hold several independent
 responsibilities and are where most future merge conflicts and regressions
 will concentrate:
