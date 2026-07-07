@@ -23,9 +23,18 @@ vi.mock("$lib/db", () => ({
     loadDocumentState: vi.fn(async () => mockedLoadResult),
 }));
 
-vi.mock("$lib/editor/replay", () => ({
-    replayEvents: vi.fn((state) => state),
-}));
+vi.mock("$lib/editor/replay", async () => {
+    // The real module pulls in the full extension stack via savedFields; the
+    // tests only need an empty state (snapshots are null here) with no replay.
+    const { EditorState } = await import("@codemirror/state");
+    return {
+        replayEvents: vi.fn((state) => state),
+        reconstructState: vi.fn(
+            (_snapshotStateJson: string | null, _events: unknown[], extensions: unknown) =>
+                EditorState.create({ extensions: extensions as never }),
+        ),
+    };
+});
 
 vi.mock("$lib/appLog", () => ({
     logAppEvent: vi.fn(async () => {}),

@@ -445,9 +445,8 @@ export async function exportDocumentById(
 ): Promise<boolean> {
     try {
         const { loadDocumentState, resolveActiveDraftId } = await import("./db");
-        const { replayEvents } = await import("./editor/replay");
-        const { history, historyField } = await import("@codemirror/commands");
-        const { EditorState } = await import("@codemirror/state");
+        const { reconstructState } = await import("./editor/replay");
+        const { history } = await import("@codemirror/commands");
         const { annotationField } = await import("./editor/plugins/annotations");
 
         const activeDraftId = await resolveActiveDraftId(docId);
@@ -460,26 +459,10 @@ export async function exportDocumentById(
         }
 
         const loaded = await loadDocumentState(docId, activeDraftId);
-
-        const extensions = [history(), annotationField];
-        let state: EditorState;
-        if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
-            try {
-                state = EditorState.fromJSON(
-                    JSON.parse(loaded.snapshotStateJson),
-                    { extensions },
-                    { historyField, annotationField },
-                );
-            } catch {
-                state = EditorState.create({ extensions });
-            }
-        } else {
-            state = EditorState.create({ extensions });
-        }
-
-        if (loaded.eventsSince.length > 0) {
-            state = replayEvents(state, loaded.eventsSince);
-        }
+        const state = reconstructState(loaded.snapshotStateJson, loaded.eventsSince, [
+            history(),
+            annotationField,
+        ]);
 
         return await exportState(state, docTitle, format, "library", { docId });
     } catch (error) {

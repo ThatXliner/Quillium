@@ -19,7 +19,13 @@ import { capture } from "$lib/posthog";
  * corrupt or unexpected event does not block restoration of the rest
  * of the history.
  */
-import { EditorSelection, type EditorState, type StateEffect } from "@codemirror/state";
+import {
+    EditorSelection,
+    EditorState,
+    type Extension,
+    type StateEffect,
+} from "@codemirror/state";
+import { savedFields } from "./extensions";
 import { addAnnotation, annotationField, removeAnnotation } from "./plugins/annotations";
 import {
     RawAnnotationSchema,
@@ -173,4 +179,36 @@ function tryParseType(payload: string): string | undefined {
     } catch {
         return undefined;
     }
+}
+
+/**
+ * Rebuilds an EditorState from a persisted snapshot plus the events recorded
+ * after it — the canonical load recipe shared by the editor, the library
+ * preview, and by-id export. A missing, empty ("{}"), or malformed snapshot
+ * falls back to an empty state; events still replay on top of the fallback.
+ *
+ * @param snapshotStateJson  Serialized EditorState from the latest snapshot.
+ * @param eventsSince        Events recorded after that snapshot, ascending id.
+ * @param extensions         Extension set for the reconstructed state.
+ * @param fields             StateFields to rehydrate from the snapshot JSON
+ *                           (defaults to savedFields, matching what saves write).
+ */
+export function reconstructState(
+    snapshotStateJson: string | null,
+    eventsSince: EventRecord[],
+    extensions: Extension,
+    fields: Parameters<typeof EditorState.fromJSON>[2] = savedFields,
+): EditorState {
+    let state: EditorState;
+    if (snapshotStateJson && snapshotStateJson !== "{}") {
+        try {
+            state = EditorState.fromJSON(JSON.parse(snapshotStateJson), { extensions }, fields);
+        } catch {
+            state = EditorState.create({ extensions });
+        }
+    } else {
+        state = EditorState.create({ extensions });
+    }
+    if (eventsSince.length === 0) return state;
+    return replayEvents(state, eventsSince);
 }

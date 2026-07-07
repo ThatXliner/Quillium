@@ -4,8 +4,8 @@
 -->
 <script lang="ts">
 import { loadDocumentState, resolveActiveDraftId } from "$lib/db";
-import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { replayEvents } from "$lib/editor/replay";
+import { getExtensions } from "$lib/editor/extensions";
+import { reconstructState } from "$lib/editor/replay";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import "$lib/editor/plugins/annotations/default.css";
@@ -63,25 +63,7 @@ async function loadPreview(id: string, parent: HTMLDivElement): Promise<EditorVi
         EditorView.editable.of(false),
     ];
 
-    let state: EditorState;
-    if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
-        try {
-            state = EditorState.fromJSON(
-                JSON.parse(loaded.snapshotStateJson),
-                { extensions },
-                savedFields,
-            );
-        } catch {
-            state = EditorState.create({ extensions });
-        }
-    } else {
-        state = EditorState.create({ extensions });
-    }
-
-    if (loaded.eventsSince.length > 0) {
-        state = replayEvents(state, loaded.eventsSince);
-    }
-
+    const state = reconstructState(loaded.snapshotStateJson, loaded.eventsSince, extensions);
     return new EditorView({ state, parent });
 }
 </script>

@@ -106,7 +106,7 @@ import { flushMetaDebounces, flushPersistQueue } from "./listeners";
 import { annotationField, versionGroupField } from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
-import { replayEvents } from "./replay";
+import { reconstructState } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
 
 // ── Multi-window ────────────────────────────────────────────────
@@ -331,21 +331,10 @@ function buildStateFromLoad(
     const extensions = readOnly
         ? [getExtensions(getExtensionOptions), EditorState.readOnly.of(true)]
         : getExtensions(getExtensionOptions);
-    let base: EditorState;
-    if (snapshotJson && snapshotJson !== "{}") {
-        try {
-            base = EditorState.fromJSON(JSON.parse(snapshotJson), { extensions }, savedFields);
-        } catch {
-            base = EditorState.create({ extensions });
-        }
-    } else {
-        base = EditorState.create({ extensions });
+    if (eventsSince.length > 0) {
+        console.log(`[Editor] Replaying ${eventsSince.length} event(s) since last snapshot.`);
     }
-
-    if (eventsSince.length === 0) return base;
-
-    console.log(`[Editor] Replaying ${eventsSince.length} event(s) since last snapshot.`);
-    return replayEvents(base, eventsSince);
+    return reconstructState(snapshotJson, eventsSince, extensions);
 }
 
 // ── State restoration ───────────────────────────────────────────
