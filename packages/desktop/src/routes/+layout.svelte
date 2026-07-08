@@ -12,7 +12,7 @@ import { onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
 import posthog from "$lib/posthog";
-import { errorBanner } from "$lib/stores";
+import { editorView, errorBanner } from "$lib/stores";
 import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
@@ -60,7 +60,13 @@ onNavigate((navigation) => {
 <!-- Logs viewer also outside the boundary: it must stay reachable when a
      page has crashed — that's precisely when the logs matter. -->
 {#if appLogsOpen}
-    <AppLogsModal ondismiss={() => (appLogsOpen = false)} />
+    <AppLogsModal
+        ondismiss={() => {
+            appLogsOpen = false;
+            // No-op off the editor route (detached views ignore focus).
+            $editorView?.focus();
+        }}
+    />
 {/if}
 
 <svelte:boundary
