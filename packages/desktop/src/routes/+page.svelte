@@ -674,7 +674,10 @@ if (import.meta.env.DEV) {
     {:else if authLoading}
         <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
         <div class="h-8 w-[84px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
-    {:else if authOffline}
+    {:else if authOffline && authCanReset}
+        <!-- Offline with a session to recover. Once signed out there is
+             nothing to reconnect — fall through to the normal signed-out
+             UI instead of nagging with a Reconnect pill. -->
         <button
             onclick={handleAuthReconnect}
             class="px-4 py-2 text-xs font-semibold text-red-700 bg-red-50/90 backdrop-blur-md
