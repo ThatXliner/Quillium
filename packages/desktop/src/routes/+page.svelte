@@ -94,7 +94,6 @@ import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
 import posthog from "$lib/posthog";
 import StatsModal from "$lib/stats/StatsModal.svelte";
-import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
@@ -117,7 +116,6 @@ let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
 let showChangelog = $state(false);
 let licensesOpen = $state(false);
-let appLogsOpen = $state(false);
 let changelogEntry = $state<{ date: string; content: string; version: string } | null>(null);
 let updateAvailable = $state(false);
 let updateVersion = $state("");
@@ -419,9 +417,7 @@ onMount(() => {
     listen("menu:feedback", () => {
         if (!destroyed) showFeedbackSurvey("menu");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
-    listen("menu:app-logs", () => {
-        if (!destroyed) appLogsOpen = true;
-    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    // menu:app-logs is handled globally in +layout.svelte
     listen("menu:export-txt", () => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "txt");
@@ -637,15 +633,6 @@ if (import.meta.env.DEV) {
     />
 {/if}
 
-<!-- App logs modal -->
-{#if appLogsOpen}
-    <AppLogsModal
-        ondismiss={() => {
-            appLogsOpen = false;
-            $editorView?.focus();
-        }}
-    />
-{/if}
 
 <!-- Debug panel — DEV only, never rendered in production builds -->
 {#if import.meta.env.DEV && $debugPanelActive}
