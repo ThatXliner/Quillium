@@ -21,7 +21,15 @@
 <script lang="ts">
 import { page } from "$app/state";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
-import { getConnectionState, initAuth, isLoading, isOffline, reconnectAuth } from "$lib/auth";
+import {
+    getConnectionState,
+    initAuth,
+    isAuthenticated,
+    isLoading,
+    isOffline,
+    reconnectAuth,
+    signOut,
+} from "$lib/auth";
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
@@ -122,6 +130,7 @@ let authReconnecting = $state(false);
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
+const authAuthenticated = $derived(isAuthenticated());
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -297,6 +306,17 @@ async function handleAuthReconnect() {
         toast.error("Still offline");
     } finally {
         authReconnecting = false;
+    }
+}
+
+// Escape hatch: the offline pill replaces the account menu, so without
+// this there is no way to reset auth while stuck reconnecting.
+async function handleOfflineSignOut() {
+    try {
+        await signOut();
+        toast.success("Logged out");
+    } catch {
+        toast.error("Failed to log out");
     }
 }
 
@@ -663,6 +683,16 @@ if (import.meta.env.DEV) {
         >
             Reconnect
         </button>
+        {#if authAuthenticated}
+            <button
+                onclick={handleOfflineSignOut}
+                class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
+                    rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                    hover:text-black/70 hover:bg-white/60 transition-colors"
+            >
+                Sign out
+            </button>
+        {/if}
     {:else}
         <AuthButton onauthclick={() => (authModalOpen = true)} />
         <GoLiveButton onauthclick={() => (authModalOpen = true)} />

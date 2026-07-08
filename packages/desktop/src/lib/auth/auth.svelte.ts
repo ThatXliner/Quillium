@@ -14,6 +14,7 @@ const AUTH_INIT_ATTEMPTS = 3;
 const AUTH_INIT_TIMEOUT_MS = 2500;
 const AUTH_RETRY_DELAY_MS = 750;
 const SESSION_FETCH_TIMEOUT_MS = 10_000;
+const SIGN_OUT_SERVER_TIMEOUT_MS = 5_000;
 
 /**
  * getSession() can stall indefinitely: supabase-js serializes it behind the
@@ -262,12 +263,66 @@ export async function signIn(email: string, password: string) {
 }
 
 /**
- * Sign out the current user.
+ * Remove supabase-js's persisted session from localStorage directly.
+ * supabase-js stores it under `sb-<project-ref>-auth-token` (plus
+ * companion `sb-` keys); we clear by prefix so this works without
+ * knowing the project ref.
+ */
+function clearPersistedSession(): void {
+    try {
+        const keys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith("sb-")) keys.push(key);
+        }
+        for (const key of keys) {
+            localStorage.removeItem(key);
+        }
+    } catch {
+        // localStorage unavailable — nothing to clear
+    }
+}
+
+/**
+ * Sign out the current user. Local-first: the server-side token revoke is
+ * best-effort and bounded, and the local session is always cleared even
+ * when the server can't be reached. Previously a wedged connection left
+ * users stuck signed in with no way to reset auth — the offline pill
+ * replaced the account menu, and supabase.auth.signOut() both queued
+ * behind the wedged lock and refused to drop the session on network error.
  */
 export async function signOut() {
     if (!supabase) throw new Error("Supabase not configured");
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+
+    let serverError: unknown = null;
+    try {
+        const result = await Promise.race([
+            supabase.auth.signOut(),
+            sleep(SIGN_OUT_SERVER_TIMEOUT_MS).then(() => ({
+                error: new Error("server sign-out timed out"),
+            })),
+        ]);
+        serverError = result.error;
+    } catch (error) {
+        serverError = error;
+    }
+
+    if (serverError) {
+        console.warn("[auth] Server sign-out failed; clearing local session anyway:", serverError);
+        void logAppEvent("warn", "auth", "server sign-out failed; clearing local session", {
+            error: String(serverError),
+        });
+    }
+
+    // Local cleanup runs unconditionally. When the client is wedged or
+    // offline, onAuthStateChange won't fire — update state directly and
+    // invalidate any in-flight reconnect run so it can't resurrect the
+    // session we just dropped.
+    clearPersistedSession();
+    initRun++;
+    session = null;
+    user = null;
+    loading = false;
 }
 
 /**
