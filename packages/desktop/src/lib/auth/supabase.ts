@@ -4,11 +4,15 @@
  * Desktop app (Tauri) with no SSR, so we use @supabase/supabase-js
  * directly with localStorage storage (not @supabase/ssr).
  */
+import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { processLock } from "@supabase/auth-js";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL;
-export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+// $env/static/public, NOT import.meta.env: SvelteKit only exposes VITE_-prefixed
+// vars on import.meta.env, so PUBLIC_* reads there compile to undefined and
+// silently ship a build with auth disabled (this happened in v0.21.3–v0.21.7).
+export const SUPABASE_URL = PUBLIC_SUPABASE_URL;
+export const SUPABASE_PUBLISHABLE_KEY = PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 export const supabaseConfigured = !!(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 

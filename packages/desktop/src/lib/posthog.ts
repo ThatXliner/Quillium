@@ -1,4 +1,5 @@
 import { dev } from "$app/environment";
+import { PUBLIC_POSTHOG_HOST, PUBLIC_POSTHOG_KEY } from "$env/static/public";
 import { FEEDBACK_SURVEY_ID } from "$lib/constants";
 import { debugForceSurvey } from "$lib/debug/store.svelte";
 import { appSettings } from "$lib/settings.svelte";
@@ -58,8 +59,9 @@ function patchStylesheetCORS() {
 let posthogInitialised = false;
 
 function getPostHogEnv(): { key: string; host: string } | null {
-    const key = import.meta.env.PUBLIC_POSTHOG_KEY;
-    const host = import.meta.env.PUBLIC_POSTHOG_HOST;
+    // $env/static/public, NOT import.meta.env — see supabase.ts for why.
+    const key = PUBLIC_POSTHOG_KEY;
+    const host = PUBLIC_POSTHOG_HOST;
     return key && host ? { key, host } : null;
 }
 

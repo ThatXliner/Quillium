@@ -83,12 +83,17 @@ vi.mock("$lib/auth/auth.svelte", () => ({
     getUser: () => ({ id: "user-123", email: "test@example.com" }),
 }));
 
+// $env/static/public is inlined at transform time, so vi.stubEnv can't reach
+// it — the virtual module itself must be mocked.
+vi.mock("$env/static/public", () => ({
+    PUBLIC_RELAY_URL: "ws://localhost:1234",
+}));
+
 // Import after mocks
 import { createYjsProvider, disconnectYjsProvider, handleOwnerLeft } from "$lib/collab/yjsProvider";
 
 describe("yjsProvider", () => {
     beforeEach(() => {
-        vi.stubEnv("PUBLIC_RELAY_URL", "ws://localhost:1234");
         // Reset all stores to initial state
         collabState.set("disconnected");
         ownerLeftSignal.set(0);
@@ -99,7 +104,6 @@ describe("yjsProvider", () => {
 
     afterEach(() => {
         disconnectYjsProvider();
-        vi.unstubAllEnvs();
     });
 
     it("returns provider, awareness, ydoc, and ytext", async () => {

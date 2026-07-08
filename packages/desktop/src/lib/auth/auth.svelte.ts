@@ -201,6 +201,10 @@ export async function initAuth(): Promise<void> {
     initialized = true;
 
     if (!supabase) {
+        void logAppEvent("error", "auth", "supabase not configured — auth disabled", {
+            urlPresent: Boolean(SUPABASE_URL),
+            keyPresent: Boolean(SUPABASE_PUBLISHABLE_KEY),
+        });
         loading = false;
         connectionState = "offline";
         return;
@@ -232,6 +236,7 @@ export async function reconnectAuth(): Promise<boolean> {
     }
 
     if (!supabase) {
+        void logAppEvent("error", "auth", "supabase not configured — reconnect impossible");
         connectionState = "offline";
         loading = false;
         return false;
@@ -260,7 +265,10 @@ export function debugForceAuthOffline(): void {
  * database trigger to populate public.users.display_name.
  */
 export async function signUp(email: string, password: string, displayName: string) {
-    if (!supabase) throw new Error("Supabase not configured");
+    if (!supabase) {
+        void logAppEvent("error", "auth", "sign-up failed: supabase not configured");
+        throw new Error("Supabase not configured");
+    }
     const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -268,7 +276,12 @@ export async function signUp(email: string, password: string, displayName: strin
             data: { display_name: displayName }, // per D-16
         },
     });
-    if (error) throw error;
+    if (error) {
+        // Error message only — never credentials.
+        void logAppEvent("error", "auth", "sign-up failed", { error: String(error) });
+        throw error;
+    }
+    void logAppEvent("info", "auth", "sign-up succeeded");
     return data;
 }
 
@@ -276,12 +289,20 @@ export async function signUp(email: string, password: string, displayName: strin
  * Sign in with email and password.
  */
 export async function signIn(email: string, password: string) {
-    if (!supabase) throw new Error("Supabase not configured");
+    if (!supabase) {
+        void logAppEvent("error", "auth", "sign-in failed: supabase not configured");
+        throw new Error("Supabase not configured");
+    }
     const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
     });
-    if (error) throw error;
+    if (error) {
+        // Error message only — never credentials.
+        void logAppEvent("error", "auth", "sign-in failed", { error: String(error) });
+        throw error;
+    }
+    void logAppEvent("info", "auth", "sign-in succeeded");
     return data;
 }
 
@@ -355,13 +376,20 @@ export async function signOut() {
  * Per D-24: Session automatically persists via localStorage (already configured in supabase.ts).
  */
 export async function signInAnonymously(displayName: string) {
-    if (!supabase) throw new Error("Supabase not configured");
+    if (!supabase) {
+        void logAppEvent("error", "auth", "anonymous sign-in failed: supabase not configured");
+        throw new Error("Supabase not configured");
+    }
     const { data, error } = await supabase.auth.signInAnonymously({
         options: {
             data: { display_name: displayName },
         },
     });
-    if (error) throw error;
+    if (error) {
+        void logAppEvent("error", "auth", "anonymous sign-in failed", { error: String(error) });
+        throw error;
+    }
+    void logAppEvent("info", "auth", "anonymous sign-in succeeded");
     return data;
 }
 

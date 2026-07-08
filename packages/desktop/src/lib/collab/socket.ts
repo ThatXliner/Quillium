@@ -1,4 +1,3 @@
-import { getSession } from "$lib/auth/auth.svelte";
 /**
  * socket.ts -- Socket.io client for collab relay.
  *
@@ -8,10 +7,13 @@ import { getSession } from "$lib/auth/auth.svelte";
  * Per D-52: Per-document socket instance -- socket lifecycle tied to collab session.
  * Per D-53: JWT from getSession().access_token passed in auth handshake.
  */
+import { PUBLIC_RELAY_URL } from "$env/static/public";
+import { getSession } from "$lib/auth/auth.svelte";
 import { type Socket, io } from "socket.io-client";
 import { collabState } from "./store";
 
-const RELAY_URL = import.meta.env.PUBLIC_RELAY_URL;
+// $env/static/public, NOT import.meta.env — see supabase.ts for why.
+const RELAY_URL = PUBLIC_RELAY_URL;
 
 /** True if PUBLIC_RELAY_URL is configured */
 export const relayConfigured = !!RELAY_URL;

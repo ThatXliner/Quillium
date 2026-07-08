@@ -1,3 +1,9 @@
+import {
+    PUBLIC_POSTHOG_KEY,
+    PUBLIC_RELAY_URL,
+    PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    PUBLIC_SUPABASE_URL,
+} from "$env/static/public";
 import { logAppEvent } from "$lib/appLog";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
 import posthog from "$lib/posthog";
@@ -19,6 +25,21 @@ function showCrashBanner(message: string, details?: string) {
 }
 
 if (typeof window !== "undefined") {
+    // Startup environment summary. Build-time config (Supabase, relay, PostHog)
+    // is baked into the bundle, so a misconfigured build is invisible until a
+    // feature fails at runtime — this line makes Help → App Logs show at a
+    // glance what this binary was built with.
+    void logAppEvent("info", "startup", "app started", {
+        version: typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev",
+        dev: import.meta.env.DEV,
+        masBuild: import.meta.env.VITE_MAS === "true",
+        supabaseUrl: PUBLIC_SUPABASE_URL || "(missing)",
+        supabaseKeyConfigured: Boolean(PUBLIC_SUPABASE_PUBLISHABLE_KEY),
+        relayUrl: PUBLIC_RELAY_URL || "(missing)",
+        posthogConfigured: Boolean(PUBLIC_POSTHOG_KEY),
+        userAgent: navigator.userAgent,
+    });
+
     window.addEventListener("error", (event) => {
         saveEmergencyBackup(`Uncaught error: ${event.message}`);
         saveEmergencySnapshot("Before crash (auto)");

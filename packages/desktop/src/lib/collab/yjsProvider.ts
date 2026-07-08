@@ -1,7 +1,3 @@
-import { logAppEvent } from "$lib/appLog";
-import { getSession } from "$lib/auth/auth.svelte";
-import type { Awareness } from "y-protocols/awareness";
-import { WebsocketProvider } from "y-websocket";
 /**
  * yjsProvider.ts -- WebsocketProvider wrapper with Quillium auth.
  *
@@ -26,12 +22,18 @@ import { WebsocketProvider } from "y-websocket";
  *   - awareness.ts uses returned awareness for cursor sync
  *   - yjsUndo.ts uses returned ytext for UndoManager
  */
+import { PUBLIC_RELAY_URL } from "$env/static/public";
+import { logAppEvent } from "$lib/appLog";
+import { getSession } from "$lib/auth/auth.svelte";
+import type { Awareness } from "y-protocols/awareness";
+import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
 import type { YjsAnnotationNode } from "./types";
 
 function getRelayUrl(): string | undefined {
-    return import.meta.env.PUBLIC_RELAY_URL;
+    // $env/static/public, NOT import.meta.env — see supabase.ts for why.
+    return PUBLIC_RELAY_URL || undefined;
 }
 
 /** True if PUBLIC_RELAY_URL is configured */
