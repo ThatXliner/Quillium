@@ -47,10 +47,15 @@ tauri-plugin-mcp-bridge = { version = "0.11", optional = true }
 
 # PDF export. printpdf's default features pull in the azul-layout HTML engine
 # (→ kuchiki, html5ever, rand 0.7), which does NOT compile for iOS and drags in
-# a vulnerable rand. We only use low-level drawing ops + BuiltinFont, so
-# default-features=false drops that whole subtree and builds for desktop + iOS.
+# a vulnerable rand. We only use low-level drawing ops, so default-features=false
+# drops that whole subtree and builds for desktop + iOS.
 printpdf = { version = "0.8.2", default-features = false }
 textwrap = "0.16.2"
+# System-font discovery for PDF export. printpdf's built-in fonts declare
+# WinAnsiEncoding but emit raw UTF-8 bytes, corrupting any non-ASCII text
+# (issue #311), so we embed a Unicode system font instead. Already present as a
+# transitive dep (via printpdf → svg2pdf), so this adds no new crates.
+fontdb = "0.23"
 
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
 # fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt

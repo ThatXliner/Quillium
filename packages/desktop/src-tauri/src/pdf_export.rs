@@ -1,9 +1,13 @@
-use std::{collections::BTreeMap, fs};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs,
+};
 use textwrap::wrap;
 
+use fontdb::{Database, Family, Query, Stretch, Style, Weight};
 use printpdf::{
-    BuiltinFont, Color, LinePoint, Mm, Op, PaintMode, PdfDocument, PdfPage, PdfSaveOptions, Point,
-    Polygon, PolygonRing, Pt, Rgb, TextItem, WindingOrder,
+    BuiltinFont, Color, FontId, LinePoint, Mm, Op, PaintMode, ParsedFont, PdfDocument, PdfPage,
+    PdfSaveOptions, Point, Polygon, PolygonRing, Pt, Rgb, TextItem, WindingOrder,
 };
 use serde::Deserialize;
 
@@ -71,7 +75,8 @@ enum TextStyle {
 }
 
 impl TextStyle {
-    fn font(self) -> BuiltinFont {
+    /// Built-in PDF font for the ASCII-only fallback path. See [`FontBook`].
+    fn builtin_font(self) -> BuiltinFont {
         match self {
             Self::Title | Self::Heading | Self::CardTitle => BuiltinFont::HelveticaBold,
             Self::Body => BuiltinFont::TimesRoman,
@@ -167,6 +172,170 @@ impl FlowBuilder {
     }
 }
 
+/// Fonts used to render the PDF text.
+///
+/// **Why this exists (issue #311):** printpdf's built-in fonts (Helvetica,
+/// Times, …) declare `WinAnsiEncoding` in the PDF, but printpdf → lopdf write
+/// the raw UTF-8 bytes of the string instead of encoding to WinAnsi. Any
+/// non-ASCII character (curly quotes, em-dashes, accented letters, …) is then
+/// misread by PDF viewers as a run of WinAnsi bytes, producing mojibake.
+///
+/// The `TextItem::Text(String)` API can't carry arbitrary WinAnsi bytes (a Rust
+/// `String` is valid UTF-8), so the fix is to embed a real Unicode font from the
+/// system and let printpdf map characters to glyph IDs. When no system font can
+/// be loaded (e.g. a bare sandbox), we fall back to the built-in fonts and
+/// transliterate text to ASCII so it degrades gracefully instead of corrupting.
+enum FontBook {
+    /// Embedded system TrueType/OpenType faces — full Unicode rendering.
+    Embedded {
+        sans_regular: FontId,
+        sans_bold: FontId,
+        sans_italic: FontId,
+        serif_regular: FontId,
+    },
+    /// Fallback: built-in fonts. Text must be transliterated to ASCII first.
+    Builtin,
+}
+
+impl FontBook {
+    /// The embedded [`FontId`] for a style, or `None` when using the built-in
+    /// fallback (in which case the caller renders with `builtin_font()`).
+    fn font_id(&self, style: TextStyle) -> Option<&FontId> {
+        match self {
+            Self::Embedded {
+                sans_regular,
+                sans_bold,
+                sans_italic,
+                serif_regular,
+            } => Some(match style {
+                TextStyle::Title | TextStyle::Heading | TextStyle::CardTitle => sans_bold,
+                TextStyle::Body => serif_regular,
+                TextStyle::CardSubtitle => sans_italic,
+                TextStyle::CardBody => sans_regular,
+            }),
+            Self::Builtin => None,
+        }
+    }
+}
+
+/// Query the system for the needed faces and embed them into `document`.
+///
+/// The sans-serif regular face is the anchor: if it can't be resolved we give up
+/// and use the built-in ASCII fallback. Bold/italic/serif variants degrade to
+/// the sans-serif regular face when unavailable, so we still render full Unicode
+/// even on systems missing a particular style.
+fn load_font_book(document: &mut PdfDocument) -> FontBook {
+    let mut db = Database::new();
+    db.load_system_fonts();
+    let mut cache: HashMap<fontdb::ID, FontId> = HashMap::new();
+
+    let Some(sans_regular) =
+        resolve_face(document, &db, &mut cache, Family::SansSerif, Weight::NORMAL, Style::Normal)
+    else {
+        return FontBook::Builtin;
+    };
+    let sans_bold =
+        resolve_face(document, &db, &mut cache, Family::SansSerif, Weight::BOLD, Style::Normal)
+            .unwrap_or_else(|| sans_regular.clone());
+    let sans_italic =
+        resolve_face(document, &db, &mut cache, Family::SansSerif, Weight::NORMAL, Style::Italic)
+            .unwrap_or_else(|| sans_regular.clone());
+    let serif_regular =
+        resolve_face(document, &db, &mut cache, Family::Serif, Weight::NORMAL, Style::Normal)
+            .unwrap_or_else(|| sans_regular.clone());
+
+    FontBook::Embedded {
+        sans_regular,
+        sans_bold,
+        sans_italic,
+        serif_regular,
+    }
+}
+
+/// Resolve a single face from the font database, parse it, and register it with
+/// the document. Faces are cached by `fontdb::ID` so a file shared across styles
+/// (e.g. italic falling back to regular) is only embedded once.
+fn resolve_face(
+    document: &mut PdfDocument,
+    db: &Database,
+    cache: &mut HashMap<fontdb::ID, FontId>,
+    family: Family,
+    weight: Weight,
+    style: Style,
+) -> Option<FontId> {
+    let id = db.query(&Query {
+        families: &[family],
+        weight,
+        stretch: Stretch::Normal,
+        style,
+    })?;
+    if let Some(existing) = cache.get(&id) {
+        return Some(existing.clone());
+    }
+    let parsed = db.with_face_data(id, |data, index| {
+        ParsedFont::from_bytes(data, index as usize, &mut Vec::new())
+    })??;
+    let font_id = document.add_font(&parsed);
+    cache.insert(id, font_id.clone());
+    Some(font_id)
+}
+
+/// Best-effort ASCII transliteration for the built-in-font fallback path.
+///
+/// Built-in PDF fonts can only faithfully render ASCII (see [`FontBook`]), so map
+/// the common smart punctuation that a writing app produces to ASCII, strip
+/// diacritics from Latin-1 letters, and drop anything else rather than emitting
+/// corrupt bytes. Only reached when no system font could be loaded.
+fn transliterate_to_ascii(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else if let Some(replacement) = ascii_replacement(c) {
+            out.push_str(replacement);
+        }
+        // Otherwise drop the character — better an omission than mojibake.
+    }
+    out
+}
+
+/// ASCII stand-in for a non-ASCII char, or `None` to drop it.
+fn ascii_replacement(c: char) -> Option<&'static str> {
+    Some(match c {
+        '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{2032}' => "'", // ' ' ‚ ′
+        '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{2033}' => "\"", // " " „ ″
+        '\u{2013}' | '\u{2014}' | '\u{2212}' => "-",              // – — −
+        '\u{2026}' => "...",                                      // …
+        '\u{00A0}' | '\u{2007}' | '\u{2009}' | '\u{202F}' => " ", // no-break / thin spaces
+        '\u{2022}' | '\u{00B7}' => "-",                           // • ·
+        '\u{2122}' => "(TM)",
+        '\u{00A9}' => "(c)",
+        '\u{00AE}' => "(R)",
+        'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => "A",
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a",
+        'Æ' => "AE",
+        'æ' => "ae",
+        'Ç' => "C",
+        'ç' => "c",
+        'È' | 'É' | 'Ê' | 'Ë' => "E",
+        'è' | 'é' | 'ê' | 'ë' => "e",
+        'Ì' | 'Í' | 'Î' | 'Ï' => "I",
+        'ì' | 'í' | 'î' | 'ï' => "i",
+        'Ñ' => "N",
+        'ñ' => "n",
+        'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' | 'Ø' => "O",
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => "o",
+        'Ù' | 'Ú' | 'Û' | 'Ü' => "U",
+        'ù' | 'ú' | 'û' | 'ü' => "u",
+        'Ý' => "Y",
+        'ý' | 'ÿ' => "y",
+        'Þ' => "Th",
+        'þ' => "th",
+        'ß' => "ss",
+        _ => return None,
+    })
+}
+
 pub fn export_pdf_to_path(path: &str, payload: &PdfExportPayload) -> Result<(), String> {
     let bytes = render_pdf_bytes(payload);
     fs::write(path, bytes).map_err(|err| err.to_string())
@@ -179,13 +348,14 @@ fn render_pdf_bytes(payload: &PdfExportPayload) -> Vec<u8> {
 
 fn render_pdf_document(payload: &PdfExportPayload) -> PdfDocument {
     let mut document = PdfDocument::new(&payload.title);
+    let fonts = load_font_book(&mut document);
     let flow = build_flow_lines(payload);
     let pages = paginate_lines(&flow);
 
     for page_lines in pages {
         let mut ops = Vec::new();
         render_card_segments(&page_lines, &mut ops);
-        render_text_lines(&page_lines, &mut ops);
+        render_text_lines(&page_lines, &fonts, &mut ops);
         document
             .pages
             .push(PdfPage::new(Mm(PAGE_WIDTH_MM), Mm(PAGE_HEIGHT_MM), ops));
@@ -453,9 +623,8 @@ fn render_card_segments(page_lines: &[PlacedLine], ops: &mut Vec<Op>) {
     }
 }
 
-fn render_text_lines(page_lines: &[PlacedLine], ops: &mut Vec<Op>) {
+fn render_text_lines(page_lines: &[PlacedLine], fonts: &FontBook, ops: &mut Vec<Op>) {
     for line in page_lines {
-        let font = line.style.font();
         let cursor_y_pt = line.top_y_pt - line.style.baseline_offset();
 
         ops.push(Op::StartTextSection);
@@ -465,14 +634,31 @@ fn render_text_lines(page_lines: &[PlacedLine], ops: &mut Vec<Op>) {
         ops.push(Op::SetFillColor {
             col: rgb_color(0.12, 0.16, 0.22),
         });
-        ops.push(Op::SetFontSizeBuiltinFont {
-            size: Pt(line.style.font_size()),
-            font,
-        });
-        ops.push(Op::WriteTextBuiltinFont {
-            items: vec![TextItem::Text(line.text.clone())],
-            font,
-        });
+
+        match fonts.font_id(line.style) {
+            Some(font_id) => {
+                ops.push(Op::SetFontSize {
+                    size: Pt(line.style.font_size()),
+                    font: font_id.clone(),
+                });
+                ops.push(Op::WriteText {
+                    items: vec![TextItem::Text(line.text.clone())],
+                    font: font_id.clone(),
+                });
+            }
+            None => {
+                let font = line.style.builtin_font();
+                ops.push(Op::SetFontSizeBuiltinFont {
+                    size: Pt(line.style.font_size()),
+                    font,
+                });
+                ops.push(Op::WriteTextBuiltinFont {
+                    items: vec![TextItem::Text(transliterate_to_ascii(&line.text))],
+                    font,
+                });
+            }
+        }
+
         ops.push(Op::EndTextSection);
     }
 }
@@ -554,8 +740,8 @@ mod tests {
     use printpdf::{Op, PdfParseOptions};
 
     use super::{
-        build_flow_lines, paginate_lines, render_pdf_bytes, PdfAnnotationCard,
-        PdfAnnotationCardKind, PdfExportPayload,
+        build_flow_lines, paginate_lines, render_pdf_bytes, transliterate_to_ascii,
+        PdfAnnotationCard, PdfAnnotationCardKind, PdfExportPayload,
     };
 
     fn sample_payload() -> PdfExportPayload {
@@ -627,5 +813,31 @@ mod tests {
 
         let pages = paginate_lines(&flow);
         assert!(pages.len() > 1);
+    }
+
+    #[test]
+    fn renders_valid_pdf_for_unicode_text() {
+        // Regression for issue #311: non-ASCII text must not blow up export and
+        // must still produce a well-formed PDF (embedded-font path when system
+        // fonts are present, ASCII-fallback path when they are not).
+        let bytes = render_pdf_bytes(&PdfExportPayload {
+            title: "Café — Résumé".to_string(),
+            body_paragraphs: vec!["“Smart quotes”, em—dashes, and naïve façade…".to_string()],
+            annotations: Vec::new(),
+        });
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert!(bytes.len() > 500);
+    }
+
+    #[test]
+    fn transliterate_maps_smart_punctuation_and_accents() {
+        assert_eq!(
+            transliterate_to_ascii("“Café” — naïve…"),
+            "\"Cafe\" - naive..."
+        );
+        // Straight ASCII is untouched.
+        assert_eq!(transliterate_to_ascii("plain text"), "plain text");
+        // Output is always pure ASCII.
+        assert!(transliterate_to_ascii("Résumé — 你好").is_ascii());
     }
 }
