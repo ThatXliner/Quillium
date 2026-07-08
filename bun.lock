@@ -10,7 +10,7 @@
     },
     "packages/desktop": {
       "name": "@quillium/desktop",
-      "version": "0.21.0",
+      "version": "0.21.8",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.72",
         "@ai-sdk/deepseek": "^2.0.35",
@@ -147,8 +147,17 @@
     "packages/share": {
       "name": "@quillium/share",
       "version": "0.1.0",
+      "dependencies": {
+        "@codemirror/commands": "^6.10.3",
+        "@codemirror/search": "^6.7.0",
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/view": "^6.41.1",
+        "lodash-es": "^4.18.1",
+        "zod": "^4.4.1",
+      },
       "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^5.1.1",
+        "@types/lodash-es": "^4.17.12",
         "lucide-svelte": "^0.475.0",
         "svelte": "^5.55.5",
         "svelte-check": "^4.4.6",

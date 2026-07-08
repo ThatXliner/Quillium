@@ -1,6 +1,15 @@
-import { getRawAnnotationField } from "$lib/collab/annotationSchema";
-import type { Annotations } from "$lib/editor/plugins/annotations";
-import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
+/**
+ * serialize.ts — Live editor state → flat SerializedAnnotation[] projection.
+ *
+ * The read-only EditorView is the source of truth for a shared document
+ * (text + active revision versions). This derives the flat annotation shape
+ * that the existing read-only card/modal components consume, recomputed after
+ * every dispatch (e.g. a revision version switch) so the sidebar stays in sync
+ * with the editor.
+ *
+ * Ported from the desktop collab serializer (sharePayload.ts); kept pure so it
+ * runs in the browser with no app/Tauri coupling.
+ */
 import type { EditorState } from "@codemirror/state";
 import type {
     SerializedAnnotation,
@@ -8,67 +17,36 @@ import type {
     SerializedCommentAnnotation,
     SerializedRevisionAnnotation,
     SerializedSuggestionAnnotation,
-} from "@quillium/share";
-export { buildShareFingerprint } from "@quillium/share";
-export type {
-    SerializedAnnotation,
-    SerializedCommentAnnotation,
-    SerializedRevisionAnnotation,
-    SerializedSuggestionAnnotation,
-    SerializedThreadMessage,
-} from "@quillium/share";
+} from "../types";
+import { annotationField } from "./annotationField";
 import {
+    type Annotations,
+    type RawAnnotations,
+    RawAnnotationsSchema,
     activeVersionIndex,
     normalizeRevision,
     versionText,
-} from "$lib/editor/plugins/annotations/models";
-import { type RawAnnotations, RawAnnotationsSchema } from "$lib/editor/plugins/annotations/models";
+} from "./models";
 
-export function serializeAnnotations(
-    doc: string,
-    annotations: Annotations | undefined,
-): SerializedAnnotation[] {
-    if (!annotations) return [];
-
-    return serializeAnnotationMap(doc, annotations);
+/** Read a version blob's nested annotation map (stored as `version.annotationField`). */
+function getRawAnnotationField(version: object): RawAnnotations | undefined {
+    const candidate = (version as { annotationField?: unknown }).annotationField;
+    if (candidate == null) return undefined;
+    const parsed = RawAnnotationsSchema.safeParse(candidate);
+    return parsed.success ? parsed.data : undefined;
 }
 
-/**
- * The public-share wire state: the CodeMirror state serialized with ONLY the
- * annotation + version-group fields (no history). The landing renderer restores
- * this via `EditorState.fromJSON(json, { extensions }, readonlySavedFields)` to
- * render the document through the real read-only editor, giving exact
- * annotation fidelity and linked-revision (version-group) support. Kept in sync
- * with @quillium/share's `readonlySavedFields`.
- */
-export function serializeShareState(state: EditorState): Record<string, unknown> {
-    return state.toJSON({ annotationField, versionGroupField });
-}
-
-/**
- * Untrusted path: validates the raw map (nested version blobs come from
- * persisted JSON) before serializing. Invalid input serializes to [].
- */
 function serializeRawAnnotationMap(
     doc: string,
     rawAnnotations: RawAnnotations | undefined,
     idPrefix = "",
 ): SerializedAnnotation[] {
     if (!rawAnnotations) return [];
-
     const parsed = RawAnnotationsSchema.safeParse(rawAnnotations);
     if (!parsed.success) return [];
-
     return serializeParsedAnnotationMap(doc, parsed.data, idPrefix);
 }
 
-/**
- * Shared doc→wire mapping over annotations already in the raw (selection as
- * plain JSON) shape. No validation — callers either safeParse first
- * (serializeRawAnnotationMap) or convert trusted live state
- * (serializeAnnotationMap). Ids are stringified as-is, so collab-mode string
- * ids pass through unchanged.
- */
 function serializeParsedAnnotationMap(
     doc: string,
     annotations: RawAnnotations,
@@ -101,11 +79,6 @@ function serializeParsedAnnotationMap(
             }
 
             if (annotation._type === "revision") {
-                // Raw revisions may be legacy index-based or missing version ids;
-                // normalize so versions carry ids and the active pointer resolves
-                // to a positional index. The serialized WIRE shape stays
-                // index-based (activeVersionIndex + versions[].index) for the
-                // public share renderer.
                 const revision = normalizeRevision(annotation);
                 return {
                     ...base,
@@ -124,28 +97,33 @@ function serializeParsedAnnotationMap(
                 } satisfies SerializedRevisionAnnotation;
             }
 
-            return {
-                ...base,
-                type: "comment",
-            } satisfies SerializedCommentAnnotation;
+            return { ...base, type: "comment" } satisfies SerializedCommentAnnotation;
         })
         .sort((a, b) => a.from - b.from || a.id.localeCompare(b.id));
 }
 
-function serializeAnnotationMap(
-    doc: string,
-    annotations: Annotations,
-    idPrefix = "",
-): SerializedAnnotation[] {
-    // Convert live annotations to the persisted raw shape (selection as plain
-    // JSON, exactly what annotationField.toJSON writes) and reuse the shared
-    // mapping so there is a single doc→wire serializer. Live state is trusted,
-    // so no schema validation (collab-mode string ids must pass through).
+/** Convert live annotations (trusted) to the raw JSON shape, then serialize. */
+function serializeAnnotationMap(doc: string, annotations: Annotations): SerializedAnnotation[] {
     const raw = Object.fromEntries(
         Object.entries(annotations).map(([id, annotation]) => [
             id,
             { ...annotation, selection: annotation.selection.toJSON() },
         ]),
     );
-    return serializeParsedAnnotationMap(doc, raw as RawAnnotations, idPrefix);
+    return serializeParsedAnnotationMap(doc, raw as RawAnnotations);
+}
+
+export type SerializedState = {
+    content: string;
+    annotations: SerializedAnnotation[];
+};
+
+/**
+ * Project the current EditorState into the flat share shape (doc text +
+ * annotations, with active revision versions already materialized in the doc).
+ */
+export function serializeFromState(state: EditorState): SerializedState {
+    const doc = state.doc.toString();
+    const annotations = state.field(annotationField, false) ?? {};
+    return { content: doc, annotations: serializeAnnotationMap(doc, annotations) };
 }

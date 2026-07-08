@@ -45,6 +45,14 @@ export type ReadonlyShareDocument = {
     excerpt: string;
     content: string;
     annotations: SerializedAnnotation[];
+    /**
+     * Serialized CodeMirror editor state (`state.toJSON(readonlySavedFields)`),
+     * carrying doc + annotationField + versionGroupField. When present, the
+     * share renders through the real read-only EditorView (exact annotation
+     * fidelity + linked revisions). Absent for pre-migration shares, which fall
+     * back to the flat `annotations` renderer.
+     */
+    state: Record<string, unknown> | null;
     authorName: string | null;
     publishedAt: string | null;
     canonicalUrl: string;

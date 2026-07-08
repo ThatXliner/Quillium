@@ -29,7 +29,11 @@ import {
 } from "$lib/collab/readonlyShareAutoUpdate";
 import { ReadonlySharePublisher } from "$lib/collab/readonlySharePublisher.svelte";
 import { buildReadonlyShareUrl, buildSharePreviewText } from "$lib/collab/share";
-import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
+import {
+    buildShareFingerprint,
+    serializeAnnotations,
+    serializeShareState,
+} from "$lib/collab/sharePayload";
 import { annotationField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
@@ -227,6 +231,9 @@ function buildPublishPayload() {
         title: $currentDocumentTitle,
         content,
         annotations: serializeAnnotations(content, liveAnnotations),
+        // Real CM state blob for the read-only editor renderer; null if the
+        // view isn't available (falls back to flat annotations on the web).
+        state: view ? serializeShareState(view.state) : null,
     };
 }
 

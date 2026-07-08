@@ -4,6 +4,7 @@ import { fade, fly } from "svelte/transition";
 import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyAnnotationModal from "./ReadonlyAnnotationModal.svelte";
+import ReadonlyDocument from "./ReadonlyDocument.svelte";
 import {
     type AnnotationId,
     type RevisionVersionSelections,
@@ -146,49 +147,55 @@ onMount(() => {
 			</div>
 		</div>
 
-		<div class="editor-stage">
-			<section class="editor-sheet" in:fade={{ duration: 420 }}>
-				<div class="share-document">
-					<ReadonlyAnnotatedText
-						content={displayedShare.content}
-						annotations={displayAnnotations}
-						activeAnnotationId={activeDocumentAnnotationId}
-						{revisionVersionSelections}
-						onSelectAnnotation={selectAnnotation}
-						indented
-					/>
-				</div>
-			</section>
+		{#if share.state}
+			<!-- New path: render through the real read-only CodeMirror editor. -->
+			<ReadonlyDocument serializedState={share.state} indented />
+		{:else}
+			<!-- Fallback for pre-migration shares without a serialized CM state blob. -->
+			<div class="editor-stage">
+				<section class="editor-sheet" in:fade={{ duration: 420 }}>
+					<div class="share-document">
+						<ReadonlyAnnotatedText
+							content={displayedShare.content}
+							annotations={displayAnnotations}
+							activeAnnotationId={activeDocumentAnnotationId}
+							{revisionVersionSelections}
+							onSelectAnnotation={selectAnnotation}
+							indented
+						/>
+					</div>
+				</section>
 
-			<aside class="annotation-column" in:fly={{ x: 20, duration: 420, delay: 60 }}>
-				<div class="annotation-card-stack">
-					{#if displayAnnotations.length > 0}
-						{#each displayAnnotations as annotation (annotation.id)}
-							<ReadonlyAnnotationCard
-								{annotation}
-								active={activeDocumentAnnotationId === annotation.id}
-								activeAnnotationId={activeInlineAnnotationId}
-								{revisionVersionSelections}
-								selectedRevisionVersionIndex={annotation.type === 'revision'
-									? getSelectedRevisionVersionIndex(annotation, revisionVersionSelections)
-									: null}
-								onSelect={() => selectAnnotation(annotation.id)}
-								onSelectAnnotation={openAnnotationModal}
-								onOpen={() => openAnnotationModal(annotation.id)}
-								onSelectRevisionVersion={(versionIndex) =>
-									selectRevisionVersion(annotation.id, versionIndex)}
-							/>
-						{/each}
-					{:else}
-						<p class="annotation-empty-state">This snapshot does not have any annotations yet.</p>
-					{/if}
-				</div>
-			</aside>
-		</div>
+				<aside class="annotation-column" in:fly={{ x: 20, duration: 420, delay: 60 }}>
+					<div class="annotation-card-stack">
+						{#if displayAnnotations.length > 0}
+							{#each displayAnnotations as annotation (annotation.id)}
+								<ReadonlyAnnotationCard
+									{annotation}
+									active={activeDocumentAnnotationId === annotation.id}
+									activeAnnotationId={activeInlineAnnotationId}
+									{revisionVersionSelections}
+									selectedRevisionVersionIndex={annotation.type === 'revision'
+										? getSelectedRevisionVersionIndex(annotation, revisionVersionSelections)
+										: null}
+									onSelect={() => selectAnnotation(annotation.id)}
+									onSelectAnnotation={openAnnotationModal}
+									onOpen={() => openAnnotationModal(annotation.id)}
+									onSelectRevisionVersion={(versionIndex) =>
+										selectRevisionVersion(annotation.id, versionIndex)}
+								/>
+							{/each}
+						{:else}
+							<p class="annotation-empty-state">This snapshot does not have any annotations yet.</p>
+						{/if}
+					</div>
+				</aside>
+			</div>
+		{/if}
 	</section>
 </main>
 
-{#if modalAnnotation}
+{#if modalAnnotation && !share.state}
 	<ReadonlyAnnotationModal
 		annotation={modalAnnotation}
 		rootContent={share.content}

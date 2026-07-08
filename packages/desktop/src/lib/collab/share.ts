@@ -12,6 +12,8 @@ export type ReadonlyShare = {
     previewText: string;
     publishedContent: string;
     publishedAnnotations: SerializedAnnotation[];
+    /** Serialized CM state blob; null for pre-migration shares. */
+    publishedState: Record<string, unknown> | null;
     authorName: string | null;
     publishedAt: string | null;
     updatedAt: string;
@@ -26,6 +28,7 @@ type ShareRow = {
     preview_text: string;
     published_content: string;
     published_annotations: SerializedAnnotation[] | null;
+    published_state: Record<string, unknown> | null;
     author_name: string | null;
     published_at: string | null;
     updated_at: string;
@@ -37,6 +40,7 @@ type PublishReadonlyShareInput = {
     title: string;
     content: string;
     annotations: SerializedAnnotation[];
+    state: Record<string, unknown> | null;
 };
 
 function requireSupabase() {
@@ -54,6 +58,7 @@ function mapShare(row: ShareRow): ReadonlyShare {
         previewText: row.preview_text,
         publishedContent: row.published_content,
         publishedAnnotations: row.published_annotations ?? [],
+        publishedState: row.published_state ?? null,
         authorName: row.author_name,
         publishedAt: row.published_at,
         updatedAt: row.updated_at,
@@ -91,7 +96,7 @@ export async function getReadonlyShare(documentId: string): Promise<ReadonlyShar
     const { data, error } = await client
         .from("shares")
         .select(
-            "share_token, enabled, published_title, preview_text, published_content, published_annotations, author_name, published_at, updated_at",
+            "share_token, enabled, published_title, preview_text, published_content, published_annotations, published_state, author_name, published_at, updated_at",
         )
         .eq("document_id", documentId)
         .maybeSingle<ShareRow>();
@@ -120,13 +125,14 @@ export async function publishReadonlyShare(
                 preview_text: buildSharePreviewText(input.content),
                 published_content: input.content,
                 published_annotations: input.annotations,
+                published_state: input.state,
                 author_name: getCurrentUserName(),
                 published_at: new Date().toISOString(),
             },
             { onConflict: "document_id" },
         )
         .select(
-            "share_token, enabled, published_title, preview_text, published_content, published_annotations, author_name, published_at, updated_at",
+            "share_token, enabled, published_title, preview_text, published_content, published_annotations, published_state, author_name, published_at, updated_at",
         )
         .single<ShareRow>();
 
