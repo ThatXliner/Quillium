@@ -34,6 +34,11 @@
       "svelte": "./src/core/versionGroupField.ts",
       "types": "./src/core/versionGroupField.ts",
       "import": "./src/core/versionGroupField.ts"
+    },
+    "./annotations/diff": {
+      "svelte": "./src/annotations/diff.ts",
+      "types": "./src/annotations/diff.ts",
+      "import": "./src/annotations/diff.ts"
     }
   },
   "scripts": {

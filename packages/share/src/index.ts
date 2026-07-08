@@ -3,6 +3,8 @@ export { default as ReadonlyAnnotationCard } from "./ReadonlyAnnotationCard.svel
 export { default as ReadonlyAnnotationModal } from "./ReadonlyAnnotationModal.svelte";
 export { default as ReadonlyDocument } from "./ReadonlyDocument.svelte";
 export { default as CommentCard } from "./annotations/CommentCard.svelte";
+export { default as SuggestionCard } from "./annotations/SuggestionCard.svelte";
+export { type DiffOp, tokenize, wordDiff } from "./annotations/diff";
 export { default as Thread } from "./annotations/Thread.svelte";
 export { default as ThreadMessage } from "./annotations/ThreadMessage.svelte";
 export {

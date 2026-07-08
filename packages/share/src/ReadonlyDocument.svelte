@@ -19,6 +19,7 @@ import { fade, fly } from "svelte/transition";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyAnnotationModal from "./ReadonlyAnnotationModal.svelte";
 import CommentCard from "./annotations/CommentCard.svelte";
+import SuggestionCard from "./annotations/SuggestionCard.svelte";
 import {
     type PersonaColor,
     annotationField,
@@ -180,6 +181,13 @@ onDestroy(() => {
 							thread={annotation.thread}
 							isActive={activeInlineAnnotationId === annotation.id}
 							onJumpTo={() => selectAnnotation(annotation.id)}
+						/>
+					{:else if annotation.type === 'suggestion'}
+						<SuggestionCard
+							replacements={annotation.replacements}
+							originalText={annotation.selectedText}
+							thread={annotation.thread}
+							isActive={activeInlineAnnotationId === annotation.id}
 						/>
 					{:else}
 						<ReadonlyAnnotationCard
