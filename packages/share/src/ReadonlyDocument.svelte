@@ -18,6 +18,7 @@ import "./core/annotations.css";
 import { fade, fly } from "svelte/transition";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyAnnotationModal from "./ReadonlyAnnotationModal.svelte";
+import CommentCard from "./annotations/CommentCard.svelte";
 import {
     type PersonaColor,
     annotationField,
@@ -171,19 +172,30 @@ onDestroy(() => {
 		<div class="annotation-card-stack">
 			{#if annotations.length > 0}
 				{#each annotations as annotation (annotation.id)}
-					<ReadonlyAnnotationCard
-						{annotation}
-						active={activeInlineAnnotationId === annotation.id}
-						activeAnnotationId={activeInlineAnnotationId}
-						selectedRevisionVersionIndex={annotation.type === 'revision'
-							? annotation.activeVersionIndex
-							: null}
-						onSelect={() => selectAnnotation(annotation.id)}
-						onSelectAnnotation={openAnnotationModal}
-						onOpen={() => openAnnotationModal(annotation.id)}
-						onSelectRevisionVersion={(versionIndex) =>
-							switchRevisionVersion(annotation.id, versionIndex)}
-					/>
+					{#if annotation.type === 'comment'}
+						<!-- Same card component the desktop editor renders (read-only: no
+						     delete/expand/reply callbacks → pure display). -->
+						<CommentCard
+							selectedText={annotation.selectedText}
+							thread={annotation.thread}
+							isActive={activeInlineAnnotationId === annotation.id}
+							onJumpTo={() => selectAnnotation(annotation.id)}
+						/>
+					{:else}
+						<ReadonlyAnnotationCard
+							{annotation}
+							active={activeInlineAnnotationId === annotation.id}
+							activeAnnotationId={activeInlineAnnotationId}
+							selectedRevisionVersionIndex={annotation.type === 'revision'
+								? annotation.activeVersionIndex
+								: null}
+							onSelect={() => selectAnnotation(annotation.id)}
+							onSelectAnnotation={openAnnotationModal}
+							onOpen={() => openAnnotationModal(annotation.id)}
+							onSelectRevisionVersion={(versionIndex) =>
+								switchRevisionVersion(annotation.id, versionIndex)}
+						/>
+					{/if}
 				{/each}
 			{:else}
 				<p class="annotation-empty-state">This snapshot does not have any annotations yet.</p>
