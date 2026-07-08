@@ -9,6 +9,7 @@ export {
     getUser,
     getUserEmail,
     getConnectionState,
+    hasAuthStateToReset,
     initAuth,
     isAnonymous,
     isAuthenticated,

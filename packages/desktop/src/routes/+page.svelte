@@ -23,8 +23,8 @@ import { page } from "$app/state";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
 import {
     getConnectionState,
+    hasAuthStateToReset,
     initAuth,
-    isAuthenticated,
     isLoading,
     isOffline,
     reconnectAuth,
@@ -130,7 +130,10 @@ let authReconnecting = $state(false);
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
-const authAuthenticated = $derived(isAuthenticated());
+// Deliberately NOT isAuthenticated(): failed session loads null the
+// in-memory user before landing offline, but the persisted session is
+// still there and the stuck user needs the Sign out escape hatch.
+const authCanReset = $derived(hasAuthStateToReset());
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -671,6 +674,16 @@ if (import.meta.env.DEV) {
         >
             Reconnecting
         </button>
+        {#if authCanReset}
+            <button
+                onclick={handleOfflineSignOut}
+                class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
+                    rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                    hover:text-black/70 hover:bg-white/60 transition-colors"
+            >
+                Sign out
+            </button>
+        {/if}
     {:else if authLoading}
         <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
         <div class="h-8 w-[84px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
@@ -683,7 +696,7 @@ if (import.meta.env.DEV) {
         >
             Reconnect
         </button>
-        {#if authAuthenticated}
+        {#if authCanReset}
             <button
                 onclick={handleOfflineSignOut}
                 class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md

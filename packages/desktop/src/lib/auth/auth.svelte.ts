@@ -37,6 +37,27 @@ let connectionState = $state<AuthConnectionState>("idle");
 let initialized = false;
 let initRun = 0;
 
+/**
+ * Whether supabase-js has a session persisted in localStorage. Tracked as
+ * reactive state (localStorage itself isn't reactive) so the offline UI can
+ * offer "Sign out" even when the in-memory user is null — failed session
+ * loads null `user` before landing offline, but the persisted session is
+ * still there and is exactly what a stuck user needs to be able to reset.
+ */
+let persistedSessionPresent = $state(readPersistedSessionPresence());
+
+function readPersistedSessionPresence(): boolean {
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith("sb-") && key.endsWith("-auth-token")) return true;
+        }
+    } catch {
+        // localStorage unavailable
+    }
+    return false;
+}
+
 function shouldUseScreenshotAuthMock(): boolean {
     return (
         import.meta.env.DEV &&
@@ -134,6 +155,7 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
 
         session = existingSession;
         user = existingSession?.user ?? null;
+        persistedSessionPresent = readPersistedSessionPresence();
         void logAppEvent("info", "auth", "session loaded", {
             hasSession: !!existingSession,
         });
@@ -194,6 +216,7 @@ export async function initAuth(): Promise<void> {
         });
         session = newSession;
         user = newSession?.user ?? null;
+        persistedSessionPresent = !!newSession;
         connectionState = "online";
         loading = false;
     });
@@ -292,19 +315,19 @@ function clearPersistedSession(): void {
  * behind the wedged lock and refused to drop the session on network error.
  */
 export async function signOut() {
-    if (!supabase) throw new Error("Supabase not configured");
-
     let serverError: unknown = null;
-    try {
-        const result = await Promise.race([
-            supabase.auth.signOut(),
-            sleep(SIGN_OUT_SERVER_TIMEOUT_MS).then(() => ({
-                error: new Error("server sign-out timed out"),
-            })),
-        ]);
-        serverError = result.error;
-    } catch (error) {
-        serverError = error;
+    if (supabase) {
+        try {
+            const result = await Promise.race([
+                supabase.auth.signOut(),
+                sleep(SIGN_OUT_SERVER_TIMEOUT_MS).then(() => ({
+                    error: new Error("server sign-out timed out"),
+                })),
+            ]);
+            serverError = result.error;
+        } catch (error) {
+            serverError = error;
+        }
     }
 
     if (serverError) {
@@ -319,6 +342,7 @@ export async function signOut() {
     // invalidate any in-flight reconnect run so it can't resurrect the
     // session we just dropped.
     clearPersistedSession();
+    persistedSessionPresent = false;
     initRun++;
     session = null;
     user = null;
@@ -356,6 +380,14 @@ export function getConnectionState() {
 }
 export function isOffline() {
     return connectionState === "offline";
+}
+/**
+ * Whether there is any auth state to reset: an in-memory user or a session
+ * still persisted in localStorage. Failed session loads null the in-memory
+ * user before landing offline, so isAuthenticated() alone under-reports.
+ */
+export function hasAuthStateToReset() {
+    return !!user || persistedSessionPresent;
 }
 export function isAuthenticated() {
     return !!user;
