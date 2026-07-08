@@ -17,11 +17,23 @@ static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 static LOG_LOCK: Mutex<()> = Mutex::new(());
 
+/// Match the database's directory resolution (see lib.rs setup): honor the
+/// QUILLIUM_DATA_DIR override so the log always sits next to the DB in use.
+/// Without this, multi-instance test runs wrote their logs to the shared
+/// default directory while their data lived elsewhere.
+fn log_dir(default_dir: PathBuf) -> PathBuf {
+    match std::env::var("QUILLIUM_DATA_DIR") {
+        Ok(dir) => PathBuf::from(dir),
+        Err(_) => default_dir,
+    }
+}
+
 fn path_from_app(app: &tauri::App) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|err| err.to_string())?;
+    let dir = log_dir(
+        app.path()
+            .app_local_data_dir()
+            .map_err(|err| err.to_string())?,
+    );
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir.join(LOG_FILE_NAME))
 }
@@ -30,10 +42,11 @@ fn path_from_handle(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if let Some(path) = LOG_PATH.get() {
         return Ok(path.clone());
     }
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|err| err.to_string())?;
+    let dir = log_dir(
+        app.path()
+            .app_local_data_dir()
+            .map_err(|err| err.to_string())?,
+    );
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir.join(LOG_FILE_NAME))
 }
