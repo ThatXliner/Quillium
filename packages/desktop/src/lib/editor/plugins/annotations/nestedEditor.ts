@@ -546,10 +546,11 @@ export function translateAndDispatch(
 ): boolean {
     if (!update.docChanged) return false;
 
-    const rev = parentView.state.field(annotationField)[revisionId] as
-        | import("./models").Annotation<"revision">
-        | undefined;
-    if (!rev) return false;
+    // Ids are sequential integers, so a remote collab sync can reassign this
+    // id to a non-revision annotation between mount and dispatch. Bail rather
+    // than writing nested edits into an unrelated annotation's range.
+    const rev = parentView.state.field(annotationField)[revisionId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) return false;
 
     const offset = rev.selection.main.from;
 

@@ -184,8 +184,9 @@ type FsmEvent =
       };
 
 /** Read fresh revision state from the parent view. */
-function readRevision() {
-    return view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+function readRevision(): Annotation<"revision"> | undefined {
+    const ann = view.state.field(annotationField)[revisionId];
+    return ann && isAnnotationOfType(ann, "revision") ? ann : undefined;
 }
 
 function send(event: FsmEvent) {

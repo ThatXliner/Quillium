@@ -31,6 +31,7 @@ import {
     annotationField,
     applySuggestion,
     branchSuggestion,
+    isAnnotationOfType,
     removeAnnotation,
     updateThread,
     wordDiff,
@@ -56,13 +57,15 @@ let dialogEl = $state<HTMLDialogElement>();
 // levels → modalAnnotationStores), falling back to a direct state read.
 // This keeps thread replies and other mutations visible while the modal
 // is open.
-const suggestion = $derived(
-    ((stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
-        suggestionId
-    ] ?? parentView.state.field(annotationField)[suggestionId]) as
-        | Annotation<"suggestion">
-        | undefined,
-);
+const suggestion = $derived.by((): Annotation<"suggestion"> | undefined => {
+    const ann =
+        (stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
+            suggestionId
+        ] ?? parentView.state.field(annotationField)[suggestionId];
+    // Ids are sequential integers, so a remote collab sync can reassign
+    // this id to a different annotation type while the modal is open.
+    return ann && isAnnotationOfType(ann, "suggestion") ? ann : undefined;
+});
 
 let selectedIndex = $state(0);
 

@@ -490,10 +490,8 @@ $effect(() => {
         if (!controller.editor || !isEditorOpen) return;
         // Read the latest version directly from the parent editor state
         // (already updated by the modal's flush dispatch).
-        const rev = view.state.field(annotationField)[revision.id] as
-            | import("./models").Annotation<"revision">
-            | undefined;
-        if (!rev) return;
+        const rev = view.state.field(annotationField)[revision.id];
+        if (!rev || !isAnnotationOfType(rev, "revision")) return;
         const latestVersion = versionById(rev, rev.activeVersionId);
         if (!latestVersion) return;
         // Plan 8.5c-01: In collab mode this is a no-op (observeDeep reconciles live).

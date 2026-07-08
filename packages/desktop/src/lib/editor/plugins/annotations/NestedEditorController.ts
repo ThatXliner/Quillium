@@ -35,7 +35,7 @@ import {
 } from "./annotationField";
 import type { Annotation as AnnotationType, Annotations, VersionState } from "./models";
 import type { GenericAnnotation } from "./models";
-import { versionById } from "./models";
+import { isAnnotationOfType, versionById } from "./models";
 import {
     createNestedEditorState,
     mergeNestedVersionState,
@@ -366,6 +366,22 @@ export class NestedEditorController {
     }
 
     /**
+     * Resolve this controller's revision in the parent field, or undefined
+     * when the id no longer points at a usable revision. Annotation ids are
+     * sequential integers, so a remote collab sync can reassign the id to a
+     * different annotation type (or deliver a revision without a `versions`
+     * array) between mount and flush — a blind cast here crashed clients
+     * with "undefined is not an object (evaluating 'versions.find')".
+     */
+    private parentRevision(): AnnotationType<"revision"> | undefined {
+        const ann: GenericAnnotation | undefined =
+            this.parentView.state.field(annotationField)[this.revisionId];
+        if (!ann || !isAnnotationOfType(ann, "revision")) return undefined;
+        if (!Array.isArray(ann.versions)) return undefined;
+        return ann;
+    }
+
+    /**
      * Serialize the nested editor's annotationField state to the parent's
      * version blob. This is the upward path for annotation mutations — the
      * complement to translateAndDispatch for doc changes.
@@ -378,10 +394,7 @@ export class NestedEditorController {
     private flushAnnotationStateToParent(addToHistory = true): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-            | AnnotationType<"revision">
-            | undefined;
-
+        const rev = this.parentRevision();
         const existing = rev ? versionById(rev, this._editorVersionId) : undefined;
         if (rev && existing) {
             // If the parent already switched to a different version,
@@ -428,10 +441,7 @@ export class NestedEditorController {
     private flushToParent(): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-            | AnnotationType<"revision">
-            | undefined;
-
+        const rev = this.parentRevision();
         const existing = rev ? versionById(rev, this._editorVersionId) : undefined;
         if (rev && existing) {
             // If the parent already switched to a different version,
