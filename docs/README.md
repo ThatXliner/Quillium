@@ -28,7 +28,8 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 - [Tabs & Drafts](./tabs-and-drafts.md) — Document tabs, draft trees, forking, locks
 - [Collaboration](./collaboration.md) — Yjs sync, real-time collab
 - [AutoAI](./autoai.md) — Background AI review system
-- [AI Sidebar](./ai-sidebar.md) — Chat, Feedback, Revise modes
+- [AI Sidebar](./ai-sidebar.md) — Ask Editor, Chat, Feedback, Revise modes
+- [AI Overhaul](./ai/AI_PRODUCT_SPEC.md) — Unified editor, prompt contract, safety evals
 - [Auth](./auth.md) — Supabase Auth, account UI, guest collaborators
 - [Provenance](./provenance.md) — Authorship report and playback
 
@@ -56,7 +57,12 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 | [Provenance](./provenance.md) | Authorship report, provenance classification, playback/export |
 | [AutoAI](./autoai.md) | Review engine, widget UI, face state machine |
 | [Reader Personas](./reader-personas.md) | Multi-persona parallel feedback system |
-| [AI Sidebar](./ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |
+| [AI Sidebar](./ai-sidebar.md) | Ask Editor, Chat, Feedback, Revise, Dictionary |
+| [AI Philosophy](./ai/AI_PHILOSOPHY.md) | Margin-first authorship doctrine |
+| [AI Product Spec](./ai/AI_PRODUCT_SPEC.md) | Unified editor product direction |
+| [AI Prompt Contract](./ai/PROMPT_CONTRACT.md) | Request/response schema and validation rules |
+| [AI Evals](./ai/EVALS.md) | Fixture rubric for protected-writing behavior |
+| [AI Reader Personas Integration](./ai/READER_PERSONAS_INTEGRATION.md) | Persona/focus distinction |
 | [Settings](./settings.md) | App preferences, fonts, localStorage vs SQLite |
 | [Library](./library.md) | Document management, trash, navigation |
 | [Search](./search.md) | FTS5 + semantic search, schema migrations |

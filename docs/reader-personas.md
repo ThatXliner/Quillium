@@ -105,13 +105,32 @@ Personas are gated by a per-mode toggle so the cost is opt-in and explicit (issu
 
 | Where | Detail |
 |-------|--------|
-| State | `personaModes: { feedback: boolean; revise: boolean }` in `src/lib/ai/settings.svelte.ts` |
-| Default | Both `false` (plain single-stream by default) |
+| State | `personaModes: { feedback: boolean; revise: boolean; editor: boolean }` in `src/lib/ai/settings.svelte.ts` |
+| Default | All `false` (plain single-stream by default) |
 | Persistence | localStorage key `"quillium-ai-persona-modes"` |
 | Setter | `setPersonasForMode(mode, enabled)` — persists + updates the rune |
-| UI | A switch in the **Feedback** and **Revise** tab headers; each mode remembers its own choice |
+| UI | A switch in the **Feedback** and **Revise** tab headers today; the unified editor uses the same setting shape with `editor` defaulting off |
 
 The per-persona toggles in the Readers tab still select *which* personas run, but they only take effect once the mode toggle is ON. Chat mode does not use personas.
+
+## Unified Editor Integration
+
+The unified editor keeps personas as an advanced layer, not a replacement for focus
+toggles.
+
+- Focus toggles answer: what should the editor look for?
+- Reader Personas answer: who is reading?
+- Internal specialists answer: how might the prompt/orchestrator organize work?
+
+The baseline one-click editor is one structured editor run using focus toggles. If
+`personaModes.editor` is enabled later in the UI, each enabled persona should receive the
+same editor request, focus toggles, document risk level, policy posture, replacement
+permission, and schema constraints. Persona prompts can change perspective, but they cannot
+override high-stakes safety, no-fabrication, detector-evasion refusals, or replacement
+permissions.
+
+Use `Challenge` for the editor focus that stress-tests claims. Do not call it
+`Devil's Advocate`; that name already belongs to a built-in persona.
 
 ## UI (Readers.svelte)
 

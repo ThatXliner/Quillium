@@ -2,8 +2,8 @@
     AISidebar.svelte — Top-level container for all AI features.
 
     This component renders a floating, resizable sidebar anchored to the
-    left edge of the viewport. It acts as a shell/router for the six AI
-    panels: Chat, Feedback, Revise, DocumentContext, Readers, and AISettings.
+    left edge of the viewport. It acts as a shell/router for the AI panels:
+    Ask Editor, Chat, Feedback, Revise, DocumentContext, Readers, and AISettings.
 
     UI states:
       - Collapsed (pill): a narrow vertical strip of icon buttons.
@@ -18,11 +18,11 @@
     The sidebar reads `aiProcessing.active` from settings.svelte.ts to
     show a rainbow glow animation while any AI request is in flight.
 
-    All five sub-panels are mounted eagerly (visibility toggled via CSS)
+    All non-settings sub-panels are mounted eagerly (visibility toggled via CSS)
     to avoid re-mount jank when switching tabs.
 
-    Dependencies: Chat, Feedback, Revise, DocumentContext, Readers, AISettings
-    components; aiProcessing from settings.svelte.ts; posthog analytics.
+    Dependencies: EditorReview, Chat, Feedback, Revise, DocumentContext, Readers,
+    AISettings components; aiProcessing from settings.svelte.ts; posthog analytics.
 -->
 <script lang="ts">
 import {
@@ -49,6 +49,7 @@ import {
     Minimize2Icon,
     PenLineIcon,
     SettingsIcon,
+    SparklesIcon,
     SquareIcon,
     UsersIcon,
     XIcon,
@@ -73,8 +74,8 @@ import {
  *
  * Stores written: none.
  *
- * Children: Chat, Feedback, Revise, DocumentContext, Readers, AISettings.
- *   All six sub-panels are mounted eagerly and toggled via CSS
+ * Children: EditorReview, Chat, Feedback, Revise, DocumentContext, Readers,
+ *   AISettings. All non-settings sub-panels are mounted eagerly and toggled via CSS
  *   visibility to avoid re-mount jank on tab switches.
  *
  * Resize system: see PanelResizeController in panelResize.svelte.ts.
@@ -86,6 +87,7 @@ import AISettings from "./AISettings.svelte";
 import Chat from "./Chat.svelte";
 import ContextInfoButton from "./ContextInfoButton.svelte";
 import DocumentContext from "./DocumentContext.svelte";
+import EditorReview from "./EditorReview.svelte";
 import Feedback from "./Feedback.svelte";
 import Readers from "./Readers.svelte";
 import Revise from "./Revise.svelte";
@@ -93,7 +95,7 @@ import { buildAnnotationContextInputs } from "./annotationContext";
 import { buildAiContextPacket, shouldShowContextSummary } from "./context";
 import { PanelResizeController } from "./panelResize.svelte";
 
-type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
+type Action = null | "editor" | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
 type ContextPanelAction = "chat" | "feedback" | "revise";
 let action = $state<Action>(null);
 
@@ -111,10 +113,21 @@ const actions: {
     preferredHeight?: number;
 }[] = [
     {
+        id: "editor",
+        icon: SparklesIcon,
+        label: "Ask Editor",
+        shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
+        activeClass: "text-teal-600 bg-white/60",
+        hoverClass: "hover:text-teal-600",
+        requiresApiKey: true,
+        preferredWidth: 360,
+        preferredHeight: 640,
+    },
+    {
         id: "chat",
         icon: MessageCircleIcon,
         label: "Chat",
-        shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
+        shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
         activeClass: "text-blue-600 bg-white/60",
         hoverClass: "hover:text-blue-600",
         requiresApiKey: true,
@@ -124,7 +137,7 @@ const actions: {
         id: "feedback",
         icon: ZapIcon,
         label: "Feedback",
-        shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
+        shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
         activeClass: "text-green-600 bg-white/60",
         hoverClass: "hover:text-green-600",
         requiresApiKey: true,
@@ -134,7 +147,7 @@ const actions: {
         id: "revise",
         icon: PenLineIcon,
         label: "Revise",
-        shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
+        shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
         activeClass: "text-purple-600 bg-white/60",
         hoverClass: "hover:text-purple-600",
         requiresApiKey: true,
@@ -144,7 +157,7 @@ const actions: {
         id: "context",
         icon: CompassIcon,
         label: "Document Context",
-        shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
+        shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
         activeClass: "text-amber-600 bg-white/60",
         hoverClass: "hover:text-amber-600",
         requiresApiKey: true,
@@ -154,7 +167,7 @@ const actions: {
         id: "readers",
         icon: UsersIcon,
         label: "Readers",
-        shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
+        shortcut: isMac ? "⌘⇧6" : "Ctrl+Shift+6",
         activeClass: "text-rose-600 bg-white/60",
         hoverClass: "hover:text-rose-600",
         requiresApiKey: true,
@@ -163,6 +176,7 @@ const actions: {
 ];
 
 const panelTitles: Record<NonNullable<Action>, string> = {
+    editor: "Ask Editor",
     chat: "Chat with AI",
     feedback: "Get Feedback",
     revise: "Revise & Rewrite",
@@ -372,11 +386,12 @@ $effect(() => {
 
 // Keyboard shortcuts for the sidebar
 const actionKeys: Record<string, NonNullable<Action>> = {
-    "1": "chat",
-    "2": "feedback",
-    "3": "revise",
-    "4": "context",
-    "5": "readers",
+    "1": "editor",
+    "2": "chat",
+    "3": "feedback",
+    "4": "revise",
+    "5": "context",
+    "6": "readers",
 };
 
 // Dismiss the context popover when clicking anywhere inside the sidebar that
@@ -410,7 +425,7 @@ function handleKeydown(e: KeyboardEvent) {
         }
         return;
     }
-    // Cmd/Ctrl+Shift+1-4 to open specific panels
+    // Cmd/Ctrl+Shift+1-6 to open specific panels
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && actionKeys[e.key]) {
         e.preventDefault();
         selectAction(actionKeys[e.key]);
@@ -596,6 +611,13 @@ function handleKeydown(e: KeyboardEvent) {
 
     <!-- Content — all panels mounted upfront to avoid mount-time jank -->
     <div class="flex-1 flex flex-col min-h-0 relative">
+      <div
+        class="absolute inset-0 flex flex-col {action === 'editor'
+          ? ''
+          : 'hidden'}"
+      >
+        <EditorReview />
+      </div>
       <div
         class="absolute inset-0 flex flex-col {action === 'chat'
           ? ''

@@ -79,7 +79,13 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `reader_persona_created` | Custom persona created | `Readers.svelte` |
 | `reader_persona_removed` | Custom persona deleted | `Readers.svelte` |
 | `reader_persona_review_completed` | Persona finishes feedback | `chatFactory.ts` |
-| `persona_mode_toggled` | Feedback/Revise persona mode toggled | `Feedback.svelte`, `Revise.svelte` |
+| `persona_mode_toggled` | Feedback/Revise/Editor persona mode toggled | `Feedback.svelte`, `Revise.svelte`, `EditorReview.svelte` |
+
+## Ask Editor
+
+| Event | When | File |
+|-------|------|------|
+| `ai_editor_requested` | Unified editor review started | `EditorReview.svelte` |
 
 ## AutoAI
 

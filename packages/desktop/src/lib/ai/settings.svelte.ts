@@ -66,24 +66,39 @@ export function hasDocumentContext(): boolean {
 // Reader personas fan a single request out into one parallel AI stream PER
 // enabled persona, so they cost roughly N× the tokens of a normal request.
 // Because of that they default to OFF and are an explicit, per-mode opt-in:
-// each mode (feedback / revise) remembers its own choice. When a mode's flag
+// each mode (feedback / revise / editor) remembers its own choice. When a mode's flag
 // is false the panel uses a single plain stream regardless of how many
-// personas are enabled in the Readers tab. See GitHub issue #259.
+// personas are enabled in the Readers tab. See GitHub issue #259 and
+// docs/ai/READER_PERSONAS_INTEGRATION.md.
 // ---------------------------------------------------------------------------
-export type PersonaMode = "feedback" | "revise";
+export type PersonaMode = "feedback" | "revise" | "editor";
 export type PersonaModes = Record<PersonaMode, boolean>;
 
+export const DEFAULT_PERSONA_MODES: PersonaModes = {
+    feedback: false,
+    revise: false,
+    editor: false,
+};
+
+export function parsePersonaModes(raw: unknown): PersonaModes {
+    const parsed =
+        raw && typeof raw === "object" ? (raw as Partial<Record<PersonaMode, unknown>>) : {};
+
+    return {
+        feedback:
+            typeof parsed.feedback === "boolean" ? parsed.feedback : DEFAULT_PERSONA_MODES.feedback,
+        revise: typeof parsed.revise === "boolean" ? parsed.revise : DEFAULT_PERSONA_MODES.revise,
+        editor: typeof parsed.editor === "boolean" ? parsed.editor : DEFAULT_PERSONA_MODES.editor,
+    };
+}
+
 function loadPersonaModes(): PersonaModes {
-    const defaults: PersonaModes = { feedback: false, revise: false };
+    const defaults: PersonaModes = { ...DEFAULT_PERSONA_MODES };
     if (typeof localStorage === "undefined") return defaults;
     try {
         const stored = localStorage.getItem(PERSONA_MODES_KEY);
         if (stored) {
-            const parsed = JSON.parse(stored) as Partial<PersonaModes>;
-            return {
-                feedback: typeof parsed.feedback === "boolean" ? parsed.feedback : false,
-                revise: typeof parsed.revise === "boolean" ? parsed.revise : false,
-            };
+            return parsePersonaModes(JSON.parse(stored));
         }
     } catch {}
     return defaults;

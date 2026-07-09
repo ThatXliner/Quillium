@@ -10,6 +10,7 @@
 
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
+import { QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT } from "$lib/ai/editor/editorPrompt";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
@@ -81,7 +82,9 @@ type ReviewResult = z.infer<typeof AnnotationSchema>;
 function buildSystemPrompt(): string {
     const { conservativeness, annotationTypes, persona } = autoAISettings;
     const allowed = annotationTypes.join(", ");
-    return `You are ${persona}, an AI writing collaborator embedded in a writing app called Quillium. Your job is to review the document and return structured feedback as JSON.
+    return `${QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT}
+
+You are ${persona}, an AI writing collaborator embedded in a writing app called Quillium. Your job is to review the document and return structured feedback as JSON.
 
 Annotation types you may use: ${allowed}.
 - comment: A note pointing out an issue or observation.
@@ -96,6 +99,8 @@ IMPORTANT RULES:
 - Keep targetText as short as possible while still being specific (a sentence or phrase, not paragraphs).
 - Treat existing annotations in the context packet as open editorial state. Do not create duplicate annotations for the same concern or target.
 - Only annotate issues that fall within the allowed annotation types.
+- In protected writing, use comment for substantive feedback and only use suggestion for grammar, spelling, punctuation, or typo fixes. Do not use revision for protected writing unless the revision is purely grammar/typo-level.
+- Prefer 1-3 high-leverage annotations per pass. Do not interrupt active drafting with low-value notes.
 - Return valid JSON matching the schema. No prose outside JSON.`;
 }
 

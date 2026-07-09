@@ -95,6 +95,49 @@ Documents contain tabs (top bar); each draft-type tab holds a tree of drafts (le
 
 All systems are documented in ARCHITECTURE.md.
 
+## Quillium AI Doctrine
+
+Treat AI behavior as product-critical and trust-critical. Prompt, schema, and editor
+behavior changes require the same care as data-model changes.
+
+The non-negotiable rule is: **AI lives in the margin, not in the prose.**
+
+Quillium AI should make the writer more aware, not more replaceable. It may notice, ask,
+diagnose, compare, challenge, summarize reader experience, explain tradeoffs, identify
+specificity gaps, protect voice, and create structured annotations, cards, comments, and
+branch suggestions.
+
+It must not silently edit document prose, become the hidden author, invent personal
+details or evidence, flatten voice into generic polish, produce detector-evasion or
+humanizer behavior, bypass school/publication/institutional AI-use rules, or generate
+application-ready college essay prose in protected modes.
+
+Protected writing includes college applications, scholarship essays, personal statements,
+application supplements, contest submissions, graded student writing, legal/medical/
+financial self-representation, and any document whose value depends on the writer's
+personal voice, judgment, lived experience, or originality.
+
+For protected writing, replacement text is allowed only for spelling, punctuation,
+grammar, and typo-level fixes. Substantive help must stay as questions, diagnosis,
+reader-view feedback, specificity prompts, voice warnings, and revision strategies the
+writer must execute.
+
+Use the unified editor contract in `packages/desktop/src/lib/ai/editor/` for new AI
+surfaces. Use or update the docs in `docs/ai/` when changing AI philosophy, product
+direction, prompts, schemas, evals, or Reader Persona integration.
+
+Reader Personas are existing product features, not editor focus toggles:
+- Focus toggles = what the editor looks for.
+- Reader Personas = who is reading.
+- Internal specialists = prompt/orchestrator implementation detail.
+- Codex subagents = development-time workers.
+
+Preserve the persona fanout model: per-surface opt-in, default OFF, roughly `N x` token
+cost, and localStorage compatibility. For the unified editor surface, use
+`personaModes.editor` defaulting to `false`. Do not create a focus named
+`devils_advocate`; use `challenge` to avoid colliding with the built-in `Devil's Advocate`
+persona.
+
 ## Code Style
 - 4-space indentation (2-space for JSON)
 - 100-character line width

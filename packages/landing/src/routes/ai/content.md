@@ -1,72 +1,204 @@
 ---
-title: "Quillium AI — The Complete Rundown"
-description: "Everything Quillium's AI can do and why it's built the way it is."
-date: "2026-04-06"
+title: "Quillium AI: The Margin, Not the Pen"
+description: "How Quillium uses AI without letting it become the hidden author of your writing."
+date: "2026-07-07"
 author: "Bryan Hu"
 ---
 
-## The core philosophy
+AI writing tools are usually built around a tempting promise: faster words, smoother
+paragraphs, cleaner drafts.
 
-Every AI feature in Quillium follows one rule: the AI creates structured annotations, [never raw text edits](/blog/ai-is-not-the-point#what-ai-could-actually-be). Every suggestion is reversible and non-destructive. You stay in control. The AI doesn't get to touch your words.
+That sounds useful until you are writing something where the words are supposed to be
+yours.
 
-Everything runs BYOK (bring your own key), fully client-side. No Quillium servers are involved at any point. Your API keys stay in the OS keychain, never in localStorage. We support OpenAI, Anthropic Claude, and Google Gemini.
+A college essay. A personal statement. A scholarship application. A story in a voice you
+are still discovering. A paragraph where the awkwardness is part of the truth. A sentence
+that is not polished yet, but is alive.
 
-## 1. AI Sidebar — three modes
+Quillium AI starts from a different premise:
 
-A floating panel with three AI assistants, each good at different things:
+> AI should make the writer more aware, not more replaceable.
 
-**Chat** is open-ended writing Q&A. Brainstorm ideas, ask "does this paragraph work?", bounce thoughts around.
+## The core rule
 
-**Feedback** is your big-picture reviewer. It looks at structure, voice, argument, and pacing, then gives you 2-3 labeled alternatives with tradeoff explanations for each issue.
+Every AI feature in Quillium follows one rule:
 
-**Revise** is the line editor. It walks through your text in reading order and suggests word-level rewrites, each with multiple replacement options. At the end you get a short summary of patterns it noticed across the document.
+> AI lives in the margin, not in the prose.
 
-None of this shows up as a wall of text you have to copy-paste. Every piece of AI output lands as an annotation in the editor. Accept, reject, or ignore. The sidebar glows with a rainbow border while AI is running so you always know when it's costing you tokens.
+Quillium AI can leave notes. It can ask questions. It can point out where a reader gets
+lost. It can flag generic language, pacing problems, vague reflection, weak transitions,
+or sentences that are trying to do too much.
 
-## 2. AutoAI — background reviewer
+But it does not silently take control of your document.
 
-This one is unusual. A small morphing bubble sits in your editor and runs editorial review continuously while you write. You don't ask it to. It just does.
+AI output is structured as annotations, comments, questions, and revision paths. You can
+accept, reject, ignore, branch, or discuss. The point is not to make the model the writer.
+The point is to help you see your own writing more clearly.
 
-It waits until you've written enough new material, thinks for a bit, then drops inline comments and revision suggestions directly into your document. If you've edited a section since it started thinking, it throws away any suggestions that no longer apply. No stale feedback.
+## One editor, many lenses
 
-Three levels of intensity:
+Older AI writing tools tend to split themselves into modes: chat, feedback, revise,
+summarize, rewrite, polish.
 
-- **Conservative** — only flags glaring issues
-- **Balanced** — the default
-- **Thorough** — feedback on everything
+That is a lot of machinery to think about when you are already trying to write.
 
-You can rename the reviewer persona to whatever you want: "Editor", "Critic", "Devil's Advocate". That name shows up as the author on all its annotations.
+Quillium is moving toward a simpler model: one editor in the margin, with different
+lenses you can turn on or off.
 
-It's like having someone read over your shoulder, except they actually have useful things to say. (The rainbow-spinning border while it thinks is a nice touch too.)
+You can ask Quillium to look at a selection, a paragraph, a branch, a section, or the
+whole document. Then you can choose what kind of attention you want.
 
-## 3. Comment thread AI
+Possible lenses include:
 
-Every annotation thread has a "Suggest" button. Hit it and the AI reads the full thread history plus the highlighted text, then drops a response into the thread.
+- **Reader View**: what a reader understands, misses, or expects next.
+- **Voice Guard**: where your prose sounds like you, and where it starts sounding generic.
+- **Specificity**: where the draft needs scene, action, evidence, stakes, or concrete
+  detail.
+- **Structure**: how the piece moves, where it drifts, and what each paragraph is doing.
+- **Clarity**: confusing claims, overloaded sentences, and missing links.
+- **Line Notes**: sentence-level issues.
+- **Grammar Only**: spelling, punctuation, grammar, and typos.
+- **Policy Safety**: extra guardrails for high-stakes writing.
+- **Challenge**: candid pushback when the draft is avoiding something.
 
-Annotations become conversations. Disagree with a comment? Ask the AI to push back, right there in the thread.
+The user experience is simple:
 
-## 4. Document context
+> Ask Quillium to look. Get useful margin notes. Decide what to do.
 
-A panel where you describe your document's purpose, audience, tone, and constraints. That context feeds into every AI call, so feedback is calibrated to what you're actually trying to write instead of generic writing advice.
+## Why not just rewrite?
 
-There's also an "AI generate" button: paste a raw writing prompt or assignment brief and it produces structured context notes for you.
+Because rewriting is not neutral.
 
-## 5. Writing style analysis
+A rewrite can improve the surface while damaging the person underneath. It can make a
+paragraph smoother but less true. It can make a teenager sound like an admissions
+consultant. It can replace a strange, specific sentence with one that sounds like every
+other "strong" essay on the internet.
 
-Inside the Writing Statistics modal, an AI scores your prose across 7 dimensions (formality, clarity, conciseness, vocabulary, tone, pacing, descriptiveness) on a 1-10 scale, plus tone descriptors and a style summary.
+Good writing is not always the smoothest version of a thought.
 
-We tell the model to be honest and avoid giving everything high scores. The results show up as progress bars. Self-awareness about your writing tendencies, from someone who won't sugarcoat it.
+Sometimes the sentence should stay blunt. Sometimes the fragment works. Sometimes the
+plain word is better than the impressive one. Sometimes the clunky draft is clunky because
+the writer has not figured out what they mean yet, and that is exactly the moment when AI
+should ask a question instead of filling the silence.
 
-## 6. Reverse dictionary
+Quillium is designed to protect that moment.
 
-Cmd-B on a selected word opens a popover where you can describe a concept ("the feeling of nostalgia for a place you've never been") and get back matching words with nuance and connotation notes. If you want to keep going, the conversation carries over into the full Chat panel.
+## Voice over polish
 
-Good for that tip-of-the-tongue problem where you *know* the word exists but can't reach it.
+Quillium AI does not optimize for generic polish.
 
-## 7. Custom quick actions
+It tries to preserve what is already alive in the draft:
 
-Define your own reusable prompts — "Check academic citations", "Tighten this paragraph", whatever — and they show up as chips in the Chat, Feedback, and Revise panels.
+- rhythm;
+- directness;
+- hesitation;
+- dry humor;
+- specificity;
+- unusual phrasing;
+- plain speech;
+- the writer's own way of turning a thought.
 
-## How we handle your keys and data
+A good AI editor should sometimes say:
 
-Your API keys never touch localStorage or disk. They live in the OS keychain. Every AI action is Cmd-Z reversible, same as any other edit. And all AI output goes through the same annotation system the rest of the editor uses, so nothing can silently modify your text.
+> Do not revise this. The roughness is doing useful voice work.
+
+## Specificity beats eloquence
+
+A lot of weak writing does not need fancier language. It needs more reality.
+
+Instead of saying:
+
+> This experience taught me resilience.
+
+A better editor asks:
+
+> Where can the reader see resilience? What did you do differently? What failed? Who
+> noticed? What choice did you make that earlier-you would not have made?
+
+That is how Quillium tries to help. Not by inventing better sentences, but by pushing the
+writer toward the material only they can provide.
+
+## College applications and other protected writing
+
+Some writing is valuable because it represents the writer directly.
+
+College essays are the clearest example. The point is not just whether the essay is
+well-written. The point is whether the essay gives the reader access to the applicant's
+judgment, memory, perspective, and voice.
+
+In those contexts, Quillium becomes stricter.
+
+For protected writing, Quillium can help with:
+
+- spelling, grammar, punctuation, and typos;
+- understanding a prompt;
+- identifying vague or generic places;
+- explaining where a reader gets confused;
+- asking questions that help you find your own material;
+- showing revision paths and tradeoffs;
+- protecting your voice from over-polish.
+
+It will not write the essay for you. It will not rewrite paragraphs into
+application-ready prose. It will not invent details. It will not "make it sound Ivy
+League." It will not humanize AI-generated text to bypass detection.
+
+The goal is simple:
+
+> You should be able to explain what changed, why it changed, and why the final wording is
+> yours.
+
+## Branches, not replacements
+
+Quillium is a non-linear writing app. That matters.
+
+When an idea could go multiple ways, the best answer is often not a replacement. It is a
+branch.
+
+Quillium AI can help identify revision paths:
+
+- make the story narrower;
+- start from a scene;
+- cut the lesson and trust the moment;
+- split one essay into two possible essays;
+- add an after-moment;
+- make the claim smaller;
+- preserve the rough sentence and revise around it.
+
+Then you choose.
+
+A branch keeps the writing process visible. It lets you explore without losing the version
+you had. It treats revision as decision-making, not cleanup.
+
+## Different readers, same rule
+
+Quillium also supports Reader Personas: you can ask for feedback from perspectives such as
+a skeptical editor, a first-time reader, a clarity coach, or an emotional reader.
+
+Those readers can notice different things, but they all follow the same rule: they stay in
+the margin. Their job is to help you see the draft from another angle, not to take over the
+draft.
+
+## What Quillium AI is for
+
+Quillium AI is for the moment when you can feel that something is off but cannot yet name
+it.
+
+It is for asking:
+
+- Where does this lose the reader?
+- Where do I sound generic?
+- What am I actually trying to say?
+- Which paragraph belongs to a different draft?
+- What should I preserve?
+- What question am I avoiding?
+- What can I revise myself?
+
+It is not here to replace the work of writing.
+
+It is here to keep you inside it.
+
+## The doctrine
+
+Quillium does not optimize for sounding human.
+
+It optimizes for keeping the human in charge.

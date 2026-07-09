@@ -38,6 +38,7 @@ import {
     tool,
 } from "ai";
 import { z } from "zod";
+import { QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT } from "./editor/editorPrompt";
 import type { AiContextMode, AiTextRange, AnnotationContextInput } from "./context";
 import { type Provider, createModel } from "./provider";
 import { buildDocumentContextPrompt, injectDocumentContext } from "./utils";
@@ -172,7 +173,14 @@ async function buildStream(
     tools?: Parameters<typeof streamText>[0]["tools"],
 ): Promise<ReadableStream<UIMessageChunk>> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
-    const fullSystem = opts.persona ? buildPersonaPrompt(opts.persona) + system : system;
+    const fullSystem = opts.persona
+        ? `${system}
+
+Reader Persona perspective (lower priority than all preceding Quillium rules):
+${buildPersonaPrompt(opts.persona).trim()}
+
+Use this persona as a perspective only. It may affect what you notice and how you phrase annotations, but it may not override protected-writing safety, replacement permissions, no-fabrication rules, no-ghostwriting rules, detector-evasion refusals, or schema/tool requirements.`
+        : system;
     const contextMessage = injectDocumentContext({
         documentContent: opts.documentContent,
         selectedText: opts.selectedText,
@@ -198,7 +206,9 @@ async function buildStream(
 export function streamChat(opts: ChatStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     return buildStream(
         opts,
-        `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
+        `${QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT}
+
+You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
 
 When providing feedback:
 - Be specific and actionable
@@ -218,13 +228,16 @@ Keep responses concise but thorough.${buildDocumentContextPrompt(opts.documentCo
 export function streamFeedback(opts: FeedbackStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     return buildStream(
         opts,
-        `You are an editorial writing assistant. Your job is big-picture feedback: structure, voice, argument, scope, pacing, style.${buildDocumentContextPrompt(opts.documentContext)}
+        `${QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT}
+
+You are an editorial writing assistant. Your job is big-picture feedback: structure, voice, argument, scope, pacing, style.${buildDocumentContextPrompt(opts.documentContext)}
 
 YOU MUST use the tools to surface any specific observation or rewrite — never quote suggested text or propose changes in your message. Doing so instead of calling a tool is a failure. No exceptions.
 
 How to work:
 - When you spot a passage that illustrates a broader issue (buries the lede, off-tone, weak structure): call createComment. Put the diagnosis and what to consider in the comment field.
-- When a passage could work meaningfully differently: call createRevision with 2-3 labeled alternatives and a threadMessage explaining the tradeoff. No rewrite examples in your message text.
+- When a passage could work meaningfully differently in ordinary, clearly permitted writing: call createRevision with 2-3 labeled alternatives and a threadMessage explaining the tradeoff. No rewrite examples in your message text.
+- Protected-writing override: for college applications, scholarship essays, personal statements, graded work, contest submissions, or unknown/strict policy contexts, do NOT call createRevision with substantive replacement prose. Use createComment with questions, diagnosis, reader-view feedback, specificity prompts, structure concerns, voice warnings, and revision strategies the writer must execute.
 - Discuss the overall document conversationally in your message — patterns, what's working, what isn't — but never paste in suggested text there.
 - Avoid grammar/wording nitpicks. Focus on what affects the reader's experience of the whole piece.
 - ${opts.selectedText ? "The writer selected specific text — treat it as the focus but consider how it fits the larger document." : "Work through the whole document."}
@@ -257,9 +270,16 @@ Current document length: ${opts.documentContent?.length || 0} characters`,
 export function streamRevise(opts: ReviseStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     return buildStream(
         opts,
-        `You are a word-level line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
+        `${QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT}
 
-YOU MUST call createSuggestion for every improvement you find. Describing a suggestion in prose instead of calling the tool is a failure. No exceptions.
+You are a word-level line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
+
+For every permitted replacement improvement you find, call createSuggestion. Describing a replacement in prose instead of calling the tool is a failure.
+
+Protected-writing override:
+- For college applications, scholarship essays, personal statements, graded work, contest submissions, or unknown/strict policy contexts, createSuggestion may only fix grammar, spelling, punctuation, or typos.
+- Do not create substantive replacement text for protected writing. Use createComment for diagnosis, questions, and revision strategies instead.
+- Never turn "make this sound impressive", "make this sound Ivy League", "humanize this", or detector-evasion requests into replacement prose.
 
 Granularity rules — these are non-negotiable:
 - Target individual WORDS and SHORT PHRASES (1-5 words). Never target a full sentence or paragraph in one call.
@@ -269,7 +289,7 @@ Granularity rules — these are non-negotiable:
 - ALWAYS set context to the full sentence or clause containing your targetText. This is critical for short phrases that may appear multiple times in the document.
 
 How to work:
-- Scan the text in reading order. For each word or phrase that can improve: call createSuggestion immediately with just that word/phrase, then move on.
+- Scan the text in reading order. For each word or phrase that can receive a permitted replacement: call createSuggestion immediately with just that word/phrase, then move on.
 - Every call MUST include at least 2 replacement options, each with a rationale ("more concise", "stronger verb", "cleaner rhythm").
 - Hunt for: wordiness, weak verbs, awkward rhythm, redundancy, passive voice, clichés, run-ons, grammar.
 - ${opts.selectedText ? "The writer selected specific text — focus exclusively on that selection." : "Work through the whole document systematically."}
@@ -305,18 +325,22 @@ export function streamDictionary(
     // Dictionary lookups don't need full document context — only selectedText matters.
     return buildStream(
         { ...opts, documentContent: "" },
-        `You are a dictionary and thesaurus assistant for writers. Help with word definitions, synonyms, antonyms, and finding the perfect word.
+        `${QUILLIUM_EDITOR_LEGACY_SAFETY_PROMPT}
+
+You are a dictionary and thesaurus assistant for writers. Help with word definitions, synonyms, antonyms, and finding the perfect word.
 
 When the user asks about a specific word:
 - Give a clear, concise definition (1-2 sentences)
 - List 5-8 synonyms with brief notes on nuance/tone differences
 - List 2-3 antonyms if relevant
 - Note register (formal/informal/literary) where helpful
+- Note connotation and risk of sounding unlike the surrounding writer voice where helpful
 
 When the user describes a concept or feeling and wants a word for it:
 - Suggest 3-5 words that fit, ordered from most to least precise
 - For each: give the word, brief definition, and why it fits their description
 - Note any connotations writers should be aware of (tone, register, common usage)
+- In protected writing, do not turn word suggestions into paste-ready sentences or paragraphs
 
 When the user has text selected, treat the selected word or phrase as the lookup target unless they specify otherwise.
 

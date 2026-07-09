@@ -1,17 +1,35 @@
 # AI Sidebar
 
-The AI sidebar provides multiple modes for AI-assisted writing. Each mode has its own tab with specialized functionality.
+The AI sidebar provides a primary **Ask Editor** surface plus legacy/advanced AI modes.
+Ask Editor is the unified editor-in-the-margin entry point: focus toggles describe what
+Quillium should look for, and results route through the annotation system rather than
+silent document edits.
 
 ## Tabs
 
 | Tab | Key | Component | Purpose |
 |-----|-----|-----------|---------|
-| Chat | 1 | `Chat.svelte` | General AI conversation |
-| Feedback | 2 | `Feedback.svelte` | AI feedback on document/selection |
-| Revise | 3 | `Revise.svelte` | AI-powered revision generation |
-| Context | 4 | `DocumentContext.svelte` | Document context reference |
-| Readers | 5 | `Readers.svelte` | Reader persona configuration |
-| Settings | 6 | `AISettings.svelte` | Provider/model configuration |
+| Ask Editor | 1 | `EditorReview.svelte` | Unified editor with focus toggles and protected-writing controls |
+| Chat | 2 | `Chat.svelte` | General AI conversation |
+| Feedback | 3 | `Feedback.svelte` | AI feedback on document/selection |
+| Revise | 4 | `Revise.svelte` | AI-powered revision generation |
+| Context | 5 | `DocumentContext.svelte` | Document context reference |
+| Readers | 6 | `Readers.svelte` | Reader persona configuration |
+| Settings | — | `AISettings.svelte` | Provider/model configuration |
+
+## Ask Editor
+
+Unified editor surface:
+
+- Primary action: `Ask Editor` / `Review`
+- Focus toggles: Reader View, Voice Guard, Specificity, Structure, Clarity, Line Notes,
+  Grammar Only, Policy Safety, Challenge
+- Risk selector: ordinary, high stakes, college app
+- Policy selector: normal, unknown, grammar only, no substantive AI, custom policy
+- Optional Reader Personas layer through `personaModes.editor`, default OFF
+- Uses the shared editor contract in `src/lib/ai/editor/`
+- Currently routes through the existing annotation-first feedback stream while the
+  structured generate-object harness matures
 
 ## Chat Mode
 
