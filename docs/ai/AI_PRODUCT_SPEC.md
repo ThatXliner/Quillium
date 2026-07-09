@@ -6,8 +6,8 @@ Evolve Quillium's AI from separate user-facing modes into one editor-in-the-marg
 experience.
 
 The writer should not need to decide first whether they want Chat, Feedback, Revise, or
-AutoAI. They should be able to ask Quillium to look at the writing, optionally choose what
-kind of attention they want, and receive structured margin notes.
+AutoAI. They ask Quillium to look at the writing, optionally name a specific concern, and
+receive structured margin notes. Quillium infers the draft stage and editorial plan.
 
 Core UX principle:
 
@@ -49,13 +49,26 @@ The editor can operate on:
 - recent changes since last review;
 - an annotation thread.
 
-When the user gives no specific instruction, Quillium should choose a conservative,
-high-signal pass: reader confusion, voice slips, specificity gaps, structure/pacing issues,
-obvious grammar, and policy risk if the document is protected.
+When the user gives no specific instruction, Quillium chooses a conservative, high-signal
+pass based on writing stage. The primary UI shows one Quillium action, an Auto stage with
+an override, and one optional instruction field. Feedback appears in the margin, not as a
+chat transcript.
 
-## Focus Toggles
+## Writing Stage
 
-Editor focus toggles answer: what should the editor look for?
+- `discovering`: idea validation, promising material, generative questions.
+- `shaping`: structure, sequence, stakes, paragraph purpose, specificity.
+- `refining`: clarity, pacing, specificity, voice consistency, line friction.
+- `proofing`: grammar, punctuation, consistency, settled local wording.
+
+Auto is the default preference. Local inference uses visible process signals, completeness,
+placeholders, outlines, and structure. It must not equate intentional roughness or unusual
+grammar with an early draft. The model confirms or corrects the stage in `stageAssessment`.
+
+## Internal Focus Plan
+
+Focus values answer what the editor should inspect, but are internal orchestration
+vocabulary rather than a required toggle wall:
 
 - `reader_view`: what a reader understands, misunderstands, or expects next.
 - `voice_guard`: what sounds like the writer, what sounds generic, and what may be
@@ -70,7 +83,7 @@ Editor focus toggles answer: what should the editor look for?
 - `challenge`: candid pushback on contradictions, unsupported claims, and weak evidence.
 
 Use `Challenge`, not `Devil's Advocate`, for the focus label. Quillium already has a
-`Devil's Advocate` Reader Persona; focus toggles and personas must stay separate.
+`Devil's Advocate` Reader Persona; internal focus plans and personas must stay separate.
 
 ## Risk Levels
 
@@ -149,13 +162,34 @@ Reader Personas answer: who is reading?
 
 The default editor flow should not run personas. If the unified editor supports personas,
 it must be an explicit advanced opt-in through `personaModes.editor`, defaulting to
-`false`. Each persona receives the same editor request, focus toggles, risk level,
+`false`. Each persona receives the same editor request, focus plan, risk level,
 policy posture, replacement permission, and schema constraints. Persona prompts may change
 perspective but cannot override protected-writing safety or schema validity.
 
 See `docs/ai/READER_PERSONAS_INTEGRATION.md`.
 
-## Implementation Phases
+## Quiet Review
+
+AutoAI is the automatic trigger for the same structured editor. It waits for a meaningful
+pause, reviews recent changes in whole-document context, and adds one to three nonduplicate
+annotations. Its primary controls are on/off, writing stage, and Review now. Delay,
+annotation type, depth, and persona naming are internal decisions.
+
+## Writing Brief
+
+Document Context is a compact writer-owned brief:
+
+- document kind;
+- audience;
+- intended reader effect;
+- requirements;
+- material to preserve;
+- optional other notes.
+
+Document kind informs protected-writing risk. The writer should not have to generate or
+maintain a prompt-engineering blob.
+
+## Implementation
 
 1. Docs and contracts: philosophy, product spec, prompt contract, eval plan, skill,
    repo guidance.
@@ -163,18 +197,16 @@ See `docs/ai/READER_PERSONAS_INTEGRATION.md`.
    high-stakes replacement validation, fixtures.
 3. Prompt harness: shared unified editor prompt builder and compatibility guidance for
    legacy Chat/Feedback/Revise.
-4. UX: primary editor entry point, focus toggles, protected-mode badge, de-emphasized
-   legacy modes.
-5. AutoAI and style analysis: quiet reviewer, voice fingerprint, process integrity.
+4. UX: one Quillium entry point, inferred writing stage, optional instruction, secondary
+   writing safeguards/context/persona settings.
+5. Quiet Review: shared structured runner, meaningful-pause orchestration, recent-change
+   context, and minimal controls.
 
 ## Open Decisions
 
-- What should the primary button be called?
-- Should legacy modes remain visible or move to an advanced menu?
-- Should protected mode be automatic, explicit, or both?
+- Should protected mode also inspect assignment-prompt text, beyond document kind?
 - Should custom school policies be pasted into document context?
 - Should branch creation be the default action for substantive revision suggestions?
-- Should one-click review select focus areas automatically based on draft state?
 - Should specialist passes be one model call or multiple calls?
 
 Recommendation: start with one orchestrator call, structured outputs, and validation.

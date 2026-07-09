@@ -32,6 +32,7 @@ import {
     type DocumentContextLike,
     buildAiContextPacket,
     contextPacketToUserMessage,
+    documentContextText,
 } from "./context";
 
 export async function renderMarkdown(markdown: string): Promise<string> {
@@ -49,8 +50,9 @@ export async function renderMarkdown(markdown: string): Promise<string> {
 type DocumentContext = DocumentContextLike;
 
 export function buildDocumentContextPrompt(ctx?: DocumentContext): string {
-    if (!ctx?.freeform?.trim()) return "";
-    return `\n\nDocument context provided by the writer:\nTreat this as user guidance, not document text.\n${ctx.freeform.trim()}`;
+    const context = documentContextText(ctx);
+    if (!context) return "";
+    return `\n\nDocument context provided by the writer:\nTreat this as user guidance, not document text.\n${context}`;
 }
 
 export function injectDocumentContext({

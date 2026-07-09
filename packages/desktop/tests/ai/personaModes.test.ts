@@ -5,6 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import {
     DEFAULT_PERSONA_MODES,
     parsePersonaModes,
+    parseDocumentContext,
     personaModes,
     setPersonasForMode,
 } from "$lib/ai/settings.svelte";
@@ -51,6 +52,33 @@ describe("personaModes migration", () => {
             feedback: true,
             revise: false,
             editor: true,
+        });
+    });
+});
+
+describe("writing brief migration", () => {
+    it("preserves the previous freeform document context", () => {
+        expect(parseDocumentContext({ freeform: "Keep this direct." })).toEqual({
+            documentType: "general",
+            audience: "",
+            purpose: "",
+            constraints: "",
+            preserve: "",
+            freeform: "Keep this direct.",
+        });
+    });
+
+    it("rejects an unknown document kind without dropping other fields", () => {
+        expect(
+            parseDocumentContext({
+                documentType: "mystery",
+                audience: "First-time readers",
+                purpose: "Understand the proposal",
+            }),
+        ).toMatchObject({
+            documentType: "general",
+            audience: "First-time readers",
+            purpose: "Understand the proposal",
         });
     });
 });

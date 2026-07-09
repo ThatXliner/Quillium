@@ -36,17 +36,56 @@ const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 const PERSONA_MODES_KEY = "quillium-ai-persona-modes";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 
+export const DOCUMENT_KINDS = [
+    "general",
+    "college_application",
+    "academic",
+    "professional",
+    "personal",
+    "fiction",
+] as const;
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+
 export type DocumentContext = {
+    documentType: DocumentKind;
+    audience: string;
+    purpose: string;
+    constraints: string;
+    preserve: string;
     freeform: string;
 };
 
+export const DEFAULT_DOCUMENT_CONTEXT: DocumentContext = {
+    documentType: "general",
+    audience: "",
+    purpose: "",
+    constraints: "",
+    preserve: "",
+    freeform: "",
+};
+
+export function parseDocumentContext(raw: unknown): DocumentContext {
+    if (!raw || typeof raw !== "object") return { ...DEFAULT_DOCUMENT_CONTEXT };
+    const value = raw as Record<string, unknown>;
+    return {
+        documentType: DOCUMENT_KINDS.includes(value.documentType as DocumentKind)
+            ? (value.documentType as DocumentKind)
+            : "general",
+        audience: typeof value.audience === "string" ? value.audience : "",
+        purpose: typeof value.purpose === "string" ? value.purpose : "",
+        constraints: typeof value.constraints === "string" ? value.constraints : "",
+        preserve: typeof value.preserve === "string" ? value.preserve : "",
+        freeform: typeof value.freeform === "string" ? value.freeform : "",
+    };
+}
+
 function loadDocumentContext(): DocumentContext {
-    if (typeof localStorage === "undefined") return { freeform: "" };
+    if (typeof localStorage === "undefined") return { ...DEFAULT_DOCUMENT_CONTEXT };
     try {
         const stored = localStorage.getItem(DOCUMENT_CONTEXT_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) return parseDocumentContext(JSON.parse(stored));
     } catch {}
-    return { freeform: "" };
+    return { ...DEFAULT_DOCUMENT_CONTEXT };
 }
 
 export function saveDocumentContext() {
@@ -57,7 +96,14 @@ export function saveDocumentContext() {
 export const documentContext = $state<DocumentContext>(loadDocumentContext());
 
 export function hasDocumentContext(): boolean {
-    return documentContext.freeform.trim().length > 0;
+    return (
+        documentContext.documentType !== "general" ||
+        documentContext.audience.trim().length > 0 ||
+        documentContext.purpose.trim().length > 0 ||
+        documentContext.constraints.trim().length > 0 ||
+        documentContext.preserve.trim().length > 0 ||
+        documentContext.freeform.trim().length > 0
+    );
 }
 
 // ---------------------------------------------------------------------------

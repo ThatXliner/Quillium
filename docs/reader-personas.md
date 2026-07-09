@@ -122,9 +122,10 @@ toggles.
 - Reader Personas answer: who is reading?
 - Internal specialists answer: how might the prompt/orchestrator organize work?
 
-The baseline one-click editor is one structured editor run using focus toggles. If
+The baseline Quillium review is one structured editor run using an inferred stage and
+internal focus plan. If
 `personaModes.editor` is enabled later in the UI, each enabled persona should receive the
-same editor request, focus toggles, document risk level, policy posture, replacement
+same editor request, focus plan, document risk level, policy posture, replacement
 permission, and schema constraints. Persona prompts can change perspective, but they cannot
 override high-stakes safety, no-fabrication, detector-evasion refusals, or replacement
 permissions.

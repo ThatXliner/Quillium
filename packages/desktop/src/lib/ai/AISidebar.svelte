@@ -1,308 +1,38 @@
-<!--
-    AISidebar.svelte — Top-level container for all AI features.
-
-    This component renders a floating, resizable sidebar anchored to the
-    left edge of the viewport. It acts as a shell/router for the AI panels:
-    Ask Editor, Chat, Feedback, Revise, DocumentContext, Readers, and AISettings.
-
-    UI states:
-      - Collapsed (pill): a narrow vertical strip of icon buttons.
-      - Expanded: a resizable panel showing the active sub-panel with a
-        header row of icon tabs, title bar, and close/settings controls.
-
-    State variables:
-      `action` — which panel is active (null = collapsed).
-      `resize` — PanelResizeController (panelResize.svelte.ts) owning the
-                 user-resized dimensions and the drag lifecycle.
-
-    The sidebar reads `aiProcessing.active` from settings.svelte.ts to
-    show a rainbow glow animation while any AI request is in flight.
-
-    All non-settings sub-panels are mounted eagerly (visibility toggled via CSS)
-    to avoid re-mount jank when switching tabs.
-
-    Dependencies: EditorReview, Chat, Feedback, Revise, DocumentContext, Readers,
-    AISettings components; aiProcessing from settings.svelte.ts; posthog analytics.
--->
+<!-- AISidebar.svelte — One Quillium surface with secondary configuration screens. -->
 <script lang="ts">
-import {
-    aiProcessing,
-    documentContext,
-    ensureApiKeyLoaded,
-    hasApiKey,
-    stopAllAi,
-} from "$lib/ai/settings.svelte";
+import { aiProcessing, ensureApiKeyLoaded, hasApiKey, stopAllAi } from "$lib/ai/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
-import { appSettings } from "$lib/settings.svelte";
-import {
-    activeAnnotation,
-    annotations,
-    documentContent,
-    selectedText,
-    selectedTextRange,
-} from "$lib/stores";
-import { pointerDrag } from "$lib/ui/pointerDrag";
-import {
-    CompassIcon,
-    MessageCircleIcon,
-    Minimize2Icon,
-    PenLineIcon,
-    SettingsIcon,
-    SparklesIcon,
-    SquareIcon,
-    UsersIcon,
-    XIcon,
-    ZapIcon,
-} from "lucide-svelte";
-/*
- * AISidebar.svelte
- *
- * Top-level container and tab router for all AI feature panels.
- *
- * Renders:
- *   A fixed, resizable sidebar anchored to the left viewport edge.
- *   Two visual states: collapsed pill (icon buttons) and expanded
- *   panel (icon tabs + active sub-panel).
- *
- * Props: none (standalone root component).
- * Events: none dispatched.
- *
- * Stores read:
- *   - aiProcessing.active (settings.svelte.ts) — drives the rainbow
- *     glow animation while any AI request is in flight.
- *
- * Stores written: none.
- *
- * Children: EditorReview, Chat, Feedback, Revise, DocumentContext, Readers,
- *   AISettings. All non-settings sub-panels are mounted eagerly and toggled via CSS
- *   visibility to avoid re-mount jank on tab switches.
- *
- * Resize system: see PanelResizeController in panelResize.svelte.ts.
- * `resize.isResizing` disables CSS transitions so the panel tracks the
- * cursor without animation lag.
- */
-import { tick } from "svelte";
+import { ArrowLeftIcon, SettingsIcon, SparklesIcon, SquareIcon, XIcon } from "lucide-svelte";
 import AISettings from "./AISettings.svelte";
-import Chat from "./Chat.svelte";
-import ContextInfoButton from "./ContextInfoButton.svelte";
 import DocumentContext from "./DocumentContext.svelte";
 import EditorReview from "./EditorReview.svelte";
-import Feedback from "./Feedback.svelte";
 import Readers from "./Readers.svelte";
-import Revise from "./Revise.svelte";
-import { buildAnnotationContextInputs } from "./annotationContext";
-import { buildAiContextPacket, shouldShowContextSummary } from "./context";
-import { PanelResizeController } from "./panelResize.svelte";
 
-type Action = null | "editor" | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
-type ContextPanelAction = "chat" | "feedback" | "revise";
+type Action = null | "editor" | "settings" | "context" | "readers";
+
 let action = $state<Action>(null);
-
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
-const actions: {
-    id: NonNullable<Action>;
-    icon: typeof MessageCircleIcon;
-    label: string;
-    shortcut: string;
-    activeClass: string;
-    hoverClass: string;
-    requiresApiKey: boolean;
-    preferredWidth?: number;
-    preferredHeight?: number;
-}[] = [
-    {
-        id: "editor",
-        icon: SparklesIcon,
-        label: "Ask Editor",
-        shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
-        activeClass: "text-teal-600 bg-white/60",
-        hoverClass: "hover:text-teal-600",
-        requiresApiKey: true,
-        preferredWidth: 360,
-        preferredHeight: 640,
-    },
-    {
-        id: "chat",
-        icon: MessageCircleIcon,
-        label: "Chat",
-        shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
-        activeClass: "text-blue-600 bg-white/60",
-        hoverClass: "hover:text-blue-600",
-        requiresApiKey: true,
-        preferredHeight: 600,
-    },
-    {
-        id: "feedback",
-        icon: ZapIcon,
-        label: "Feedback",
-        shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
-        activeClass: "text-green-600 bg-white/60",
-        hoverClass: "hover:text-green-600",
-        requiresApiKey: true,
-        preferredHeight: 600,
-    },
-    {
-        id: "revise",
-        icon: PenLineIcon,
-        label: "Revise",
-        shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
-        activeClass: "text-purple-600 bg-white/60",
-        hoverClass: "hover:text-purple-600",
-        requiresApiKey: true,
-        preferredHeight: 600,
-    },
-    {
-        id: "context",
-        icon: CompassIcon,
-        label: "Document Context",
-        shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
-        activeClass: "text-amber-600 bg-white/60",
-        hoverClass: "hover:text-amber-600",
-        requiresApiKey: true,
-        preferredWidth: 380,
-    },
-    {
-        id: "readers",
-        icon: UsersIcon,
-        label: "Readers",
-        shortcut: isMac ? "⌘⇧6" : "Ctrl+Shift+6",
-        activeClass: "text-rose-600 bg-white/60",
-        hoverClass: "hover:text-rose-600",
-        requiresApiKey: true,
-        preferredWidth: 440,
-    },
-];
-
-const panelTitles: Record<NonNullable<Action>, string> = {
-    editor: "Ask Editor",
-    chat: "Chat with AI",
-    feedback: "Get Feedback",
-    revise: "Revise & Rewrite",
-    context: "Document Context",
-    readers: "Reader Personas",
+let container = $state<HTMLDivElement>();
+const expanded = $derived(action !== null);
+const panelTitles: Record<Exclude<Action, null>, string> = {
+    editor: "Quillium",
     settings: "AI Settings",
+    context: "Document Context",
+    readers: "Reader Perspectives",
 };
 
-const expanded = $derived(action !== null);
-const DEFAULT_WIDTH = 320;
-const DEFAULT_HEIGHT = 570;
-const MIN_WIDTH = 240;
-const MAX_WIDTH = 600;
-const MIN_HEIGHT = 400;
-const MAX_HEIGHT = 800;
-
-const resize: PanelResizeController = new PanelResizeController({
-    minWidth: MIN_WIDTH,
-    maxWidth: MAX_WIDTH,
-    minHeight: MIN_HEIGHT,
-    maxHeight: MAX_HEIGHT,
-    getEffectiveSize: (): { width: number; height: number } => ({
-        width: effectiveWidth,
-        height: effectiveHeight,
-    }),
-});
-
-const defaultWidthForTab = $derived(
-    actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
-);
-const defaultHeightForTab = $derived(
-    actions.find((a) => a.id === action)?.preferredHeight ?? DEFAULT_HEIGHT,
-);
-const effectiveWidth = $derived(resize.customWidth ?? defaultWidthForTab);
-const effectiveHeight = $derived(resize.customHeight ?? defaultHeightForTab);
-const isCustomSize = $derived(resize.customWidth !== null || resize.customHeight !== null);
-const contextPanelMode = $derived(isContextPanelAction(action) ? action : null);
-const headerAnnotationContext = $derived(
-    buildAnnotationContextInputs({
-        annotations: $annotations,
-        documentContent: $documentContent,
-        selectedText: $selectedText,
-        selectedTextRange: $selectedTextRange,
-        activeAnnotation: $activeAnnotation,
-    }),
-);
-const headerContextPacket = $derived(
-    contextPanelMode
-        ? buildAiContextPacket({
-              mode: contextPanelMode,
-              documentContent: $documentContent,
-              selectedText: $selectedText,
-              selectedTextRange: $selectedTextRange,
-              documentContext: { freeform: documentContext.freeform },
-              annotationContext: headerAnnotationContext,
-          })
-        : null,
-);
-// The header info (ℹ) icon stands in for the in-panel context summary card
-// whenever that card isn't shown — either because the packet doesn't warrant a
-// full summary, or because the writer collapsed it via "Hide" / Settings
-// (appSettings.collapseContextSummary). ContextLens hides its card under the
-// same conditions, so exactly one of the two is visible at a time.
-const showHeaderContextInfo = $derived(
-    headerContextPacket !== null &&
-        (appSettings.collapseContextSummary || !shouldShowContextSummary(headerContextPacket)),
-);
-const headerContextRing = $derived(
-    action === "feedback"
-        ? "focus:ring-green-500"
-        : action === "revise"
-          ? "focus:ring-purple-500"
-          : "focus:ring-blue-500",
-);
-
-// Context detail popover (opened by the header info button, rendered by
-// ContextInfoButton). Closed on click-outside, Escape, panel switch, or when
-// the info button itself stops rendering — the dismissal coordination lives
-// in this component's window/sidebar handlers, so the open state does too.
-let showContextPopover = $state(false);
-
-// Auto-close the popover when the info button is no longer relevant (e.g. the
-// user switched to a panel without context, or selection/draft state changed
-// so the button stops rendering).
-$effect(() => {
-    if (!showHeaderContextInfo && showContextPopover) {
-        showContextPopover = false;
+function open(actionToOpen: Exclude<Action, null>): void {
+    ensureApiKeyLoaded();
+    if (actionToOpen === "editor" && !hasApiKey()) {
+        action = "settings";
+        return;
     }
-});
-
-// Inline style when expanded: always set width/height so tab-specific defaults
-// and reset-to-default transitions animate smoothly.
-const containerSizeStyle = $derived(
-    expanded ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;` : "",
-);
-
-// Disable transition during active drag; keep it for expand/collapse
-const transitionClass = $derived(
-    resize.isResizing
-        ? ""
-        : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
-);
-
-let container: HTMLDivElement;
-let iconStrip = $state<HTMLDivElement>();
-let iconEls = $state<HTMLButtonElement[]>([]);
-let stripOverflows = $state(false);
-let canScrollLeft = $state(false);
-let canScrollRight = $state(false);
-
-function updateScrollState() {
-    if (!iconStrip) return;
-    const el = iconStrip;
-    stripOverflows = el.scrollWidth > el.clientWidth + 1;
-    canScrollLeft = el.scrollLeft > 2;
-    canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    action = actionToOpen;
+    posthog.capture("ai_sidebar_opened", { mode: actionToOpen });
 }
 
-function isContextPanelAction(value: Action): value is ContextPanelAction {
-    return value === "chat" || value === "feedback" || value === "revise";
-}
-
-function handleClickOutside(e: MouseEvent) {
-    // The click that ends a drag-resize must not collapse the panel.
-    if (resize.consumeJustResized()) return;
-    const target = e.target as Node;
+function handleClickOutside(event: MouseEvent): void {
+    const target = event.target as Node;
     if (
         expanded &&
         container &&
@@ -316,553 +46,138 @@ function handleClickOutside(e: MouseEvent) {
     }
 }
 
-function selectAction(id: NonNullable<Action>) {
-    // Lazily load the API key from the keychain on first interaction,
-    // avoiding the macOS keychain permission prompt on app startup.
-    ensureApiKeyLoaded();
-    const def = actions.find((a) => a.id === id);
-    if (def?.requiresApiKey && !hasApiKey()) {
+function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && expanded) {
+        const target = event.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") action = null;
+        return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === "1") {
+        event.preventDefault();
+        open("editor");
+    }
+}
+
+$effect(() =>
+    appEventBus.on("ai-open-settings", () => {
         action = "settings";
-        return;
-    }
-    action = id;
-    posthog.capture("ai_sidebar_opened", { mode: id });
-    scrollActiveIntoCenter(id);
-}
-
-function scrollActiveIntoCenter(id: NonNullable<Action>) {
-    tick().then(() => {
-        if (!iconStrip) return;
-        const idx = actions.findIndex((a) => a.id === id);
-        const el = iconEls[idx];
-        if (!el) return;
-        const stripRect = iconStrip.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
-        iconStrip.scrollBy({ left: offset, behavior: "smooth" });
-        // Update scroll state after animation settles
-        setTimeout(updateScrollState, 350);
-    });
-}
-
-function openAiSettingsFromExternalRequest() {
-    action = "settings";
-}
-
-function openChatFromExternalRequest() {
-    action = hasApiKey() ? "chat" : "settings";
-}
-
-// Center the active icon whenever the panel opens
-$effect(() => {
-    if (expanded && action && action !== "settings") {
-        scrollActiveIntoCenter(action);
-    }
-});
-
-// Track overflow/scroll state on the icon strip
-$effect(() => {
-    if (!iconStrip) return;
-    const el = iconStrip;
-    updateScrollState();
-    el.addEventListener("scroll", updateScrollState, { passive: true });
-    const ro = new ResizeObserver(updateScrollState);
-    ro.observe(el);
-    return () => {
-        el.removeEventListener("scroll", updateScrollState);
-        ro.disconnect();
-    };
-});
-
-// App-level event bus for cross-component AI navigation.
-$effect(() => {
-    return appEventBus.on("ai-open-settings", openAiSettingsFromExternalRequest);
-});
-
-// App-level requests to open the chat panel.
-$effect(() => {
-    return appEventBus.on("ai-open-chat", openChatFromExternalRequest);
-});
-
-// Keyboard shortcuts for the sidebar
-const actionKeys: Record<string, NonNullable<Action>> = {
-    "1": "editor",
-    "2": "chat",
-    "3": "feedback",
-    "4": "revise",
-    "5": "context",
-    "6": "readers",
-};
-
-// Dismiss the context popover when clicking anywhere inside the sidebar that
-// isn't the info button or the popover itself. The sidebar container stops
-// click propagation to the window, so handleClickOutside never fires for
-// in-sidebar clicks — this handler covers that gap.
-function handleSidebarClick(e: MouseEvent) {
-    e.stopPropagation();
-    if (!showContextPopover) return;
-    const target = e.target as Element;
-    if (target.closest?.(".context-popover") || target.closest?.("[data-context-info-button]")) {
-        return;
-    }
-    showContextPopover = false;
-}
-
-function handleKeydown(e: KeyboardEvent) {
-    // Escape closes the context popover first, before the sidebar itself.
-    if (e.key === "Escape" && showContextPopover) {
-        showContextPopover = false;
-        e.stopPropagation();
-        return;
-    }
-    // Escape closes the sidebar
-    if (e.key === "Escape" && expanded) {
-        // Only close if focus is not inside an input/textarea in the sidebar
-        const target = e.target as HTMLElement;
-        const isInInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
-        if (!isInInput) {
-            action = null;
-        }
-        return;
-    }
-    // Cmd/Ctrl+Shift+1-6 to open specific panels
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && actionKeys[e.key]) {
-        e.preventDefault();
-        selectAction(actionKeys[e.key]);
-    }
-}
+    }),
+);
+$effect(() => appEventBus.on("ai-open-chat", () => open("editor")));
 </script>
 
 <svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
 
-{#snippet kbdHint(key: string)}
-  <span
-    class="ml-auto text-[9px] font-mono opacity-50 bg-black/10 px-1 py-0.5 rounded"
-    >{key}</span
-  >
-{/snippet}
-
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
-     inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
-     corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
-     + box-shadow squares the shadow at the corners; splitting avoids it while still
-     clipping the blur. The .ai-processing animation targets box-shadow, so it stays on
-     the outer layer alongside the radius. Resize handles and the context popover live
-     inside the inner layer so its overflow-hidden still clips their intentional overhang. -->
 <div
-  id="ai-sidebar"
-  bind:this={container}
-  onclick={handleSidebarClick}
-  style={containerSizeStyle}
-  class="
-        fixed left-4 top-1/2 -translate-y-1/2 z-50 shadow-lg {transitionClass}
-        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[280px] rounded-[100px]'}
-        {aiProcessing.active ? 'ai-processing' : ''}
-    "
+    id="ai-sidebar"
+    bind:this={container}
+    onclick={(event) => event.stopPropagation()}
+    class="fixed left-4 top-1/2 z-50 -translate-y-1/2 overflow-hidden border border-white/30 bg-gray-300/70 shadow-lg backdrop-blur-md transition-[width,height,border-radius] duration-300 {expanded
+        ? 'h-[min(620px,calc(100vh-32px))] w-[min(360px,calc(100vw-32px))] rounded-lg'
+        : 'h-[116px] w-[52px] rounded-full'} {aiProcessing.active ? 'ai-processing' : ''}"
 >
-  <div
-    class="w-full h-full backdrop-blur-md bg-gray-300/70 border border-white/30
-        overflow-hidden {transitionClass}
-        {expanded ? 'rounded-[14px]' : 'rounded-[100px]'}"
-  >
-  <!-- Collapsed pill icons -->
-  <div
-    class="absolute inset-0 flex flex-col items-center py-3 px-2 transition-opacity duration-150
-            {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-  >
-    <div class="flex flex-col gap-1">
-      {#each actions as a}
-        {@const disabled = a.requiresApiKey && !hasApiKey()}
-        <button
-          id="ai-tab-{a.id}"
-          onclick={() => selectAction(a.id)}
-          aria-label={disabled
-            ? `${a.label} (add API key in settings)`
-            : `${a.label} (${a.shortcut})`}
-          title={disabled
-            ? `${a.label} — add an API key in settings`
-            : `${a.label} ${a.shortcut}`}
-          class="p-2 rounded-full transition-colors
-                        {disabled
-            ? 'text-black/20 cursor-pointer'
-            : 'text-black/50 ' + a.hoverClass}"
-        >
-          <a.icon size={18} />
-        </button>
-      {/each}
-    </div>
-    <div class="flex-1"></div>
-    <button
-      onclick={() => (action = "settings")}
-      aria-label={hasApiKey()
-        ? "AI Settings"
-        : "AI Settings — add an API key to get started"}
-      title={hasApiKey()
-        ? "AI Settings"
-        : "AI Settings — add an API key to get started"}
-      class="relative p-2 rounded-full transition-colors
-                {hasApiKey()
-        ? 'text-black/30 hover:text-black/60'
-        : 'text-amber-600/80 hover:text-amber-700'}"
-    >
-      <SettingsIcon size={15} />
-      {#if !hasApiKey()}
-        <span
-          class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"
-        ></span>
-      {/if}
-    </button>
-  </div>
+    {#if !expanded}
+        <div class="flex h-full flex-col items-center justify-between py-3">
+            <button
+                id="quillium-review-button"
+                type="button"
+                onclick={() => open("editor")}
+                aria-label={hasApiKey()
+                    ? "Open Quillium (Command Shift 1)"
+                    : "Configure Quillium"}
+                title={hasApiKey() ? "Quillium ⌘⇧1" : "Configure Quillium"}
+                class="rounded-full p-2 text-teal-700 transition-colors hover:bg-white/45"
+            >
+                <SparklesIcon size={19} />
+            </button>
+            <button
+                type="button"
+                onclick={() => open("settings")}
+                aria-label="AI Settings"
+                title="AI Settings"
+                class="rounded-full p-2 text-black/35 transition-colors hover:bg-white/45 hover:text-black/60"
+            >
+                <SettingsIcon size={16} />
+            </button>
+        </div>
+    {:else}
+        <div class="flex h-full flex-col">
+            <header class="flex h-11 shrink-0 items-center gap-1 border-b border-black/10 px-2.5">
+                {#if action !== "editor"}
+                    <button
+                        type="button"
+                        onclick={() => (action = hasApiKey() ? "editor" : null)}
+                        aria-label="Back to Quillium"
+                        class="rounded p-1.5 text-black/35 hover:bg-white/40 hover:text-black/60"
+                    >
+                        <ArrowLeftIcon size={15} />
+                    </button>
+                {:else}
+                    <SparklesIcon size={15} class="ml-1 text-teal-700" />
+                {/if}
+                <span class="min-w-0 flex-1 truncate text-xs font-semibold text-black/55">
+                    {action ? panelTitles[action] : ""}
+                </span>
+                {#if aiProcessing.active}
+                    <button
+                        id="ai-stop-button"
+                        type="button"
+                        onclick={stopAllAi}
+                        aria-label="Stop AI"
+                        title="Stop"
+                        class="rounded p-1.5 text-red-500/70 hover:bg-red-50 hover:text-red-600"
+                    >
+                        <SquareIcon size={13} fill="currentColor" />
+                    </button>
+                {/if}
+                {#if action === "editor"}
+                    <button
+                        type="button"
+                        onclick={() => (action = "settings")}
+                        aria-label="AI Settings"
+                        class="rounded p-1.5 text-black/30 hover:bg-white/40 hover:text-black/60"
+                    >
+                        <SettingsIcon size={14} />
+                    </button>
+                {/if}
+                <button
+                    type="button"
+                    onclick={() => (action = null)}
+                    aria-label="Close"
+                    class="rounded p-1.5 text-black/30 hover:bg-white/40 hover:text-black/60"
+                >
+                    <XIcon size={15} />
+                </button>
+            </header>
 
-  <!-- Expanded panel -->
-  <div
-    class="w-full h-full flex flex-col transition-opacity duration-150
-            {expanded
-      ? 'opacity-100 delay-[80ms]'
-      : 'opacity-0 invisible pointer-events-none'}"
-  >
-    <!-- Row 1: icon wheel -->
-    <div class="shrink-0 pt-2.5 pb-1">
-      <div
-        bind:this={iconStrip}
-        class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
-        style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
-          ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'});`
-          : ''}"
-      >
-        {#each actions as a, i}
-          {@const activeIdx = actions.findIndex((x) => x.id === action)}
-          {@const dist = activeIdx < 0 ? 0 : Math.abs(i - activeIdx)}
-          {@const maxDist =
-            activeIdx < 0
-              ? 1
-              : Math.max(activeIdx, actions.length - 1 - activeIdx)}
-          {@const t = maxDist === 0 ? 0 : dist / maxDist}
-          {@const opacity = activeIdx < 0 ? 0.7 : 1 - (1 - 0.45) * Math.sqrt(t)}
-          {@const disabled = a.requiresApiKey && !hasApiKey()}
-          <button
-            bind:this={iconEls[i]}
-            onclick={() => selectAction(a.id)}
-            aria-label={disabled
-              ? `${a.label} (add API key in settings)`
-              : `${a.label} (${a.shortcut})`}
-            title={disabled
-              ? `${a.label} — add an API key in settings`
-              : `${a.label} ${a.shortcut}`}
-            style="opacity: {disabled ? opacity * 0.4 : opacity};"
-            class="p-2 rounded-full shrink-0 transition-all duration-200
-                            {action === a.id
-              ? a.activeClass
-              : disabled
-                ? 'text-black/30'
-                : 'text-black/70 hover:bg-white/30'}"
-          >
-            <a.icon size={16} />
-          </button>
-        {/each}
-      </div>
-    </div>
-
-    <!-- Row 2: title + reset + settings + close -->
-    <div class="flex items-center px-3 pb-2 shrink-0">
-      <span class="flex-1 text-xs font-semibold text-black/50 truncate">
-        {action ? panelTitles[action] : ""}
-      </span>
-      {#if isCustomSize}
-        <button
-          onclick={() => resize.reset()}
-          aria-label="Reset to default size"
-          title="Reset size"
-          class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
-        >
-          <Minimize2Icon size={14} />
-        </button>
-      {/if}
-      {#if showHeaderContextInfo && headerContextPacket}
-        <ContextInfoButton
-          packet={headerContextPacket}
-          ringClass={headerContextRing}
-          bind:open={showContextPopover}
-        />
-      {/if}
-      <button
-        onclick={() => (action = action === "settings" ? null : "settings")}
-        aria-label="AI Settings"
-        title="AI Settings"
-        class="p-1.5 rounded-full transition-colors shrink-0
-                    {action === 'settings'
-          ? 'text-black/60 bg-white/60'
-          : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
-      >
-        <SettingsIcon size={14} />
-      </button>
-      <button
-        onclick={() => (action = null)}
-        aria-label="Close"
-        class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
-      >
-        <XIcon size={14} />
-      </button>
-    </div>
-
-    <div class="w-full h-px bg-black/10 shrink-0"></div>
-
-    <!-- Content — all panels mounted upfront to avoid mount-time jank -->
-    <div class="flex-1 flex flex-col min-h-0 relative">
-      <div
-        class="absolute inset-0 flex flex-col {action === 'editor'
-          ? ''
-          : 'hidden'}"
-      >
-        <EditorReview />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'chat'
-          ? ''
-          : 'hidden'}"
-      >
-        <Chat />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'feedback'
-          ? ''
-          : 'hidden'}"
-      >
-        <Feedback />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'revise'
-          ? ''
-          : 'hidden'}"
-      >
-        <Revise />
-      </div>
-      <div
-        class="absolute inset-0 overflow-y-auto {action === 'context'
-          ? ''
-          : 'hidden'}"
-      >
-        <DocumentContext />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'readers'
-          ? ''
-          : 'hidden'}"
-      >
-        <Readers />
-      </div>
-      {#if action === "settings"}<div class="absolute inset-0 flex flex-col">
-          <AISettings />
-        </div>{/if}
-    </div>
-  </div>
-
-  {#if expanded}
-    <div
-      role="separator"
-      aria-label="Resize width"
-      aria-orientation="vertical"
-      class="resize-handle resize-handle-right"
-      use:pointerDrag={resize.dragOptions("right")}
-    ></div>
-    <div
-      role="separator"
-      aria-label="Resize height"
-      aria-orientation="horizontal"
-      class="resize-handle resize-handle-bottom"
-      use:pointerDrag={resize.dragOptions("bottom")}
-    ></div>
-    <div
-      role="separator"
-      aria-label="Resize panel"
-      class="resize-handle resize-handle-corner"
-      use:pointerDrag={resize.dragOptions("corner")}
-    ></div>
-  {/if}
-  </div>
+            <main class="relative min-h-0 flex-1">
+                {#if action === "editor"}
+                    <EditorReview
+                        onOpenContext={() => (action = "context")}
+                        onOpenReaders={() => (action = "readers")}
+                    />
+                {:else if action === "settings"}
+                    <AISettings />
+                {:else if action === "context"}
+                    <DocumentContext />
+                {:else if action === "readers"}
+                    <Readers />
+                {/if}
+            </main>
+        </div>
+    {/if}
 </div>
 
-<!-- Stop button — appears below the sidebar when AI is processing -->
-{#if aiProcessing.active}
-  <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
-       inner button carries backdrop-blur + radius + overflow-hidden so the blur is
-       clipped without WebKit squaring the shadow. (rounded-full makes the squaring
-       geometrically invisible here, but split for consistency.) -->
-  <div
-    class="fixed left-4 z-50 rounded-full shadow-lg animate-fade-in"
-    style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
-  >
-    <button
-      id="ai-stop-button"
-      onclick={stopAllAi}
-      aria-label="Stop AI"
-      title="Stop AI request"
-      class="flex items-center gap-1.5 px-3 py-1.5
-              backdrop-blur-md bg-red-500/80 hover:bg-red-600/90
-              text-white text-xs font-medium rounded-full
-              transition-all duration-200 overflow-hidden"
-    >
-      <SquareIcon size={12} fill="currentColor" />
-      Stop
-    </button>
-  </div>
-{/if}
-
 <style>
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: scale(0.9);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  .animate-fade-in {
-    animation: fade-in 150ms ease-out;
-  }
-  div[style*="scrollbar-width"]::-webkit-scrollbar {
-    display: none;
-  }
-
-  .resize-handle {
-    position: absolute;
-    z-index: 10;
-    /* Prevent the browser from treating a drag on the handle as a scroll
-           gesture on touch devices, so pointer drags resize the panel. */
-    touch-action: none;
-    /*background: transparent;
-        border: 0;
-        padding: 0;*/
-  }
-
-  .resize-handle-right {
-    top: 14px;
-    bottom: 14px;
-    right: -2px;
-    width: 10px;
-    cursor: ew-resize;
-  }
-
-  .resize-handle-bottom {
-    left: 14px;
-    right: 14px;
-    bottom: -2px;
-    height: 10px;
-    cursor: ns-resize;
-  }
-
-  .resize-handle-corner {
-    right: 0;
-    bottom: 0;
-    width: 14px;
-    height: 14px;
-    cursor: nwse-resize;
-  }
-
-  .resize-handle-right::after {
-    content: "";
-    position: absolute;
-    top: 25%;
-    bottom: 25%;
-    right: 4px;
-    width: 2px;
-    border-radius: 9999px;
-    background-color: rgba(0, 0, 0, 0.08);
-    opacity: 0;
-    transition:
-      background-color 200ms ease,
-      opacity 200ms ease;
-  }
-
-  .resize-handle-right:hover::after {
-    background-color: rgba(0, 0, 0, 0.18);
-    opacity: 1;
-  }
-
-  .resize-handle-bottom::after {
-    content: "";
-    position: absolute;
-    left: 25%;
-    right: 25%;
-    bottom: 4px;
-    height: 2px;
-    border-radius: 9999px;
-    background-color: rgba(0, 0, 0, 0.08);
-    opacity: 0;
-    transition:
-      background-color 200ms ease,
-      opacity 200ms ease;
-  }
-
-  .resize-handle-bottom:hover::after {
-    background-color: rgba(0, 0, 0, 0.18);
-    opacity: 1;
-  }
-
-  .resize-handle-corner::after {
-    content: "";
-    position: absolute;
-    right: 3px;
-    bottom: 3px;
-    width: 5px;
-    height: 5px;
-    border-right: 2px solid rgba(0, 0, 0, 0.2);
-    border-bottom: 2px solid rgba(0, 0, 0, 0.2);
-    border-radius: 1px;
-    opacity: 0;
-    transition: opacity 200ms ease;
-  }
-
-  .resize-handle-corner:hover::after {
-    opacity: 1;
-  }
-
-  /* AI processing glow — reads aiProcessing.active from settings.svelte.ts.
-       To remove this effect, delete this block and the {aiProcessing.active ? 'ai-processing' : ''}
-       class binding on the container div. No other files need changing. */
-  @keyframes rainbow-glow {
-    0% {
-      box-shadow:
-        0 0 0 2px rgba(99, 102, 241, 0.5),
-        0 0 16px 4px rgba(99, 102, 241, 0.25);
-    }
-    25% {
-      box-shadow:
-        0 0 0 2px rgba(168, 85, 247, 0.5),
-        0 0 16px 4px rgba(168, 85, 247, 0.25);
-    }
-    50% {
-      box-shadow:
-        0 0 0 2px rgba(236, 72, 153, 0.5),
-        0 0 16px 4px rgba(236, 72, 153, 0.25);
-    }
-    75% {
-      box-shadow:
-        0 0 0 2px rgba(251, 146, 60, 0.5),
-        0 0 16px 4px rgba(251, 146, 60, 0.25);
-    }
-    100% {
-      box-shadow:
-        0 0 0 2px rgba(99, 102, 241, 0.5),
-        0 0 16px 4px rgba(99, 102, 241, 0.25);
-    }
-  }
-
-  .ai-processing {
-    animation: rainbow-glow 2s linear infinite;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    * {
-      transition-duration: 0.01ms !important;
-    }
     .ai-processing {
-      animation: none;
+        animation: ai-glow 2s linear infinite;
     }
-  }
+
+    @keyframes ai-glow {
+        0% { box-shadow: 0 0 14px rgb(45 212 191 / 24%); }
+        50% { box-shadow: 0 0 20px rgb(59 130 246 / 30%); }
+        100% { box-shadow: 0 0 14px rgb(45 212 191 / 24%); }
+    }
 </style>

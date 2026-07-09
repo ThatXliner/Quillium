@@ -63,7 +63,8 @@ The production prompt constant is `QUILLIUM_EDITOR_SYSTEM_PROMPT`.
 - selected text and surrounding/full-document context;
 - document context and voice fingerprint;
 - user intent and custom quick action, if any;
-- editor focus toggles;
+- inferred or writer-selected writing stage;
+- internal editor focus plan;
 - document risk level;
 - policy posture;
 - computed replacement permission;
@@ -75,6 +76,7 @@ The production prompt constant is `QUILLIUM_EDITOR_SYSTEM_PROMPT`.
 `QuilliumEditorResponse` includes:
 
 - `summaryForSidebar`;
+- `stageAssessment` with stage, confidence, and evidence signals;
 - `focusUsed`;
 - `annotations`;
 - optional `blockedRequests`;

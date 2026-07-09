@@ -202,8 +202,8 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
 <div class="flex-1 flex flex-col min-h-0">
     <div class="px-3 pt-1.5 pb-1 text-[10px] text-gray-400">
         Dots control how much detail each reader gives in their feedback.
-        Turn personas on per mode (the toggle in Feedback / Revise) to use them —
-        they run one reply per reader, so they cost more tokens.
+        Turn Reader perspectives on in Quillium's Review settings to use them. Each
+        selected reader runs a separate review, so they cost more tokens.
     </div>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -282,6 +282,6 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
     </div>
 
     <div class="px-3 pb-2 text-[10px] text-center text-gray-400">
-        Selected readers provide feedback via Feedback & Revise
+        Selected readers provide perspectives during Quillium review
     </div>
 </div>

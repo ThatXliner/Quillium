@@ -1,48 +1,60 @@
 /**
- * autoai/settings.svelte.ts — AutoAI collaborator settings store.
+ * autoai/settings.svelte.ts — Minimal settings for Quillium's quiet reviewer.
  *
- * Persists to localStorage. Read by AutoAIWidget and the engine.
+ * Review cadence, annotation mix, and editorial depth are internal decisions.
+ * Writers choose only whether quiet review is active and may override the
+ * automatically inferred writing stage.
  */
+
+import {
+    WRITING_STAGE_PREFERENCES,
+    type WritingStagePreference,
+} from "$lib/ai/editor/editorContract";
 
 const STORAGE_KEY = "quillium-autoai-settings";
 
-export type AutoAIAnnotationType = "comment" | "suggestion" | "revision";
-export type AutoAIConservativeness = "conservative" | "balanced" | "thorough";
-export type AutoAIMode = "continuous" | "manual";
-
 export type AutoAISettings = {
     enabled: boolean;
-    mode: AutoAIMode;
-    debounceMs: number;
-    persona: string;
-    annotationTypes: AutoAIAnnotationType[];
-    conservativeness: AutoAIConservativeness;
+    stagePreference: WritingStagePreference;
 };
 
-const DEFAULTS: AutoAISettings = {
+export const DEFAULT_AUTOAI_SETTINGS: AutoAISettings = {
     enabled: false,
-    mode: "continuous",
-    debounceMs: 10000,
-    persona: "AutoAI",
-    annotationTypes: ["comment", "suggestion", "revision"],
-    conservativeness: "conservative",
+    stagePreference: "auto",
 };
+
+export function parseAutoAISettings(raw: unknown): AutoAISettings {
+    if (!raw || typeof raw !== "object") return { ...DEFAULT_AUTOAI_SETTINGS };
+    const value = raw as Record<string, unknown>;
+    const stagePreference = WRITING_STAGE_PREFERENCES.includes(
+        value.stagePreference as WritingStagePreference,
+    )
+        ? (value.stagePreference as WritingStagePreference)
+        : "auto";
+
+    // The old manual mode promised not to review automatically. Preserve that
+    // expectation during migration by leaving quiet review paused.
+    const migratedManualMode = value.mode === "manual";
+    return {
+        enabled: typeof value.enabled === "boolean" && !migratedManualMode && value.enabled,
+        stagePreference,
+    };
+}
 
 function load(): AutoAISettings {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { ...DEFAULTS };
-        return { ...DEFAULTS, ...JSON.parse(raw) };
+        return raw ? parseAutoAISettings(JSON.parse(raw)) : { ...DEFAULT_AUTOAI_SETTINGS };
     } catch {
-        return { ...DEFAULTS };
+        return { ...DEFAULT_AUTOAI_SETTINGS };
     }
 }
 
 export const autoAISettings = $state<AutoAISettings>(
-    typeof localStorage !== "undefined" ? load() : { ...DEFAULTS },
+    typeof localStorage !== "undefined" ? load() : { ...DEFAULT_AUTOAI_SETTINGS },
 );
 
-export function persistAutoAISettings() {
+export function persistAutoAISettings(): void {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(autoAISettings));
     } catch {}

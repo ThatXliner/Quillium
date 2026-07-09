@@ -34,6 +34,15 @@ export const EDITOR_FOCUSES = [
 ] as const;
 export type EditorFocus = (typeof EDITOR_FOCUSES)[number];
 
+export const WRITING_STAGES = ["discovering", "shaping", "refining", "proofing"] as const;
+export type WritingStage = (typeof WRITING_STAGES)[number];
+
+export const WRITING_STAGE_PREFERENCES = ["auto", ...WRITING_STAGES] as const;
+export type WritingStagePreference = (typeof WRITING_STAGE_PREFERENCES)[number];
+
+export const WRITING_STAGE_SOURCES = ["inferred", "writer_selected"] as const;
+export type WritingStageSource = (typeof WRITING_STAGE_SOURCES)[number];
+
 export const REPLACEMENT_PERMISSIONS = [
     "may_generate_replacement_text",
     "grammar_replacements_only",
@@ -162,6 +171,8 @@ export type QuilliumEditorRequest = {
     };
     userIntent?: string;
     customQuickAction?: string;
+    writingStage: WritingStage;
+    writingStageSource: WritingStageSource;
     focus: EditorFocus[];
     documentRiskLevel: DocumentRiskLevel;
     policyPosture: PolicyPosture;
@@ -211,6 +222,11 @@ export type BlockedRequest = {
 
 export type QuilliumEditorResponse = {
     summaryForSidebar: string;
+    stageAssessment: {
+        stage: WritingStage;
+        confidence: number;
+        signals: string[];
+    };
     focusUsed: EditorFocus[];
     annotations: AnnotationCandidate[];
     blockedRequests?: BlockedRequest[];
@@ -224,6 +240,9 @@ export type QuilliumEditorResponse = {
 export const DocumentRiskLevelSchema = z.enum(DOCUMENT_RISK_LEVELS);
 export const PolicyPostureSchema = z.enum(POLICY_POSTURES);
 export const EditorFocusSchema = z.enum(EDITOR_FOCUSES);
+export const WritingStageSchema = z.enum(WRITING_STAGES);
+export const WritingStagePreferenceSchema = z.enum(WRITING_STAGE_PREFERENCES);
+export const WritingStageSourceSchema = z.enum(WRITING_STAGE_SOURCES);
 export const ReplacementPermissionSchema = z.enum(REPLACEMENT_PERMISSIONS);
 export const QuilliumEditorSurfaceSchema = z.enum(EDITOR_SURFACES);
 
@@ -290,6 +309,8 @@ export const QuilliumEditorRequestSchema = z.object({
         .optional(),
     userIntent: z.string().optional(),
     customQuickAction: z.string().optional(),
+    writingStage: WritingStageSchema,
+    writingStageSource: WritingStageSourceSchema,
     focus: z.array(EditorFocusSchema),
     documentRiskLevel: DocumentRiskLevelSchema,
     policyPosture: PolicyPostureSchema,
@@ -339,6 +360,11 @@ export const BlockedRequestSchema = z.object({
 
 export const QuilliumEditorResponseSchema = z.object({
     summaryForSidebar: z.string(),
+    stageAssessment: z.object({
+        stage: WritingStageSchema,
+        confidence: z.number().min(0).max(1),
+        signals: z.array(z.string()),
+    }),
     focusUsed: z.array(EditorFocusSchema),
     annotations: z.array(AnnotationCandidateSchema),
     blockedRequests: z.array(BlockedRequestSchema).optional(),
@@ -355,8 +381,149 @@ export function isProtectedRiskLevel(documentRiskLevel: DocumentRiskLevel): bool
     return documentRiskLevel === "high_stakes" || documentRiskLevel === "college_application";
 }
 
+export function documentRiskForDocumentType(documentType?: string): DocumentRiskLevel {
+    if (documentType === "college_application") return "college_application";
+    if (documentType === "academic" || documentType === "personal") return "high_stakes";
+    return "ordinary";
+}
+
 export function focusIsGrammarOnly(focus: EditorFocus[]): boolean {
     return focus.length > 0 && focus.every((item) => item === "grammar_only");
+}
+
+export const WRITING_STAGE_FOCUSES: Record<WritingStage, EditorFocus[]> = {
+    discovering: ["reader_view", "structure", "specificity", "voice_guard"],
+    shaping: ["structure", "reader_view", "specificity", "voice_guard"],
+    refining: ["clarity", "specificity", "voice_guard", "line_notes"],
+    proofing: ["grammar_only", "clarity", "voice_guard"],
+};
+
+export function focusForWritingStage(stage: WritingStage): EditorFocus[] {
+    return [...WRITING_STAGE_FOCUSES[stage]];
+}
+
+const INTENT_FOCUS_PATTERNS: Array<{ focus: EditorFocus; pattern: RegExp }> = [
+    { focus: "grammar_only", pattern: /\b(?:grammar|proofread|spelling|punctuation|typos?)\b/i },
+    { focus: "structure", pattern: /\b(?:structure|organization|organize|order|sequence)\b/i },
+    { focus: "voice_guard", pattern: /\b(?:voice|tone|sounds? like me|style)\b/i },
+    { focus: "specificity", pattern: /\b(?:specific|detail|concrete|evidence|example|scene)\b/i },
+    { focus: "clarity", pattern: /\b(?:clarity|clear|confusing|understand)\b/i },
+    { focus: "reader_view", pattern: /\b(?:reader|reaction|land|understood)\b/i },
+    { focus: "challenge", pattern: /\b(?:challenge|push back|counterargument|skeptic)\b/i },
+    { focus: "line_notes", pattern: /\b(?:line edit|sentence|wording|word choice)\b/i },
+    { focus: "policy_safety", pattern: /\b(?:policy|allowed|college application|school rules)\b/i },
+];
+
+export function focusForReview(args: {
+    stage: WritingStage;
+    userIntent?: string;
+}): EditorFocus[] {
+    const intent = args.userIntent?.trim() ?? "";
+    if (!intent) return focusForWritingStage(args.stage);
+    const explicit = INTENT_FOCUS_PATTERNS.filter(({ pattern }) => pattern.test(intent)).map(
+        ({ focus }) => focus,
+    );
+    return explicit.length > 0 ? [...new Set(explicit)] : focusForWritingStage(args.stage);
+}
+
+type StageSignals = {
+    wordCount: number;
+    paragraphCount: number;
+    placeholderCount: number;
+    outlineLineCount: number;
+    fragmentLineCount: number;
+};
+
+export type WritingStageInference = {
+    stage: WritingStage;
+    confidence: number;
+    signals: StageSignals;
+};
+
+/**
+ * A deliberately conservative local estimate used before the model reviews the draft.
+ * It favors visible process signals over grammar so intentional roughness is not treated
+ * as evidence that a writer is early in the process.
+ */
+export function inferWritingStage(documentText: string): WritingStageInference {
+    const text = documentText.trim();
+    if (!text) {
+        return {
+            stage: "discovering",
+            confidence: 1,
+            signals: {
+                wordCount: 0,
+                paragraphCount: 0,
+                placeholderCount: 0,
+                outlineLineCount: 0,
+                fragmentLineCount: 0,
+            },
+        };
+    }
+
+    const words = text.match(/\b[\p{L}\p{N}'’-]+\b/gu) ?? [];
+    const paragraphs = text.split(/\n\s*\n/).filter((part) => part.trim().length > 0);
+    const lines = text.split("\n").map((line) => line.trim());
+    const placeholderMatches = text.match(
+        /\b(?:todo|tbd|tk|fixme|placeholder|insert|expand|research)\b|\[(?:[^\]]*?)\]|\.{3,}/gi,
+    );
+    const outlineLines = lines.filter((line) =>
+        /^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+)|^(?:intro|body|conclusion|section)\s*:?$/i.test(line),
+    );
+    const proseLines = lines.filter(
+        (line) => line.length > 0 && !/^(?:[-*+]\s+|#{1,6}\s+)/.test(line),
+    );
+    const fragmentLines = proseLines.filter(
+        (line) => line.split(/\s+/).length <= 5 && !/[.!?][”"']?$/.test(line),
+    );
+
+    const signals: StageSignals = {
+        wordCount: words.length,
+        paragraphCount: paragraphs.length,
+        placeholderCount: placeholderMatches?.length ?? 0,
+        outlineLineCount: outlineLines.length,
+        fragmentLineCount: fragmentLines.length,
+    };
+
+    const processSignalCount =
+        signals.placeholderCount + signals.outlineLineCount + signals.fragmentLineCount;
+    if (
+        signals.wordCount < 90 ||
+        signals.placeholderCount >= 3 ||
+        signals.outlineLineCount >= Math.max(2, signals.paragraphCount)
+    ) {
+        return {
+            stage: "discovering",
+            confidence: Math.min(0.95, 0.62 + processSignalCount * 0.04),
+            signals,
+        };
+    }
+
+    if (
+        signals.wordCount < 350 ||
+        signals.placeholderCount > 0 ||
+        signals.outlineLineCount > 0 ||
+        signals.paragraphCount < 3
+    ) {
+        return { stage: "shaping", confidence: 0.7, signals };
+    }
+
+    if (signals.wordCount >= 700 && processSignalCount === 0 && signals.paragraphCount >= 5) {
+        return { stage: "proofing", confidence: 0.68, signals };
+    }
+
+    return { stage: "refining", confidence: 0.72, signals };
+}
+
+export function resolveWritingStage(
+    preference: WritingStagePreference,
+    documentText: string,
+): { stage: WritingStage; source: WritingStageSource; inference: WritingStageInference } {
+    const inference = inferWritingStage(documentText);
+    if (preference === "auto") {
+        return { stage: inference.stage, source: "inferred", inference };
+    }
+    return { stage: preference, source: "writer_selected", inference };
 }
 
 export function computeReplacementPermission(args: {
@@ -385,10 +552,20 @@ export function computeReplacementPermission(args: {
 }
 
 export function buildEditorRequest(
-    request: Omit<QuilliumEditorRequest, "replacementPermission"> & {
+    request: Omit<
+        QuilliumEditorRequest,
+        "replacementPermission" | "writingStage" | "writingStageSource"
+    > & {
         replacementPermission?: ReplacementPermission;
+        writingStage?: WritingStage;
+        writingStageSource?: WritingStageSource;
     },
 ): QuilliumEditorRequest {
+    const inferredStage = inferWritingStage(
+        request.fullDocumentExcerpt ?? request.selectedText ?? request.surroundingContext ?? "",
+    );
+    const writingStage = request.writingStage ?? inferredStage.stage;
+    const writingStageSource = request.writingStageSource ?? "inferred";
     const replacementPermission =
         request.replacementPermission ??
         computeReplacementPermission({
@@ -399,6 +576,8 @@ export function buildEditorRequest(
 
     return QuilliumEditorRequestSchema.parse({
         ...request,
+        writingStage,
+        writingStageSource,
         replacementPermission,
     });
 }

@@ -572,7 +572,7 @@ onDestroy(() => {
                         />
                         <span>
                             <span class="block text-xs font-medium text-black/80">AI Tools Tour</span>
-                            <span class="block text-[11px] text-black/55">Chat, Feedback, Revise, and Context buttons</span>
+                            <span class="block text-[11px] text-black/55">Draft review, writing stage, and margin notes</span>
                         </span>
                     </label>
                     {/if}

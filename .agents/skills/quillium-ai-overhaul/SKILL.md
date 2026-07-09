@@ -39,7 +39,26 @@ model should be:
 > The writer asks Quillium to look at the writing. Quillium returns useful margin notes,
 > questions, and revision paths.
 
-Design around one primary AI action plus focus toggles:
+Design around one primary Quillium action. Do not expose Chat, Feedback, Revise,
+AutoAI, or editorial focus as competing top-level modes. The normal flow is:
+
+1. infer the writing stage;
+2. derive a small internal review plan;
+3. accept an optional specific concern from the writer;
+4. return a few anchored margin notes.
+
+Writing stages are:
+
+- Discovering: idea validation, promising material, generative questions.
+- Shaping: structure, sequence, stakes, paragraph purpose, specificity.
+- Refining: clarity, pacing, voice consistency, specificity, line friction.
+- Proofing: grammar, punctuation, consistency, settled local wording.
+
+Default the stage to Auto, show the inference unobtrusively, and allow an override. Do
+not infer stage from grammar quality alone. Visible process signals, document completeness,
+structure, placeholders, and revision activity are stronger evidence.
+
+The following focuses remain internal orchestration vocabulary, not a required toggle wall:
 
 - Reader View
 - Voice Guard
@@ -53,12 +72,31 @@ Design around one primary AI action plus focus toggles:
 
 Do not call the focus `Devil's Advocate`; that name belongs to a Reader Persona.
 
+Natural-language input is optional and should refine the inferred plan. Chat transcripts
+are not the default output surface; conversation belongs inside a selection or annotation
+thread when a writer has a specific follow-up.
+
+## Quiet Review
+
+AutoAI is the automatic trigger for the same Quillium editor, not a separate product or
+prompt contract. Keep its primary controls to on/off, Auto stage with an override, and
+Review now. Cadence, annotation type, depth, and annotation budget are internal decisions.
+Wait for a meaningful writing pause, review recent changes in whole-document context, and
+prefer one to three nonduplicate notes.
+
+## Writing Brief
+
+Document Context is a writer-owned brief, not prompt engineering. Prefer a few optional,
+plain-language fields: document kind, audience, intended reader effect, requirements, and
+what must remain intact. Use document kind to infer protected-writing risk conservatively.
+Keep unusual notes in one advanced freeform field.
+
 ## Reader Personas
 
 Reader Personas are configurable AI reader identities. Preserve the distinction:
 
 ```text
-Focus toggles = what to inspect.
+Internal focus plan = what to inspect.
 Reader Personas = who is reading.
 Internal specialists = how the prompt/orchestrator may organize work.
 Codex subagents = how Codex may split repo-development tasks.
@@ -105,5 +143,8 @@ as the writer's own, upgraded tone/voice/personality, or detector-evasion behavi
 - Prompt: `packages/desktop/src/lib/ai/editor/editorPrompt.ts`
 - Fixtures: `packages/desktop/src/lib/ai/editor/evalFixtures.ts`
 - Persona modes: `packages/desktop/src/lib/ai/settings.svelte.ts`
-- Current streams: `packages/desktop/src/lib/ai/clientStreams.ts`
+- Shared review runner: `packages/desktop/src/lib/ai/editor/reviewEngine.ts`
+- Quiet review: `packages/desktop/src/lib/autoai/engine.ts`
+- Writing brief: `packages/desktop/src/lib/ai/DocumentContext.svelte`
+- Legacy streams: `packages/desktop/src/lib/ai/clientStreams.ts`
 - Persona prompts: `packages/desktop/src/lib/readers/prompt.ts`

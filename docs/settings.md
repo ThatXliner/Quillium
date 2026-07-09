@@ -90,8 +90,8 @@ The same module also owns:
 
 | State | Storage | Purpose |
 |-------|---------|---------|
-| `documentContext.freeform` | localStorage | Writer-provided context injected into AI calls |
-| `personaModes` | localStorage | Per-mode reader-persona opt-in for Feedback/Revise/unified editor |
+| `documentContext` | localStorage | Writing brief: kind, audience, purpose, requirements, preserve notes |
+| `personaModes` | localStorage | Reader-persona opt-in; unified editor uses `editor` |
 | `aiProcessing` | memory | Sidebar glow / stop-all coordination |
 
 ## AutoAI Settings (`autoai/settings.svelte.ts`)

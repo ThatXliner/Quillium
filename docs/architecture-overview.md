@@ -112,7 +112,7 @@ sequenceDiagram
 | `history/+page.svelte` | `goToHistory()` | Version history browser |
 | `authorship/+page.svelte` | `goToAuthorship()` | Provenance playback and authorship report |
 | `Editor.svelte` | Document load | Create EditorView, set up listeners, manage nested editors |
-| `AISidebar.svelte` | Tab selection | Route to Chat/Feedback/Revise/Context/Readers/Settings |
+| `AISidebar.svelte` | Unified review shell | Route to Quillium and secondary context/readers/settings screens |
 | `engine.ts` (AutoAI) | `startAutoAI()` | Subscribe to content, debounce, trigger reviews |
 
 ## Design Constraints

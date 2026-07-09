@@ -203,12 +203,11 @@ test.describe("keyboard shortcuts", () => {
         });
         await q.init();
 
-        await page.locator("#ai-tab-chat").click();
-        await expect(q.aiSidebar).toContainText("Start a conversation");
+        await page.getByRole("button", { name: /Open Quillium/ }).click();
+        await expect(q.aiSidebar).toContainText("Ready for a");
 
         await q.escape();
-        // Sidebar should collapse
-        await expect(page.locator("#ai-sidebar .overflow-x-auto")).not.toBeVisible();
+        await expect(q.aiSidebar).not.toContainText("Ready for a");
     });
 });
 

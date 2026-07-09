@@ -283,7 +283,7 @@ async function saveApiKey() {
         <div class="flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200/60 px-3 py-2.5">
             <KeyRoundIcon size={13} class="text-amber-500 shrink-0 mt-0.5" />
             <p class="text-[11px] text-amber-700/90 leading-snug">
-                Add an API key below to enable Chat, Feedback, and Revise.
+                Add an API key below to enable Quillium review.
             </p>
         </div>
     {/if}

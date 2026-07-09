@@ -187,9 +187,9 @@ test.describe("dictionary popover", () => {
 
         await page.locator(".dictionary-popover button[title='Open in Chat']").click();
 
-        // Popover should close and chat sidebar should open
+        // Popover should close and the unified Quillium surface should open
         await expectPopoverHidden(page);
-        await expect(q.aiSidebar).toContainText("Start a conversation", { timeout: 5_000 });
+        await expect(q.aiSidebar).toContainText("Ready for a", { timeout: 5_000 });
     });
 
     test("does not open on multiword selection", async ({ page }) => {

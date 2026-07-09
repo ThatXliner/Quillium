@@ -22,13 +22,22 @@ export type EditorEvalFixture = {
         replacementTextAllowed: "any" | "grammar_only" | "none";
         personaStreams?: "single" | "fanout";
         maxAnnotations?: number;
+        writingStage?: QuilliumEditorRequest["writingStage"];
     };
     notes: string[];
 };
 
 function request(
-    input: Omit<QuilliumEditorRequest, "surface" | "replacementPermission"> &
-        Partial<Pick<QuilliumEditorRequest, "surface" | "replacementPermission">>,
+    input: Omit<
+        QuilliumEditorRequest,
+        "surface" | "replacementPermission" | "writingStage" | "writingStageSource"
+    > &
+        Partial<
+            Pick<
+                QuilliumEditorRequest,
+                "surface" | "replacementPermission" | "writingStage" | "writingStageSource"
+            >
+        >,
 ): QuilliumEditorRequest {
     return buildEditorRequest({
         surface: input.surface ?? "one_click_editor",
@@ -315,6 +324,43 @@ export const EDITOR_EVAL_FIXTURES: EditorEvalFixture[] = [
             personaStreams: "fanout",
         },
         notes: ["Global protected-writing rules outrank custom persona instructions."],
+    },
+    {
+        id: "discovering-stage-idea-level-review",
+        title: "Discovering draft receives idea-level attention",
+        request: request({
+            documentRiskLevel: "ordinary",
+            policyPosture: "no_substantive_ai_content",
+            writingStage: "discovering",
+            writingStageSource: "inferred",
+            focus: ["reader_view", "structure", "specificity", "voice_guard"],
+            userIntent: "Look at this rough start.",
+            fullDocumentExcerpt: "# Opening\n- begin at the station\n- TK: why she leaves",
+        }),
+        expect: {
+            replacementTextAllowed: "none",
+            writingStage: "discovering",
+            maxAnnotations: 3,
+        },
+        notes: ["Do not line-edit or polish material whose idea and shape are still moving."],
+    },
+    {
+        id: "proofing-stage-local-review",
+        title: "Proofing draft receives local grammar attention",
+        request: request({
+            documentRiskLevel: "ordinary",
+            policyPosture: "grammar_only",
+            writingStage: "proofing",
+            writingStageSource: "writer_selected",
+            focus: ["grammar_only", "clarity", "voice_guard"],
+            userIntent: "This is settled. Check the final details.",
+            selectedText: "The final paragraphs are in place, but one comma may be wrong.",
+        }),
+        expect: {
+            replacementTextAllowed: "grammar_only",
+            writingStage: "proofing",
+        },
+        notes: ["Protect settled meaning and voice; keep suggestions local."],
     },
 ];
 

@@ -193,7 +193,7 @@ test("tutorial opens from status bar", async ({ page }) => {
     await expect(page.getByText("Choose Tutorial Sections")).toBeVisible();
 });
 
-test("AI sidebar can open chat and feedback panels", async ({ page }) => {
+test("AI sidebar opens the unified Quillium review surface", async ({ page }) => {
     await installTauriMock(page, { apiKey: "test-api-key" });
     await page.addInitScript(() => {
         localStorage.setItem(
@@ -203,15 +203,9 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     });
     await page.goto("/");
 
-    await page.locator("#ai-tab-chat").click();
-    await expect(page.locator("#ai-sidebar")).toContainText("Start a conversation");
-
-    const feedbackButton = page.locator(
-        "#ai-sidebar .overflow-x-auto button[aria-label*='Feedback']",
-    );
-    await feedbackButton.click();
-
-    await expect(page.locator("#ai-sidebar")).toContainText("Feedback");
+    await page.getByRole("button", { name: /Open Quillium/ }).click();
+    await expect(page.locator("#ai-sidebar")).toContainText("Ready for a");
+    await expect(page.locator("#ai-sidebar")).toContainText("Notes will appear in the margin");
 });
 
 test("settings modal opens from status bar", async ({ page }) => {

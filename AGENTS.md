@@ -126,8 +126,18 @@ Use the unified editor contract in `packages/desktop/src/lib/ai/editor/` for new
 surfaces. Use or update the docs in `docs/ai/` when changing AI philosophy, product
 direction, prompts, schemas, evals, or Reader Persona integration.
 
+Keep the writer-facing AI model simple: one Quillium review surface, automatic writing-
+stage inference with an override, one optional specific instruction, and feedback in the
+margin. Chat, Feedback, Revise, AutoAI, and focus values must not become competing primary
+modes. Focus values are internal orchestration vocabulary. Quiet Review is an automatic
+trigger for the same structured editor contract, not a separate editor personality.
+
+Document Context is a compact writer-owned brief: document kind, audience, intended reader
+effect, requirements, material to preserve, and optional notes. Do not require writers to
+author prompt-engineering prose.
+
 Reader Personas are existing product features, not editor focus toggles:
-- Focus toggles = what the editor looks for.
+- Internal focus plan = what the editor looks for.
 - Reader Personas = who is reading.
 - Internal specialists = prompt/orchestrator implementation detail.
 - Codex subagents = development-time workers.
@@ -449,10 +459,10 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - Responsibilities: Load document state via `loadDocumentState()`, create EditorView, mount CodeMirror DOM, set up `updateListener`, subscribe to `documentContent` changes for AI sidebar, manage nested editor mounting/unmounting, handle manual review and AutoAI
 - Location: `src/lib/ai/AISidebar.svelte`
 - Triggers: Rendered by `+page.svelte` side panel
-- Responsibilities: Render tab picker (Chat / Feedback / Revise / Context / Readers / Settings), route to corresponding sub-component, manage API key checking, dispatch `quillium:open-ai-settings` on key error
+- Responsibilities: Render one Quillium review entry point, route to secondary writing-brief, Reader Persona, and provider settings screens, manage API key checking
 - Location: `src/lib/autoai/engine.ts`
 - Triggers: `startAutoAI()` called from `+page.svelte` on mount
-- Responsibilities: Subscribe to `documentContent` store, debounce changes, trigger AI review, dispatch annotation creation commands, manage face state (thinking/reviewing/sleeping)
+- Responsibilities: Wait for meaningful writing pauses, review recent changes through the shared editor contract, apply one to three annotations, and manage review phase state
 ## Error Handling
 ## Cross-Cutting Concerns
 - CodeMirror state validity checked implicitly via transaction application (invalid changes rejected by CM)

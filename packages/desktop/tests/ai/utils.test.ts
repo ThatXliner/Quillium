@@ -23,6 +23,21 @@ describe("buildDocumentContextPrompt", () => {
         expect(result).toContain("Goal: Write a thriller. Audience: adults.");
     });
 
+    it("serializes the structured writing brief", () => {
+        const result = buildDocumentContextPrompt({
+            documentType: "college_application",
+            audience: "Admissions readers",
+            purpose: "See how I respond to failure",
+            constraints: "650 words",
+            preserve: "Dry humor",
+        });
+        expect(result).toContain("Document: college application");
+        expect(result).toContain("Audience: Admissions readers");
+        expect(result).toContain("Intended effect: See how I respond to failure");
+        expect(result).toContain("Requirements: 650 words");
+        expect(result).toContain("Preserve: Dry humor");
+    });
+
     it("trims whitespace from the freeform value", () => {
         const result = buildDocumentContextPrompt({ freeform: "  Be concise  " });
         expect(result).toContain("Be concise");

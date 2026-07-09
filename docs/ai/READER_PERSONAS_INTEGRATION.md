@@ -4,7 +4,7 @@
 
 Quillium already has Reader Personas. Do not confuse them with:
 
-1. Editor focus toggles: what the AI should inspect.
+1. Internal editor focus plan: what the AI should inspect for the current writing stage.
 2. Internal specialist passes: implementation details inside the prompt or orchestrator.
 3. Codex subagents: development-time workers used to inspect or modify the repo.
 
@@ -112,7 +112,7 @@ Each persona receives the same:
 - document risk level;
 - policy posture;
 - replacement permission;
-- focus toggles;
+- inferred focus plan;
 - schema/output contract.
 
 Every persona must still obey global prompt contract rules: high-stakes safety,

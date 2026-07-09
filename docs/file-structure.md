@@ -9,10 +9,11 @@ src/
 ├── hooks.client.ts            # Global error handlers, crash backup, PostHog exception capture
 ├── lib/
 │   ├── ai/
-│   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise / Context / Readers / Settings)
+│   │   ├── AISidebar.svelte   # Unified Quillium review + secondary configuration screens
+│   │   ├── EditorReview.svelte # Stage-aware manuscript review surface
 │   │   ├── AISettings.svelte  # Provider/model configuration
 │   │   ├── Chat.svelte        # General AI chat
-│   │   ├── DocumentContext.svelte # Context reference display
+│   │   ├── DocumentContext.svelte # Compact writer-owned brief
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
 │   │   ├── Readers.svelte     # Reader persona configuration panel
 │   │   ├── Revise.svelte      # AI-powered revision generation

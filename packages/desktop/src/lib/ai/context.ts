@@ -6,6 +6,11 @@ export type AiTextRange = { from: number; to: number };
 type SurroundingContextKind = "paragraphs" | "window" | "none";
 
 export type DocumentContextLike = {
+    documentType?: string;
+    audience?: string;
+    purpose?: string;
+    constraints?: string;
+    preserve?: string;
     freeform?: string;
 };
 
@@ -99,8 +104,23 @@ const ANNOTATION_CONTEXT_CHARS = 520;
 const ANNOTATION_MESSAGE_CHARS = 280;
 const ANNOTATION_VARIANT_CHARS = 360;
 
+export function documentContextText(ctx?: DocumentContextLike): string {
+    if (!ctx) return "";
+    const fields = [
+        ctx.documentType && ctx.documentType !== "general"
+            ? `Document: ${ctx.documentType.replaceAll("_", " ")}`
+            : "",
+        ctx.audience?.trim() ? `Audience: ${ctx.audience.trim()}` : "",
+        ctx.purpose?.trim() ? `Intended effect: ${ctx.purpose.trim()}` : "",
+        ctx.constraints?.trim() ? `Requirements: ${ctx.constraints.trim()}` : "",
+        ctx.preserve?.trim() ? `Preserve: ${ctx.preserve.trim()}` : "",
+        ctx.freeform?.trim() ? `Other notes: ${ctx.freeform.trim()}` : "",
+    ];
+    return fields.filter(Boolean).join("\n");
+}
+
 function writerContextText(ctx?: DocumentContextLike): string {
-    return ctx?.freeform?.trim() ?? "";
+    return documentContextText(ctx);
 }
 
 function clipMiddle(text: string, maxChars: number): { text: string; omitted: number } {

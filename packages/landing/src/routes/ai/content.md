@@ -35,31 +35,24 @@ AI output is structured as annotations, comments, questions, and revision paths.
 accept, reject, ignore, branch, or discuss. The point is not to make the model the writer.
 The point is to help you see your own writing more clearly.
 
-## One editor, many lenses
+## One editor, the right attention
 
 Older AI writing tools tend to split themselves into modes: chat, feedback, revise,
 summarize, rewrite, polish.
 
 That is a lot of machinery to think about when you are already trying to write.
 
-Quillium is moving toward a simpler model: one editor in the margin, with different
-lenses you can turn on or off.
+Quillium uses a simpler model: one editor in the margin. It estimates where the draft is
+in the writing process and chooses the kind of attention that is useful now.
 
 You can ask Quillium to look at a selection, a paragraph, a branch, a section, or the
-whole document. Then you can choose what kind of attention you want.
+whole document. You can name a specific concern, but you do not have to configure an
+editorial checklist before every review.
 
-Possible lenses include:
-
-- **Reader View**: what a reader understands, misses, or expects next.
-- **Voice Guard**: where your prose sounds like you, and where it starts sounding generic.
-- **Specificity**: where the draft needs scene, action, evidence, stakes, or concrete
-  detail.
-- **Structure**: how the piece moves, where it drifts, and what each paragraph is doing.
-- **Clarity**: confusing claims, overloaded sentences, and missing links.
-- **Line Notes**: sentence-level issues.
-- **Grammar Only**: spelling, punctuation, grammar, and typos.
-- **Policy Safety**: extra guardrails for high-stakes writing.
-- **Challenge**: candid pushback when the draft is avoiding something.
+Early drafts receive idea-level questions, reader reactions, and structural attention.
+Drafts that are taking shape receive help with sequence, stakes, and specificity. Refined
+drafts receive clarity, pacing, and voice notes. Settled drafts receive a careful proofing
+pass. The inferred stage is visible and can always be changed by the writer.
 
 The user experience is simple:
 

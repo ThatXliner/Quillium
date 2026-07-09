@@ -10,7 +10,10 @@ import {
     buildEditorUserPrompt,
     computeReplacementPermission,
     fixturesWithDetectorEvasionIntent,
+    focusForReview,
+    inferWritingStage,
     isDetectorEvasionIntent,
+    resolveWritingStage,
     validateEditorResponse,
 } from "$lib/ai/editor";
 import { describe, expect, it } from "vitest";
@@ -33,6 +36,11 @@ function response(
 ): QuilliumEditorResponse {
     return {
         summaryForSidebar: "One note.",
+        stageAssessment: {
+            stage: "refining",
+            confidence: 0.8,
+            signals: ["The structure is established."],
+        },
         focusUsed: ["reader_view"],
         annotations: [
             {
@@ -127,6 +135,39 @@ describe("computeReplacementPermission", () => {
                 focus: ["line_notes"],
             }),
         ).toBe("grammar_replacements_only");
+    });
+});
+
+describe("writing stage planning", () => {
+    it("treats visible outline and placeholder signals as discovering", () => {
+        const result = inferWritingStage("# Opening\n- scene idea\n- TK: find the real detail");
+        expect(result.stage).toBe("discovering");
+        expect(result.signals.outlineLineCount).toBeGreaterThan(0);
+        expect(result.signals.placeholderCount).toBeGreaterThan(0);
+    });
+
+    it("moves complete long drafts toward proofing", () => {
+        const paragraph =
+            "This paragraph carries a complete idea through several concrete sentences. It explains what happened, why the detail matters, and how the next point follows without leaving placeholders behind.";
+        const result = inferWritingStage(Array.from({ length: 30 }, () => paragraph).join("\n\n"));
+        expect(result.stage).toBe("proofing");
+    });
+
+    it("honors a writer override while retaining the local inference", () => {
+        const result = resolveWritingStage("shaping", "A finished sentence.");
+        expect(result.stage).toBe("shaping");
+        expect(result.source).toBe("writer_selected");
+        expect(result.inference.stage).toBe("discovering");
+    });
+
+    it("uses explicit intent instead of making the writer choose focus toggles", () => {
+        expect(
+            focusForReview({
+                stage: "discovering",
+                userIntent: "Please proofread grammar and punctuation only.",
+            }),
+        ).toEqual(["grammar_only"]);
+        expect(focusForReview({ stage: "shaping" })).toContain("structure");
     });
 });
 
@@ -232,6 +273,7 @@ describe("editor prompts", () => {
 
         expect(prompt).toContain("<request>");
         expect(prompt).toContain("documentRiskLevel: college_application");
+        expect(prompt).toContain("writingStage:");
         expect(prompt).toContain("<selectedText>");
         expect(prompt).toContain("Draft text");
     });
@@ -256,6 +298,8 @@ describe("eval fixtures", () => {
             "personas-on-protected",
             "persona-settings-migration",
             "custom-persona-unsafe-instruction",
+            "discovering-stage-idea-level-review",
+            "proofing-stage-local-review",
         ]);
     });
 
