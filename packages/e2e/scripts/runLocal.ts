@@ -42,6 +42,9 @@ if (!status) {
 if (!status) throw new Error("Could not read local Supabase credentials after startup");
 
 run("supabase", ["migration", "up", "--local"]);
+// Root E2E imports the production desktop serializer/repository. Generate the
+// SvelteKit tsconfig first so this also works from a fresh checkout.
+run("bun", ["run", "--cwd", "packages/desktop", "svelte-kit", "sync"]);
 
 const publicKey = status.PUBLISHABLE_KEY ?? status.ANON_KEY;
 if (!publicKey) throw new Error("Local Supabase did not report a publishable or anon key");

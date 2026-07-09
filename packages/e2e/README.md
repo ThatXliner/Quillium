@@ -12,7 +12,9 @@ bun run e2e:test       # Vitest watch mode
 
 `e2e:test:full` is the release-confidence command for Omni Web Preview. It reads
 credentials from `supabase status -o json`, starts the local stack when needed,
-and does not allow the database or browser layers to be silently skipped.
+generates required SvelteKit state for a clean checkout, and does not allow the
+database or browser layers to be silently skipped. It is intentionally manual
+and excluded from GitHub Actions to avoid CI infrastructure costs.
 
 ## Track B — Share / web preview (implemented)
 
@@ -43,9 +45,6 @@ E2E_SUPABASE_URL=http://127.0.0.1:54321
 E2E_SUPABASE_SERVICE_ROLE_KEY=...
 E2E_SUPABASE_PUBLISHABLE_KEY=... # E2E_SUPABASE_ANON_KEY also works
 ```
-
-CI starts the repository migrations in a local Supabase stack and runs the full
-command for changes that can affect Web Preview.
 
 ## Track A — Relay real-time collaboration (planned)
 
