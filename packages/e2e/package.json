@@ -1,0 +1,24 @@
+{
+  "name": "@quillium/e2e",
+  "private": true,
+  "type": "module",
+  "description": "Cross-package end-to-end tests for Quillium Omni (share/preview round-trip; relay collab is tracked separately).",
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.1",
+    "@quillium/share": "workspace:*"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@testing-library/svelte": "^5.3.1",
+    "jsdom": "^28.1.0",
+    "lucide-svelte": "^0.475.0",
+    "svelte": "^5.55.5",
+    "vite": "^6.4.2",
+    "vitest": "^4.1.5"
+  }
+}

@@ -91,6 +91,23 @@
         "vitest": "^4.1.5",
       },
     },
+    "packages/e2e": {
+      "name": "@quillium/e2e",
+      "dependencies": {
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/view": "^6.41.1",
+        "@quillium/share": "workspace:*",
+      },
+      "devDependencies": {
+        "@sveltejs/vite-plugin-svelte": "^5.1.1",
+        "@testing-library/svelte": "^5.3.1",
+        "jsdom": "^28.1.0",
+        "lucide-svelte": "^0.475.0",
+        "svelte": "^5.55.5",
+        "vite": "^6.4.2",
+        "vitest": "^4.1.5",
+      },
+    },
     "packages/landing": {
       "name": "@quillium/landing",
       "version": "0.0.1",
@@ -485,6 +502,8 @@
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.0", "", {}, "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="],
 
     "@quillium/desktop": ["@quillium/desktop@workspace:packages/desktop"],
+
+    "@quillium/e2e": ["@quillium/e2e@workspace:packages/e2e"],
 
     "@quillium/landing": ["@quillium/landing@workspace:packages/landing"],
 
