@@ -2,15 +2,17 @@
 <script lang="ts">
 import {
     applyEditorReview,
+    BALANCED_REVIEW_FOCUS,
     buildEditorRequest,
     documentRiskForDocumentType,
     generateEditorReview,
     inferWritingStage,
+    REVIEW_TEMPLATES,
     summarizeExistingAnnotations,
     type DocumentRiskLevel,
     type EditorFocus,
     type PolicyPosture,
-    type WritingStage,
+    type ReviewStageChoice,
 } from "$lib/ai/editor";
 import { buildAiContextPacket } from "$lib/ai/context";
 import {
@@ -50,9 +52,7 @@ let {
     onOpenContext?: () => void;
 } = $props();
 
-type StageChoice = WritingStage | "auto";
-
-const stageOptions: Array<{ value: StageChoice; label: string }> = [
+const stageOptions: Array<{ value: ReviewStageChoice; label: string }> = [
     { value: "auto", label: "Auto-detect" },
     { value: "discovering", label: "Discovering" },
     { value: "shaping", label: "Shaping" },
@@ -80,13 +80,9 @@ const focusOptions: Array<{ value: EditorFocus; label: string }> = [
 ];
 
 let instruction = $state("");
-let writingStage = $state<StageChoice>("refining");
-let selectedFocuses = $state<EditorFocus[]>([
-    "reader_view",
-    "voice_guard",
-    "specificity",
-    "clarity",
-]);
+let selectedTemplateId = $state("balanced");
+let writingStage = $state<ReviewStageChoice>("auto");
+let selectedFocuses = $state<EditorFocus[]>([...BALANCED_REVIEW_FOCUS]);
 let documentRiskPreference = $state<DocumentRiskLevel | "auto">("auto");
 let policyPosture = $state<PolicyPosture>("normal");
 let reviewState = $state<"idle" | "reviewing" | "complete" | "error">("idle");
@@ -102,9 +98,17 @@ const stageLabel = $derived(
         ? `Auto · ${stageLabels[resolvedWritingStage]}`
         : stageLabels[resolvedWritingStage],
 );
-const savedPrompts = $derived(
+const savedTemplates = $derived(
     appSettings.customQuickActions.filter((action) => action.panel === "editor"),
 );
+const templateOptions = $derived([
+    ...REVIEW_TEMPLATES.map((template) => ({ id: template.id, label: template.label })),
+    ...savedTemplates.map((template, index) => ({
+        id: `saved:${index}`,
+        label: template.label,
+    })),
+    { id: "custom", label: "Custom setup" },
+]);
 const targetLabel = $derived($selectedText ? "Selection" : "Current draft");
 const canReview = $derived(reviewState !== "reviewing" && !!$documentContent.trim());
 const documentRiskLevel = $derived(
@@ -115,7 +119,8 @@ const documentRiskLevel = $derived(
 const protectedMode = $derived(documentRiskLevel !== "ordinary" || policyPosture !== "normal");
 
 function updateStage(event: Event): void {
-    writingStage = (event.currentTarget as HTMLSelectElement).value as StageChoice;
+    writingStage = (event.currentTarget as HTMLSelectElement).value as ReviewStageChoice;
+    selectedTemplateId = "custom";
     posthog.capture("ai_editor_stage_changed", {
         stage: writingStage,
         resolved_stage: resolvedWritingStage,
@@ -126,9 +131,34 @@ function toggleFocus(focus: EditorFocus): void {
     if (selectedFocuses.includes(focus)) {
         if (selectedFocuses.length === 1) return;
         selectedFocuses = selectedFocuses.filter((item) => item !== focus);
+        selectedTemplateId = "custom";
         return;
     }
     selectedFocuses = [...selectedFocuses, focus];
+    selectedTemplateId = "custom";
+}
+
+function updateTemplate(event: Event): void {
+    selectedTemplateId = (event.currentTarget as HTMLSelectElement).value;
+    const builtIn = REVIEW_TEMPLATES.find((template) => template.id === selectedTemplateId);
+    if (builtIn) {
+        writingStage = builtIn.stage;
+        selectedFocuses = [...builtIn.focus];
+    } else if (selectedTemplateId.startsWith("saved:")) {
+        writingStage = "auto";
+        selectedFocuses = [...BALANCED_REVIEW_FOCUS];
+    }
+    posthog.capture("ai_editor_template_changed", { template: selectedTemplateId });
+}
+
+function templateInstruction(): string {
+    const builtIn = REVIEW_TEMPLATES.find((template) => template.id === selectedTemplateId);
+    if (builtIn) return builtIn.instruction;
+    if (selectedTemplateId.startsWith("saved:")) {
+        const index = Number.parseInt(selectedTemplateId.slice("saved:".length), 10);
+        return savedTemplates[index]?.prompt ?? "";
+    }
+    return "";
 }
 
 function updateRisk(event: Event): void {
@@ -182,7 +212,7 @@ async function review(): Promise<void> {
         },
         existingAnnotations: summarizeExistingAnnotations(get(annotations) ?? {}, contentAtStart),
         userIntent:
-            instruction.trim() ||
+            [templateInstruction(), instruction.trim()].filter(Boolean).join("\n\n") ||
             "Review this writing and leave only the highest-leverage margin notes for its current stage.",
         writingStage: resolvedWritingStage,
         writingStageSource: writingStage === "auto" ? "inferred" : "writer_selected",
@@ -202,6 +232,7 @@ async function review(): Promise<void> {
         document_risk_level: documentRiskLevel,
         policy_posture: policyPosture,
         persona_count: personas.length,
+        template: selectedTemplateId,
     });
 
     try {
@@ -256,11 +287,11 @@ function handleSubmit(event: SubmitEvent): void {
                     <p class="text-[10px] text-black/35">{stageLabel} pass</p>
                 </div>
             </div>
-            <label class="stage-control">
-                <span class="sr-only">Writing stage</span>
-                <select value={writingStage} onchange={updateStage}>
-                    {#each stageOptions as option}
-                        <option value={option.value}>{option.label}</option>
+            <label class="template-control">
+                <span class="sr-only">Review template</span>
+                <select value={selectedTemplateId} onchange={updateTemplate}>
+                    {#each templateOptions as option}
+                        <option value={option.id}>{option.label}</option>
                     {/each}
                 </select>
             </label>
@@ -328,6 +359,14 @@ function handleSubmit(event: SubmitEvent): void {
                         <span>Protected writing. Substantive language stays with the writer.</span>
                     </div>
                 {/if}
+                <label class="setting-field">
+                    <span>Writing stage</span>
+                    <select value={writingStage} onchange={updateStage}>
+                        {#each stageOptions as option}
+                            <option value={option.value}>{option.label}</option>
+                        {/each}
+                    </select>
+                </label>
                 <div class="space-y-1.5">
                     <span class="text-[10px] font-semibold text-black/38">FOCUS</span>
                     <div class="flex flex-wrap gap-1.5">
@@ -387,18 +426,6 @@ function handleSubmit(event: SubmitEvent): void {
     </div>
 
     <form onsubmit={handleSubmit} class="shrink-0 border-t border-black/10 bg-white/25 p-3">
-        {#if savedPrompts.length > 0}
-            <div class="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
-                {#each savedPrompts as prompt}
-                    <button
-                        type="button"
-                        onclick={() => (instruction = prompt.prompt)}
-                        title={prompt.prompt}
-                        class="saved-prompt"
-                    >{prompt.label}</button>
-                {/each}
-            </div>
-        {/if}
         <div class="flex gap-2">
             <input
                 bind:value={instruction}
@@ -416,7 +443,7 @@ function handleSubmit(event: SubmitEvent): void {
 </div>
 
 <style>
-    .stage-control select,
+    .template-control select,
     .setting-field select {
         border: 1px solid rgb(0 0 0 / 10%);
         border-radius: 4px;
@@ -426,8 +453,8 @@ function handleSubmit(event: SubmitEvent): void {
         outline: none;
     }
 
-    .stage-control select {
-        max-width: 94px;
+    .template-control select {
+        max-width: 122px;
         padding: 5px 6px;
     }
 
@@ -511,8 +538,7 @@ function handleSubmit(event: SubmitEvent): void {
         font-size: 10px;
     }
 
-    .focus-chip,
-    .saved-prompt {
+    .focus-chip {
         flex: 0 0 auto;
         border: 1px solid rgb(0 0 0 / 10%);
         border-radius: 999px;
@@ -526,11 +552,6 @@ function handleSubmit(event: SubmitEvent): void {
     .focus-chip.active {
         border-color: rgb(13 148 136 / 35%);
         background: rgb(20 184 166 / 10%);
-        color: #0f766e;
-    }
-
-    .saved-prompt:hover {
-        border-color: rgb(13 148 136 / 25%);
         color: #0f766e;
     }
 

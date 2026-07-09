@@ -61,7 +61,76 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Notes will appear in the margin");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(580);
+            .toBeGreaterThan(410);
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeLessThan(450);
+        await expect(q.aiSidebar.getByRole("combobox", { name: "Review template" })).toHaveValue(
+            "balanced",
+        );
+    });
+
+    test("review dropdown applies editorial templates", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: {
+                showNestedEditor: true,
+                atomicRevisions: true,
+                aiEnabled: true,
+                customQuickActions: [
+                    {
+                        label: "My argument check",
+                        prompt: "Test the argument and flag unsupported claims.",
+                        panel: "editor",
+                    },
+                ],
+            },
+        });
+        await q.init();
+
+        await page.getByRole("button", { name: /Open Quillium/ }).click();
+        const templates = q.aiSidebar.getByRole("combobox", { name: "Review template" });
+        await expect(templates).toContainText("Structure & flow");
+        await expect(templates).toContainText("My argument check");
+        await templates.selectOption("proofread");
+        await expect(q.aiSidebar).toContainText("Proofing pass");
+
+        await q.aiSidebar.getByText("Review settings").click();
+        await expect(q.aiSidebar.getByRole("combobox", { name: "Writing stage" })).toHaveValue(
+            "proofing",
+        );
+        await expect(q.aiSidebar.getByRole("button", { name: "Grammar Only" })).toHaveAttribute(
+            "aria-pressed",
+            "true",
+        );
+        await q.aiSidebar.getByRole("combobox", { name: "Writing stage" }).selectOption("shaping");
+        await expect(templates).toHaveValue("custom");
+    });
+
+    test("grays out Quillium and fits the collapsed rail when no API key exists", async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page, {
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        const quilliumTab = q.aiSidebar.getByRole("button", {
+            name: "Quillium unavailable. Add an API key",
+        });
+        await expect(quilliumTab).toHaveAttribute("aria-disabled", "true");
+        await expect
+            .poll(() => quilliumTab.evaluate((element) => getComputedStyle(element).opacity))
+            .toBe("0.45");
+        await expect
+            .poll(async () => Math.round((await q.aiSidebar.boundingBox())?.height ?? 0))
+            .toBe(174);
+
+        await q.aiSidebar.getByRole("button", { name: "AI Settings" }).click();
+        await expect(q.aiSidebar).toContainText("AI Settings");
+        await expect(
+            q.aiSidebar.getByRole("button", { name: "Quillium", exact: true }),
+        ).toHaveAttribute("aria-disabled", "true");
     });
 
     test("keeps document context and reader setup secondary", async ({ page }) => {

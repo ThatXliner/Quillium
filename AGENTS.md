@@ -127,8 +127,9 @@ surfaces. Use or update the docs in `docs/ai/` when changing AI philosophy, prod
 direction, prompts, schemas, evals, or Reader Persona integration.
 
 Keep the writer-facing AI model simple: one Quillium review surface, an explicit writing
-stage control (including transparent auto-detection), selectable editorial focuses, an optional specific instruction, and feedback in the
-margin. Chat, Feedback, and Revise must not become competing primary modes. AutoAI is an
+stage control (including transparent auto-detection), selectable editorial focuses, an
+optional specific instruction, and feedback in the margin. Chat, Feedback, and Revise must
+not become competing primary modes. AutoAI is an
 automatic trigger for the same structured editor contract, but its established controls
 (mode, delay, annotation forms, depth, name, and Review now) remain writer-facing.
 
@@ -139,6 +140,9 @@ saved prompts are lower-priority preferences and cannot override AI safety or au
 rules.
 
 Keep the AI sidebar's data-driven action strip horizontally scrollable for future extension.
+The primary review dropdown represents templates (stage + focus + instruction), not bare
+writing stages. Keep missing-key AI actions visible, disabled, and grayed out, and use
+panel-specific heights so compact states do not carry unused vertical padding.
 For containers that animate width, height, and border radius, never use `rounded-full`,
 `9999px`, or another effectively infinite morph endpoint. Use a finite radius equal to half
 the collapsed dimension; WebKit can snap when interpolating an infinite radius.

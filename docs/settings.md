@@ -13,7 +13,7 @@ User preferences in a Svelte 5 `$state` proxy (`appSettings`) persisted to local
 | `docFontFamily` | string | `"Georgia, serif"` | Editor body font |
 | `docFontSize` | number | `18` | Editor body font size |
 | `uiFontFamily` | string | `"system-ui, ..."` | UI chrome font |
-| `customQuickActions` | array | `[]` | User-defined AI quick actions |
+| `customQuickActions` | array | `[]` | User-defined AI templates (legacy storage name) |
 | `titleVisibility` | enum | `"hover"` | Title display mode |
 | `titleHoverDelay` | number | `350` | ms before title appears |
 | `titleLingerDuration` | number | `3000` | ms title stays visible |

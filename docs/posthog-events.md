@@ -86,6 +86,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | Event | When | File |
 |-------|------|------|
 | `ai_editor_requested` | Unified editor review started | `EditorReview.svelte` |
+| `ai_editor_template_changed` | Writer selects a review template | `EditorReview.svelte` |
 | `ai_editor_stage_changed` | Writer selects a writing stage | `EditorReview.svelte` |
 | `document_context_changed` | Document kind changes | `DocumentContext.svelte` |
 | `document_context_generated` | Context generated from the writer's prompt or brief | `DocumentContext.svelte` |

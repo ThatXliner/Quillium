@@ -99,6 +99,12 @@ preferences that cannot override authorship, safety, replacement-permission, or 
 
 - Keep the sidebar action registry horizontally scrollable and data-driven so supporting
   tools can be added without rebuilding the shell.
+- Use review templates for the primary dropdown. A template groups a stage, focus bundle,
+  and editorial instruction; stage and focus may remain editable under advanced settings.
+- Keep API-key-dependent actions visible but disabled and clearly grayed out when
+  unavailable. Keep the Settings path available for setup.
+- Size collapsed and expanded sidebar states to their actual controls or panel needs. Do not
+  reserve the tallest panel height for every view or leave decorative dead space below tools.
 - Match the established compact, translucent Quillium controls instead of introducing a
   generic chat transcript as the primary writing workflow.
 - Never animate a morphing container to or from `rounded-full`, `9999px`, or another

@@ -50,9 +50,17 @@ const panelTitles: Record<Exclude<Action, null>, string> = {
     settings: "AI Settings",
 };
 
+const panelHeightClasses: Record<Exclude<Action, null>, string> = {
+    editor: "h-[min(430px,calc(100vh-32px))]",
+    context: "h-[min(580px,calc(100vh-32px))]",
+    readers: "h-[min(560px,calc(100vh-32px))]",
+    settings: "h-[min(570px,calc(100vh-32px))]",
+};
+
 let action = $state<Action>(null);
 let container = $state<HTMLDivElement>();
 const expanded = $derived(action !== null);
+const panelHeightClass = $derived(action ? panelHeightClasses[action] : "h-[174px]");
 
 function open(actionToOpen: Exclude<Action, null>): void {
     ensureApiKeyLoaded();
@@ -111,29 +119,36 @@ $effect(() => appEventBus.on("ai-open-chat", () => open("editor")));
     id="ai-sidebar"
     bind:this={container}
     onclick={(event) => event.stopPropagation()}
-    class="fixed left-4 top-1/2 z-50 -translate-y-1/2 overflow-hidden border border-white/30 bg-gray-300/70 shadow-lg backdrop-blur-md transition-[width,height,border-radius] duration-300 {expanded
-        ? 'h-[min(620px,calc(100vh-32px))] w-[min(380px,calc(100vw-32px))] rounded-[14px]'
-        : 'h-[198px] w-[52px] rounded-[26px]'} {aiProcessing.active ? 'ai-processing' : ''}"
+    class="fixed left-4 top-1/2 z-50 -translate-y-1/2 overflow-hidden border border-white/30 bg-gray-300/70 shadow-lg backdrop-blur-md transition-[width,height,border-radius] duration-300 {panelHeightClass} {expanded
+        ? 'w-[min(380px,calc(100vw-32px))] rounded-[14px]'
+        : 'w-[52px] rounded-[26px]'} {aiProcessing.active ? 'ai-processing' : ''}"
 >
     {#if !expanded}
         <div class="flex h-full flex-col items-center py-3">
             <div class="flex flex-col gap-1">
                 {#each actions as item}
+                    {@const unavailable = item.requiresApiKey && !hasApiKey()}
                     <button
                         id={item.id === "editor" ? "quillium-review-button" : undefined}
                         type="button"
+                        disabled={unavailable}
                         onclick={() => open(item.id)}
-                        aria-label={item.id === "editor" && hasApiKey()
+                        aria-label={item.id === "editor" && !unavailable
                             ? "Open Quillium (Command Shift 1)"
-                            : item.label}
-                        title={item.label}
-                        class="rounded-full p-2 text-black/45 transition-colors hover:bg-white/45 hover:text-black/70"
+                            : unavailable
+                              ? "Quillium unavailable. Add an API key"
+                              : item.label}
+                        aria-disabled={unavailable}
+                        title={unavailable ? "Add an API key to enable Quillium" : item.label}
+                        class="rounded-full p-2 transition-colors {unavailable
+                            ? 'cursor-not-allowed text-black/20 grayscale opacity-45'
+                            : 'text-black/45 hover:bg-white/45 hover:text-black/70'}"
                     >
                         <item.icon size={18} />
                     </button>
                 {/each}
             </div>
-            <div class="flex-1"></div>
+            <div class="my-1 h-px w-5 bg-black/8"></div>
             <button
                 type="button"
                 onclick={() => open("settings")}
@@ -153,14 +168,19 @@ $effect(() => appEventBus.on("ai-open-chat", () => open("editor")));
                 class="flex shrink-0 items-center gap-1 overflow-x-auto px-3 pt-2.5 pb-1 [scrollbar-width:none]"
             >
                 {#each actions as item}
+                    {@const unavailable = item.requiresApiKey && !hasApiKey()}
                     <button
                         type="button"
+                        disabled={unavailable}
                         onclick={() => open(item.id)}
                         aria-label={item.label}
-                        title={item.label}
-                        class="shrink-0 rounded-full p-2 transition-colors {action === item.id
-                            ? item.activeClass
-                            : 'text-black/55 hover:bg-white/35 hover:text-black/75'}"
+                        aria-disabled={unavailable}
+                        title={unavailable ? "Add an API key to enable Quillium" : item.label}
+                        class="shrink-0 rounded-full p-2 transition-colors {unavailable
+                            ? 'cursor-not-allowed text-black/20 grayscale opacity-40'
+                            : action === item.id
+                              ? item.activeClass
+                              : 'text-black/55 hover:bg-white/35 hover:text-black/75'}"
                     >
                         <item.icon size={16} />
                     </button>

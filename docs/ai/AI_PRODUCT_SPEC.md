@@ -49,9 +49,10 @@ The editor can operate on:
 - recent changes since last review;
 - an annotation thread.
 
-When the user gives no specific instruction, Quillium runs a conservative, high-signal pass
-from the visible stage and focus settings. Feedback appears in the margin, not as a chat
-transcript. AutoAI may infer stage internally when the writer has enabled automation.
+The primary dropdown contains review templates that group a stage, focus bundle, and
+editorial instruction. Balanced review is the default; other built-ins cover idea
+development, structure, voice and clarity, line editing, and proofreading. Saved custom
+prompts appear in the same selector. Feedback appears in the margin, not as a chat transcript.
 
 ## Writing Stage
 
@@ -60,8 +61,9 @@ transcript. AutoAI may infer stage internally when the writer has enabled automa
 - `refining`: clarity, pacing, specificity, voice consistency, line friction.
 - `proofing`: grammar, punctuation, consistency, settled local wording.
 
-Manual review defaults to `refining` and offers explicit Auto-detect. When Auto-detect is
-selected, the resolved stage is shown. AutoAI inference uses visible process signals,
+Balanced review defaults to explicit Auto-detect. When Auto-detect is selected, the resolved
+stage is shown. Writers can change stage and focus under Review settings, which makes the
+current configuration a Custom setup. AutoAI inference uses visible process signals,
 completeness, placeholders, outlines, and structure. It must not
 equate intentional roughness or unusual grammar with an early draft. The model confirms or
 corrects the stage in `stageAssessment`.
@@ -155,7 +157,7 @@ Rules:
 - `college_application` means grammar replacements only.
 - `high_stakes` means grammar replacements only for grammar-only focus, otherwise no
   replacement text.
-- custom quick actions cannot override protected-mode restrictions.
+- saved templates cannot override protected-mode restrictions.
 
 ## Reader Personas
 
@@ -172,9 +174,9 @@ See `docs/ai/READER_PERSONAS_INTEGRATION.md`.
 ## Quiet Review
 
 AutoAI is the automatic trigger for the same structured editor. It waits for a meaningful
-pause, reviews recent changes in whole-document context, and adds one to three nonduplicate
-annotations. Its primary controls are on/off, writing stage, and Review now. Delay,
-annotation type, depth, and persona naming are internal decisions.
+pause and reviews recent changes in whole-document context. Writers control on/off,
+continuous/manual mode, delay, annotation forms, review depth, reviewer name, and Review
+now. The selected depth sets the annotation budget; the engine still avoids duplicate notes.
 
 ## Writing Brief
 
@@ -200,8 +202,8 @@ authorship, replacement permissions, or schema constraints.
    high-stakes replacement validation, fixtures.
 3. Prompt harness: shared unified editor prompt builder and compatibility guidance for
    legacy Chat/Feedback/Revise.
-4. UX: one Quillium review entry point, explicit stage and focus, optional instruction,
-   extensible context/persona/settings strip.
+4. UX: one Quillium review entry point, template dropdown, editable stage and focus, optional
+   instruction, and an extensible context/persona/settings strip.
 5. Quiet Review: shared structured runner, meaningful-pause orchestration, recent-change
    context, and explicit automation controls.
 

@@ -19,6 +19,12 @@ let {
 
 let newActionLabel = $state("");
 let newActionPrompt = $state("");
+const panels = [
+    { id: "editor", label: "Quillium" },
+    { id: "revise", label: "Revise" },
+    { id: "feedback", label: "Feedback" },
+    { id: "chat", label: "Chat" },
+] as const;
 let panelActions = $derived(
     (draft.customQuickActions ?? []).filter((a) => a.panel === selectedPanel),
 );
@@ -46,25 +52,25 @@ function removeQuickAction(index: number) {
 </script>
 
 <div class="section-divider"></div>
-<div class="section-label" data-setting-id="quick-actions">Quick Actions</div>
+<div class="section-label" data-setting-id="quick-actions">AI Templates</div>
 
 <!-- Panel selector -->
 <div class="setting-row">
     <div class="setting-meta">
-        <div class="setting-title">Panel</div>
-        <div class="setting-desc">Add chips to a specific AI panel</div>
+        <div class="setting-title">Surface</div>
+        <div class="setting-desc">Save reusable instructions for an AI workflow</div>
     </div>
     <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
-        {#each (["editor", "revise", "feedback", "chat"] as const) as panel}
+        {#each panels as panel}
             <button
                 onclick={() => {
-                    selectedPanel = panel;
+                    selectedPanel = panel.id;
                 }}
-                class="px-3 py-1.5 text-[11px] font-medium capitalize transition-colors
-                    {selectedPanel === panel
+                class="px-3 py-1.5 text-[11px] font-medium transition-colors
+                    {selectedPanel === panel.id
                         ? 'bg-blue-500 text-white'
                         : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
-            >{panel}</button>
+            >{panel.label}</button>
         {/each}
     </div>
 </div>
@@ -80,7 +86,7 @@ function removeQuickAction(index: number) {
                 </div>
                 <button
                     onclick={() => removeQuickAction(i)}
-                    aria-label="Remove quick action"
+                    aria-label="Remove template"
                     class="shrink-0 mt-0.5 p-1 rounded text-black/25 hover:text-red-400 hover:bg-red-50 transition-colors"
                 >
                     <Trash2 size={12} />
@@ -89,19 +95,19 @@ function removeQuickAction(index: number) {
         {/each}
     </div>
 {:else}
-    <div class="text-[11px] text-black/30 px-0.5 mb-2">No custom chips for this panel yet.</div>
+    <div class="text-[11px] text-black/30 px-0.5 mb-2">No custom templates for this surface yet.</div>
 {/if}
 
 <!-- Add new chip form -->
 <div class="flex flex-col gap-1.5 px-0.5">
     <input
         bind:value={newActionLabel}
-        placeholder="Label (shown on chip)"
+        placeholder="Template name"
         class="w-full px-2.5 py-1.5 text-[12px] border border-black/[0.1] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
     />
     <textarea
         bind:value={newActionPrompt}
-        placeholder="Full prompt sent to AI…"
+        placeholder="Instructions sent to AI..."
         rows="2"
         class="w-full px-2.5 py-1.5 text-[12px] border border-black/[0.1] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder:text-black/25"
     ></textarea>
@@ -113,6 +119,6 @@ function removeQuickAction(index: number) {
             disabled:opacity-40 disabled:cursor-not-allowed"
     >
         <Plus size={12} />
-        Add chip
+        Add template
     </button>
 </div>

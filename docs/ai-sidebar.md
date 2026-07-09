@@ -6,33 +6,41 @@ a structured response and the useful work appears as anchored margin annotations
 
 ## Primary Flow
 
-1. `EditorReview.svelte` uses the writing stage selected by the writer.
-2. The writer can adjust a compact set of editorial focus controls.
-3. An optional writer instruction can narrow the plan, such as “grammar only” or “look at
+1. The primary dropdown selects a review template: Balanced review, Develop ideas,
+   Structure & flow, Voice & clarity, Line edit, Proofread, or a saved custom template.
+2. Each built-in template selects a writing stage, focus bundle, and editorial instruction.
+3. The writer can adjust stage and focus under Review settings, which changes the selector
+   to Custom setup.
+4. An optional writer instruction can narrow the plan, such as “grammar only” or “look at
    the structure.”
-4. `reviewEngine.ts` runs `generateObject()` against `QuilliumEditorResponseSchema`.
-5. The response is validated against replacement permissions and applied as comments or
+5. `reviewEngine.ts` runs `generateObject()` against `QuilliumEditorResponseSchema`.
+6. The response is validated against replacement permissions and applied as comments or
    suggestions.
-6. The sidebar shows only a short completion summary; feedback lives in the manuscript.
+7. The sidebar shows only a short completion summary; feedback lives in the manuscript.
 
-The visible stage choices are Auto-detect, Discovering, Shaping, Refining, and Proofing.
-Refining is the default for manual review. If the writer chooses Auto-detect, the resolved
-stage is shown; AutoAI also infers a stage when it runs in the background.
+Balanced review is the default template and uses transparent stage detection. The stage
+choices remain Auto-detect, Discovering, Shaping, Refining, and Proofing under Review
+settings. If the writer chooses Auto-detect, the resolved stage is shown.
 
 ## Secondary Screens
 
 The sidebar uses a data-driven horizontal action strip that remains scrollable even while it
 is short. It contains:
 
-- **Quillium** (`EditorReview.svelte`): stage, focus, saved prompts, safeguards, and review.
+- **Quillium** (`EditorReview.svelte`): review templates, stage, focus, safeguards, and review.
 - **Document Context** (`DocumentContext.svelte`): generated/freeform context, document kind,
   audience, intended reader effect, requirements, material to preserve, and custom editor
   instructions.
 - **Reader perspectives** (`Readers.svelte`): configure optional Reader Personas.
-- **Settings**: provider, model, API key, and custom quick actions.
+- **Settings**: provider, model, API key, and custom AI templates.
 
 These are supporting workspaces around one editorial contract, not duplicate Chat,
 Feedback, and Revise modes.
+
+Quillium remains visible but disabled and grayed out when no API key is configured; the
+Settings gear remains available for setup. The collapsed rail is sized to its four controls,
+and expanded panels use panel-specific heights rather than reserving the tallest possible
+shell for every screen.
 
 ## Structured Runner
 
@@ -54,6 +62,7 @@ enabled. Persona prompts remain lower priority than safety and schema rules.
 - `ai-open-chat`: compatibility event that now opens Quillium.
 - `ai-open-settings`: opens provider/model settings.
 - `ai_editor_requested`: records writer-selected stage/focus, risk, policy, and persona count.
+- `ai_editor_template_changed`: records a built-in, saved, or custom review template.
 - `ai_editor_stage_changed`: records a writing-stage selection.
 
 ## Legacy Components
