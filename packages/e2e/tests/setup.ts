@@ -1,5 +1,8 @@
 import { randomFillSync } from "node:crypto";
-import { beforeAll } from "vitest";
+import { cleanup } from "@testing-library/svelte";
+import { afterEach, beforeAll } from "vitest";
+
+afterEach(() => cleanup());
 
 // jsdom ships without WebCrypto; CodeMirror / dependencies may reach for
 // crypto.getRandomValues. Mirrors packages/desktop/tests/setup.ts.

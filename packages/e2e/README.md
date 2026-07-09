@@ -1,31 +1,51 @@
 # @quillium/e2e
 
-Cross-package end-to-end tests for **Quillium Omni** — the seams no single
-package can test on its own. Run from the repo root:
+Cross-package integration and end-to-end tests for **Quillium Omni** — the
+seams no single package can test on its own.
 
 ```bash
-bun run e2e:test:run      # single run
-bun run e2e:test          # watch mode
+bun run e2e:test:run   # component, round-trip, fuzz, and optional DB contract
+bun run e2e:test:web  # Playwright only; requires the Supabase env below
+bun run e2e:test:full # start/reuse local Supabase, then run every layer
+bun run e2e:test       # Vitest watch mode
 ```
 
-Also included in `bun run test:all`.
+`e2e:test:full` is the release-confidence command for Omni Web Preview. It reads
+credentials from `supabase status -o json`, starts the local stack when needed,
+and does not allow the database or browser layers to be silently skipped.
 
 ## Track B — Share / web preview (implemented)
 
-Exercises the desktop → wire → landing pipeline for the Omni web preview, with
-**zero infrastructure**:
+The suite covers the desktop → wire → Supabase → landing → browser pipeline at
+four levels:
 
-- `shareRoundTrip.test.ts` — builds a document (comment + two revisions + a
-  version group) through the real annotation core, serializes it the way desktop
-  publishes (`state.toJSON(readonlySavedFields)`), restores it the way the
-  landing `ReadonlyDocument` does (`EditorState.fromJSON`), and asserts content,
-  annotation fidelity, and the **linked-revision cascade** survive the round-trip.
-- `readonlyRender.test.ts` — mounts the real `ReadonlyDocument` component and
-  asserts it renders through the actual read-only CodeMirror editor.
-- `supabaseContract.test.ts` — the Supabase seam (publish → `published_state`
-  column → `get_public_share_by_token` RPC). **Gated**: needs a local Supabase
-  stack with the `share_published_state` migration applied, so it is skipped
-  unless `E2E_SUPABASE_URL` and `E2E_SUPABASE_SERVICE_ROLE_KEY` are set.
+- `shareRoundTrip.test.ts` calls the production desktop serializer, restores
+  with the shared read-only core, and verifies comments, suggestions, revisions,
+  and linked-version cascades.
+- `shareRoundTrip.fuzz.test.ts` runs 100 seeded, shrinking fast-check cases over
+  generated documents, ranges, threads, replacements, and revision versions.
+- `readonlyRender.test.ts` mounts the actual share shell and CodeMirror renderer,
+  including UI-driven linked-version switching, malformed-state recovery, and
+  the legacy pre-`published_state` fallback.
+- `supabaseContract.test.ts` creates and authenticates a real local user, checks
+  owner RLS, calls the production desktop repository to publish/get/disable,
+  verifies anonymous table denial, and reads enabled snapshots through
+  `get_public_share_by_token`.
+- `webPreview.pw.ts` starts the real landing app and drives `/share/[token]` in
+  Chromium, covering metadata, the CTA, read-only enforcement, all annotation
+  types, linked revisions, legacy shares, malformed tokens, disabled shares,
+  and cleanup.
+
+The Supabase-backed Vitest and Playwright layers accept:
+
+```bash
+E2E_SUPABASE_URL=http://127.0.0.1:54321
+E2E_SUPABASE_SERVICE_ROLE_KEY=...
+E2E_SUPABASE_PUBLISHABLE_KEY=... # E2E_SUPABASE_ANON_KEY also works
+```
+
+CI starts the repository migrations in a local Supabase stack and runs the full
+command for changes that can affect Web Preview.
 
 ## Track A — Relay real-time collaboration (planned)
 

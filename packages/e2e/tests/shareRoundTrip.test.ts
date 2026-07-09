@@ -14,6 +14,7 @@ import { EditorState } from "@codemirror/state";
 import {
     annotationField,
     getReadonlyExtensions,
+    isAnnotationOfType,
     readonlySavedFields,
     serializeFromState,
     setActiveRevisionVersion,
@@ -48,7 +49,7 @@ describe("Omni share round-trip (desktop → wire → landing)", () => {
         const projection = serializeFromState(restored);
 
         expect(projection.content).toBe("The quick brown fox");
-        expect(projection.annotations.map((a) => a.id).sort()).toEqual(["1", "2", "3"]);
+        expect(projection.annotations.map((a) => a.id).sort()).toEqual(["1", "2", "3", "4"]);
 
         const revA = projection.annotations.find((a) => a.id === "1");
         expect(revA?.type).toBe("revision");
@@ -57,6 +58,16 @@ describe("Omni share round-trip (desktop → wire → landing)", () => {
         const comment = projection.annotations.find((a) => a.id === "3");
         expect(comment?.type).toBe("comment");
         expect(comment?.thread[0]?.message).toBe("Strong opener.");
+
+        const suggestion = projection.annotations.find((a) => a.id === "4");
+        expect(suggestion?.type).toBe("suggestion");
+        if (!suggestion || suggestion.type !== "suggestion") {
+            throw new Error("Expected suggestion projection");
+        }
+        expect(suggestion.replacements).toEqual([
+            { text: "russet", rationale: "More specific" },
+            { text: "umber" },
+        ]);
     });
 
     it("switching a grouped revision cascades to its linked partner", () => {
@@ -98,7 +109,7 @@ describe("Omni share round-trip (desktop → wire → landing)", () => {
 
         // Both revisions still exist as switchable revisions after restore.
         const map = restored.field(annotationField);
-        expect(map[1]?._type).toBe("revision");
-        expect(map[2]?._type).toBe("revision");
+        expect(map[1] && isAnnotationOfType(map[1], "revision")).toBe(true);
+        expect(map[2] && isAnnotationOfType(map[2], "revision")).toBe(true);
     });
 });

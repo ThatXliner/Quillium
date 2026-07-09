@@ -40,6 +40,8 @@
     "share:test:run": "bun run --cwd packages/share test:run",
     "e2e:test": "bun run --cwd packages/e2e test",
     "e2e:test:run": "bun run --cwd packages/e2e test:run",
+    "e2e:test:web": "bun run --cwd packages/e2e test:web",
+    "e2e:test:full": "bun run --cwd packages/e2e test:full",
     "format": "biome format --write .",
     "lint": "biome lint --write .",
     "biome": "bun run format && bun run lint",

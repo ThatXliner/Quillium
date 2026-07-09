@@ -1,7 +1,5 @@
 import { getRawAnnotationField } from "$lib/collab/annotationSchema";
 import type { Annotations } from "$lib/editor/plugins/annotations";
-import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
-import type { EditorState } from "@codemirror/state";
 import type {
     SerializedAnnotation,
     SerializedAnnotationBase,
@@ -10,6 +8,7 @@ import type {
     SerializedSuggestionAnnotation,
 } from "@quillium/share";
 export { buildShareFingerprint } from "@quillium/share";
+export { serializeShareState } from "./shareState";
 export type {
     SerializedAnnotation,
     SerializedCommentAnnotation,
@@ -31,18 +30,6 @@ export function serializeAnnotations(
     if (!annotations) return [];
 
     return serializeAnnotationMap(doc, annotations);
-}
-
-/**
- * The public-share wire state: the CodeMirror state serialized with ONLY the
- * annotation + version-group fields (no history). The landing renderer restores
- * this via `EditorState.fromJSON(json, { extensions }, readonlySavedFields)` to
- * render the document through the real read-only editor, giving exact
- * annotation fidelity and linked-revision (version-group) support. Kept in sync
- * with @quillium/share's `readonlySavedFields`.
- */
-export function serializeShareState(state: EditorState): Record<string, unknown> {
-    return state.toJSON({ annotationField, versionGroupField });
 }
 
 /**

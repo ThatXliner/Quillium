@@ -5,16 +5,21 @@
   "description": "Cross-package end-to-end tests for Quillium Omni (share/preview round-trip; relay collab is tracked separately).",
   "scripts": {
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:web": "playwright test",
+    "test:full": "bun scripts/runLocal.ts"
   },
   "dependencies": {
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.1",
-    "@quillium/share": "workspace:*"
+    "@quillium/share": "workspace:*",
+    "@supabase/supabase-js": "2.110.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.59.1",
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
     "@testing-library/svelte": "^5.3.1",
+    "fast-check": "4.7.0",
     "jsdom": "^28.1.0",
     "lucide-svelte": "^0.475.0",
     "svelte": "^5.55.5",

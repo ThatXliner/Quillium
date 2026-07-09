@@ -7,6 +7,7 @@
  *   "The quick brown fox"
  *      0..3  "The"    — a comment
  *      4..9  "quick"  — revision A, versions ["quick", "swift"]
+ *     10..15 "brown"  — a suggestion
  *     16..19 "fox"    — revision B, versions ["fox", "hound"]
  *   A version group links revision A's "swift" to revision B's "hound", so
  *   activating one cascades to the other (the linked-revision marquee feature).
@@ -17,6 +18,7 @@ import { annotationField, versionGroupField } from "@quillium/share/core";
 import { addAnnotation } from "@quillium/share/core/annotationField";
 import { makeVersion } from "@quillium/share/core/models";
 import { createVersionGroup } from "@quillium/share/core/versionGroupField";
+import { serializeShareState } from "../../desktop/src/lib/collab/shareState";
 
 export const FIXTURE_DOC = "The quick brown fox";
 
@@ -24,6 +26,7 @@ export type FixtureIds = {
     revA: number;
     revB: number;
     comment: number;
+    suggestion: number;
     vAQuick: string;
     vASwift: string;
     vBFox: string;
@@ -65,8 +68,22 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
         selection: EditorSelection.single(0, 3),
     };
 
+    const suggestion: GenericAnnotation = {
+        id: 4,
+        _type: "suggestion",
+        author: "AI",
+        thread: [{ author: "AI", message: "Consider a more vivid color.", time: 2 }],
+        selection: EditorSelection.single(10, 15),
+        replacements: [{ text: "russet", rationale: "More specific" }, { text: "umber" }],
+    };
+
     state = state.update({
-        effects: [addAnnotation.of(revA), addAnnotation.of(revB), addAnnotation.of(comment)],
+        effects: [
+            addAnnotation.of(revA),
+            addAnnotation.of(revB),
+            addAnnotation.of(comment),
+            addAnnotation.of(suggestion),
+        ],
     }).state;
 
     const { spec } = createVersionGroup("Formal voice", [
@@ -81,6 +98,7 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
             revA: 1,
             revB: 2,
             comment: 3,
+            suggestion: 4,
             vAQuick: vAQuick.id,
             vASwift: vASwift.id,
             vBFox: vBFox.id,
@@ -96,5 +114,5 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
  * one line so any drift from that producer is obvious.
  */
 export function serializeFixtureWire(state: EditorState): Record<string, unknown> {
-    return state.toJSON({ annotationField, versionGroupField });
+    return serializeShareState(state);
 }
