@@ -86,8 +86,9 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | Event | When | File |
 |-------|------|------|
 | `ai_editor_requested` | Unified editor review started | `EditorReview.svelte` |
-| `ai_editor_stage_changed` | Writer overrides automatic writing stage | `EditorReview.svelte` |
-| `document_context_changed` | Writing brief document kind changes | `DocumentContext.svelte` |
+| `ai_editor_stage_changed` | Writer selects a writing stage | `EditorReview.svelte` |
+| `document_context_changed` | Document kind changes | `DocumentContext.svelte` |
+| `document_context_generated` | Context generated from the writer's prompt or brief | `DocumentContext.svelte` |
 
 ## AutoAI
 
@@ -95,7 +96,8 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 |-------|------|------|
 | `autoai_toggled` | AutoAI enabled/disabled | `AutoAIWidget.svelte` |
 | `autoai_manual_review_triggered` | "Review now" clicked | `AutoAIWidget.svelte` |
-| `autoai_stage_changed` | Quiet Review stage preference changes | `AutoAIWidget.svelte` |
+| `autoai_mode_changed` | Continuous/manual mode changes | `AutoAIWidget.svelte` |
+| `autoai_settings_changed` | Delay, annotation forms, or depth changes | `AutoAIWidget.svelte` |
 
 ## Tutorial
 

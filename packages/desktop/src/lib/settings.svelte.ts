@@ -23,7 +23,7 @@ export const ANNOTATION_PANEL_DEFAULT_WIDTH = 280;
 export type CustomQuickAction = {
     label: string;
     prompt: string;
-    panel: "revise" | "feedback" | "chat";
+    panel: "editor" | "revise" | "feedback" | "chat";
 };
 
 export type AppSettings = {

@@ -5,9 +5,9 @@
 Evolve Quillium's AI from separate user-facing modes into one editor-in-the-margin
 experience.
 
-The writer should not need to decide first whether they want Chat, Feedback, Revise, or
-AutoAI. They ask Quillium to look at the writing, optionally name a specific concern, and
-receive structured margin notes. Quillium infers the draft stage and editorial plan.
+The writer should not need to decide first whether they want Chat, Feedback, or Revise.
+They ask Quillium to look at the writing, choose the draft stage and editorial focuses they
+care about, optionally name a specific concern, and receive structured margin notes.
 
 Core UX principle:
 
@@ -49,10 +49,9 @@ The editor can operate on:
 - recent changes since last review;
 - an annotation thread.
 
-When the user gives no specific instruction, Quillium chooses a conservative, high-signal
-pass based on writing stage. The primary UI shows one Quillium action, an Auto stage with
-an override, and one optional instruction field. Feedback appears in the margin, not as a
-chat transcript.
+When the user gives no specific instruction, Quillium runs a conservative, high-signal pass
+from the visible stage and focus settings. Feedback appears in the margin, not as a chat
+transcript. AutoAI may infer stage internally when the writer has enabled automation.
 
 ## Writing Stage
 
@@ -61,14 +60,16 @@ chat transcript.
 - `refining`: clarity, pacing, specificity, voice consistency, line friction.
 - `proofing`: grammar, punctuation, consistency, settled local wording.
 
-Auto is the default preference. Local inference uses visible process signals, completeness,
-placeholders, outlines, and structure. It must not equate intentional roughness or unusual
-grammar with an early draft. The model confirms or corrects the stage in `stageAssessment`.
+Manual review defaults to `refining` and offers explicit Auto-detect. When Auto-detect is
+selected, the resolved stage is shown. AutoAI inference uses visible process signals,
+completeness, placeholders, outlines, and structure. It must not
+equate intentional roughness or unusual grammar with an early draft. The model confirms or
+corrects the stage in `stageAssessment`.
 
 ## Internal Focus Plan
 
-Focus values answer what the editor should inspect, but are internal orchestration
-vocabulary rather than a required toggle wall:
+Focus values answer what the editor should inspect. They are exposed in compact progressive
+disclosure and remain the vocabulary used by the prompt contract:
 
 - `reader_view`: what a reader understands, misunderstands, or expects next.
 - `voice_guard`: what sounds like the writer, what sounds generic, and what may be
@@ -177,17 +178,19 @@ annotation type, depth, and persona naming are internal decisions.
 
 ## Writing Brief
 
-Document Context is a compact writer-owned brief:
+Document Context is a writer-owned workspace:
 
 - document kind;
 - audience;
 - intended reader effect;
 - requirements;
 - material to preserve;
-- optional other notes.
+- generated or freeform context;
+- optional custom editor instructions.
 
-Document kind informs protected-writing risk. The writer should not have to generate or
-maintain a prompt-engineering blob.
+Document kind informs protected-writing risk. Custom instructions and saved review prompts
+are preferences, not replacements for the stable system prompt, and cannot override safety,
+authorship, replacement permissions, or schema constraints.
 
 ## Implementation
 
@@ -197,10 +200,10 @@ maintain a prompt-engineering blob.
    high-stakes replacement validation, fixtures.
 3. Prompt harness: shared unified editor prompt builder and compatibility guidance for
    legacy Chat/Feedback/Revise.
-4. UX: one Quillium entry point, inferred writing stage, optional instruction, secondary
-   writing safeguards/context/persona settings.
+4. UX: one Quillium review entry point, explicit stage and focus, optional instruction,
+   extensible context/persona/settings strip.
 5. Quiet Review: shared structured runner, meaningful-pause orchestration, recent-change
-   context, and minimal controls.
+   context, and explicit automation controls.
 
 ## Open Decisions
 

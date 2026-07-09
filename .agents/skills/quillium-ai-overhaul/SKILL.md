@@ -39,11 +39,12 @@ model should be:
 > The writer asks Quillium to look at the writing. Quillium returns useful margin notes,
 > questions, and revision paths.
 
-Design around one primary Quillium action. Do not expose Chat, Feedback, Revise,
-AutoAI, or editorial focus as competing top-level modes. The normal flow is:
+Design around one primary Quillium review action. Do not expose Chat, Feedback, and Revise
+as competing top-level modes. Simplification means consolidating duplicate jobs, not hiding
+controls writers already understand. The normal manual flow is:
 
-1. infer the writing stage;
-2. derive a small internal review plan;
+1. let the writer choose the writing stage or explicitly choose transparent auto-detection;
+2. let the writer select or adjust the review focuses;
 3. accept an optional specific concern from the writer;
 4. return a few anchored margin notes.
 
@@ -54,11 +55,13 @@ Writing stages are:
 - Refining: clarity, pacing, voice consistency, specificity, line friction.
 - Proofing: grammar, punctuation, consistency, settled local wording.
 
-Default the stage to Auto, show the inference unobtrusively, and allow an override. Do
-not infer stage from grammar quality alone. Visible process signals, document completeness,
-structure, placeholders, and revision activity are stronger evidence.
+AutoAI may infer stage internally to choose an appropriate pass. Manual review should keep
+the stage control explicit and show the resolved stage when Auto is selected. Never infer stage from
+grammar quality alone. Visible process signals, document completeness, structure,
+placeholders, and revision activity are stronger evidence.
 
-The following focuses remain internal orchestration vocabulary, not a required toggle wall:
+The following focuses are contract vocabulary and may be exposed as compact, progressively
+disclosed controls:
 
 - Reader View
 - Voice Guard
@@ -72,24 +75,36 @@ The following focuses remain internal orchestration vocabulary, not a required t
 
 Do not call the focus `Devil's Advocate`; that name belongs to a Reader Persona.
 
-Natural-language input is optional and should refine the inferred plan. Chat transcripts
+Natural-language input is optional and should refine the selected plan. Chat transcripts
 are not the default output surface; conversation belongs inside a selection or annotation
 thread when a writer has a specific follow-up.
 
 ## Quiet Review
 
-AutoAI is the automatic trigger for the same Quillium editor, not a separate product or
-prompt contract. Keep its primary controls to on/off, Auto stage with an override, and
-Review now. Cadence, annotation type, depth, and annotation budget are internal decisions.
-Wait for a meaningful writing pause, review recent changes in whole-document context, and
-prefer one to three nonduplicate notes.
+AutoAI is an automatic trigger for the same Quillium editor contract, while retaining the
+controls writers use to understand and constrain automation: on/off, automatic/manual,
+delay, annotation forms, review depth, reviewer name, and Review now. The engine may infer
+stage and allocate annotation budget within those explicit bounds. Wait for a meaningful
+writing pause, review recent changes in whole-document context, and avoid duplicate notes.
 
 ## Writing Brief
 
-Document Context is a writer-owned brief, not prompt engineering. Prefer a few optional,
-plain-language fields: document kind, audience, intended reader effect, requirements, and
-what must remain intact. Use document kind to infer protected-writing risk conservatively.
-Keep unusual notes in one advanced freeform field.
+Document Context is a writer-owned workspace. Preserve the useful freeform context and
+context-generation flow, then offer optional structured fields for document kind, audience,
+intended reader effect, requirements, and what must remain intact. Writers may also supply
+custom editor instructions and saved review prompts. Treat customization as lower-priority
+preferences that cannot override authorship, safety, replacement-permission, or schema rules.
+
+## UX Invariants
+
+- Keep the sidebar action registry horizontally scrollable and data-driven so supporting
+  tools can be added without rebuilding the shell.
+- Match the established compact, translucent Quillium controls instead of introducing a
+  generic chat transcript as the primary writing workflow.
+- Never animate a morphing container to or from `rounded-full`, `9999px`, or another
+  effectively infinite radius. Use a finite collapsed radius equal to half the collapsed
+  dimension (for example, `33.5px` for a `67px` AutoAI bubble). Infinite radii can snap at
+  the end of WebKit interpolation and visibly break the morph animation.
 
 ## Reader Personas
 
@@ -145,6 +160,6 @@ as the writer's own, upgraded tone/voice/personality, or detector-evasion behavi
 - Persona modes: `packages/desktop/src/lib/ai/settings.svelte.ts`
 - Shared review runner: `packages/desktop/src/lib/ai/editor/reviewEngine.ts`
 - Quiet review: `packages/desktop/src/lib/autoai/engine.ts`
-- Writing brief: `packages/desktop/src/lib/ai/DocumentContext.svelte`
+- Document Context: `packages/desktop/src/lib/ai/DocumentContext.svelte`
 - Legacy streams: `packages/desktop/src/lib/ai/clientStreams.ts`
 - Persona prompts: `packages/desktop/src/lib/readers/prompt.ts`

@@ -6,8 +6,8 @@ a structured response and the useful work appears as anchored margin annotations
 
 ## Primary Flow
 
-1. `EditorReview.svelte` locally estimates the writing stage.
-2. `focusForReview()` derives an internal editorial plan for that stage.
+1. `EditorReview.svelte` uses the writing stage selected by the writer.
+2. The writer can adjust a compact set of editorial focus controls.
 3. An optional writer instruction can narrow the plan, such as “grammar only” or “look at
    the structure.”
 4. `reviewEngine.ts` runs `generateObject()` against `QuilliumEditorResponseSchema`.
@@ -15,20 +15,24 @@ a structured response and the useful work appears as anchored margin annotations
    suggestions.
 6. The sidebar shows only a short completion summary; feedback lives in the manuscript.
 
-The visible stage choices are Auto, Discovering, Shaping, Refining, and Proofing. Auto is
-the default. Editorial focus values remain internal contract vocabulary.
+The visible stage choices are Auto-detect, Discovering, Shaping, Refining, and Proofing.
+Refining is the default for manual review. If the writer chooses Auto-detect, the resolved
+stage is shown; AutoAI also infers a stage when it runs in the background.
 
 ## Secondary Screens
 
-The collapsed sidebar contains only Quillium and Settings buttons. From Review settings,
-writers can reach:
+The sidebar uses a data-driven horizontal action strip that remains scrollable even while it
+is short. It contains:
 
-- **Writing brief** (`DocumentContext.svelte`): document kind, audience, intended reader
-  effect, requirements, material to preserve, and optional notes.
+- **Quillium** (`EditorReview.svelte`): stage, focus, saved prompts, safeguards, and review.
+- **Document Context** (`DocumentContext.svelte`): generated/freeform context, document kind,
+  audience, intended reader effect, requirements, material to preserve, and custom editor
+  instructions.
 - **Reader perspectives** (`Readers.svelte`): configure optional Reader Personas.
-- **Writing safeguards**: override inferred document risk or external AI policy.
+- **Settings**: provider, model, API key, and custom quick actions.
 
-These are secondary screens, not additional sidebar modes.
+These are supporting workspaces around one editorial contract, not duplicate Chat,
+Feedback, and Revise modes.
 
 ## Structured Runner
 
@@ -46,11 +50,11 @@ enabled. Persona prompts remain lower priority than safety and schema rules.
 
 ## Events And Shortcuts
 
-- `Mod-Shift-1`: open Quillium.
+- `Mod-Shift-1/2/3`: open Quillium, Document Context, or Reader Perspectives.
 - `ai-open-chat`: compatibility event that now opens Quillium.
 - `ai-open-settings`: opens provider/model settings.
-- `ai_editor_requested`: records stage, inferred focus, risk, policy, and persona count.
-- `ai_editor_stage_changed`: records a writing-stage override.
+- `ai_editor_requested`: records writer-selected stage/focus, risk, policy, and persona count.
+- `ai_editor_stage_changed`: records a writing-stage selection.
 
 ## Legacy Components
 

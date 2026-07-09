@@ -90,7 +90,7 @@ The same module also owns:
 
 | State | Storage | Purpose |
 |-------|---------|---------|
-| `documentContext` | localStorage | Writing brief: kind, audience, purpose, requirements, preserve notes |
+| `documentContext` | localStorage | Generated/freeform context, writing details, and custom editor instructions |
 | `personaModes` | localStorage | Reader-persona opt-in; unified editor uses `editor` |
 | `aiProcessing` | memory | Sidebar glow / stop-all coordination |
 

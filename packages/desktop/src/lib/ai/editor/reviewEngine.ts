@@ -8,7 +8,11 @@
 
 import { createModel } from "$lib/ai/provider";
 import { aiSettings, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
-import { createComment, createSuggestion } from "$lib/editor/plugins/annotations/index";
+import {
+    createComment,
+    createRevision,
+    createSuggestion,
+} from "$lib/editor/plugins/annotations/index";
 import type { Annotations } from "$lib/editor/plugins/annotations/models";
 import type { ReaderPersona } from "$lib/readers/presets";
 import { buildPersonaPrompt } from "$lib/readers/prompt";
@@ -27,6 +31,8 @@ export type AppliedEditorReview = {
     applied: number;
     skipped: number;
 };
+
+export type EditorAnnotationType = "comment" | "suggestion" | "revision";
 
 export function summarizeExistingAnnotations(
     annotations: Annotations,
@@ -97,11 +103,15 @@ export function applyEditorReview(args: {
     response: QuilliumEditorResponse;
     view: EditorView;
     author?: string;
+    allowedAnnotationTypes?: EditorAnnotationType[];
 }): AppliedEditorReview {
     const documentText = args.view.state.doc.toString();
     const maxAnnotations = args.request.maxAnnotations ?? args.response.annotations.length;
     let applied = 0;
     let skipped = 0;
+    const allowed = new Set<EditorAnnotationType>(
+        args.allowedAnnotationTypes ?? ["comment", "suggestion"],
+    );
 
     for (const annotation of args.response.annotations.slice(0, maxAnnotations)) {
         const targetText = annotation.target.quote;
@@ -121,7 +131,30 @@ export function applyEditorReview(args: {
             }));
 
         try {
-            if (replacements.length > 0) {
+            if (allowed.has("revision") && replacements.length > 1) {
+                const created = createRevision({
+                    targetText,
+                    versions: annotation.revisionStrategies
+                        .filter(
+                            (strategy) =>
+                                strategy.includesReplacementText &&
+                                !!strategy.replacementText?.trim(),
+                        )
+                        .map((strategy) => ({
+                            label: strategy.label,
+                            text: strategy.replacementText?.trim() ?? "",
+                        })),
+                    threadMessage: formatMarginNote(annotation),
+                    author: args.author ?? "Quillium",
+                    view: args.view,
+                });
+                if (created) {
+                    applied++;
+                    continue;
+                }
+            }
+
+            if (allowed.has("suggestion") && replacements.length > 0) {
                 const created = createSuggestion({
                     targetText,
                     replacements,
@@ -136,6 +169,10 @@ export function applyEditorReview(args: {
                 }
             }
 
+            if (!allowed.has("comment")) {
+                skipped++;
+                continue;
+            }
             createComment({
                 targetText,
                 comment: formatMarginNote(annotation),

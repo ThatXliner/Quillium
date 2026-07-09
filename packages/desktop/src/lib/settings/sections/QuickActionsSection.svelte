@@ -14,7 +14,7 @@ let {
     selectedPanel = $bindable(),
 }: {
     draft: AppSettings;
-    selectedPanel: "revise" | "feedback" | "chat";
+    selectedPanel: "editor" | "revise" | "feedback" | "chat";
 } = $props();
 
 let newActionLabel = $state("");
@@ -55,7 +55,7 @@ function removeQuickAction(index: number) {
         <div class="setting-desc">Add chips to a specific AI panel</div>
     </div>
     <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
-        {#each (["revise", "feedback", "chat"] as const) as panel}
+        {#each (["editor", "revise", "feedback", "chat"] as const) as panel}
             <button
                 onclick={() => {
                     selectedPanel = panel;

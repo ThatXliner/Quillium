@@ -52,6 +52,7 @@ export type DocumentContext = {
     purpose: string;
     constraints: string;
     preserve: string;
+    editorInstructions: string;
     freeform: string;
 };
 
@@ -61,6 +62,7 @@ export const DEFAULT_DOCUMENT_CONTEXT: DocumentContext = {
     purpose: "",
     constraints: "",
     preserve: "",
+    editorInstructions: "",
     freeform: "",
 };
 
@@ -75,6 +77,8 @@ export function parseDocumentContext(raw: unknown): DocumentContext {
         purpose: typeof value.purpose === "string" ? value.purpose : "",
         constraints: typeof value.constraints === "string" ? value.constraints : "",
         preserve: typeof value.preserve === "string" ? value.preserve : "",
+        editorInstructions:
+            typeof value.editorInstructions === "string" ? value.editorInstructions : "",
         freeform: typeof value.freeform === "string" ? value.freeform : "",
     };
 }
@@ -102,6 +106,7 @@ export function hasDocumentContext(): boolean {
         documentContext.purpose.trim().length > 0 ||
         documentContext.constraints.trim().length > 0 ||
         documentContext.preserve.trim().length > 0 ||
+        documentContext.editorInstructions.trim().length > 0 ||
         documentContext.freeform.trim().length > 0
     );
 }

@@ -123,6 +123,7 @@ export type QuilliumEditorDocumentContext = {
     voiceGoal?: string;
     preserve?: string[];
     avoid?: string[];
+    editorInstructions?: string;
     assignmentPrompt?: string;
     externalPolicyText?: string;
 };
@@ -255,6 +256,7 @@ export const QuilliumEditorDocumentContextSchema = z.object({
     voiceGoal: z.string().optional(),
     preserve: z.array(z.string()).optional(),
     avoid: z.array(z.string()).optional(),
+    editorInstructions: z.string().optional(),
     assignmentPrompt: z.string().optional(),
     externalPolicyText: z.string().optional(),
 });

@@ -214,7 +214,7 @@ separates it from the background and establishes it as the primary surface.
 | Property | Value |
 |----------|-------|
 | Standard panel padding | `p-4` |
-| Panel radius (collapsed) | `rounded-[100px]` (pill) |
+| Panel radius (collapsed) | Half the collapsed dimension (`26px` for `52px`) |
 | Panel radius (expanded) | `rounded-[14px]` |
 | Panel shadow | `shadow-lg` |
 | Panel background | `bg-gray-300/70 backdrop-blur-md` |
@@ -498,7 +498,7 @@ Radius
 ------
 Default:                rounded-lg
 Pills / icon buttons:   rounded-full
-Panels (collapsed):     rounded-[100px]
+Panels (collapsed):     finite half-size radius (for example, rounded-[26px])
 Panels (expanded):      rounded-[14px]
 
 Motion
@@ -507,3 +507,10 @@ Standard:               transition-colors duration-300
 Panel expand:           340ms cubic-bezier(0.33, 0, 0.2, 1)
 Annotation position:    300ms cubic-bezier(0.25, 0.46, 0.45, 0.94)
 ```
+
+When a container transitions width, height, and border radius together, the collapsed
+radius must be finite and equal to half its collapsed dimension. Do not use `rounded-full`,
+`9999px`, or another effectively infinite radius on the morphing container: WebKit may
+interpolate toward that huge value and snap at the end of the animation. A `67px` AutoAI
+bubble therefore uses `33.5px`; the `52px` sidebar uses `26px`. Child icon buttons may still
+use `rounded-full` because their radius is not part of the panel morph.

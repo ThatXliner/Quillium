@@ -72,10 +72,15 @@ test.describe("AI sidebar", () => {
         await q.init();
 
         await page.getByRole("button", { name: /Open Quillium/ }).click();
+        const toolStrip = q.aiSidebar.getByRole("navigation", { name: "Quillium tools" });
+        await expect(toolStrip).toBeVisible();
+        await expect
+            .poll(() => toolStrip.evaluate((element) => getComputedStyle(element).overflowX))
+            .toBe("auto");
         await q.aiSidebar.getByText("Review settings").click();
-        await q.aiSidebar.getByRole("button", { name: "Document context" }).click();
-        await expect(q.aiSidebar).toContainText("Writing brief");
-        await q.aiSidebar.getByRole("button", { name: "Back to Quillium" }).click();
+        await q.aiSidebar.getByRole("button", { name: "Document context", exact: true }).click();
+        await expect(q.aiSidebar).toContainText("WRITING PROMPT OR BRIEF");
+        await q.aiSidebar.getByRole("button", { name: "Quillium" }).click();
         await q.aiSidebar.getByText("Review settings").click();
         await q.aiSidebar.getByRole("button", { name: "Configure readers" }).click();
         await expect(q.aiSidebar).toContainText("Reader Perspectives");
@@ -119,10 +124,32 @@ test.describe("AI sidebar", () => {
         });
         await q.init();
 
-        await page.getByRole("button", { name: "Quillium — add an API key to enable" }).click();
+        await page.getByRole("button", { name: "AutoAI — add an API key to enable" }).click();
         await page.getByRole("button", { name: "Configure AI" }).click();
 
         await expect(q.aiSidebar).toContainText("AI Settings");
+    });
+
+    test("AutoAI keeps explicit controls and a finite morph radius", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        const widget = page.locator(".autoai-container");
+        await expect
+            .poll(() => widget.evaluate((element) => getComputedStyle(element).borderRadius))
+            .toBe("33.5px");
+        await page.getByRole("button", { name: "AutoAI paused — click to configure" }).click();
+
+        await expect(page.getByRole("switch", { name: "Enable AutoAI" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Auto", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Manual", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Comments", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Suggestions", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Revisions", exact: true })).toBeVisible();
+        await expect(page.getByRole("slider", { name: "Review depth" })).toBeVisible();
     });
 });
 

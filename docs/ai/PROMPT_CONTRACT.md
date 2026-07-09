@@ -63,13 +63,18 @@ The production prompt constant is `QUILLIUM_EDITOR_SYSTEM_PROMPT`.
 - selected text and surrounding/full-document context;
 - document context and voice fingerprint;
 - user intent and custom quick action, if any;
-- inferred or writer-selected writing stage;
-- internal editor focus plan;
+- inferred (AutoAI) or writer-selected (manual review) writing stage;
+- writer-selected or stage-derived editor focus plan;
 - document risk level;
 - policy posture;
 - computed replacement permission;
 - optional Reader Persona run config;
 - annotation and branch context.
+
+Custom editor instructions and saved quick-action prompts are serialized as request data.
+They are lower priority than the developer instruction core and cannot override protected-
+writing rules, replacement permissions, no-fabrication, detector-evasion refusal, or the
+response schema.
 
 ## Response Model
 

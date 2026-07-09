@@ -8,9 +8,9 @@ separate editorial product.
 
 | File | Purpose |
 |------|---------|
-| `settings.svelte.ts` | Minimal persisted settings and legacy migration |
+| `settings.svelte.ts` | Persisted writer controls and migration |
 | `engine.ts` | Pause detection, recent-change context, shared review invocation |
-| `AutoAIWidget.svelte` | On/off, stage, and Review now controls |
+| `AutoAIWidget.svelte` | Mode, delay, output, depth, name, and Review now controls |
 | `AutoAIFace.svelte` | Animated face states |
 | `faceAnimation.svelte.ts` | Eye tracking and sleep/wake behavior |
 
@@ -21,19 +21,19 @@ Stored under `quillium-autoai-settings`:
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `enabled` | `false` | Whether quiet review watches changes |
-| `stagePreference` | `auto` | Auto detection or a writer override |
-
-Review delay, depth, persona name, annotation types, and conservativeness are no longer
-writer-facing settings. Old continuous-mode settings migrate to quiet review; old manual
-mode migrates paused so an upgrade never begins automatic review unexpectedly.
+| `mode` | `continuous` | Review after a pause or only on request |
+| `debounceMs` | `10000` | Pause before continuous review |
+| `persona` | `AutoAI` | Name shown on generated annotations |
+| `annotationTypes` | all | Comments, suggestions, and/or revisions AutoAI may create |
+| `conservativeness` | `conservative` | Annotation budget and selectivity |
 
 ## Review Flow
 
 ```mermaid
 flowchart LR
-    Change["Meaningful change"] --> Pause["12 second pause"]
+    Change["Meaningful change"] --> Pause["Writer-selected delay"]
     Pause --> Stage["Infer writing stage"]
-    Stage --> Plan["Derive internal focus"]
+    Stage --> Plan["Choose stage-appropriate focus"]
     Plan --> Review["Shared structured review"]
     Review --> Validate["Validate permissions and targets"]
     Validate --> Margin["1-3 margin notes"]
@@ -43,9 +43,9 @@ The engine compares the current draft with the last reviewed content. It sends t
 change as the immediate target and the whole draft as context. Existing annotations are
 included so the model can avoid duplicate concerns.
 
-Automatic review uses feedback-only policy before Proofing and grammar-only policy during
-Proofing. It does not create substantive revisions. The document kind from the Writing
-Brief supplies protected-writing risk.
+The selected annotation forms and review depth constrain what the runner may create. The
+document kind from Document Context supplies protected-writing risk, and those protections
+continue to override any custom editor instruction.
 
 ## Stage Behavior
 
@@ -55,8 +55,14 @@ Brief supplies protected-writing risk.
 - **Proofing:** grammar, punctuation, consistency, settled local wording.
 
 The local inference is a conservative starting hypothesis. The model reports its own
-`stageAssessment`, which updates the displayed stage after review. Intentional roughness is
-not, by itself, evidence of an early draft.
+`stageAssessment` as part of the structured result. Intentional roughness is not, by itself,
+evidence of an early draft.
+
+## Morph Animation
+
+The `67px` collapsed widget uses a finite `33.5px` radius and expands to `16px`. Do not use
+`rounded-full` or `9999px` on the morphing container: WebKit can snap at the end while
+interpolating an effectively infinite radius. Inner icon buttons may remain circular.
 
 ## Engine API
 

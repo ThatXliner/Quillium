@@ -80,10 +80,10 @@ let isDirty = $derived(
 
 // Quick actions panel — owned here because the scroll-to-setting deep link
 // ("quick-actions:feedback") selects a panel from outside the section.
-let selectedPanel = $state<"revise" | "feedback" | "chat">("revise");
+let selectedPanel = $state<"editor" | "revise" | "feedback" | "chat">("editor");
 
 function isQuickActionPanel(value: string | undefined): value is typeof selectedPanel {
-    return value === "revise" || value === "feedback" || value === "chat";
+    return value === "editor" || value === "revise" || value === "feedback" || value === "chat";
 }
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);

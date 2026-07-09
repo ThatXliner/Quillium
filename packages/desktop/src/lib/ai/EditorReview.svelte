@@ -4,13 +4,13 @@ import {
     applyEditorReview,
     buildEditorRequest,
     documentRiskForDocumentType,
-    focusForReview,
     generateEditorReview,
-    resolveWritingStage,
+    inferWritingStage,
     summarizeExistingAnnotations,
     type DocumentRiskLevel,
+    type EditorFocus,
     type PolicyPosture,
-    type WritingStagePreference,
+    type WritingStage,
 } from "$lib/ai/editor";
 import { buildAiContextPacket } from "$lib/ai/context";
 import {
@@ -21,9 +21,9 @@ import {
     personaModes,
     setPersonasForMode,
 } from "$lib/ai/settings.svelte";
-import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
 import posthog, { captureException } from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
+import { appSettings } from "$lib/settings.svelte";
 import {
     annotations,
     currentDocumentId,
@@ -50,8 +50,10 @@ let {
     onOpenContext?: () => void;
 } = $props();
 
-const stageOptions: Array<{ value: WritingStagePreference; label: string }> = [
-    { value: "auto", label: "Auto" },
+type StageChoice = WritingStage | "auto";
+
+const stageOptions: Array<{ value: StageChoice; label: string }> = [
+    { value: "auto", label: "Auto-detect" },
     { value: "discovering", label: "Discovering" },
     { value: "shaping", label: "Shaping" },
     { value: "refining", label: "Refining" },
@@ -65,7 +67,26 @@ const stageLabels = {
     proofing: "Proofing",
 } as const;
 
+const focusOptions: Array<{ value: EditorFocus; label: string }> = [
+    { value: "reader_view", label: "Reader View" },
+    { value: "voice_guard", label: "Voice Guard" },
+    { value: "specificity", label: "Specificity" },
+    { value: "structure", label: "Structure" },
+    { value: "clarity", label: "Clarity" },
+    { value: "line_notes", label: "Line Notes" },
+    { value: "grammar_only", label: "Grammar Only" },
+    { value: "policy_safety", label: "Policy Safety" },
+    { value: "challenge", label: "Challenge" },
+];
+
 let instruction = $state("");
+let writingStage = $state<StageChoice>("refining");
+let selectedFocuses = $state<EditorFocus[]>([
+    "reader_view",
+    "voice_guard",
+    "specificity",
+    "clarity",
+]);
 let documentRiskPreference = $state<DocumentRiskLevel | "auto">("auto");
 let policyPosture = $state<PolicyPosture>("normal");
 let reviewState = $state<"idle" | "reviewing" | "complete" | "error">("idle");
@@ -74,10 +95,16 @@ let appliedCount = $state(0);
 let reviewedStage = $state("");
 let errorMessage = $state("");
 
-const stageResolution = $derived(
-    resolveWritingStage(autoAISettings.stagePreference, $documentContent),
+const inferredStage = $derived(inferWritingStage($documentContent).stage);
+const resolvedWritingStage = $derived(writingStage === "auto" ? inferredStage : writingStage);
+const stageLabel = $derived(
+    writingStage === "auto"
+        ? `Auto · ${stageLabels[resolvedWritingStage]}`
+        : stageLabels[resolvedWritingStage],
 );
-const stageLabel = $derived(stageLabels[stageResolution.stage]);
+const savedPrompts = $derived(
+    appSettings.customQuickActions.filter((action) => action.panel === "editor"),
+);
 const targetLabel = $derived($selectedText ? "Selection" : "Current draft");
 const canReview = $derived(reviewState !== "reviewing" && !!$documentContent.trim());
 const documentRiskLevel = $derived(
@@ -88,12 +115,20 @@ const documentRiskLevel = $derived(
 const protectedMode = $derived(documentRiskLevel !== "ordinary" || policyPosture !== "normal");
 
 function updateStage(event: Event): void {
-    autoAISettings.stagePreference = (event.currentTarget as HTMLSelectElement)
-        .value as WritingStagePreference;
-    persistAutoAISettings();
+    writingStage = (event.currentTarget as HTMLSelectElement).value as StageChoice;
     posthog.capture("ai_editor_stage_changed", {
-        stage_preference: autoAISettings.stagePreference,
+        stage: writingStage,
+        resolved_stage: resolvedWritingStage,
     });
+}
+
+function toggleFocus(focus: EditorFocus): void {
+    if (selectedFocuses.includes(focus)) {
+        if (selectedFocuses.length === 1) return;
+        selectedFocuses = selectedFocuses.filter((item) => item !== focus);
+        return;
+    }
+    selectedFocuses = [...selectedFocuses, focus];
 }
 
 function updateRisk(event: Event): void {
@@ -126,8 +161,6 @@ async function review(): Promise<void> {
     appliedCount = 0;
     const task = beginAiTask("quillium-review");
     const abortSignal = getAiAbortSignal();
-    const stage = resolveWritingStage(autoAISettings.stagePreference, contentAtStart);
-    const focus = focusForReview({ stage: stage.stage, userIntent: instruction });
     const contextPacket = buildAiContextPacket({
         mode: "feedback",
         documentContent: contentAtStart,
@@ -145,14 +178,15 @@ async function review(): Promise<void> {
             purpose: documentContext.purpose || undefined,
             constraints: [documentContext.constraints, documentContext.freeform].filter(Boolean),
             preserve: documentContext.preserve ? [documentContext.preserve] : undefined,
+            editorInstructions: documentContext.editorInstructions || undefined,
         },
         existingAnnotations: summarizeExistingAnnotations(get(annotations) ?? {}, contentAtStart),
         userIntent:
             instruction.trim() ||
             "Review this writing and leave only the highest-leverage margin notes for its current stage.",
-        writingStage: stage.stage,
-        writingStageSource: stage.source,
-        focus,
+        writingStage: resolvedWritingStage,
+        writingStageSource: writingStage === "auto" ? "inferred" : "writer_selected",
+        focus: selectedFocuses,
         documentRiskLevel,
         policyPosture,
         maxAnnotations: 5,
@@ -162,9 +196,9 @@ async function review(): Promise<void> {
 
     posthog.capture("ai_editor_requested", {
         has_selection: !!selectionAtStart,
-        stage: stage.stage,
-        stage_source: stage.source,
-        focus,
+        stage: resolvedWritingStage,
+        stage_source: writingStage === "auto" ? "inferred" : "writer_selected",
+        focus: selectedFocuses,
         document_risk_level: documentRiskLevel,
         policy_posture: policyPosture,
         persona_count: personas.length,
@@ -219,14 +253,12 @@ function handleSubmit(event: SubmitEvent): void {
                 <SparklesIcon class="h-4 w-4 text-teal-700" />
                 <div class="min-w-0">
                     <p class="truncate text-xs font-semibold text-black/65">{targetLabel}</p>
-                    <p class="text-[10px] text-black/35">
-                        {#if autoAISettings.stagePreference === "auto"}Detected: {/if}{stageLabel}
-                    </p>
+                    <p class="text-[10px] text-black/35">{stageLabel} pass</p>
                 </div>
             </div>
             <label class="stage-control">
                 <span class="sr-only">Writing stage</span>
-                <select value={autoAISettings.stagePreference} onchange={updateStage}>
+                <select value={writingStage} onchange={updateStage}>
                     {#each stageOptions as option}
                         <option value={option.value}>{option.label}</option>
                     {/each}
@@ -296,11 +328,26 @@ function handleSubmit(event: SubmitEvent): void {
                         <span>Protected writing. Substantive language stays with the writer.</span>
                     </div>
                 {/if}
+                <div class="space-y-1.5">
+                    <span class="text-[10px] font-semibold text-black/38">FOCUS</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        {#each focusOptions as option}
+                            <button
+                                type="button"
+                                aria-pressed={selectedFocuses.includes(option.value)}
+                                onclick={() => toggleFocus(option.value)}
+                                class="focus-chip {selectedFocuses.includes(option.value)
+                                    ? 'active'
+                                    : ''}"
+                            >{option.label}</button>
+                        {/each}
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 gap-2">
                     <label class="setting-field">
                         <span>Document</span>
                         <select value={documentRiskPreference} onchange={updateRisk}>
-                            <option value="auto">From writing brief ({documentRiskLevel.replaceAll("_", " ")})</option>
+                            <option value="auto">From Document Context ({documentRiskLevel.replaceAll("_", " ")})</option>
                             <option value="ordinary">Ordinary</option>
                             <option value="high_stakes">High stakes</option>
                             <option value="college_application">College application</option>
@@ -340,6 +387,18 @@ function handleSubmit(event: SubmitEvent): void {
     </div>
 
     <form onsubmit={handleSubmit} class="shrink-0 border-t border-black/10 bg-white/25 p-3">
+        {#if savedPrompts.length > 0}
+            <div class="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+                {#each savedPrompts as prompt}
+                    <button
+                        type="button"
+                        onclick={() => (instruction = prompt.prompt)}
+                        title={prompt.prompt}
+                        class="saved-prompt"
+                    >{prompt.label}</button>
+                {/each}
+            </div>
+        {/if}
         <div class="flex gap-2">
             <input
                 bind:value={instruction}
@@ -450,6 +509,29 @@ function handleSubmit(event: SubmitEvent): void {
         padding: 7px;
         color: rgb(0 0 0 / 48%);
         font-size: 10px;
+    }
+
+    .focus-chip,
+    .saved-prompt {
+        flex: 0 0 auto;
+        border: 1px solid rgb(0 0 0 / 10%);
+        border-radius: 999px;
+        background: rgb(255 255 255 / 62%);
+        padding: 4px 8px;
+        color: rgb(0 0 0 / 42%);
+        font-size: 10px;
+        font-weight: 600;
+    }
+
+    .focus-chip.active {
+        border-color: rgb(13 148 136 / 35%);
+        background: rgb(20 184 166 / 10%);
+        color: #0f766e;
+    }
+
+    .saved-prompt:hover {
+        border-color: rgb(13 148 136 / 25%);
+        color: #0f766e;
     }
 
     .icon-submit {

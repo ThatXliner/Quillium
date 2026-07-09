@@ -6,45 +6,76 @@ import {
 } from "$lib/autoai/settings.svelte";
 import { beforeEach, describe, expect, it } from "vitest";
 
-describe("quiet review settings migration", () => {
+describe("AutoAI settings migration", () => {
     beforeEach(() => {
         localStorage.clear();
-        Object.assign(autoAISettings, DEFAULT_AUTOAI_SETTINGS);
-    });
-
-    it("keeps the writer-facing settings minimal", () => {
-        expect(DEFAULT_AUTOAI_SETTINGS).toEqual({
-            enabled: false,
-            stagePreference: "auto",
+        Object.assign(autoAISettings, DEFAULT_AUTOAI_SETTINGS, {
+            annotationTypes: [...DEFAULT_AUTOAI_SETTINGS.annotationTypes],
         });
     });
 
-    it("preserves enabled continuous review from the old settings shape", () => {
+    it("keeps the original writer-facing controls explicit", () => {
+        expect(DEFAULT_AUTOAI_SETTINGS).toEqual({
+            enabled: false,
+            mode: "continuous",
+            debounceMs: 10_000,
+            persona: "AutoAI",
+            annotationTypes: ["comment", "suggestion", "revision"],
+            conservativeness: "conservative",
+        });
+    });
+
+    it("preserves a valid existing settings shape", () => {
         expect(
             parseAutoAISettings({
                 enabled: true,
-                mode: "continuous",
+                mode: "manual",
                 debounceMs: 30_000,
-                annotationTypes: ["revision"],
+                annotationTypes: ["comment", "revision"],
                 conservativeness: "thorough",
-                persona: "My bot",
+                persona: "Draft Coach",
             }),
-        ).toEqual({ enabled: true, stagePreference: "auto" });
-    });
-
-    it("does not silently turn old manual mode into automatic review", () => {
-        expect(parseAutoAISettings({ enabled: true, mode: "manual" })).toEqual({
-            enabled: false,
-            stagePreference: "auto",
+        ).toEqual({
+            enabled: true,
+            mode: "manual",
+            debounceMs: 30_000,
+            annotationTypes: ["comment", "revision"],
+            conservativeness: "thorough",
+            persona: "Draft Coach",
         });
     });
 
-    it("persists a writing-stage override", () => {
-        autoAISettings.stagePreference = "refining";
+    it("falls back safely for malformed values and never disables every output type", () => {
+        expect(
+            parseAutoAISettings({
+                enabled: "yes",
+                mode: "unknown",
+                debounceMs: 90_000,
+                annotationTypes: ["unknown"],
+                conservativeness: "maximum",
+                persona: "   ",
+            }),
+        ).toEqual({
+            ...DEFAULT_AUTOAI_SETTINGS,
+            debounceMs: 60_000,
+        });
+    });
+
+    it("persists explicit review controls", () => {
+        autoAISettings.enabled = true;
+        autoAISettings.mode = "manual";
+        autoAISettings.debounceMs = 25_000;
+        autoAISettings.annotationTypes = ["comment", "suggestion"];
+        autoAISettings.conservativeness = "balanced";
+        autoAISettings.persona = "Margin Editor";
         persistAutoAISettings();
         expect(JSON.parse(localStorage.getItem("quillium-autoai-settings") ?? "{}")).toEqual({
-            enabled: false,
-            stagePreference: "refining",
+            enabled: true,
+            mode: "manual",
+            debounceMs: 25_000,
+            annotationTypes: ["comment", "suggestion"],
+            conservativeness: "balanced",
+            persona: "Margin Editor",
         });
     });
 });

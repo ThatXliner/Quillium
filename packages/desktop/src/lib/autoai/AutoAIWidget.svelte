@@ -1,49 +1,54 @@
-<!-- AutoAIWidget.svelte — Compact controls for Quillium's quiet reviewer. -->
+<!-- AutoAIWidget.svelte — Configurable background reviewer with morphing bubble UI. -->
 <script lang="ts">
-import { resolveWritingStage, type WritingStagePreference } from "$lib/ai/editor";
 import { hasApiKey } from "$lib/ai/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
-import { documentContent } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { SettingsIcon, XIcon } from "lucide-svelte";
-import { get } from "svelte/store";
+import { PencilIcon, SettingsIcon, XIcon } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
+import { get } from "svelte/store";
 import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
-import {
-    autoAIPhase,
-    autoAIWritingStage,
-    startAutoAI,
-    stopAutoAI,
-    triggerManualReview,
-} from "./engine";
+import { autoAIPhase, startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
 import { createFaceAnimation } from "./faceAnimation.svelte";
-import { autoAISettings, persistAutoAISettings } from "./settings.svelte";
+import {
+    type AutoAIAnnotationType,
+    type AutoAIConservativeness,
+    type AutoAIMode,
+    autoAISettings,
+    persistAutoAISettings,
+} from "./settings.svelte";
 
-const stageOptions: Array<{ value: WritingStagePreference; label: string }> = [
-    { value: "auto", label: "Auto" },
-    { value: "discovering", label: "Discovering" },
-    { value: "shaping", label: "Shaping" },
-    { value: "refining", label: "Refining" },
-    { value: "proofing", label: "Proofing" },
+const annotationOptions: Array<{
+    type: AutoAIAnnotationType;
+    label: string;
+    activeClass: string;
+}> = [
+    { type: "comment", label: "Comments", activeClass: "comment-active" },
+    { type: "suggestion", label: "Suggestions", activeClass: "suggestion-active" },
+    { type: "revision", label: "Revisions", activeClass: "revision-active" },
 ];
 
-const stageLabels = {
-    discovering: "Discovering",
-    shaping: "Shaping",
-    refining: "Refining",
-    proofing: "Proofing",
-} as const;
+const depthLevels: AutoAIConservativeness[] = ["conservative", "balanced", "thorough"];
+const depthLabels: Record<AutoAIConservativeness, string> = {
+    conservative: "Conservative",
+    balanced: "Balanced",
+    thorough: "Thorough",
+};
+const depthDescriptions: Record<AutoAIConservativeness, string> = {
+    conservative: "Clear issues only",
+    balanced: "Style and clarity too",
+    thorough: "Reviews everything",
+};
 
 let open = $state(false);
+let editingName = $state(false);
 let widgetEl = $state<HTMLDivElement | null>(null);
+let nameInputEl = $state<HTMLInputElement | null>(null);
+
 const noApiKey = $derived(!hasApiKey());
-const inferredStage = $derived(resolveWritingStage("auto", $documentContent).stage);
-const displayedStage = $derived(
-    autoAISettings.stagePreference === "auto"
-        ? stageLabels[inferredStage]
-        : stageLabels[autoAISettings.stagePreference],
-);
+const locked = $derived(noApiKey || !autoAISettings.enabled);
+const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
+const depthIndex = $derived(depthLevels.indexOf(autoAISettings.conservativeness));
 
 const face = createFaceAnimation({
     getWidgetEl: () => widgetEl,
@@ -69,6 +74,7 @@ const faceState = $derived<FaceState>(
 
 function toggleOpen(): void {
     open = !open;
+    editingName = false;
     if (open) face.wakeSilently();
     else face.resetSleep();
 }
@@ -82,21 +88,70 @@ function toggleEnabled(): void {
     else stopAutoAI();
 }
 
-function updateStage(event: Event): void {
-    autoAISettings.stagePreference = (event.currentTarget as HTMLSelectElement)
-        .value as WritingStagePreference;
+function setMode(mode: AutoAIMode): void {
+    autoAISettings.mode = mode;
     persistAutoAISettings();
-    autoAIWritingStage.set(
-        resolveWritingStage(autoAISettings.stagePreference, $documentContent).stage,
-    );
-    posthog.capture("autoai_stage_changed", {
-        stage_preference: autoAISettings.stagePreference,
+    posthog.capture("autoai_mode_changed", { mode });
+}
+
+function updateDelay(event: Event): void {
+    const seconds = Number.parseInt((event.currentTarget as HTMLInputElement).value, 10);
+    if (Number.isNaN(seconds)) return;
+    autoAISettings.debounceMs = seconds * 1000;
+    persistAutoAISettings();
+    posthog.capture("autoai_settings_changed", { setting: "delay", value: seconds });
+}
+
+function toggleAnnotationType(type: AutoAIAnnotationType): void {
+    if (autoAISettings.annotationTypes.includes(type)) {
+        if (autoAISettings.annotationTypes.length === 1) return;
+        autoAISettings.annotationTypes = autoAISettings.annotationTypes.filter(
+            (item) => item !== type,
+        );
+    } else {
+        autoAISettings.annotationTypes = [...autoAISettings.annotationTypes, type];
+    }
+    persistAutoAISettings();
+    posthog.capture("autoai_settings_changed", {
+        setting: "annotation_types",
+        value: autoAISettings.annotationTypes,
     });
+}
+
+function updateDepth(event: Event): void {
+    const index = Number.parseInt((event.currentTarget as HTMLInputElement).value, 10);
+    autoAISettings.conservativeness = depthLevels[index];
+    persistAutoAISettings();
+    posthog.capture("autoai_settings_changed", {
+        setting: "depth",
+        value: autoAISettings.conservativeness,
+    });
+}
+
+function startEditingName(): void {
+    editingName = true;
+    setTimeout(() => nameInputEl?.focus(), 0);
+}
+
+function updateName(event: Event): void {
+    autoAISettings.persona = (event.currentTarget as HTMLInputElement).value;
+    persistAutoAISettings();
+}
+
+function finishEditingName(): void {
+    editingName = false;
+    if (!autoAISettings.persona.trim()) autoAISettings.persona = "AutoAI";
+    persistAutoAISettings();
+}
+
+function handleNameKeydown(event: KeyboardEvent): void {
+    if (event.key === "Enter" || event.key === "Escape") finishEditingName();
 }
 
 function reviewNow(): void {
     posthog.capture("autoai_manual_review_triggered", {
-        stage_preference: autoAISettings.stagePreference,
+        mode: autoAISettings.mode,
+        depth: autoAISettings.conservativeness,
     });
     open = false;
     triggerManualReview();
@@ -132,19 +187,19 @@ onDestroy(() => {
 <div
     bind:this={widgetEl}
     onclick={(event) => event.stopPropagation()}
-    class="autoai-container {open ? 'is-open' : ''} {autoAISettings.enabled && !noApiKey && !open
+    class="autoai-container {open ? 'is-open' : ''} {autoAISettings.enabled && !locked && !open
         ? 'is-active'
         : ''}"
 >
-    <div class="bubble-layer {open ? 'is-hidden' : ''}">
+    <div class="layer bubble-layer {open ? 'hidden-layer' : ''}">
         <button
             type="button"
             onclick={toggleOpen}
             aria-label={noApiKey
-                ? "Quillium — add an API key to enable"
+                ? "AutoAI — add an API key to enable"
                 : autoAISettings.enabled
-                  ? `Quillium active — ${displayedStage}`
-                  : "Quillium paused"}
+                  ? "AutoAI active — click to configure"
+                  : "AutoAI paused — click to configure"}
             aria-expanded={open}
             class="bubble-button"
         >
@@ -156,64 +211,129 @@ onDestroy(() => {
         </button>
     </div>
 
-    <div class="panel-layer {open ? '' : 'is-hidden'}">
+    <div class="layer panel-layer {open ? '' : 'hidden-layer'}">
         <header class="panel-header">
             <div class="mini-face">
                 <AutoAIFace faceState={faceState} eyeOffsetX={0} eyeOffsetY={0} />
             </div>
-            <div class="header-copy">
-                <strong>Quillium</strong>
+            <div class="name-wrap">
+                {#if editingName}
+                    <input
+                        bind:this={nameInputEl}
+                        value={autoAISettings.persona}
+                        oninput={updateName}
+                        onblur={finishEditingName}
+                        onkeydown={handleNameKeydown}
+                        maxlength="20"
+                        aria-label="AutoAI name"
+                        class="name-input"
+                    />
+                {:else}
+                    <strong>{autoAISettings.persona}</strong>
+                    <button type="button" onclick={startEditingName} aria-label="Edit name" class="icon-button small">
+                        <PencilIcon size={10} />
+                    </button>
+                {/if}
                 <span>
                     {#if noApiKey}Not configured
                     {:else if $autoAIPhase === "reviewing"}Reviewing
-                    {:else if $autoAIPhase === "thinking"}Waiting for your pause
-                    {:else if autoAISettings.enabled}Quiet review on
+                    {:else if $autoAIPhase === "thinking"}Waiting
+                    {:else if autoAISettings.enabled && autoAISettings.mode === "continuous"}Active · {debounceSeconds}s
+                    {:else if autoAISettings.enabled}Active · manual
                     {:else}Paused{/if}
                 </span>
             </div>
             <button
                 type="button"
                 role="switch"
-                aria-label="Quiet review"
+                aria-label="Enable AutoAI"
                 aria-checked={autoAISettings.enabled}
                 disabled={noApiKey}
                 onclick={toggleEnabled}
                 class="toggle {autoAISettings.enabled && !noApiKey ? 'on' : ''}"
             ><span></span></button>
             <button type="button" onclick={toggleOpen} class="icon-button" aria-label="Close">
-                <XIcon size={14} />
+                <XIcon size={13} />
             </button>
         </header>
 
-        <div class="panel-body">
-            <label class="stage-row">
-                <span>Writing stage</span>
-                <select
-                    value={autoAISettings.stagePreference}
-                    onchange={updateStage}
-                    disabled={noApiKey}
-                >
-                    {#each stageOptions as option}
-                        <option value={option.value}>{option.label}</option>
-                    {/each}
-                </select>
-            </label>
-            {#if autoAISettings.stagePreference === "auto"}
-                <p class="stage-result">Detected: {displayedStage}</p>
+        <div class="panel-body {locked ? 'locked' : ''}">
+            <div class="field-row">
+                <span class="field-label">MODE</span>
+                <div class="segmented">
+                    <button
+                        type="button"
+                        onclick={() => setMode("continuous")}
+                        class:active={autoAISettings.mode === "continuous"}
+                    >Auto</button>
+                    <button
+                        type="button"
+                        onclick={() => setMode("manual")}
+                        class:active={autoAISettings.mode === "manual"}
+                    >Manual</button>
+                </div>
+            </div>
+
+            {#if autoAISettings.mode === "continuous"}
+                <div class="field-stack">
+                    <div class="field-heading">
+                        <label for="autoai-delay" class="field-label">DELAY</label>
+                        <span>{debounceSeconds}s</span>
+                    </div>
+                    <input
+                        id="autoai-delay"
+                        type="range"
+                        min="2"
+                        max="60"
+                        value={debounceSeconds}
+                        oninput={updateDelay}
+                    />
+                </div>
             {/if}
 
+            <div class="field-stack">
+                <span class="field-label">FIND</span>
+                <div class="pills">
+                    {#each annotationOptions as option}
+                        <button
+                            type="button"
+                            aria-pressed={autoAISettings.annotationTypes.includes(option.type)}
+                            onclick={() => toggleAnnotationType(option.type)}
+                            class="pill {autoAISettings.annotationTypes.includes(option.type)
+                                ? option.activeClass
+                                : ''}"
+                        >{option.label}</button>
+                    {/each}
+                </div>
+            </div>
+
+            <div class="field-stack">
+                <div class="field-heading">
+                    <span class="field-label">DEPTH</span>
+                    <span>{depthLabels[autoAISettings.conservativeness]} · {depthDescriptions[autoAISettings.conservativeness]}</span>
+                </div>
+                <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    value={depthIndex}
+                    oninput={updateDepth}
+                    aria-label="Review depth"
+                />
+            </div>
+        </div>
+
+        <footer class="panel-footer">
             {#if noApiKey}
                 <button type="button" onclick={openSettings} class="settings-button">
-                    <SettingsIcon size={14} />
-                    Configure AI
+                    <SettingsIcon size={13} /> Configure AI
                 </button>
             {:else}
                 <button type="button" onclick={reviewNow} class="review-button">
-                    Review now
-                    <Kbd keys={["⌘", "⇧", "R"]} />
+                    Review now <Kbd keys={["⌘", "⇧", "R"]} />
                 </button>
             {/if}
-        </div>
+        </footer>
     </div>
 </div>
 
@@ -224,31 +344,40 @@ onDestroy(() => {
         height: 67px;
         overflow: hidden;
         border: 2px solid #d6b87a;
-        border-radius: 100px;
+        /*
+         * IMPORTANT: keep this finite and equal to half the collapsed size.
+         * `rounded-full`/9999px makes WebKit interpolate toward an effectively
+         * infinite radius, which snaps at the end and breaks the morph animation.
+         */
+        border-radius: 33.5px;
         background: #faf8f5;
-        box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
-        transition: width 260ms ease, height 260ms ease, border-radius 260ms ease;
+        box-shadow: 0 4px 12px rgb(0 0 0 / 12%), 0 1px 3px rgb(0 0 0 / 8%);
+        transition:
+            width 340ms cubic-bezier(0.33, 0, 0.2, 1),
+            height 340ms cubic-bezier(0.33, 0, 0.2, 1),
+            border-radius 340ms cubic-bezier(0.33, 0, 0.2, 1),
+            border-color 200ms ease;
     }
 
     .autoai-container.is-open {
-        width: 300px;
-        height: 196px;
-        border-color: #e4ddd1;
-        border-radius: 8px;
+        width: 320px;
+        height: 360px;
+        border-color: #e8e0d4;
+        border-radius: 16px;
     }
 
     .autoai-container.is-active {
-        border-color: #2f8f78;
+        border-color: #d6b87a;
+        box-shadow: 0 0 0 2px rgb(214 184 122 / 15%), 0 4px 12px rgb(0 0 0 / 12%);
     }
 
-    .bubble-layer,
-    .panel-layer {
+    .layer {
         position: absolute;
         inset: 0;
-        transition: opacity 140ms ease;
+        transition: opacity 150ms ease;
     }
 
-    .is-hidden {
+    .hidden-layer {
         pointer-events: none;
         opacity: 0;
     }
@@ -274,9 +403,9 @@ onDestroy(() => {
         display: flex;
         min-height: 58px;
         align-items: center;
-        gap: 8px;
+        gap: 7px;
         border-bottom: 1px solid rgb(0 0 0 / 8%);
-        padding: 10px 12px;
+        padding: 9px 11px;
     }
 
     .mini-face {
@@ -289,19 +418,55 @@ onDestroy(() => {
         justify-content: center;
     }
 
-    .header-copy {
+    .name-wrap {
         display: flex;
         min-width: 0;
         flex: 1;
-        flex-direction: column;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 3px;
         color: rgb(0 0 0 / 72%);
         font-size: 12px;
     }
 
-    .header-copy span {
-        margin-top: 2px;
-        color: rgb(0 0 0 / 40%);
+    .name-wrap span {
+        width: 100%;
+        color: rgb(0 0 0 / 38%);
         font-size: 10px;
+    }
+
+    .name-input {
+        width: 105px;
+        border: 0;
+        border-bottom: 1px solid rgb(0 0 0 / 18%);
+        background: transparent;
+        color: rgb(0 0 0 / 72%);
+        font-size: 12px;
+        font-weight: 600;
+        outline: none;
+    }
+
+    .icon-button {
+        display: flex;
+        width: 25px;
+        height: 25px;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: rgb(0 0 0 / 32%);
+        cursor: pointer;
+    }
+
+    .icon-button:hover {
+        background: rgb(255 255 255 / 65%);
+        color: rgb(0 0 0 / 55%);
+    }
+
+    .icon-button.small {
+        width: 18px;
+        height: 18px;
     }
 
     .toggle {
@@ -327,72 +492,138 @@ onDestroy(() => {
     }
 
     .toggle.on {
-        background: #2f8f78;
+        background: #b68d42;
     }
 
     .toggle.on span {
         transform: translateX(12px);
     }
 
-    .icon-button {
-        display: flex;
-        width: 26px;
-        height: 26px;
-        align-items: center;
-        justify-content: center;
-        border: 0;
-        border-radius: 4px;
-        background: transparent;
-        color: rgb(0 0 0 / 35%);
-        cursor: pointer;
-    }
-
     .panel-body {
         display: flex;
+        min-height: 0;
         flex: 1;
         flex-direction: column;
-        gap: 8px;
-        padding: 12px;
+        gap: 15px;
+        overflow-y: auto;
+        padding: 13px 14px;
+        transition: opacity 160ms ease;
     }
 
-    .stage-row {
+    .panel-body.locked {
+        pointer-events: none;
+        opacity: 0.42;
+    }
+
+    .field-row,
+    .field-heading {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        color: rgb(0 0 0 / 55%);
-        font-size: 11px;
-        font-weight: 600;
+        gap: 10px;
     }
 
-    .stage-row select {
-        min-width: 112px;
-        border: 1px solid rgb(0 0 0 / 12%);
-        border-radius: 4px;
-        background: white;
-        padding: 5px 7px;
-        color: rgb(0 0 0 / 68%);
-        font-size: 11px;
+    .field-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
     }
 
-    .stage-result {
-        margin: -3px 0 1px;
+    .field-label {
         color: rgb(0 0 0 / 36%);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .field-heading > span:last-child {
+        color: rgb(0 0 0 / 40%);
         font-size: 10px;
-        text-align: right;
+    }
+
+    .segmented {
+        display: grid;
+        width: 164px;
+        grid-template-columns: 1fr 1fr;
+        border-radius: 5px;
+        background: rgb(0 0 0 / 6%);
+        padding: 2px;
+    }
+
+    .segmented button {
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        padding: 5px 7px;
+        color: rgb(0 0 0 / 42%);
+        font-size: 10px;
+        cursor: pointer;
+    }
+
+    .segmented button.active {
+        background: white;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+        color: rgb(0 0 0 / 68%);
+    }
+
+    input[type="range"] {
+        width: 100%;
+        accent-color: #b68d42;
+    }
+
+    .pills {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 5px;
+    }
+
+    .pill {
+        min-width: 0;
+        border: 1px solid rgb(0 0 0 / 10%);
+        border-radius: 5px;
+        background: rgb(255 255 255 / 45%);
+        padding: 6px 4px;
+        color: rgb(0 0 0 / 35%);
+        font-size: 10px;
+        cursor: pointer;
+    }
+
+    .comment-active {
+        border-color: rgb(59 130 246 / 25%);
+        background: rgb(59 130 246 / 9%);
+        color: #2563eb;
+    }
+
+    .suggestion-active {
+        border-color: rgb(16 185 129 / 25%);
+        background: rgb(16 185 129 / 9%);
+        color: #047857;
+    }
+
+    .revision-active {
+        border-color: rgb(139 92 246 / 25%);
+        background: rgb(139 92 246 / 9%);
+        color: #7c3aed;
+    }
+
+    .panel-footer {
+        border-top: 1px solid rgb(0 0 0 / 8%);
+        padding: 10px 12px;
     }
 
     .review-button,
     .settings-button {
         display: flex;
-        min-height: 34px;
+        width: 100%;
+        min-height: 33px;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        gap: 7px;
         border: 0;
         border-radius: 5px;
-        background: #2f6f65;
+        background: #a47c35;
         color: white;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         cursor: pointer;
     }

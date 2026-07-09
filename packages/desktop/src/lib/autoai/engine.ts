@@ -12,7 +12,7 @@ import {
     documentRiskForDocumentType,
     focusForWritingStage,
     generateEditorReview,
-    resolveWritingStage,
+    inferWritingStage,
     summarizeExistingAnnotations,
     type WritingStage,
 } from "$lib/ai/editor";
@@ -30,9 +30,22 @@ export type AutoAIPhase = "idle" | "thinking" | "reviewing";
 export const autoAIPhase = writable<AutoAIPhase>("idle");
 export const autoAIWritingStage = writable<WritingStage>("discovering");
 
-const REVIEW_PAUSE_MS = 12_000;
-const THINKING_LEAD_MS = 2_500;
-const MIN_MEANINGFUL_CHANGE_CHARS = 60;
+const MIN_MEANINGFUL_CHANGE_CHARS = 20;
+
+const REVIEW_DEPTH = {
+    conservative: {
+        maxAnnotations: 2,
+        instruction: "Only flag clear, high-impact issues. It is fine to leave no note.",
+    },
+    balanced: {
+        maxAnnotations: 4,
+        instruction: "Flag meaningful issues in structure, clarity, voice, and local craft.",
+    },
+    thorough: {
+        maxAnnotations: 6,
+        instruction: "Review comprehensively while avoiding duplicate or low-value notes.",
+    },
+} as const;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let thinkingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -89,12 +102,11 @@ async function runReview(content: string, manual = false): Promise<void> {
     try {
         autoAIPhase.set("reviewing");
         task = beginAiTask("autoai-review");
-        const stageResolution = resolveWritingStage(autoAISettings.stagePreference, content);
-        autoAIWritingStage.set(stageResolution.stage);
+        const stageInference = inferWritingStage(content);
+        autoAIWritingStage.set(stageInference.stage);
         const change = recentChange(lastReviewedContent, content);
-        const focus = focusForWritingStage(stageResolution.stage);
-        const policyPosture =
-            stageResolution.stage === "proofing" ? "grammar_only" : "no_substantive_ai_content";
+        const focus = focusForWritingStage(stageInference.stage);
+        const depth = REVIEW_DEPTH[autoAISettings.conservativeness];
         const contextPacket = buildAiContextPacket({
             mode: "autoai",
             documentContent: content,
@@ -114,16 +126,16 @@ async function runReview(content: string, manual = false): Promise<void> {
                     Boolean,
                 ),
                 preserve: documentContext.preserve ? [documentContext.preserve] : undefined,
+                editorInstructions: documentContext.editorInstructions || undefined,
             },
             existingAnnotations: summarizeExistingAnnotations(get(annotations) ?? {}, content),
-            userIntent:
-                "Review the recent writing change in whole-document context. Leave only high-leverage notes appropriate to the current writing stage.",
-            writingStage: stageResolution.stage,
-            writingStageSource: stageResolution.source,
+            userIntent: `Review the recent writing change in whole-document context. ${depth.instruction} Allowed annotation forms: ${autoAISettings.annotationTypes.join(", ")}.`,
+            writingStage: stageInference.stage,
+            writingStageSource: "inferred",
             focus,
             documentRiskLevel: documentRiskForDocumentType(documentContext.documentType),
-            policyPosture,
-            maxAnnotations: 3,
+            policyPosture: "normal",
+            maxAnnotations: depth.maxAnnotations,
         });
         const response = await generateEditorReview({ request, abortSignal });
         if (abortSignal.aborted) return;
@@ -134,7 +146,8 @@ async function runReview(content: string, manual = false): Promise<void> {
             request,
             response,
             view: liveView,
-            author: "Quillium",
+            author: autoAISettings.persona,
+            allowedAnnotationTypes: autoAISettings.annotationTypes,
         });
         lastReviewedContent = content;
         autoAIWritingStage.set(response.stageAssessment.stage);
@@ -158,10 +171,11 @@ async function runReview(content: string, manual = false): Promise<void> {
 
 function scheduleReview(content: string): void {
     cancelPendingReview();
+    const thinkingLeadMs = Math.min(2_500, autoAISettings.debounceMs * 0.3);
     thinkingTimer = setTimeout(() => {
         autoAIPhase.set("thinking");
         thinkingTimer = null;
-    }, REVIEW_PAUSE_MS - THINKING_LEAD_MS);
+    }, autoAISettings.debounceMs - thinkingLeadMs);
     debounceTimer = setTimeout(() => {
         debounceTimer = null;
         if (thinkingTimer) {
@@ -169,7 +183,7 @@ function scheduleReview(content: string): void {
             thinkingTimer = null;
         }
         runReview(content);
-    }, REVIEW_PAUSE_MS);
+    }, autoAISettings.debounceMs);
 }
 
 export function startAutoAI(): void {
@@ -177,8 +191,9 @@ export function startAutoAI(): void {
 
     unsubscribe = documentContent.subscribe((content) => {
         if (!autoAISettings.enabled) return;
+        if (autoAISettings.mode !== "continuous") return;
         if (get(editorView)?.state.readOnly) return;
-        const stage = resolveWritingStage(autoAISettings.stagePreference, content).stage;
+        const stage = inferWritingStage(content).stage;
         autoAIWritingStage.set(stage);
         if (
             lastReviewedContent &&

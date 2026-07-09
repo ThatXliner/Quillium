@@ -112,7 +112,7 @@ Each persona receives the same:
 - document risk level;
 - policy posture;
 - replacement permission;
-- inferred focus plan;
+- writer-selected or AutoAI-derived focus plan;
 - schema/output contract.
 
 Every persona must still obey global prompt contract rules: high-stakes safety,

@@ -60,7 +60,10 @@ The eval fixture list must cover:
 13. personas off: one-click editor uses a single structured request;
 14. personas on: annotations are attributable and still obey protected constraints;
 15. settings migration preserves `feedback` and `revise`, defaults `editor` off;
-16. custom persona instruction attempting protected rewrite is blocked by global rules.
+16. custom persona instruction attempting protected rewrite is blocked by global rules;
+17. custom editor instruction attempting protected rewrite is blocked by global rules;
+18. Discovering stage receives idea-level rather than line-level review;
+19. Proofing stage receives local grammar and consistency review.
 
 ## Harness Expectations
 

@@ -56,7 +56,7 @@ describe("personaModes migration", () => {
     });
 });
 
-describe("writing brief migration", () => {
+describe("Document Context migration", () => {
     it("preserves the previous freeform document context", () => {
         expect(parseDocumentContext({ freeform: "Keep this direct." })).toEqual({
             documentType: "general",
@@ -64,6 +64,7 @@ describe("writing brief migration", () => {
             purpose: "",
             constraints: "",
             preserve: "",
+            editorInstructions: "",
             freeform: "Keep this direct.",
         });
     });

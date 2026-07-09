@@ -11,6 +11,7 @@ export type DocumentContextLike = {
     purpose?: string;
     constraints?: string;
     preserve?: string;
+    editorInstructions?: string;
     freeform?: string;
 };
 
@@ -114,6 +115,9 @@ export function documentContextText(ctx?: DocumentContextLike): string {
         ctx.purpose?.trim() ? `Intended effect: ${ctx.purpose.trim()}` : "",
         ctx.constraints?.trim() ? `Requirements: ${ctx.constraints.trim()}` : "",
         ctx.preserve?.trim() ? `Preserve: ${ctx.preserve.trim()}` : "",
+        ctx.editorInstructions?.trim()
+            ? `Custom editor instructions: ${ctx.editorInstructions.trim()}`
+            : "",
         ctx.freeform?.trim() ? `Other notes: ${ctx.freeform.trim()}` : "",
     ];
     return fields.filter(Boolean).join("\n");
