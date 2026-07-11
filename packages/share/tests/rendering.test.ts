@@ -64,11 +64,13 @@ describe("revision rendering", () => {
         versions: [
             {
                 index: 0,
+                versionId: "original",
                 text: "world",
                 annotations: [],
             },
             {
                 index: 1,
+                versionId: "alternate",
                 text: "reader",
                 annotations: [
                     {

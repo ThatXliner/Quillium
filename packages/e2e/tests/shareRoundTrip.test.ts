@@ -44,7 +44,7 @@ describe("Omni share round-trip (desktop → wire → landing)", () => {
     });
 
     it("restores content and every annotation with fidelity", () => {
-        const { state } = buildFixtureState();
+        const { state, ids } = buildFixtureState();
         const restored = restoreFromWire(serializeFixtureWire(state));
         const projection = serializeFromState(restored);
 
@@ -54,6 +54,19 @@ describe("Omni share round-trip (desktop → wire → landing)", () => {
         const revA = projection.annotations.find((a) => a.id === "1");
         expect(revA?.type).toBe("revision");
         expect(revA?.selectedText).toBe("quick");
+        if (!revA || revA.type !== "revision") {
+            throw new Error("Expected revision projection");
+        }
+        expect(revA.versions.map((version) => version.versionId)).toEqual([
+            ids.vAQuick,
+            ids.vASwift,
+        ]);
+        expect(revA.versions[0].group).toBeUndefined();
+        expect(revA.versions[1].group).toMatchObject({
+            label: "Formal voice",
+            memberCount: 2,
+        });
+        expect(revA.versions[1].group?.color).toMatch(/^#[0-9a-f]{6}$/);
 
         const comment = projection.annotations.find((a) => a.id === "3");
         expect(comment?.type).toBe("comment");

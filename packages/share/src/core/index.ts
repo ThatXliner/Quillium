@@ -18,7 +18,11 @@ export {
 } from "./readonlyExtensions";
 
 export { annotationField, setActiveRevisionVersion } from "./annotationField";
-export { type SerializedState, serializeFromState } from "./serialize";
+export {
+    type SerializedState,
+    serializeAnnotationsFromData,
+    serializeFromState,
+} from "./serialize";
 export { versionGroupField } from "./versionGroupField";
 export { getActiveAnnotation } from "./utils";
 export {
@@ -30,6 +34,7 @@ export {
     type VersionGroup,
     type VersionGroupMember,
     type VersionGroups,
+    VersionGroupsSchema,
     activeVersion,
     activeVersionIndex,
     groupOfMember,

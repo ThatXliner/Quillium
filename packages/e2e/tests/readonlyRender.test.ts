@@ -43,8 +43,19 @@ describe("ReadonlyDocument renders through the real editor", () => {
             // The empty-state paragraph is only shown when there are no
             // annotations; our fixture has four (comment + suggestion + two revisions).
             expect(container.querySelector(".annotation-empty-state")).toBeNull();
-            expect(container.querySelector(".annotation-card-stack")?.children.length).toBe(4);
+            expect(container.querySelectorAll("[data-annotation-card-view]")).toHaveLength(4);
         });
+
+        // These hooks are owned by the shared card views consumed by desktop,
+        // history, and Web Preview. Their presence guards against Web Preview
+        // quietly growing another look-alike card implementation.
+        expect(container.querySelectorAll('[data-annotation-card-view="comment"]')).toHaveLength(1);
+        expect(container.querySelectorAll('[data-annotation-card-view="revision"]')).toHaveLength(
+            2,
+        );
+        expect(container.querySelectorAll('[data-annotation-card-view="suggestion"]')).toHaveLength(
+            1,
+        );
     });
 
     it("switches a revision through the UI and cascades its linked partner", async () => {
@@ -61,6 +72,45 @@ describe("ReadonlyDocument renders through the real editor", () => {
                 "The swift brown hound",
             );
         });
+    });
+
+    it("shows linked groups without exposing editing controls", async () => {
+        const { state } = buildFixtureState();
+        const { container, queryByRole } = render(ReadonlyDocument, {
+            props: { serializedState: serializeFixtureWire(state) },
+        });
+
+        await waitFor(() => {
+            expect(container.querySelectorAll("[data-version-group-id]")).toHaveLength(2);
+        });
+
+        const sharedCards = container.querySelectorAll<HTMLElement>("[data-annotation-card-view]");
+        expect(sharedCards).toHaveLength(4);
+        expect(
+            Array.from(sharedCards).filter((card) => card.dataset.active === "true"),
+        ).toHaveLength(1);
+
+        const linkedPills = Array.from(
+            container.querySelectorAll<HTMLElement>("[data-version-group-id]"),
+        );
+        expect(linkedPills.map((pill) => pill.title)).toEqual([
+            'Linked — group "Formal voice" (2 versions)',
+            'Linked — group "Formal voice" (2 versions)',
+        ]);
+        expect(linkedPills[0].querySelector("span")?.style.backgroundColor).toBe(
+            linkedPills[1].querySelector("span")?.style.backgroundColor,
+        );
+
+        for (const name of [
+            "Link version",
+            "Delete entire revision",
+            "New Version",
+            "Branch instead",
+            "Apply",
+        ]) {
+            expect(queryByRole("button", { name })).toBeNull();
+        }
+        expect(container.querySelector("textarea, input")).toBeNull();
     });
 
     it("shows a safe error state for malformed serialized editor state", async () => {

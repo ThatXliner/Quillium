@@ -163,4 +163,81 @@ describe("serializeAnnotations", () => {
             }),
         ]);
     });
+
+    it("preserves linked-version metadata through the actual desktop flat producer", () => {
+        const first = makeVersion({ doc: "hello" });
+        const second = makeVersion({ doc: "world" });
+        const serialized = serializeAnnotations(
+            "hello world",
+            {
+                1: {
+                    id: 1,
+                    _type: "revision",
+                    selection: EditorSelection.single(0, 5),
+                    thread: [],
+                    activeVersionId: first.id,
+                    versions: [first],
+                },
+                2: {
+                    id: 2,
+                    _type: "revision",
+                    selection: EditorSelection.single(6, 11),
+                    thread: [],
+                    activeVersionId: second.id,
+                    versions: [second],
+                },
+            },
+            {
+                "formal-pair": {
+                    id: "formal-pair",
+                    label: "Formal voice",
+                    members: [
+                        { revisionId: 1, versionId: first.id },
+                        { revisionId: 2, versionId: second.id },
+                    ],
+                },
+            },
+        );
+
+        const revisions = serialized.filter((annotation) => annotation.type === "revision");
+        expect(revisions).toHaveLength(2);
+        expect(revisions[0]?.versions[0]).toMatchObject({
+            versionId: first.id,
+            group: { id: "formal-pair", label: "Formal voice", memberCount: 2 },
+        });
+        expect(revisions[1]?.versions[0]).toMatchObject({
+            versionId: second.id,
+            group: { id: "formal-pair", label: "Formal voice", memberCount: 2 },
+        });
+    });
+
+    it("ignores malformed nested version groups instead of crashing projection", () => {
+        const outerVersion = {
+            ...makeVersion({ doc: "hello" }),
+            annotationField: {
+                7: {
+                    id: 7,
+                    _type: "revision",
+                    thread: [],
+                    activeVersionIndex: 0,
+                    versions: [{ doc: "ell" }],
+                    selection: { ranges: [{ anchor: 1, head: 4 }], main: 0 },
+                },
+            },
+            versionGroupField: { broken: { label: "Broken", members: null } },
+        };
+
+        expect(() =>
+            serializeAnnotations("hello", {
+                0: {
+                    id: 0,
+                    _type: "revision",
+                    selection: EditorSelection.single(0, 5),
+                    thread: [],
+                    activeVersionId: outerVersion.id,
+                    versions: [outerVersion as never],
+                },
+            }),
+        ).not.toThrow();
+    });
 });

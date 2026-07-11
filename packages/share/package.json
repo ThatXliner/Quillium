@@ -34,6 +34,16 @@
       "svelte": "./src/core/versionGroupField.ts",
       "types": "./src/core/versionGroupField.ts",
       "import": "./src/core/versionGroupField.ts"
+    },
+    "./layout": {
+      "svelte": "./src/layout/index.ts",
+      "types": "./src/layout/index.ts",
+      "import": "./src/layout/index.ts"
+    },
+    "./rendering": {
+      "svelte": "./src/rendering.ts",
+      "types": "./src/rendering.ts",
+      "import": "./src/rendering.ts"
     }
   },
   "scripts": {
@@ -56,6 +66,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
     "@types/lodash-es": "^4.17.12",
+    "fast-check": "^4.7.0",
     "lucide-svelte": "^0.475.0",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.6",

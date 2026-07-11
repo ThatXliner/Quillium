@@ -44,7 +44,7 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
     const revA: GenericAnnotation = {
         id: 1,
         _type: "revision",
-        thread: [],
+        thread: [{ author: "Editor", message: "Opening claim.", time: 3 }],
         selection: EditorSelection.single(4, 9),
         activeVersionId: vAQuick.id,
         versions: [vAQuick, vASwift],

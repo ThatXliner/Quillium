@@ -32,4 +32,30 @@ beforeAll(() => {
                 finished: Promise.resolve(),
             }) as unknown as Animation;
     }
+
+    if (!window.matchMedia) {
+        window.matchMedia = (query: string) =>
+            ({
+                matches: true,
+                media: query,
+                onchange: null,
+                addListener() {},
+                removeListener() {},
+                addEventListener() {},
+                removeEventListener() {},
+                dispatchEvent: () => false,
+            }) as MediaQueryList;
+    }
+
+    if (!globalThis.ResizeObserver) {
+        globalThis.ResizeObserver = class ResizeObserver {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        };
+    }
+
+    if (!Element.prototype.scrollIntoView) {
+        Element.prototype.scrollIntoView = () => {};
+    }
 });

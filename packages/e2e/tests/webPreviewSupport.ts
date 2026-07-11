@@ -3,7 +3,8 @@
  * Omni Web Preview test. Data goes through the same PostgREST tables the desktop
  * publisher uses, while page reads go through the landing server and public RPC.
  */
-import { serializeFromState } from "@quillium/share/core";
+import { annotationField, versionGroupField } from "@quillium/share/core";
+import { serializeAnnotations } from "../../desktop/src/lib/collab/sharePayload";
 import { buildFixtureState, serializeFixtureWire } from "./fixtures";
 
 export type WebPreviewSeed = {
@@ -92,7 +93,16 @@ export async function seedWebPreview(config: SupabaseSeedConfig): Promise<WebPre
     const excerpt = "A real landing route backed by the local public-share RPC.";
     const publishedAt = "2026-07-09T12:34:56.000Z";
     const { state } = buildFixtureState();
-    const flat = serializeFromState(state);
+    // Exercise the same flat producer used by GoLiveButton's fallback payload,
+    // not a test-only projection that could preserve more metadata than desktop.
+    const flat = {
+        content: state.doc.toString(),
+        annotations: serializeAnnotations(
+            state.doc.toString(),
+            state.field(annotationField),
+            state.field(versionGroupField),
+        ),
+    };
 
     try {
         await postRows(config, "sync_documents", [

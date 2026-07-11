@@ -31,6 +31,7 @@ test.describe("comment lifecycle", () => {
         // which is hidden, and .first() would grab that instead.
         const card = page.locator(".annotation-card", { hasText: "Comment" }).first();
         await expect(card).toBeVisible({ timeout: 5_000 });
+        await expect(card.locator("[data-annotation-card-view='comment']")).toHaveCount(1);
     });
 
     test("reply to comment shows in thread", async ({ page }) => {
@@ -96,6 +97,9 @@ test.describe("revision lifecycle", () => {
         await expect(q.annotationCards.first()).toBeVisible({
             timeout: 5_000,
         });
+        await expect(
+            q.annotationCards.first().locator("[data-annotation-card-view='revision']"),
+        ).toHaveCount(1);
     });
 
     test("revision inline editor shows correct text", async ({ page }) => {

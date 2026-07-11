@@ -11,6 +11,7 @@
  * runs in the browser with no app/Tauri coupling.
  */
 import type { EditorState } from "@codemirror/state";
+import { groupColor } from "../groupColor";
 import type {
     SerializedAnnotation,
     SerializedAnnotationBase,
@@ -23,10 +24,15 @@ import {
     type Annotations,
     type RawAnnotations,
     RawAnnotationsSchema,
+    type VersionGroups,
+    VersionGroupsSchema,
     activeVersionIndex,
+    groupOfMember,
     normalizeRevision,
+    isRawAnnotationOfType,
     versionText,
 } from "./models";
+import { versionGroupField } from "./versionGroupField";
 
 /** Read a version blob's nested annotation map (stored as `version.annotationField`). */
 function getRawAnnotationField(version: object): RawAnnotations | undefined {
@@ -36,20 +42,30 @@ function getRawAnnotationField(version: object): RawAnnotations | undefined {
     return parsed.success ? parsed.data : undefined;
 }
 
+/** Read a nested buffer's linked-version groups when one was persisted. */
+function getRawVersionGroups(version: object): VersionGroups | undefined {
+    const candidate = (version as { versionGroupField?: unknown }).versionGroupField;
+    if (candidate == null) return undefined;
+    const parsed = VersionGroupsSchema.safeParse(candidate);
+    return parsed.success ? parsed.data : undefined;
+}
+
 function serializeRawAnnotationMap(
     doc: string,
     rawAnnotations: RawAnnotations | undefined,
+    versionGroups: VersionGroups | undefined,
     idPrefix = "",
 ): SerializedAnnotation[] {
     if (!rawAnnotations) return [];
     const parsed = RawAnnotationsSchema.safeParse(rawAnnotations);
     if (!parsed.success) return [];
-    return serializeParsedAnnotationMap(doc, parsed.data, idPrefix);
+    return serializeParsedAnnotationMap(doc, parsed.data, versionGroups, idPrefix);
 }
 
 function serializeParsedAnnotationMap(
     doc: string,
     annotations: RawAnnotations,
+    versionGroups: VersionGroups | undefined,
     idPrefix = "",
 ): SerializedAnnotation[] {
     return Object.values(annotations)
@@ -67,7 +83,7 @@ function serializeParsedAnnotationMap(
                 thread: annotation.thread.map((message) => ({ ...message })),
             };
 
-            if (annotation._type === "suggestion") {
+            if (isRawAnnotationOfType(annotation, "suggestion")) {
                 return {
                     ...base,
                     type: "suggestion",
@@ -78,22 +94,40 @@ function serializeParsedAnnotationMap(
                 } satisfies SerializedSuggestionAnnotation;
             }
 
-            if (annotation._type === "revision") {
+            if (isRawAnnotationOfType(annotation, "revision")) {
                 const revision = normalizeRevision(annotation);
                 return {
                     ...base,
                     type: "revision",
                     activeVersionIndex: activeVersionIndex(revision),
-                    versions: revision.versions.map((version, index) => ({
-                        index,
-                        text: versionText(version),
-                        label: version.label,
-                        annotations: serializeRawAnnotationMap(
-                            versionText(version),
-                            getRawAnnotationField(version),
-                            `${annotationId}.v${index}.`,
-                        ),
-                    })),
+                    versions: revision.versions.map((version, index) => {
+                        const group = versionGroups
+                            ? groupOfMember(versionGroups, {
+                                  revisionId: revision.id,
+                                  versionId: version.id,
+                              })
+                            : undefined;
+                        return {
+                            index,
+                            versionId: version.id,
+                            text: versionText(version),
+                            label: version.label,
+                            group: group
+                                ? {
+                                      id: group.id,
+                                      label: group.label,
+                                      memberCount: group.members.length,
+                                      color: groupColor(group.id),
+                                  }
+                                : undefined,
+                            annotations: serializeRawAnnotationMap(
+                                versionText(version),
+                                getRawAnnotationField(version),
+                                getRawVersionGroups(version),
+                                `${annotationId}.v${index}.`,
+                            ),
+                        };
+                    }),
                 } satisfies SerializedRevisionAnnotation;
             }
 
@@ -103,14 +137,18 @@ function serializeParsedAnnotationMap(
 }
 
 /** Convert live annotations (trusted) to the raw JSON shape, then serialize. */
-function serializeAnnotationMap(doc: string, annotations: Annotations): SerializedAnnotation[] {
+export function serializeAnnotationsFromData(
+    doc: string,
+    annotations: Annotations,
+    versionGroups: VersionGroups = {},
+): SerializedAnnotation[] {
     const raw = Object.fromEntries(
         Object.entries(annotations).map(([id, annotation]) => [
             id,
             { ...annotation, selection: annotation.selection.toJSON() },
         ]),
     );
-    return serializeParsedAnnotationMap(doc, raw as RawAnnotations);
+    return serializeParsedAnnotationMap(doc, raw as RawAnnotations, versionGroups);
 }
 
 export type SerializedState = {
@@ -125,5 +163,9 @@ export type SerializedState = {
 export function serializeFromState(state: EditorState): SerializedState {
     const doc = state.doc.toString();
     const annotations = state.field(annotationField, false) ?? {};
-    return { content: doc, annotations: serializeAnnotationMap(doc, annotations) };
+    const versionGroups = state.field(versionGroupField, false) ?? {};
+    return {
+        content: doc,
+        annotations: serializeAnnotationsFromData(doc, annotations, versionGroups),
+    };
 }

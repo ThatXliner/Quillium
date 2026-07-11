@@ -17,6 +17,7 @@ import {
 } from "@quillium/share/core";
 import { addAnnotation } from "@quillium/share/core/annotationField";
 import type { ThreadMessage } from "@quillium/share/core/models";
+import { createVersionGroup } from "@quillium/share/core/versionGroupField";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -200,11 +201,18 @@ const generatedCaseArbitrary: fc.Arbitrary<GeneratedCase> = textArbitrary(1, 72)
             annotationArbitrary(doc, "comment"),
             annotationArbitrary(doc, "suggestion"),
             annotationArbitrary(doc, "revision"),
+            annotationArbitrary(doc, "revision"),
             fc.array(annotationArbitrary(doc), { maxLength: 5 }),
         )
-        .map(([comment, suggestion, revision, additional]) => ({
+        .map(([comment, suggestion, revision, secondRevision, additional]) => ({
             doc,
-            annotations: addStableIds([comment, suggestion, revision, ...additional]),
+            annotations: addStableIds([
+                comment,
+                suggestion,
+                revision,
+                secondRevision,
+                ...additional,
+            ]),
         })),
 );
 
@@ -234,13 +242,24 @@ function toAnnotation(spec: AnnotationSpec): GenericAnnotation {
 }
 
 function buildState(generated: GeneratedCase): EditorState {
-    const state = EditorState.create({
+    let state = EditorState.create({
         doc: generated.doc,
         extensions: [annotationField, versionGroupField],
     });
-    return state.update({
+    state = state.update({
         effects: generated.annotations.map((spec) => addAnnotation.of(toAnnotation(spec))),
     }).state;
+    const revisions = generated.annotations.filter(
+        (annotation): annotation is RevisionSpec => annotation.kind === "revision",
+    );
+    const { spec } = createVersionGroup(
+        "Generated linked set",
+        revisions.map((revision) => ({
+            revisionId: revision.id,
+            versionId: revision.versions.at(-1)?.id ?? revision.activeVersionId,
+        })),
+    );
+    return state.update(spec).state;
 }
 
 function restore(wire: Record<string, unknown>): EditorState {
@@ -310,6 +329,20 @@ function assertAnnotationFidelity(state: EditorState, generated: GeneratedCase):
         }
 
         expect(isAnnotationOfType(restoredAnnotation, "comment")).toBe(true);
+    }
+
+    const revisions = generated.annotations.filter(
+        (annotation): annotation is RevisionSpec => annotation.kind === "revision",
+    );
+    for (const revision of revisions) {
+        const projected = projection.annotations.find(
+            (annotation) => annotation.id === String(revision.id),
+        );
+        if (!projected || projected.type !== "revision") continue;
+        expect(projected.versions.at(-1)?.group).toMatchObject({
+            label: "Generated linked set",
+            memberCount: revisions.length,
+        });
     }
 }
 

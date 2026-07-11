@@ -13,7 +13,7 @@
  */
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, onMount, tick } from "svelte";
 import "./core/annotations.css";
 import { fade, fly } from "svelte/transition";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
@@ -21,12 +21,19 @@ import ReadonlyAnnotationModal from "./ReadonlyAnnotationModal.svelte";
 import {
     type PersonaColor,
     annotationField,
+    getActiveAnnotation,
     getReadonlyExtensions,
     isAnnotationOfType,
     readonlySavedFields,
     serializeFromState,
     setActiveRevisionVersion,
 } from "./core";
+import {
+    AnnotationColumn,
+    type AnnotationLayoutId,
+    TOP_CLAMP,
+    canFloatAnnotationColumn,
+} from "./layout";
 import { type AnnotationId, type RevisionVersionSelections, findAnnotationPath } from "./rendering";
 import type { SerializedAnnotation } from "./types";
 
@@ -46,7 +53,8 @@ let {
 type AnnotationPath = NonNullable<ReturnType<typeof findAnnotationPath>>;
 
 let host = $state<HTMLDivElement | null>(null);
-let view: EditorView | null = null;
+let editorSheet = $state<HTMLElement | null>(null);
+let view = $state<EditorView | null>(null);
 // Bumped after every dispatch so the projection recomputes off the new state.
 let rev = $state(0);
 let mountError = $state<string | null>(null);
@@ -56,12 +64,14 @@ let modalAnnotationStack = $state<AnnotationId[]>([]);
 // Client-side selections used ONLY by the modal explorer (drilling into
 // non-active nested versions). The main document body is editor-authoritative.
 let modalRevisionSelections = $state<RevisionVersionSelections>({});
+let floatingCards = $state(true);
 
 const projection = $derived.by(() => {
     void rev;
     return view ? serializeFromState(view.state) : { content: "", annotations: [] };
 });
 const annotations = $derived(projection.annotations);
+const annotationIds = $derived(annotations.map((annotation) => annotation.id));
 const modalAnnotationId = $derived(modalAnnotationStack.at(-1) ?? null);
 
 const modalAnnotationPath = $derived(
@@ -89,13 +99,37 @@ function fieldKeyOf(id: AnnotationId): number | null {
 }
 
 function selectAnnotation(id: AnnotationId) {
-    activeInlineAnnotationId = id;
     const annotation = annotations.find((a) => a.id === id);
     if (!view || !annotation) return;
     // Move the (hidden) cursor into the range so getActiveAnnotation lights up
     // the highlight, matching the desktop editor's active styling.
-    view.dispatch({ selection: EditorSelection.cursor(annotation.from) });
+    view.dispatch({
+        selection: EditorSelection.cursor(annotation.from),
+        scrollIntoView: true,
+    });
+    view.focus();
+    activeInlineAnnotationId = id;
     rev += 1;
+}
+
+function getAnnotationViewportY(id: AnnotationLayoutId): number {
+    const annotation = annotations.find((candidate) => candidate.id === String(id));
+    if (!view || !annotation) return TOP_CLAMP;
+    try {
+        const coordinates = view.coordsAtPos(annotation.from);
+        return coordinates ? coordinates.top - 10 : TOP_CLAMP;
+    } catch {
+        return TOP_CLAMP;
+    }
+}
+
+function getAnnotationColumnGeometry(): { left: number; width: number } {
+    if (!editorSheet) return { left: 0, width: 0 };
+    const left = editorSheet.getBoundingClientRect().right + 16;
+    return {
+        left,
+        width: Math.min(360, Math.max(0, window.innerWidth - left - 32)),
+    };
 }
 
 function switchRevisionVersion(annotationId: AnnotationId, versionIndex: number) {
@@ -139,18 +173,48 @@ function selectModalRevisionVersion(annotationId: AnnotationId, versionIndex: nu
 
 onMount(() => {
     if (!host) return;
+    let frame: number | undefined;
+    const updateFloatingCards = () => {
+        const next = canFloatAnnotationColumn(getAnnotationColumnGeometry());
+        if (floatingCards !== next) {
+            floatingCards = next;
+            // The inline fallback changes flex participation. Measure again
+            // after Svelte applies the stacked layout, rather than relying on
+            // a viewport breakpoint that can disagree with the real geometry.
+            tick().then(() => {
+                frame = requestAnimationFrame(updateFloatingCards);
+            });
+        }
+    };
+    window.addEventListener("resize", updateFloatingCards);
     try {
         const editorState = EditorState.fromJSON(
             serializedState,
-            { extensions: getReadonlyExtensions({ atomicRevisions, personaColors }) },
+            {
+                extensions: [
+                    getReadonlyExtensions({ atomicRevisions, personaColors }),
+                    EditorView.updateListener.of((update) => {
+                        if (!update.docChanged && !update.selectionSet) return;
+                        rev += 1;
+                        const active = getActiveAnnotation(update.state);
+                        activeInlineAnnotationId = active ? String(active.id) : null;
+                    }),
+                ],
+            },
             readonlySavedFields,
         );
         view = new EditorView({ state: editorState, parent: host });
         rev += 1;
-        activeInlineAnnotationId = serializeFromState(view.state).annotations[0]?.id ?? null;
+        const active = getActiveAnnotation(view.state);
+        activeInlineAnnotationId = active ? String(active.id) : null;
+        frame = requestAnimationFrame(updateFloatingCards);
     } catch (err) {
         mountError = err instanceof Error ? err.message : String(err);
     }
+    return () => {
+        window.removeEventListener("resize", updateFloatingCards);
+        if (frame !== undefined) cancelAnimationFrame(frame);
+    };
 });
 
 onDestroy(() => {
@@ -159,14 +223,44 @@ onDestroy(() => {
 });
 </script>
 
-<div class="editor-stage">
-	<section class="editor-sheet" in:fade={{ duration: 420 }}>
+<div class="editor-stage" class:is-stacked={!floatingCards}>
+	<section class="editor-sheet" bind:this={editorSheet} in:fade={{ duration: 420 }}>
 		{#if mountError}
 			<p class="mount-error">This document couldn't be rendered.</p>
 		{/if}
 		<div class="share-document" class:is-indented={indented} bind:this={host}></div>
 	</section>
 
+	{#if floatingCards}
+		<AnnotationColumn
+			ids={annotationIds}
+			activeId={activeInlineAnnotationId}
+			layoutVersion={rev}
+			getViewportY={getAnnotationViewportY}
+			getColumnGeometry={getAnnotationColumnGeometry}
+			scrollTargets={view ? [view.scrollDOM] : []}
+			onActivate={(id) => selectAnnotation(String(id))}
+		>
+			{#snippet card(id, active)}
+				{@const annotation = annotations.find((candidate) => candidate.id === String(id))}
+				{#if annotation}
+					<ReadonlyAnnotationCard
+						{annotation}
+						{active}
+						activeAnnotationId={activeInlineAnnotationId}
+						selectedRevisionVersionIndex={annotation.type === 'revision'
+							? annotation.activeVersionIndex
+							: null}
+						onSelect={() => selectAnnotation(annotation.id)}
+						onSelectAnnotation={openAnnotationModal}
+						onOpen={() => openAnnotationModal(annotation.id)}
+						onSelectRevisionVersion={(versionIndex) =>
+							switchRevisionVersion(annotation.id, versionIndex)}
+					/>
+				{/if}
+			{/snippet}
+		</AnnotationColumn>
+	{:else}
 	<aside class="annotation-column" in:fly={{ x: 20, duration: 420, delay: 60 }}>
 		<div class="annotation-card-stack">
 			{#if annotations.length > 0}
@@ -190,6 +284,7 @@ onDestroy(() => {
 			{/if}
 		</div>
 	</aside>
+	{/if}
 </div>
 
 {#if modalAnnotation}
@@ -211,6 +306,10 @@ onDestroy(() => {
 		align-items: flex-start;
 		justify-content: center;
 		gap: 1.5rem;
+	}
+
+	.editor-stage.is-stacked {
+		display: grid;
 	}
 
 	.editor-sheet {

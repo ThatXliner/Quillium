@@ -1,8 +1,9 @@
 <script lang="ts">
-import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon } from "lucide-svelte";
-import { scale } from "svelte/transition";
-import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
-import ReadonlyThreadMessage from "./ReadonlyThreadMessage.svelte";
+import ThreadList from "./cards/ThreadList.svelte";
+import CommentCard from "./cards/CommentCard.svelte";
+import RevisionCard from "./cards/RevisionCard.svelte";
+import SuggestionCard from "./cards/SuggestionCard.svelte";
+import type { RevisionVersionView } from "./cards/types";
 import { type AnnotationId, type RevisionVersionSelections, previewVersionText } from "./rendering";
 import type { SerializedAnnotation } from "./types";
 
@@ -24,305 +25,79 @@ let {
     selectedRevisionVersionIndex: number | null;
     onSelect: () => void;
     onSelectAnnotation?: (annotationId: AnnotationId) => void;
-    onOpen: () => void;
+    onOpen?: () => void;
     onSelectRevisionVersion: (versionIndex: number) => void;
 } = $props();
 
-const selectedRevisionVersion = $derived(
-    annotation.type === "revision"
-        ? (annotation.versions.find((version) => version.index === selectedRevisionVersionIndex) ??
-              annotation.versions[annotation.activeVersionIndex] ??
-              annotation.versions[0] ??
-              null)
-        : null,
+const revisionVersions = $derived.by((): RevisionVersionView[] => {
+    if (annotation.type !== "revision") return [];
+    const selected =
+        annotation.versions.find((version) => version.index === selectedRevisionVersionIndex) ??
+        annotation.versions[annotation.activeVersionIndex] ??
+        annotation.versions[0];
+    return annotation.versions.map((version) => ({
+        id: version.versionId ?? `${annotation.id}:${version.index}`,
+        index: version.index,
+        label: version.label ?? previewVersionText(version),
+        text: version.text,
+        active: version.index === selected?.index,
+        group: version.group,
+    }));
+});
+
+const suggestionReplies = $derived(
+    annotation.type === "suggestion" && annotation.thread[0]?.author === "AI"
+        ? annotation.thread.slice(1)
+        : annotation.thread,
 );
 </script>
 
-{#if annotation.type === 'comment'}
-	<article
-		class="editor-comment-card"
-		class:is-active={active}
-		in:scale={{ start: 0.96, duration: 220 }}
-	>
-		<div class="flex items-center justify-between px-3 pt-3 pb-0">
-			<h3 class="text-[10px] font-semibold tracking-wider text-blue-600/70 uppercase">Comment</h3>
-			<div class="flex items-center gap-0.5">
-				<button
-					class="rounded-md p-1 text-blue-400/50 transition-colors hover:bg-[color:var(--surface)]/40 hover:text-blue-600/70"
-					type="button"
-					onclick={onOpen}
-					title="Expand thread"
-					aria-label="Expand comment thread"
-				>
-					<Maximize2 size={14} />
-				</button>
-			</div>
-		</div>
+{#snippet readonlyThread()}
+    {#if annotation.thread.length > 0}
+        <ThreadList thread={annotation.thread} previewOnly={!active} />
+    {:else}
+        <p class="text-xs leading-relaxed text-black/70">
+            No thread messages were attached to this comment.
+        </p>
+    {/if}
+{/snippet}
 
-		{#if annotation.selectedText}
-			<div class="px-3 pt-3 pb-0">
-				<button
-					class="w-full cursor-pointer truncate border-l-2 border-yellow-400/80 pl-2 text-left text-xs text-[color:var(--text-soft)] italic transition-colors hover:border-yellow-500/80 hover:text-[color:var(--text)]"
-					type="button"
-					onclick={onSelect}
-					title="Jump to this comment in the document"
-				>
-					{annotation.selectedText.slice(0, 80)}{annotation.selectedText.length > 80 ? '...' : ''}
-				</button>
-			</div>
-		{/if}
+{#snippet readonlySuggestionReplies()}
+    <ThreadList thread={suggestionReplies} previewOnly={!active} />
+{/snippet}
 
-		<div class="px-3 pt-3 pb-3">
-			{#if annotation.thread.length > 0}
-				<div class="space-y-3">
-					{#each active ? annotation.thread : annotation.thread.slice(0, 1) as message, i (message.time)}
-						<ReadonlyThreadMessage {message} truncate={!active} />
-						{#if !active && i === 0 && annotation.thread.length > 1}
-							<p class="pl-9 text-[10px] text-[color:var(--text-faint)]">
-								{annotation.thread.length - 1} more repl{annotation.thread.length === 2
-									? 'y'
-									: 'ies'}
-							</p>
-						{/if}
-					{/each}
-				</div>
-			{:else}
-				<p class="text-xs leading-relaxed text-[color:var(--text)]">
-					No thread messages were attached to this comment.
-				</p>
-			{/if}
-		</div>
-	</article>
-{:else if annotation.type === 'suggestion'}
-	<article
-		class="editor-suggestion-card"
-		class:is-active={active}
-		in:scale={{ start: 0.96, duration: 220 }}
-	>
-		<div class="flex items-center justify-between px-3 pt-2.5 pb-0">
-			<div class="flex items-center gap-1.5">
-				<SparklesIcon size={11} class="text-green-500/70" />
-				<h3 class="text-[10px] font-semibold tracking-wider text-green-600/70 uppercase">
-					AI Suggestion
-				</h3>
-			</div>
-			<button
-				class="rounded-md p-1 text-green-400/50 transition-colors hover:bg-[color:var(--surface)]/40 hover:text-green-600/70"
-				type="button"
-				onclick={onOpen}
-				title="Expand diff"
-				aria-label="Expand suggestion diff"
-			>
-				<Maximize2 size={14} />
-			</button>
-		</div>
-
-		{#if annotation.thread.length > 0 && annotation.thread[0].author === 'AI'}
-			<div class="px-3 pt-2 pb-0">
-				<p class="text-[11px] leading-relaxed text-[color:var(--text-soft)]">{annotation.thread[0].message}</p>
-			</div>
-		{/if}
-
-		<div class="space-y-2 p-3">
-			{#each annotation.replacements as replacement, index (`${annotation.id}-${index}`)}
-				<button
-					class="w-full overflow-hidden rounded-lg border text-left transition-colors {index === 0
-						? 'border-green-400/50 bg-green-100/80 text-[rgba(0,0,0,0.8)] ring-1 ring-green-400/40'
-						: 'border-green-100/60 bg-[color:var(--surface-2)] text-[color:var(--text)] hover:border-green-200/60 hover:bg-[color:var(--surface)]'}"
-					type="button"
-					onclick={onSelect}
-				>
-					<div class="px-3 py-2 text-xs leading-relaxed">{replacement.text}</div>
-					{#if replacement.rationale}
-						<div
-							class="border-t border-green-100/50 px-3 pt-1.5 pb-2 text-[10px] leading-snug text-green-700/60"
-						>
-							{replacement.rationale}
-						</div>
-					{/if}
-				</button>
-			{/each}
-		</div>
-
-		<div class="px-3 pb-2">
-			<div class="flex items-center justify-between">
-				<button
-					class="flex items-center gap-1 text-[10px] text-green-700/60 transition-colors hover:text-green-700/80"
-					type="button"
-					onclick={onOpen}
-				>
-					<ChevronDownIcon size={12} />
-					<span>View changes</span>
-				</button>
-			</div>
-		</div>
-
-		<div class="flex items-center gap-1.5 px-3 pb-3">
-			<button
-				aria-label="Branch instead"
-				title="Convert to revision with original and suggestion as versions"
-				class="flex cursor-default items-center gap-1 rounded-md bg-[color:var(--surface-2)] px-2 py-1 text-[11px] font-medium text-purple-600/70 ring-1 ring-green-200/50"
-				type="button"
-				disabled
-			>
-				<GitBranchIcon size={11} />
-				<span>Branch</span>
-			</button>
-			<button
-				disabled
-				class="flex-1 cursor-default rounded-md bg-green-500/50 px-2 py-1 text-[11px] font-medium text-white ring-1 ring-green-400/30 transition-colors"
-				type="button"
-			>
-				Apply
-			</button>
-		</div>
-	</article>
+{#if annotation.type === "comment"}
+    <CommentCard
+        annotationId={annotation.id}
+        {active}
+        selectedText={annotation.selectedText}
+        onSelectText={onSelect}
+        {onOpen}
+        thread={readonlyThread}
+    />
+{:else if annotation.type === "suggestion"}
+    <SuggestionCard
+        annotationId={annotation.id}
+        {active}
+        scrollOnActivate={false}
+        replacements={annotation.replacements}
+        overallComment={annotation.thread[0]?.author === "AI"
+            ? annotation.thread[0].message
+            : undefined}
+        onReplacementSelect={onSelect}
+        {onOpen}
+        thread={suggestionReplies.length > 0 ? readonlySuggestionReplies : undefined}
+    />
 {:else}
-	<article
-		class="editor-revision-card"
-		class:is-active={active}
-		in:scale={{ start: 0.96, duration: 220 }}
-	>
-		<div class="flex items-center justify-between px-3 pt-3 pb-2">
-			<h3 class="text-[10px] font-semibold tracking-wider text-purple-600/70 uppercase">
-				Revision
-			</h3>
-			<button
-				class="rounded-md p-1 text-purple-400/50 transition-colors hover:bg-[color:var(--surface)]/40 hover:text-purple-600/70"
-				type="button"
-				onclick={onOpen}
-				title="Expand editor"
-				aria-label="Expand revision editor"
-			>
-				<Maximize2 size={14} />
-			</button>
-		</div>
-
-		<div class="flex flex-wrap items-center gap-1 px-3 pb-2">
-			{#each annotation.versions as version, i}
-				{@const versionActive = version.index === selectedRevisionVersion?.index}
-				<div
-					class="inline-flex items-center overflow-hidden rounded-md {versionActive
-						? 'bg-purple-500/80 ring-1 ring-purple-400/40'
-						: 'bg-[color:var(--surface-2)] ring-1 ring-purple-200/40'}"
-				>
-					<button
-						class="max-w-[120px] truncate px-2 py-1 text-[11px] font-medium transition-colors {versionActive
-							? 'text-white'
-							: 'text-[color:var(--text-soft)] hover:text-[color:var(--text-strong)]'}"
-						type="button"
-						disabled={versionActive}
-						title={version.text || '(empty)'}
-						onclick={() => onSelectRevisionVersion(version.index)}
-					>
-						{version.label ?? previewVersionText(version)}
-					</button>
-				</div>
-			{/each}
-		</div>
-
-		{#if selectedRevisionVersion}
-			<div class="mx-3 mb-3 overflow-hidden rounded-lg bg-[color:var(--surface)] ring-1 ring-[color:var(--border)]">
-				<div class="revision-inline-preview">
-					<ReadonlyAnnotatedText
-						content={selectedRevisionVersion.text}
-						annotations={selectedRevisionVersion.annotations ?? []}
-						{activeAnnotationId}
-						{revisionVersionSelections}
-						onSelectAnnotation={(annotationId) => onSelectAnnotation?.(annotationId)}
-						compact
-					/>
-				</div>
-			</div>
-		{/if}
-
-		{#if annotation.thread.length > 0}
-			<div class="border-t border-purple-100/60 px-3 py-2.5">
-				<div class="space-y-3">
-					{#each active ? annotation.thread : annotation.thread.slice(0, 1) as message, i (message.time)}
-						<ReadonlyThreadMessage {message} truncate={!active} />
-						{#if !active && i === 0 && annotation.thread.length > 1}
-							<p class="pl-9 text-[10px] text-[color:var(--text-faint)]">
-								{annotation.thread.length - 1} more repl{annotation.thread.length === 2
-									? 'y'
-									: 'ies'}
-							</p>
-						{/if}
-					{/each}
-				</div>
-			</div>
-		{/if}
-	</article>
+    <RevisionCard
+        revisionId={annotation.id}
+        {active}
+        versions={revisionVersions}
+        onOpen={onOpen}
+        onSelectVersion={(version) => {
+            onSelect();
+            onSelectRevisionVersion(version.index);
+        }}
+        thread={annotation.thread.length > 0 ? readonlyThread : undefined}
+    />
 {/if}
-
-<style>
-	.editor-comment-card,
-	.editor-suggestion-card,
-	.editor-revision-card {
-		border: 1px solid;
-		overflow: hidden;
-		backdrop-filter: blur(12px);
-		transition:
-			opacity 0.2s ease,
-			box-shadow 0.2s ease,
-			border-color 0.2s ease,
-			background-color 0.2s ease;
-	}
-
-	.editor-comment-card {
-		border-color: var(--tint-blue-border);
-		border-radius: 12px;
-		background: var(--tint-blue);
-		box-shadow: 0 10px 24px rgba(var(--shadow-color), 0.08);
-		opacity: 0.9;
-	}
-
-	.editor-comment-card.is-active {
-		border-color: var(--tint-blue-border);
-		border-radius: 14px;
-		background: var(--tint-blue-active);
-		box-shadow: 0 18px 34px rgba(var(--shadow-color), 0.12);
-		opacity: 1;
-	}
-
-	.editor-suggestion-card {
-		border-color: var(--tint-green-border);
-		border-radius: 12px;
-		background: var(--tint-green);
-		box-shadow: 0 10px 24px rgba(var(--shadow-color), 0.08);
-		opacity: 0.9;
-	}
-
-	.editor-suggestion-card.is-active {
-		border-color: var(--tint-green-border);
-		border-radius: 14px;
-		background: var(--tint-green-active);
-		box-shadow: 0 18px 34px rgba(var(--shadow-color), 0.12);
-		opacity: 1;
-	}
-
-	.editor-revision-card {
-		border-color: var(--tint-purple-border);
-		border-radius: 14px;
-		background: var(--tint-purple);
-		box-shadow: 0 10px 24px rgba(var(--shadow-color), 0.08);
-		opacity: 0.9;
-		clip-path: inset(0 round 14px);
-	}
-
-	.editor-revision-card.is-active {
-		border-color: var(--tint-purple-border);
-		background: var(--tint-purple-active);
-		box-shadow: 0 18px 34px rgba(var(--shadow-color), 0.12);
-		opacity: 1;
-	}
-
-	.revision-inline-preview {
-		min-height: 220px;
-		padding: 8px 10px 12px;
-		font-family: var(--doc-font-family, 'SF Pro Text', system-ui, sans-serif);
-		font-size: 13px;
-		line-height: 1.6;
-		color: var(--text);
-	}
-</style>

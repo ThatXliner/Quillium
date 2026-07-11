@@ -28,8 +28,17 @@ export type SerializedRevisionAnnotation = SerializedAnnotationBase & {
     activeVersionIndex: number;
     versions: {
         index: number;
+        /** Stable identity used by linked revision groups; absent on legacy flat shares. */
+        versionId?: string;
         text: string;
         label?: string;
+        /** Read-only presentation metadata for a linked version group. */
+        group?: {
+            id: string;
+            label: string;
+            memberCount: number;
+            color: string;
+        };
         annotations: SerializedAnnotation[];
     }[];
 };
