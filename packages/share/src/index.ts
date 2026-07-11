@@ -12,6 +12,7 @@ export { default as ThreadMessage } from "./cards/ThreadMessage.svelte";
 export { avatarColor, initials } from "./cards/avatar";
 export type * from "./cards/types";
 export { groupColor } from "./groupColor";
+export * from "./diff";
 export * from "./rendering";
 export * from "./types";
 export * from "./core";

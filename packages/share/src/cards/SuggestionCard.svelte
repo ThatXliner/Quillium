@@ -127,6 +127,8 @@ $effect(() => {
         {#if selectedIndex !== null && getDiffOperations}
             <div class="px-3 pb-2">
                 <button
+                    aria-expanded={diffExpanded}
+                    aria-controls={`suggestion-diff-${annotationId ?? "card"}-${selectedIndex}`}
                     class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
                     onclick={() => {
                         diffExpanded = !diffExpanded;
@@ -140,14 +142,24 @@ $effect(() => {
                     <span>View changes</span>
                 </button>
                 {#if diffExpanded}
-                    <div class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono">
+                    <div
+                        id={`suggestion-diff-${annotationId ?? "card"}-${selectedIndex}`}
+                        data-suggestion-diff="content"
+                        class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono"
+                    >
                         {#each getDiffOperations(selectedIndex) as operation}
                             {#if operation.type === "equal"}
-                                <span>{operation.text}</span>
+                                <span data-suggestion-diff="equal">{operation.text}</span>
                             {:else if operation.type === "delete"}
-                                <span class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5">{operation.text}</span>
+                                <span
+                                    data-suggestion-diff="delete"
+                                    class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5"
+                                >{operation.text}</span>
                             {:else}
-                                <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5">{operation.text}</span>
+                                <span
+                                    data-suggestion-diff="insert"
+                                    class="bg-green-100/80 text-green-700 rounded-sm px-0.5"
+                                >{operation.text}</span>
                             {/if}
                         {/each}
                     </div>

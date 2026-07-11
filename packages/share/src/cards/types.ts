@@ -1,4 +1,5 @@
 import type { Snippet } from "svelte";
+import type { DiffOp } from "../diff";
 
 export type CardThreadSnippet = Snippet;
 
@@ -19,10 +20,7 @@ export type SuggestionReplacementView = {
     rationale?: string;
 };
 
-export type SuggestionDiffOperation = {
-    type: "equal" | "delete" | "insert";
-    text: string;
-};
+export type SuggestionDiffOperation = DiffOp;
 
 export type RevisionVersionGroupView = {
     id: string;

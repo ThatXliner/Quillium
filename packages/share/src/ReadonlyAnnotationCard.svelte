@@ -4,6 +4,7 @@ import CommentCard from "./cards/CommentCard.svelte";
 import RevisionCard from "./cards/RevisionCard.svelte";
 import SuggestionCard from "./cards/SuggestionCard.svelte";
 import type { RevisionVersionView } from "./cards/types";
+import { wordDiff } from "./diff";
 import { type AnnotationId, type RevisionVersionSelections, previewVersionText } from "./rendering";
 import type { SerializedAnnotation } from "./types";
 
@@ -85,6 +86,8 @@ const suggestionReplies = $derived(
             ? annotation.thread[0].message
             : undefined}
         onReplacementSelect={onSelect}
+        getDiffOperations={(index) =>
+            wordDiff(annotation.selectedText, annotation.replacements[index]?.text ?? "")}
         {onOpen}
         thread={suggestionReplies.length > 0 ? readonlySuggestionReplies : undefined}
     />

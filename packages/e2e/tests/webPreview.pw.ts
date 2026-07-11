@@ -70,11 +70,15 @@ test.describe("Omni Web Preview", () => {
         await expect(page.getByRole("heading", { name: "Revision" })).toHaveCount(2);
         await expect(page.getByRole("heading", { name: "AI Suggestion" })).toBeVisible();
         await expect(page.getByText("Strong opener.")).toBeVisible();
-        await expect(
-            page
-                .locator('[data-annotation-card-view="suggestion"] button')
-                .filter({ hasText: "russet" }),
-        ).toBeVisible();
+        const suggestionView = page.locator('[data-annotation-card-view="suggestion"]');
+        const russetReplacement = suggestionView.getByRole("button", { name: /russet/ });
+        await expect(russetReplacement).toBeVisible();
+        await russetReplacement.click();
+        await suggestionView.getByRole("button", { name: "View changes" }).click();
+        await expect(suggestionView.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
+        await expect(suggestionView.locator('[data-suggestion-diff="insert"]')).toHaveText(
+            "russet",
+        );
 
         const revisionThread = page
             .locator('[data-annotation-card-view="revision"] [data-annotation-thread]')
