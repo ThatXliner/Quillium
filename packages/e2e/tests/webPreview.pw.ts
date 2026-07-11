@@ -31,6 +31,13 @@ test.describe("Omni Web Preview", () => {
     });
 
     test("renders serialized state and cascades linked revisions", async ({ page }) => {
+        const pageErrors: string[] = [];
+        const consoleErrors: string[] = [];
+        page.on("pageerror", (error) => pageErrors.push(error.message));
+        page.on("console", (message) => {
+            if (message.type() === "error") consoleErrors.push(message.text());
+        });
+
         const response = await page.goto(`/share/${seed.modernToken}`);
         expect(response?.status()).toBe(200);
 
@@ -96,6 +103,24 @@ test.describe("Omni Web Preview", () => {
         await expect(page.getByRole("button", { name: "Branch instead" })).toHaveCount(0);
         await expect(page.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
         await expect(cards.getByRole("textbox")).toHaveCount(0);
+
+        const firstRevision = page.locator(
+            '[data-annotation-card-view="revision"][data-annotation-id="1"]',
+        );
+        await firstRevision.getByRole("button", { name: "Expand revision editor" }).click();
+        const readonlyModal = page.locator(".readonly-modal");
+        await expect(readonlyModal).toBeVisible();
+        const contextViewport = readonlyModal.locator("[data-revision-context-scroll]");
+        await expect(contextViewport).toBeVisible();
+        await expect
+            .poll(() => contextViewport.evaluate((element) => getComputedStyle(element).maskImage))
+            .toContain("linear-gradient");
+        await expect(
+            readonlyModal.getByRole("button", { name: "Delete entire revision" }),
+        ).toHaveCount(0);
+        await expect(readonlyModal.getByRole("button", { name: "New Version" })).toHaveCount(0);
+        await readonlyModal.getByRole("button", { name: "Close revision" }).click();
+        await expect(readonlyModal).toHaveCount(0);
 
         const suggestionCard = page.locator(
             '.annotation-card:has([data-annotation-card-view="suggestion"])',
@@ -185,6 +210,8 @@ test.describe("Omni Web Preview", () => {
         await editor.click();
         await page.keyboard.type(" must not mutate");
         await expect(editor).toHaveText("The swift brown hound");
+        expect(pageErrors).toEqual([]);
+        expect(consoleErrors).toEqual([]);
     });
 
     test("renders the pre-published_state legacy fallback", async ({ page }) => {
@@ -208,6 +235,22 @@ test.describe("Omni Web Preview", () => {
         await page.goto(`/share/${seed.modernToken}`);
         await expect(page.locator("[data-annotation-column]")).toHaveCount(0);
         await expect(page.locator("aside.annotation-column")).toBeVisible();
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(page.locator("[data-annotation-column]")).toHaveCount(0);
+        await expect(page.locator("aside.annotation-column")).toBeVisible();
+        const mobileGeometry = await page.evaluate(() => ({
+            viewportWidth: document.documentElement.clientWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+            cardsFit: Array.from(document.querySelectorAll("[data-annotation-card-view]")).every(
+                (element) => {
+                    const bounds = element.getBoundingClientRect();
+                    return bounds.left >= 0 && bounds.right <= window.innerWidth;
+                },
+            ),
+        }));
+        expect(mobileGeometry.scrollWidth).toBeLessThanOrEqual(mobileGeometry.viewportWidth);
+        expect(mobileGeometry.cardsFit).toBe(true);
 
         await page.setViewportSize({ width: 1_240, height: 900 });
         await expect(page.locator("[data-annotation-column]")).toBeVisible();

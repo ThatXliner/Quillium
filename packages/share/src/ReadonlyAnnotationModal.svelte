@@ -12,10 +12,10 @@ import { slide } from "svelte/transition";
 import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyThreadMessage from "./ReadonlyThreadMessage.svelte";
+import RevisionContextPanel from "./cards/RevisionContextPanel.svelte";
 import {
     type AnnotationId,
     type AnnotationPathEntry,
-    type RevisionContextLayer,
     type RevisionVersionSelections,
     annotationLabel,
     buildDisplayedShare,
@@ -48,7 +48,6 @@ let {
 } = $props();
 
 let openDropdown = $state(-1);
-let contextCollapsed = $state(false);
 let annotationsCollapsed = $state(false);
 
 const annotationPath = $derived.by((): AnnotationPathEntry[] => {
@@ -253,45 +252,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 				</div>
 
 				<div class="revision-right-panel">
-					{#if revisionContextLayers.length > 0}
-						<div class="context-panel">
-							<button
-								class="panel-toggle"
-								type="button"
-								onclick={() => (contextCollapsed = !contextCollapsed)}
-							>
-								<span>Context</span>
-								{#if contextCollapsed}
-									<ChevronDown size={10} class="text-purple-400/50" />
-								{:else}
-									<ChevronUp size={10} class="text-purple-400/50" />
-								{/if}
-							</button>
-							{#if !contextCollapsed}
-								<div transition:slide={{ duration: 180 }} class="relative">
-									<div class="context-scroll">
-										{#snippet renderLayer(depth: number)}
-											{@const layer = revisionContextLayers[depth] as RevisionContextLayer}
-											{@const isDeepest = depth === revisionContextLayers.length - 1}
-											<span class="context-text context-depth-{depth}">
-												{#if layer.before}<span class="context-surrounding">{layer.before}</span
-													>{/if}<!--
-												--><span class="context-nest context-nest-{Math.min(depth, 3)}"
-													>{#if isDeepest}{layer.revision || '(empty)'}{:else}{@render renderLayer(
-															depth + 1
-														)}{/if}</span
-												><!--
-												-->{#if layer.after}<span class="context-surrounding"
-														>{layer.after}</span
-													>{/if}
-											</span>
-										{/snippet}
-										{@render renderLayer(0)}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{/if}
+					<RevisionContextPanel layers={revisionContextLayers} />
 
 					<div class="nested-annotations-panel">
 						<button
@@ -667,11 +628,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		background: rgba(250, 245, 255, 0.2);
 	}
 
-	.context-panel {
-		flex-shrink: 0;
-		border-bottom: 1px solid rgba(243, 232, 255, 0.6);
-	}
-
 	.nested-annotations-panel {
 		display: flex;
 		min-height: 0;
@@ -693,63 +649,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		background: rgba(250, 245, 255, 0.6);
 	}
 
-	.context-scroll {
-		height: 200px;
-		overflow-y: auto;
-		padding: 10px 14px;
-		background: rgba(245, 240, 255, 0.45);
-		scrollbar-width: none;
-		backdrop-filter: blur(12px) saturate(1.3);
-		-webkit-backdrop-filter: blur(12px) saturate(1.3);
-	}
-
-	.context-scroll::-webkit-scrollbar,
 	.nested-annotation-scroll::-webkit-scrollbar {
 		display: none;
-	}
-
-	.context-text {
-		font-family: var(--doc-font-family, system-ui, sans-serif);
-		font-size: 11px;
-		line-height: 1.7;
-		color: rgba(80, 40, 120, 0.35);
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
-	.context-depth-0 {
-		display: block;
-	}
-
-	.context-nest {
-		display: inline;
-		border-radius: 4px;
-		padding: 1px 3px;
-	}
-
-	.context-nest-0 {
-		background: rgba(147, 112, 219, 0.1);
-		color: rgba(88, 28, 135, 0.55);
-		box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.18);
-	}
-
-	.context-nest-1 {
-		background: rgba(126, 87, 194, 0.16);
-		color: rgba(88, 28, 135, 0.7);
-		box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.25);
-	}
-
-	.context-nest-2 {
-		background: rgba(109, 40, 217, 0.2);
-		color: rgba(88, 28, 135, 0.82);
-		box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.3);
-	}
-
-	.context-nest-3 {
-		background: rgba(88, 28, 135, 0.24);
-		color: rgba(88, 28, 135, 0.92);
-		font-weight: 500;
-		box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
 	}
 
 	.nested-annotation-scroll {

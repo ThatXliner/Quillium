@@ -58,4 +58,8 @@ beforeAll(() => {
     if (!Element.prototype.scrollIntoView) {
         Element.prototype.scrollIntoView = () => {};
     }
+
+    if (!HTMLElement.prototype.scrollTo) {
+        HTMLElement.prototype.scrollTo = () => {};
+    }
 });

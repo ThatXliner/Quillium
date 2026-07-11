@@ -6,7 +6,13 @@
  * This is the DOM-level counterpart to shareRoundTrip.test.ts: it proves the
  * wire payload survives all the way to rendered content + annotation cards.
  */
-import { ReadonlyDocument, ReadonlyShareView } from "@quillium/share";
+import {
+    ReadonlyAnnotationCard,
+    ReadonlyAnnotationModal,
+    ReadonlyDocument,
+    ReadonlyShareView,
+    RevisionContextPanel,
+} from "@quillium/share";
 import { fireEvent, render, waitFor } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { buildFixtureState, serializeFixtureWire } from "./fixtures";
@@ -202,5 +208,150 @@ describe("ReadonlyShareView integration paths", () => {
 
         await fireEvent.click(getByRole("button", { name: "Expand suggestion diff" }));
         await waitFor(() => expect(container.querySelector(".readonly-modal")).not.toBeNull());
+    });
+});
+
+describe("shared read-only thread adapters", () => {
+    const callbacks = {
+        selectedRevisionVersionIndex: null,
+        onSelect: vi.fn(),
+        onSelectRevisionVersion: vi.fn(),
+    };
+
+    it("collapses comment replies and expands the complete shared thread", () => {
+        const annotation = {
+            id: "comment-thread",
+            type: "comment" as const,
+            from: 0,
+            to: 4,
+            selectedText: "Text",
+            thread: [
+                { author: "Ada", message: "First", time: 1 },
+                { author: "Bea", message: "Second", time: 2 },
+                { author: "Cy", message: "Third", time: 3 },
+            ],
+        };
+        const collapsed = render(ReadonlyAnnotationCard, {
+            props: { annotation, active: false, ...callbacks },
+        });
+        expect(collapsed.getByText("First")).toBeTruthy();
+        expect(collapsed.queryByText("Second")).toBeNull();
+        expect(collapsed.getByText("2 more replies")).toBeTruthy();
+        collapsed.unmount();
+
+        const expanded = render(ReadonlyAnnotationCard, {
+            props: { annotation, active: true, ...callbacks },
+        });
+        expect(expanded.getByText("First")).toBeTruthy();
+        expect(expanded.getByText("Second")).toBeTruthy();
+        expect(expanded.getByText("Third")).toBeTruthy();
+    });
+
+    it("shows a suggestion AI summary once and preserves human replies", () => {
+        const { getAllByText, getByText } = render(ReadonlyAnnotationCard, {
+            props: {
+                annotation: {
+                    id: "suggestion-thread",
+                    type: "suggestion",
+                    from: 0,
+                    to: 5,
+                    selectedText: "brown",
+                    replacements: [{ text: "russet" }],
+                    thread: [
+                        { author: "AI", message: "Use a richer color.", time: 1 },
+                        { author: "Writer", message: "Agreed.", time: 2 },
+                    ],
+                },
+                active: true,
+                ...callbacks,
+            },
+        });
+        expect(getAllByText("Use a richer color.")).toHaveLength(1);
+        expect(getByText("Agreed.")).toBeTruthy();
+    });
+});
+
+describe("shared revision context panel", () => {
+    it("updates both scroll-edge fades and requests lazy context at the boundary", async () => {
+        const onLoadMoreBefore = vi.fn();
+        const { container } = render(RevisionContextPanel, {
+            props: {
+                layers: [
+                    {
+                        before: "before ".repeat(80),
+                        revision: "TARGET",
+                        after: " after".repeat(80),
+                        hasMoreBefore: true,
+                        hasMoreAfter: true,
+                    },
+                ],
+                onLoadMoreBefore,
+            },
+        });
+        const context = container.querySelector<HTMLElement>("[data-revision-context-scroll]");
+        expect(context).not.toBeNull();
+        Object.defineProperties(context, {
+            clientHeight: { configurable: true, value: 200 },
+            scrollHeight: { configurable: true, value: 600 },
+            scrollTop: { configurable: true, value: 200, writable: true },
+        });
+
+        await fireEvent.scroll(context as HTMLElement);
+        await waitFor(() => {
+            expect(context?.style.maskImage).toMatch(/transparent 0%.*transparent 100%/);
+        });
+
+        if (context) context.scrollTop = 0;
+        await fireEvent.scroll(context as HTMLElement);
+        await waitFor(() => {
+            expect(context?.style.maskImage).toMatch(/black 0%.*transparent 100%/);
+            expect(onLoadMoreBefore).toHaveBeenCalledOnce();
+        });
+
+        if (context) context.scrollTop = 400;
+        await fireEvent.scroll(context as HTMLElement);
+        await waitFor(() => {
+            expect(context?.style.maskImage).toMatch(/transparent 0%.*black 100%/);
+        });
+
+        Object.defineProperty(context, "scrollHeight", { configurable: true, value: 100 });
+        if (context) context.scrollTop = 0;
+        await fireEvent.scroll(context as HTMLElement);
+        await waitFor(() => {
+            expect(context?.style.maskImage).toMatch(/black 0%.*black 100%/);
+        });
+    });
+
+    it("renders the whole document through the desktop-derived edge mask", async () => {
+        const before = `START-${"a".repeat(700)}`;
+        const after = `${"z".repeat(700)}-END`;
+        const content = `${before}world${after}`;
+        const revision = {
+            id: "long-revision",
+            type: "revision" as const,
+            from: before.length,
+            to: before.length + 5,
+            selectedText: "world",
+            thread: [],
+            activeVersionIndex: 0,
+            versions: [{ index: 0, versionId: "original", text: "world", annotations: [] }],
+        };
+        const { container } = render(ReadonlyAnnotationModal, {
+            props: {
+                annotation: revision,
+                rootContent: content,
+                rootAnnotations: [revision],
+                onClose: vi.fn(),
+                onSelectRevisionVersion: vi.fn(),
+            },
+        });
+
+        const context = container.querySelector<HTMLElement>("[data-revision-context-scroll]");
+        expect(context).not.toBeNull();
+        expect(context?.textContent).toContain("START-");
+        expect(context?.textContent).toContain("-END");
+        await waitFor(() => {
+            expect(context?.style.maskImage).toContain("linear-gradient");
+        });
     });
 });

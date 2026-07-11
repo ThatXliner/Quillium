@@ -308,6 +308,11 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(cards.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
     await expect(cards.getByRole("textbox")).toHaveCount(0);
 
+    const suggestionCard = cards.locator('[data-annotation-id="4"]');
+    await suggestionCard.getByRole("button", { name: "View changes" }).click();
+    await expect(suggestionCard.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
+    await expect(suggestionCard.locator('[data-suggestion-diff="insert"]')).toHaveText("russet");
+
     await expect(page.getByText("vs. previous version")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);

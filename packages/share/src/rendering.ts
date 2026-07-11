@@ -199,11 +199,13 @@ export type RevisionContextLayer = {
     revision: string;
     after: string;
     depth: number;
+    hasMoreBefore: boolean;
+    hasMoreAfter: boolean;
 };
 
 export function buildRevisionContextLayers(
     path: AnnotationPathEntry[],
-    outerContextLength = 300,
+    outerContextLength = Number.POSITIVE_INFINITY,
 ): RevisionContextLayer[] {
     return path
         .filter(
@@ -224,6 +226,8 @@ export function buildRevisionContextLayers(
                 revision: entry.parentContent.slice(from, to),
                 after: entry.parentContent.slice(to, afterEnd),
                 depth,
+                hasMoreBefore: beforeStart > 0,
+                hasMoreAfter: afterEnd < entry.parentContent.length,
             };
         });
 }

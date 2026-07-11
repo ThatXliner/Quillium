@@ -37,3 +37,11 @@ export type RevisionVersionView = {
     active: boolean;
     group?: RevisionVersionGroupView;
 };
+
+export type RevisionContextViewLayer = {
+    before: string;
+    revision: string;
+    after: string;
+    hasMoreBefore?: boolean;
+    hasMoreAfter?: boolean;
+};

@@ -6,6 +6,7 @@ export { default as ReadonlyShareView } from "./ReadonlyShareView.svelte";
 export { default as ReadonlyThreadMessage } from "./ReadonlyThreadMessage.svelte";
 export { default as CommentCard } from "./cards/CommentCard.svelte";
 export { default as RevisionCard } from "./cards/RevisionCard.svelte";
+export { default as RevisionContextPanel } from "./cards/RevisionContextPanel.svelte";
 export { default as SuggestionCard } from "./cards/SuggestionCard.svelte";
 export { default as ThreadList } from "./cards/ThreadList.svelte";
 export { default as ThreadMessage } from "./cards/ThreadMessage.svelte";

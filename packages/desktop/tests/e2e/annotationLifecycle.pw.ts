@@ -135,6 +135,49 @@ test.describe("revision lifecycle", () => {
         await q.expectModalText("hello world");
     });
 
+    test("revision modal context keeps the shared edge mask and can load the whole document", async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page);
+        await q.setup();
+        await q.goto();
+
+        const before = `START ${"before ".repeat(70)}`;
+        const target = "TARGET";
+        const after = `${" after".repeat(70)} END`;
+        await q.typeInEditor(`${before}${target}${after}`);
+        await q.selectRange(before.length, before.length + target.length);
+        await q.createRevision();
+        await q.openRevisionModal();
+
+        const context = page.locator("dialog[open] [data-revision-context-scroll]");
+        await expect(context).toBeVisible();
+        await expect(context).toHaveCSS("mask-image", /linear-gradient/);
+        await expect(context).toHaveAttribute("data-has-more-before", "true");
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+            if ((await context.getAttribute("data-has-more-before")) === "false") break;
+            await context.evaluate((element) => {
+                element.scrollTop = 0;
+                element.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await page.waitForTimeout(50);
+        }
+        await expect(context).toHaveAttribute("data-has-more-before", "false");
+        await expect.poll(() => context.textContent()).toContain("START");
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+            if ((await context.getAttribute("data-has-more-after")) === "false") break;
+            await context.evaluate((element) => {
+                element.scrollTop = element.scrollHeight;
+                element.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await page.waitForTimeout(50);
+        }
+        await expect(context).toHaveAttribute("data-has-more-after", "false");
+        await expect.poll(() => context.textContent()).toContain("END");
+    });
+
     test("editing in modal updates content", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
