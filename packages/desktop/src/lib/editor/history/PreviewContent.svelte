@@ -21,26 +21,27 @@ import {
     ReadonlyEditorController,
     ReadonlyEditorHost,
 } from "@quillium/share";
-import { onMount } from "svelte";
 import { docTextFromStateJson } from "./diff";
 import { diffDecorations, diffTheme, sideBySideDiffDecorations } from "./diffDecorations";
 
 type DiffLayout = "inline" | "side-by-side";
 
-const DIFF_LAYOUT_STORAGE_KEY = "quillium.versionHistory.diffLayout";
-
 const {
     currentStateJson,
     previousStateJson,
     previousText,
+    diffLayout,
     loading,
     hasContent,
+    oncurrenttextchange,
 }: {
     currentStateJson: string | null;
     previousStateJson: string | null;
     previousText: string | null;
+    diffLayout: DiffLayout;
     loading: boolean;
     hasContent: boolean;
+    oncurrenttextchange?: (text: string) => void;
 } = $props();
 
 let previewView: EditorView | undefined;
@@ -50,29 +51,14 @@ let diffCompartment: Compartment | undefined;
 let previousDiffCompartment: Compartment | undefined;
 let previewRevision = $state(0);
 let activeAnnotationId = $state<string | null>(null);
-let diffLayout = $state<DiffLayout>("inline");
 let previewRoot = $state<HTMLElement | null>(null);
 let previewWorkingStateJson = $state<string | null>(null);
 let previewWorkingSourceJson = $state<string | null>(null);
-
-onMount(() => {
-    try {
-        const saved = localStorage.getItem(DIFF_LAYOUT_STORAGE_KEY);
-        if (saved === "inline" || saved === "side-by-side") diffLayout = saved;
-    } catch {
-        // Storage can be unavailable in hardened webviews; the inline default
-        // remains fully functional.
-    }
-});
+let lastDiffLayout: DiffLayout | null = null;
 
 const hasPrevious = $derived(previousText !== null);
 const previousBaseline = $derived(previousText ?? "");
 const serializedCurrentText = $derived(docTextFromStateJson(currentStateJson));
-const currentPreviewText = $derived.by(() => {
-    void previewRevision;
-    return previewView?.state.doc.toString() ?? serializedCurrentText;
-});
-const hasTextChanges = $derived(hasPrevious && currentPreviewText !== previousBaseline);
 const selectedPaneLabel = "Selected version";
 const annotationProjection = $derived.by(() => {
     void previewRevision;
@@ -108,16 +94,17 @@ function parseSerializedState(json: string | null, fallbackDoc: string): Record<
     }
 }
 
-function setDiffLayout(layout: DiffLayout): void {
-    if (previewView) {
+$effect.pre(() => {
+    const layout = diffLayout;
+    if (lastDiffLayout !== null && layout !== lastDiffLayout && previewView) {
         previewWorkingStateJson = JSON.stringify(previewView.state.toJSON(savedFields));
         previewWorkingSourceJson = currentStateJson;
     }
-    diffLayout = layout;
+    lastDiffLayout = layout;
     const current = previewView?.state.doc.toString() ?? serializedCurrentText;
     if (previewView && diffCompartment) {
         previewView.dispatch({
-            effects: diffCompartment.reconfigure(currentDiffExtension(current, layout)),
+            effects: diffCompartment.reconfigure(currentDiffExtension(current, diffLayout)),
         });
     }
     if (previousPreviewView && previousDiffCompartment) {
@@ -131,12 +118,7 @@ function setDiffLayout(layout: DiffLayout): void {
             ),
         });
     }
-    try {
-        localStorage.setItem(DIFF_LAYOUT_STORAGE_KEY, layout);
-    } catch {
-        // Treat persistence as a convenience, never a requirement.
-    }
-}
+});
 
 function selectAnnotation(annotationId: string): void {
     if (!editorController.selectAnnotation(annotationId)) return;
@@ -239,12 +221,14 @@ function handlePreviewReady(nextView: EditorView | null): void {
         return;
     }
     activeAnnotationId = editorController.activeAnnotationId();
+    oncurrenttextchange?.(nextView.state.doc.toString());
 }
 
 function handlePreviewUpdate(update: ViewUpdate): void {
     if (!update.selectionSet && !update.docChanged) return;
     activeAnnotationId = editorController.activeAnnotationId();
     previewRevision = performance.now();
+    oncurrenttextchange?.(update.state.doc.toString());
 }
 
 $effect(() => {
@@ -306,64 +290,6 @@ $effect(() => {
             This tab is empty at this point.
         </div>
     {:else}
-        <div class="diff-toolbar w-full max-w-[1280px] flex flex-wrap items-center gap-3 px-1">
-            <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-black/60">
-                {#if hasTextChanges}
-                    <span class="flex items-center gap-1.5">
-                        <span
-                            class="inline-block w-3 h-3 rounded-sm bg-green-200 border border-green-400"
-                        ></span>
-                        Added (underlined)
-                    </span>
-                    <span class="flex items-center gap-1.5">
-                        <span
-                            class="inline-block w-3 h-3 rounded-sm bg-red-200 border border-red-400"
-                        ></span>
-                        Removed (struck through)
-                    </span>
-                    <span class="text-black/50">Compared with the previous version</span>
-                {:else if !hasPrevious}
-                    <span>No earlier version to compare</span>
-                {:else}
-                    <span>No text changes from the previous version</span>
-                {/if}
-            </div>
-
-            <div class="flex items-center gap-2 shrink-0">
-                <span class="text-xs font-medium text-black/55">View</span>
-                <div
-                    class="flex rounded-lg border border-black/[0.10] bg-black/[0.04] p-0.5"
-                    role="group"
-                    aria-label="Diff layout"
-                >
-                    <button
-                        type="button"
-                        aria-pressed={diffLayout === "inline"}
-                        onclick={() => setDiffLayout("inline")}
-                        class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors
-                               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60
-                               {diffLayout === 'inline'
-                                   ? 'bg-white text-blue-700 shadow-sm'
-                                   : 'text-black/55 hover:bg-white/60 hover:text-black/75'}"
-                    >
-                        Inline
-                    </button>
-                    <button
-                        type="button"
-                        aria-pressed={diffLayout === "side-by-side"}
-                        onclick={() => setDiffLayout("side-by-side")}
-                        class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors
-                               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60
-                               {diffLayout === 'side-by-side'
-                                   ? 'bg-white text-blue-700 shadow-sm'
-                                   : 'text-black/55 hover:bg-white/60 hover:text-black/75'}"
-                    >
-                        Side by side
-                    </button>
-                </div>
-            </div>
-        </div>
-
         {#if diffLayout === "inline"}
             <div class="history-preview-stage">
                 <div

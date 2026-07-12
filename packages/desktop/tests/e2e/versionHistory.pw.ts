@@ -407,6 +407,8 @@ test("historical tab and draft navigation loads exact content with comparable di
     );
     await expect.poll(projectedText).toContain("A standalone second pass.");
     await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
+    await expect(page.getByText("No differences at this point")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
@@ -448,6 +450,18 @@ test("history diff switches between inline and side-by-side layouts", async ({ p
     await expect(inline).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
 
+    const comparisonBar = page.getByText("Compared with the previous version").locator("..");
+    const tabStrip = page.locator('[data-component="document-tabs"]');
+    await expect
+        .poll(async () => {
+            const [barBox, tabsBox] = await Promise.all([
+                comparisonBar.boundingBox(),
+                tabStrip.boundingBox(),
+            ]);
+            return barBox && tabsBox ? barBox.y + barBox.height <= tabsBox.y + 1 : false;
+        })
+        .toBe(true);
+
     await sideBySide.click();
     await expect(sideBySide).toHaveAttribute("aria-pressed", "true");
 
@@ -487,13 +501,10 @@ test("side-by-side mode explains when no earlier version exists", async ({ page 
     await page.getByRole("button", { name: "Side by side" }).click();
     await page.locator("#versions-panel [role='option']").last().click();
 
-    await expect(page.getByRole("button", { name: "Side by side" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-    );
-    const previous = page.locator('[data-diff-pane="previous"]');
-    await expect(previous.getByText("No earlier version to compare.")).toBeVisible();
     await expect(page.getByText("No earlier version to compare", { exact: true })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
+    await expect(page.locator('[data-diff-pane="previous"]')).toHaveCount(0);
+    await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
     await expect(page.locator('[data-diff-pane="selected"] .cm-history-diff-add')).toHaveCount(0);
 });
 
@@ -579,6 +590,8 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(suggestionCard.locator('[data-suggestion-diff="insert"]')).toHaveText("russet");
 
     await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
+    await expect(page.getByText("No differences at this point")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
@@ -601,25 +614,10 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(
         page.getByText("Revision alternatives preview in the selected version."),
     ).toBeVisible();
-    await expect(page.getByText("Compared with the previous version")).toBeVisible();
-    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(2);
-    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(2);
-
-    await page.getByRole("button", { name: "Side by side" }).click();
-    const selectedPane = page.locator('[data-diff-pane="selected"]');
-    const annotationPanel = page.getByRole("complementary", { name: "Snapshot annotations" });
-    await expect(annotationPanel).toBeVisible();
-    await expect
-        .poll(async () => {
-            const [paneBox, panelBox] = await Promise.all([
-                selectedPane.boundingBox(),
-                annotationPanel.boundingBox(),
-            ]);
-            return paneBox && panelBox
-                ? Math.abs(paneBox.x - panelBox.x)
-                : Number.POSITIVE_INFINITY;
-        })
-        .toBeLessThan(2);
+    await expect(page.getByText("No differences at this point")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
     // Clicking annotated prose updates the card focus from the actual editor
     // selection, just as it does in the writable editor.

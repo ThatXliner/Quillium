@@ -81,6 +81,7 @@ let previewPreviousJson = $state<string | null>(null);
 // real baseline and must remain distinguishable from that state.
 let previewPreviousText = $state<string | null>(null);
 let previewHasContent = $state(false);
+let previewComparisonStatus = $state<"changed" | "unchanged" | "no-previous">("no-previous");
 // Monotonic token so a slow content load can't overwrite a newer selection.
 let previewToken = 0;
 
@@ -275,6 +276,7 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         previewPreviousJson = null;
         previewPreviousText = null;
         previewHasContent = false;
+        previewComparisonStatus = "no-previous";
         return;
     }
     previewLoading = true;
@@ -292,17 +294,33 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
                 previewPreviousJson = null;
                 previewPreviousText = null;
                 previewHasContent = false;
+                previewComparisonStatus = "no-previous";
             }
             return;
         }
+        const changedDraftAtCoordinate =
+            item.kind === "snapshot" && item.snapshot.draftId === draftId;
         const [currentJson, previousJson] = await Promise.all([
             loadSnapshotState(ref.current.id),
-            ref.previous ? loadSnapshotState(ref.previous.id) : Promise.resolve(null),
+            changedDraftAtCoordinate && ref.previous
+                ? loadSnapshotState(ref.previous.id)
+                : Promise.resolve(null),
         ]);
         if (token !== previewToken) return; // a newer selection superseded us
+        const comparisonStatus = !changedDraftAtCoordinate
+            ? "unchanged"
+            : previousJson === null
+              ? "no-previous"
+              : docTextFromStateJson(currentJson) === docTextFromStateJson(previousJson)
+                ? "unchanged"
+                : "changed";
         previewCurrentJson = currentJson;
-        previewPreviousJson = previousJson;
-        previewPreviousText = previousJson === null ? null : docTextFromStateJson(previousJson);
+        previewPreviousJson = comparisonStatus === "changed" ? previousJson : null;
+        previewPreviousText =
+            comparisonStatus === "changed" && previousJson !== null
+                ? docTextFromStateJson(previousJson)
+                : null;
+        previewComparisonStatus = comparisonStatus;
         previewHasContent = true;
     } catch (e) {
         // Called from event handlers — swallow instead of leaking an
@@ -310,8 +328,10 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         console.error("[VersionHistory] preview load failed:", e);
         if (token === previewToken) {
             previewCurrentJson = null;
+            previewPreviousJson = null;
             previewPreviousText = null;
             previewHasContent = false;
+            previewComparisonStatus = "no-previous";
         }
     } finally {
         if (token === previewToken) previewLoading = false;
@@ -586,6 +606,7 @@ function handleKeydown(e: KeyboardEvent) {
                 currentStateJson={previewCurrentJson}
                 previousStateJson={previewPreviousJson}
                 previousText={previewPreviousText}
+                comparisonStatus={previewComparisonStatus}
                 loading={previewLoading}
                 hasContent={previewHasContent}
                 {bannerText}
@@ -758,4 +779,3 @@ function handleKeydown(e: KeyboardEvent) {
         animation: checkpoint-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
     }
 </style>
-
