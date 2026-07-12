@@ -49,6 +49,11 @@ import {
     editorView,
     versionGroups,
 } from "$lib/stores";
+import {
+    type ReadonlyShareScope,
+    includesReadonlyShareTab,
+    readonlyShareScopeOf,
+} from "@quillium/share";
 import { Loader2, RefreshCcw, Share2, X } from "lucide-svelte";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
@@ -100,6 +105,8 @@ const shareComparisonPayload = $derived(
         : null,
 );
 let multiTabFingerprint = $state("");
+let shareScope = $state<ReadonlyShareScope>("all-tabs");
+let hydratedShareUpdatedAt = $state<string | null>(null);
 const currentShareFingerprint = $derived(
     multiTabFingerprint ||
         (shareComparisonPayload
@@ -139,18 +146,26 @@ $effect(() => {
 });
 
 $effect(() => {
+    const share = readonlyShare;
+    if (!share?.enabled || share.updatedAt === hydratedShareUpdatedAt) return;
+    shareScope = readonlyShareScopeOf(share.publishedState);
+    hydratedShareUpdatedAt = share.updatedAt;
+});
+
+$effect(() => {
     const title = $currentDocumentTitle;
     const content = $documentContent;
     const annotationsSnapshot = $annotations;
     const tabId = $currentTabId;
     const draftId = $currentDraftId;
+    const scope = shareScope;
     if (!authenticated || !shareId || !readonlyShare?.enabled) {
         multiTabFingerprint = "";
         return;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-        void buildPublishPayload()
+        void buildPublishPayload(scope)
             .then((payload) => {
                 if (!cancelled) {
                     multiTabFingerprint = fingerprintPayload(payload.title, payload.state);
@@ -261,27 +276,27 @@ function fingerprintPayload(title: string, state: Record<string, unknown> | null
     return buildShareFingerprint(title, JSON.stringify(state), []);
 }
 
-async function buildPublishPayload() {
+async function buildPublishPayload(scope: ReadonlyShareScope = shareScope) {
     const view = get(editorView);
     const content = view?.state.doc.toString() ?? $documentContent;
     const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
     const liveVersionGroups = view?.state.field(versionGroupField, false) ?? $versionGroups ?? {};
 
-    const tabs = await listTabs(shareId);
+    const tabs = (await listTabs(shareId)).filter(
+        (tab) => tab.tabType === "draft" && includesReadonlyShareTab(scope, tab.id, $currentTabId),
+    );
     const publishedTabs = await Promise.all(
-        tabs
-            .filter((tab) => tab.tabType === "draft")
-            .map(async (tab) => {
-                const drafts = await listTabDrafts(tab.id);
-                const activeDraftId = await getActiveDraft(tab.id);
-                const draft = drafts.find((item) => item.id === activeDraftId) ?? drafts[0];
-                if (!draft) return null;
-                const state =
-                    tab.id === $currentTabId && draft.id === $currentDraftId && view
-                        ? serializeShareState(view.state)
-                        : serializeLoadedShareState(await loadDocumentState(shareId, draft.id));
-                return { id: tab.id, label: tab.label, draftId: draft.id, state };
-            }),
+        tabs.map(async (tab) => {
+            const drafts = await listTabDrafts(tab.id);
+            const activeDraftId = await getActiveDraft(tab.id);
+            const draft = drafts.find((item) => item.id === activeDraftId) ?? drafts[0];
+            if (!draft) return null;
+            const state =
+                tab.id === $currentTabId && draft.id === $currentDraftId && view
+                    ? serializeShareState(view.state)
+                    : serializeLoadedShareState(await loadDocumentState(shareId, draft.id));
+            return { id: tab.id, label: tab.label, draftId: draft.id, state };
+        }),
     );
     const activeTabId = publishedTabs.some((tab) => tab?.id === $currentTabId)
         ? $currentTabId
@@ -298,6 +313,7 @@ async function buildPublishPayload() {
         state: {
             kind: "quillium-readonly-share",
             version: 2,
+            scope,
             activeTabId,
             tabs: publishedTabs.filter((tab) => tab !== null),
         },
@@ -488,6 +504,7 @@ async function toggleReadonlyShare() {
                             {autoUpdateDebounceMs}
                             {autoUpdatePausedAfterFailure}
                             {draftAnnotationCount}
+                            {shareScope}
                             hasPreviewText={buildSharePreviewText($documentContent).length > 0}
                             onpublish={() => publishCurrentSnapshot()}
                             ontoggleshare={toggleReadonlyShare}
@@ -495,6 +512,7 @@ async function toggleReadonlyShare() {
                             onsetautoupdate={setReadonlyShareAutoUpdate}
                             ondebounceinput={handleAutoUpdateDebounceInput}
                             onresetdebounce={resetAutoUpdateDebounce}
+                            onsharescopechange={(scope) => (shareScope = scope)}
                             onopenauth={openAuth}
                         />
                     {:else}

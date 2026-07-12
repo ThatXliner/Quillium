@@ -15,6 +15,7 @@ import {
 } from "$lib/collab/readonlyShareAutoUpdate";
 import type { ReadonlySharePublisher } from "$lib/collab/readonlySharePublisher.svelte";
 import { appSettings } from "$lib/settings.svelte";
+import type { ReadonlyShareScope } from "@quillium/share";
 import { Copy, Link, Loader2, LogIn, RefreshCcw } from "lucide-svelte";
 
 const {
@@ -27,6 +28,7 @@ const {
     autoUpdateDebounceMs,
     autoUpdatePausedAfterFailure,
     draftAnnotationCount,
+    shareScope,
     hasPreviewText,
     onpublish,
     ontoggleshare,
@@ -34,6 +36,7 @@ const {
     onsetautoupdate,
     ondebounceinput,
     onresetdebounce,
+    onsharescopechange,
     onopenauth,
 }: {
     authenticated: boolean;
@@ -45,6 +48,7 @@ const {
     autoUpdateDebounceMs: number;
     autoUpdatePausedAfterFailure: boolean;
     draftAnnotationCount: number;
+    shareScope: ReadonlyShareScope;
     hasPreviewText: boolean;
     onpublish: () => void;
     ontoggleshare: () => void;
@@ -52,6 +56,7 @@ const {
     onsetautoupdate: (enabled: boolean) => void;
     ondebounceinput: (event: Event) => void;
     onresetdebounce: () => void;
+    onsharescopechange: (scope: ReadonlyShareScope) => void;
     onopenauth: () => void;
 } = $props();
 
@@ -82,6 +87,36 @@ function formatShareTimestamp(value: string | null): string {
                 </p>
             </div>
         </div>
+
+        <fieldset class="grid gap-2 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
+            <legend class="sr-only">Choose what to publish</legend>
+            <div class="text-[13px] font-bold text-black/75">Share</div>
+            <div class="grid grid-cols-2 gap-1 rounded-xl bg-black/[0.045] p-1">
+                <button
+                    type="button"
+                    class={`min-h-9 rounded-lg px-3 text-xs font-[650] transition-[background,color,box-shadow] ${shareScope === "current-tab" ? "bg-white text-black/75 shadow-sm" : "text-black/45 hover:text-black/65"}`}
+                    aria-pressed={shareScope === "current-tab"}
+                    onclick={() => onsharescopechange("current-tab")}
+                    disabled={shareBusy || shareLoading || !shareId}
+                >
+                    Current tab
+                </button>
+                <button
+                    type="button"
+                    class={`min-h-9 rounded-lg px-3 text-xs font-[650] transition-[background,color,box-shadow] ${shareScope === "all-tabs" ? "bg-white text-black/75 shadow-sm" : "text-black/45 hover:text-black/65"}`}
+                    aria-pressed={shareScope === "all-tabs"}
+                    onclick={() => onsharescopechange("all-tabs")}
+                    disabled={shareBusy || shareLoading || !shareId}
+                >
+                    All tabs
+                </button>
+            </div>
+            <p class="m-0 text-xs/[1.45] text-black/50">
+                {shareScope === "all-tabs"
+                    ? "Publish the active draft from every prose tab."
+                    : "Publish only the tab and draft currently open."}
+            </p>
+        </fieldset>
 
         <div class="flex items-center justify-between gap-4 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
             <div>
