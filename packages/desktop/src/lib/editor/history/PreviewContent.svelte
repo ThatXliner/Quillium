@@ -17,15 +17,12 @@
 -->
 <script lang="ts">
 import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
     ReadonlyAnnotationCard,
-    annotationField,
-    getActiveAnnotation,
-    isAnnotationOfType,
-    serializeFromState,
-    setActiveRevisionVersion,
+    ReadonlyEditorController,
+    ReadonlyEditorHost,
 } from "@quillium/share";
 import { docTextFromStateJson } from "./diff";
 import { diffDecorations, diffTheme } from "./diffDecorations";
@@ -44,8 +41,8 @@ const {
     bannerText?: string | null;
 } = $props();
 
-let previewEl = $state<HTMLDivElement | undefined>();
 let previewView: EditorView | undefined;
+const editorController = new ReadonlyEditorController();
 let diffCompartment: Compartment | undefined;
 let previewRevision = $state(0);
 let activeAnnotationId = $state<string | null>(null);
@@ -57,33 +54,25 @@ const currentPreviewText = $derived.by(() => {
 const hasChanges = $derived(hasContent && currentPreviewText !== previousText);
 const annotationProjection = $derived.by(() => {
     void previewRevision;
-    return previewView ? serializeFromState(previewView.state) : { content: "", annotations: [] };
+    return editorController.snapshot();
+});
+const previewSerializedState = $derived.by((): Record<string, unknown> => {
+    void previousText;
+    if (!currentStateJson || currentStateJson === "{}") return { doc: "" };
+    try {
+        return JSON.parse(currentStateJson) as Record<string, unknown>;
+    } catch {
+        return { doc: "" };
+    }
 });
 
 function selectAnnotation(annotationId: string) {
-    const annotation = annotationProjection.annotations.find((item) => item.id === annotationId);
-    if (!previewView || !annotation) return;
-
+    if (!editorController.selectAnnotation(annotationId)) return;
     activeAnnotationId = annotationId;
-    previewView.dispatch({
-        selection: EditorSelection.cursor(annotation.from),
-        scrollIntoView: true,
-    });
 }
 
 function switchRevisionVersion(annotationId: string, versionIndex: number) {
-    if (!previewView || annotationId.includes(".v")) return;
-
-    const revisionId = Number(annotationId);
-    if (!Number.isInteger(revisionId)) return;
-    const annotation = previewView.state.field(annotationField, false)?.[revisionId];
-    if (!annotation || !isAnnotationOfType(annotation, "revision")) return;
-
-    const version = annotation.versions[versionIndex];
-    if (!version) return;
-    previewView.dispatch(
-        setActiveRevisionVersion(previewView.state, revisionId, version.id, { moveCursor: true }),
-    );
+    if (!previewView || !editorController.switchRevisionVersion(annotationId, versionIndex)) return;
     if (diffCompartment) {
         previewView.dispatch({
             effects: diffCompartment.reconfigure(
@@ -93,12 +82,11 @@ function switchRevisionVersion(annotationId: string, versionIndex: number) {
     }
 }
 
-// Mount/remount a read-only editor from the current version's state, with the
-// track-changes overlay. Re-runs when the element binds or the inputs change.
-$effect(() => {
-    if (!previewEl || loading || !hasContent) return;
-
-    const current = docTextFromStateJson(currentStateJson);
+function createPreviewState(
+    serializedState: Record<string, unknown>,
+    updateListener: Extension,
+): EditorState {
+    const current = typeof serializedState.doc === "string" ? serializedState.doc : "";
     const mountedDiffCompartment = new Compartment();
     const extensions = [
         // Same stack the editor and locked-draft / library previews use, so the
@@ -106,43 +94,36 @@ $effect(() => {
         ...getExtensions({ persist: false, history: false }),
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
-        EditorView.updateListener.of((update) => {
-            if (!update.selectionSet && !update.docChanged) return;
-            activeAnnotationId = String(getActiveAnnotation(update.state)?.id ?? "") || null;
-            previewRevision = performance.now();
-        }),
+        updateListener,
         diffTheme,
         mountedDiffCompartment.of(diffDecorations(previousText, current)),
     ];
 
-    let state: EditorState;
-    const json = currentStateJson;
-    if (json && json !== "{}") {
-        try {
-            state = EditorState.fromJSON(JSON.parse(json), { extensions }, savedFields);
-        } catch {
-            state = EditorState.create({ extensions });
-        }
-    } else {
-        state = EditorState.create({ extensions });
-    }
-
-    const mountedView = new EditorView({ state, parent: previewEl });
-    previewView = mountedView;
     diffCompartment = mountedDiffCompartment;
-    activeAnnotationId = String(getActiveAnnotation(state)?.id ?? "") || null;
-    // Avoid reading and writing the same rune inside this effect (`+=` would
-    // subscribe the effect to itself and trigger Svelte's update-depth guard).
-    previewRevision = performance.now();
+    try {
+        return EditorState.fromJSON(serializedState, { extensions }, savedFields);
+    } catch {
+        return EditorState.create({ doc: current, extensions });
+    }
+}
 
-    return () => {
-        mountedView.destroy();
-        if (previewView === mountedView) {
-            previewView = undefined;
-            diffCompartment = undefined;
-        }
-    };
-});
+function handlePreviewReady(nextView: EditorView | null): void {
+    previewView = nextView ?? undefined;
+    editorController.attach(nextView);
+    previewRevision = performance.now();
+    if (!nextView) {
+        diffCompartment = undefined;
+        activeAnnotationId = null;
+        return;
+    }
+    activeAnnotationId = editorController.activeAnnotationId();
+}
+
+function handlePreviewUpdate(update: ViewUpdate): void {
+    if (!update.selectionSet && !update.docChanged) return;
+    activeAnnotationId = editorController.activeAnnotationId();
+    previewRevision = performance.now();
+}
 </script>
 
 <div class="history-preview-content w-full flex flex-col items-center gap-3">
@@ -185,8 +166,14 @@ $effect(() => {
             <div
                 class="version-preview w-[816px] max-w-full min-h-[40vh] bg-white rounded-lg shadow-xl
                        py-3 px-1 select-text"
-                bind:this={previewEl}
-            ></div>
+            >
+                <ReadonlyEditorHost
+                    serializedState={previewSerializedState}
+                    stateFactory={createPreviewState}
+                    onReady={handlePreviewReady}
+                    onUpdate={handlePreviewUpdate}
+                />
+            </div>
 
             {#if annotationProjection.annotations.length > 0}
                 <aside class="history-annotation-column" aria-label="Snapshot annotations">

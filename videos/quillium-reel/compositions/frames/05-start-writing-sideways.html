@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Start Writing Sideways</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        @font-face {
+          font-family: "Inter";
+          src: url("capture/assets/fonts/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfMZg.ttf")
+            format("truetype");
+          font-style: normal;
+          font-weight: 400;
+        }
+
+        @font-face {
+          font-family: "Newsreader";
+          src: url("capture/assets/fonts/cY9qfjOCX1hbuyalUrK49dLac06G1ZGsZBtoBCzBDXXD9JVF438weI_ADA.ttf")
+            format("truetype");
+          font-style: normal;
+          font-weight: 400;
+        }
+
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 1080px;
+          height: 1920px;
+          overflow: hidden;
+          container-type: size;
+          color: #000000;
+        }
+
+        .paper-ground {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          overflow: hidden;
+          background-color: #f5f4f1;
+        }
+
+        .paper-ground::before {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cfilter id='noise05'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='2' seed='23'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise05)' opacity='.12'/%3E%3C/svg%3E");
+          content: "";
+          opacity: 0.04;
+          pointer-events: none;
+        }
+
+        .closing-scene {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          overflow: hidden;
+        }
+
+        .compass-ring {
+          position: absolute;
+          top: 316px;
+          left: 90px;
+          width: 900px;
+          height: 900px;
+          border: 1px solid rgba(168, 85, 247, 0.24);
+          border-radius: 50%;
+          box-sizing: border-box;
+          transform-origin: 50% 50%;
+        }
+
+        .compass-ring::before {
+          position: absolute;
+          inset: 15%;
+          border: 1px dashed rgba(168, 85, 247, 0.18);
+          border-radius: 50%;
+          content: "";
+        }
+
+        .compass-ring::after {
+          position: absolute;
+          top: 50%;
+          right: -5%;
+          left: -5%;
+          height: 1px;
+          background-color: rgba(168, 85, 247, 0.12);
+          content: "";
+        }
+
+        .branch-field {
+          position: absolute;
+          inset: 0;
+          width: 1080px;
+          height: 1320px;
+          overflow: visible;
+          pointer-events: none;
+        }
+
+        .branch-remnant {
+          fill: none;
+          stroke: #a855f7;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          stroke-width: 3px;
+          vector-effect: non-scaling-stroke;
+        }
+
+        .mark-stage {
+          position: absolute;
+          top: 474px;
+          left: 50%;
+          width: 294px;
+          height: 294px;
+          margin-left: -147px;
+        }
+
+        .mark-trace,
+        .official-mark {
+          position: absolute;
+          inset: 0;
+          display: block;
+          width: 294px;
+          height: 294px;
+        }
+
+        .mark-trace path {
+          fill: none;
+          stroke: #a855f7;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .mark-trace .outline {
+          stroke-width: 5px;
+        }
+
+        .mark-trace .spine {
+          stroke-width: 3px;
+        }
+
+        .mark-trace circle {
+          fill: #a855f7;
+        }
+
+        .brand-lockup {
+          position: absolute;
+          top: 724px;
+          left: 50%;
+          width: 800px;
+          margin-left: -400px;
+          text-align: center;
+        }
+
+        .wordmark {
+          display: block;
+          width: 100%;
+          margin: 0;
+          font-family: "Newsreader", serif;
+          font-size: 112px;
+          font-weight: 400;
+          letter-spacing: -3px;
+          line-height: 1;
+          color: #000000;
+        }
+
+        .headline {
+          display: flex;
+          width: 100%;
+          min-height: 172px;
+          margin-top: 58px;
+          flex-direction: column;
+          align-items: center;
+          justify-content: flex-start;
+          font-family: "Newsreader", serif;
+          font-size: 80px;
+          font-weight: 400;
+          letter-spacing: -1.8px;
+          line-height: 0.98;
+          color: #000000;
+        }
+
+        .headline-phrase {
+          display: block;
+          width: 100%;
+        }
+
+        .headline-phrase:last-child {
+          color: #5a5a5a;
+        }
+
+        .terminal-rule {
+          display: block;
+          width: 194px;
+          height: 1px;
+          margin: 52px auto 0;
+          background-color: #000000;
+          transform-origin: 50% 50%;
+        }
+
+        .cta-rail {
+          position: absolute;
+          top: 1234px;
+          left: 50%;
+          display: flex;
+          width: 760px;
+          min-height: 78px;
+          margin-left: -380px;
+          border-top: 1px solid #a855f7;
+          border-bottom: 1px solid #a855f7;
+          align-items: center;
+          justify-content: center;
+          gap: 24px;
+          font-family: "Inter", sans-serif;
+          font-size: 21px;
+          font-weight: 400;
+          letter-spacing: 2.2px;
+          line-height: 1;
+          color: #5a5a5a;
+          text-transform: uppercase;
+        }
+
+        .cta-primary {
+          color: #7c3aed;
+        }
+
+        .rail-separator {
+          width: 1px;
+          height: 24px;
+          background-color: rgba(168, 85, 247, 0.48);
+        }
+      </style>
+
+      <div
+        id="root"
+        data-composition-id="05-start-writing-sideways"
+        data-width="1080"
+        data-height="1920"
+        data-duration="6.0"
+      >
+        <div
+          id="f05-paper-ground"
+          class="clip paper-ground"
+          data-start="0"
+          data-duration="6.0"
+          data-track-index="0"
+        ></div>
+
+        <section
+          id="f05-closing-scene"
+          class="clip closing-scene"
+          data-start="0"
+          data-duration="6.0"
+          data-track-index="1"
+        >
+          <div id="f05-compass-ring" class="compass-ring"></div>
+
+          <svg
+            id="f05-branch-field"
+            class="branch-field"
+            viewBox="0 0 1080 1320"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              id="f05-branch-left"
+              class="branch-remnant"
+              d="M -30 518 C 154 510 260 600 402 654 C 456 675 493 660 540 624"
+            />
+            <path
+              id="f05-branch-right"
+              class="branch-remnant"
+              d="M 1110 416 C 920 428 838 530 706 586 C 636 616 592 615 540 624"
+            />
+            <path
+              id="f05-branch-top"
+              class="branch-remnant"
+              d="M 756 -30 C 742 150 650 248 608 390 C 580 482 567 548 540 624"
+            />
+          </svg>
+
+          <div id="f05-mark-stage" class="mark-stage">
+            <svg
+              id="f05-mark-trace"
+              class="mark-trace"
+              viewBox="0 0 200 200"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+              data-layout-allow-overflow
+            >
+              <g transform="translate(113, 96) rotate(19) scale(1.18) translate(-100, -100)">
+                <path
+                  id="f05-feather-outline"
+                  class="outline"
+                  d="M140,28 C128,42 110,55 90,68 C74,80 62,96 56,116 C52,132 52,150 56,168 L60,174 C60,152 64,134 72,118 C82,100 96,88 112,76 C126,65 136,50 140,36Z"
+                />
+                <path
+                  id="f05-feather-spine"
+                  class="spine"
+                  d="M138,32 C118,62 94,98 72,135 C62,150 58,166 58,174"
+                />
+                <circle id="f05-trace-dot-1" cx="58" cy="174" r="3.2" />
+                <circle id="f05-trace-dot-2" cx="55" cy="179.5" r="3.2" />
+                <circle id="f05-trace-dot-3" cx="61" cy="179.5" r="3.2" />
+                <circle id="f05-trace-dot-4" cx="58" cy="185" r="3.2" />
+              </g>
+            </svg>
+            <img
+              id="f05-official-mark"
+              class="official-mark"
+              src="capture/assets/logo-no-bg.svg"
+              alt="Quillium feather mark"
+            />
+          </div>
+
+          <div id="f05-brand-lockup" class="brand-lockup">
+            <div id="f05-wordmark" class="wordmark">Quillium</div>
+            <div id="f05-headline" class="headline" aria-label="Start writing sideways.">
+              <span id="f05-headline-a" class="headline-phrase">Start writing</span>
+              <span id="f05-headline-b" class="headline-phrase">sideways.</span>
+            </div>
+            <div id="f05-terminal-rule" class="terminal-rule"></div>
+          </div>
+
+          <div id="f05-cta-rail" class="cta-rail">
+            <span class="cta-primary">Download free</span>
+            <span class="rail-separator" aria-hidden="true"></span>
+            <span>quillium.bryanhu.com</span>
+          </div>
+        </section>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (() => {
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+
+          const branchPaths = [
+            document.getElementById("f05-branch-left"),
+            document.getElementById("f05-branch-right"),
+            document.getElementById("f05-branch-top"),
+          ];
+
+          branchPaths.forEach((path, index) => {
+            const length = path.getTotalLength();
+            tl.fromTo(
+              path,
+              {
+                strokeDasharray: length,
+                strokeDashoffset: 0,
+                opacity: 0.82,
+              },
+              {
+                strokeDashoffset: -length,
+                opacity: 0,
+                duration: 1.25,
+                ease: "power3.in",
+                immediateRender: true,
+              },
+              0.05 + index * 0.08,
+            );
+          });
+
+          const drawPath = (element, start, duration) => {
+            const length = element.getTotalLength();
+            tl.fromTo(
+              element,
+              { strokeDasharray: length, strokeDashoffset: length },
+              {
+                strokeDashoffset: 0,
+                duration,
+                ease: "power2.out",
+                immediateRender: true,
+              },
+              start,
+            );
+          };
+
+          drawPath(document.getElementById("f05-feather-outline"), 0.25, 1.5);
+          drawPath(document.getElementById("f05-feather-spine"), 0.75, 1.1);
+
+          tl.fromTo(
+            "#f05-mark-trace circle",
+            { opacity: 0, scale: 0.55, transformOrigin: "50% 50%" },
+            {
+              opacity: 1,
+              scale: 1,
+              duration: 0.35,
+              ease: "power2.out",
+              stagger: 0.025,
+            },
+            1.65,
+          );
+
+          tl.fromTo(
+            "#f05-compass-ring",
+            { opacity: 0, scale: 0.94 },
+            { opacity: 1, scale: 1, duration: 1.8, ease: "power3.out" },
+            0,
+          );
+
+          tl.fromTo(
+            "#f05-official-mark",
+            { opacity: 0 },
+            { opacity: 1, duration: 0.45, ease: "power1.out" },
+            1.8,
+          );
+          tl.to(
+            "#f05-mark-trace",
+            { opacity: 0, duration: 0.4, ease: "power1.out" },
+            1.95,
+          );
+
+          tl.fromTo(
+            "#f05-wordmark",
+            { opacity: 0, y: 26 },
+            { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+            2.2,
+          );
+
+          const phraseContent = [
+            { selector: "#f05-headline-a", text: "Start writing" },
+            { selector: "#f05-headline-b", text: "sideways." },
+          ];
+          const baseDuration = 0.24;
+          const secondsPerCharacter = 0.008;
+          let phraseStart = 2.5;
+
+          phraseContent.forEach((phrase) => {
+            const duration = baseDuration + phrase.text.length * secondsPerCharacter;
+            tl.fromTo(
+              phrase.selector,
+              { opacity: 0, y: 24 },
+              { opacity: 1, y: 0, duration, ease: "power3.out" },
+              phraseStart,
+            );
+            phraseStart += duration * 0.68;
+          });
+
+          tl.fromTo(
+            "#f05-terminal-rule",
+            { opacity: 0, scaleX: 0 },
+            { opacity: 1, scaleX: 1, duration: 0.55, ease: "power2.out" },
+            2.85,
+          );
+
+          tl.fromTo(
+            "#f05-cta-rail",
+            { opacity: 0, y: 16 },
+            { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" },
+            3.35,
+          );
+
+          // Long final lockup for recognition and cover-frame use.
+          tl.to({}, { duration: 2.2 }, 3.8);
+
+          window.__timelines["05-start-writing-sideways"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

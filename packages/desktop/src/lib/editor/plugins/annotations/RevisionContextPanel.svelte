@@ -9,7 +9,7 @@ import {
     RevisionContextPanel as RevisionContextPanelView,
     type RevisionContextViewLayer,
 } from "@quillium/share";
-import { type Annotation, annotationField } from ".";
+import { annotationField, isAnnotationOfType } from ".";
 
 const { crumbs, refreshKey }: { crumbs: ModalEntry[]; refreshKey: unknown } = $props();
 
@@ -24,10 +24,8 @@ const contextLayers = $derived.by((): RevisionContextViewLayer[] => {
         const crumb = crumbs[index];
         if (crumb.type !== "revision") continue;
         const parentState = crumb.parentView.state;
-        const revision = parentState.field(annotationField)[crumb.revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (!revision) continue;
+        const revision = parentState.field(annotationField)[crumb.revisionId];
+        if (!revision || !isAnnotationOfType(revision, "revision")) continue;
 
         const document = parentState.doc;
         const from = revision.selection.main.from;
@@ -45,11 +43,32 @@ const contextLayers = $derived.by((): RevisionContextViewLayer[] => {
     }
     return layers;
 });
+
+const contextIdentity = $derived.by((): string => {
+    void refreshKey;
+    return crumbs
+        .filter((crumb) => crumb.type === "revision")
+        .map((crumb) => {
+            const annotation = crumb.parentView.state.field(annotationField)[crumb.revisionId];
+            const activeVersionId =
+                annotation && isAnnotationOfType(annotation, "revision")
+                    ? annotation.activeVersionId
+                    : "";
+            return `${crumb.revisionId}:${activeVersionId}`;
+        })
+        .join("/");
+});
+
+$effect(() => {
+    void contextIdentity;
+    contextBefore = CHUNK;
+    contextAfter = CHUNK;
+});
 </script>
 
 <RevisionContextPanelView
     layers={contextLayers}
-    centerKey={refreshKey}
+    centerKey={contextIdentity}
     onLoadMoreBefore={() => (contextBefore += CHUNK)}
     onLoadMoreAfter={() => (contextAfter += CHUNK)}
 />

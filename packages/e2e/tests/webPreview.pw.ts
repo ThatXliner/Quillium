@@ -110,6 +110,14 @@ test.describe("Omni Web Preview", () => {
         await firstRevision.getByRole("button", { name: "Expand revision editor" }).click();
         const readonlyModal = page.locator(".readonly-modal");
         await expect(readonlyModal).toBeVisible();
+        const modalEditor = readonlyModal.locator(
+            '[data-revision-modal-editor="codemirror"] .cm-content',
+        );
+        await expect(modalEditor).toHaveText("quick");
+        await expect(modalEditor).toHaveAttribute("contenteditable", "false");
+        await expect(
+            readonlyModal.locator('[data-revision-modal-editor="legacy-static"]'),
+        ).toHaveCount(0);
         const contextViewport = readonlyModal.locator("[data-revision-context-scroll]");
         await expect(contextViewport).toBeVisible();
         await expect
@@ -121,6 +129,20 @@ test.describe("Omni Web Preview", () => {
         await expect(readonlyModal.getByRole("button", { name: "New Version" })).toHaveCount(0);
         await readonlyModal.getByRole("button", { name: "Close revision" }).click();
         await expect(readonlyModal).toHaveCount(0);
+
+        const commentView = page.locator('[data-annotation-card-view="comment"]');
+        await commentView.getByRole("button", { name: "Expand comment thread" }).click();
+        const commentContext = readonlyModal.locator("[data-comment-context-scroll]");
+        await expect(commentContext).toContainText("The");
+        await expect(commentContext).toContainText("quick brown fox");
+        await readonlyModal.getByRole("button", { name: "Close comment" }).click();
+
+        await suggestionView.getByRole("button", { name: "Expand suggestion diff" }).click();
+        await expect(readonlyModal.locator("[data-suggestion-modal-content]")).toBeVisible();
+        await readonlyModal.getByRole("button", { name: /umber/ }).click();
+        await expect(readonlyModal.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
+        await expect(readonlyModal.locator('[data-suggestion-diff="insert"]')).toHaveText("umber");
+        await readonlyModal.getByRole("button", { name: "Close suggestion" }).click();
 
         const suggestionCard = page.locator(
             '.annotation-card:has([data-annotation-card-view="suggestion"])',

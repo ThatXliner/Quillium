@@ -16,6 +16,8 @@ export {
     personaColorsFacet,
     readonlySavedFields,
 } from "./readonlyExtensions";
+export { ReadonlyEditorController } from "./readonlyEditorController";
+export type { ReadonlySelectionOptions } from "./readonlyEditorController";
 
 export { annotationField, setActiveRevisionVersion } from "./annotationField";
 export {
@@ -23,6 +25,7 @@ export {
     serializeAnnotationsFromData,
     serializeFromState,
 } from "./serialize";
+export { resolveRevisionVersionState } from "./resolveRevisionState";
 export { versionGroupField } from "./versionGroupField";
 export { getActiveAnnotation } from "./utils";
 export {

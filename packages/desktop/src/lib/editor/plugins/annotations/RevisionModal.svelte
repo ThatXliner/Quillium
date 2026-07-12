@@ -30,9 +30,9 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView } from "@codemirror/view";
-import { ChevronDown, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
+import { AnnotationModalFrame, AnnotationModalHeader, AnnotationPanel } from "@quillium/share";
+import { PlusIcon, Trash2 } from "lucide-svelte";
 import { onDestroy } from "svelte";
-import { slide } from "svelte/transition";
 import {
     type Annotation,
     type Annotations as AnnotationsMap,
@@ -702,6 +702,74 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 }
 </script>
 
+{#snippet annotationPanelContent()}
+  {#if modalAnnotations}
+    <Annotations
+      view={controller.editor}
+      annotationsData={modalAnnotations}
+      activeAnnotationData={modalActiveAnnotation ?? null}
+      layout="inline"
+    />
+  {/if}
+{/snippet}
+
+{#snippet annotationPanelEmpty()}
+  <div class="flex flex-col items-center px-2 pt-4 text-center justify-evenly space-y-8">
+    <p class="text-[11px] text-black/30 leading-relaxed">No annotations yet.</p>
+    {#if appSettings.showShortcutHints}
+      <p class="text-[11px] text-black/25 mb-3">Create one with:</p>
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2 text-black/40">
+          <Kbd keys={[modKey, opt, "M"]} />
+          <span class="text-[11px] font-medium text-black/35">comment</span>
+        </div>
+        <div class="flex items-center gap-2 text-black/40">
+          <Kbd keys={[modKey, opt, "K"]} />
+          <span class="text-[11px] font-medium text-black/35">revision</span>
+        </div>
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet revisionHeaderLeading()}
+  <RevisionBreadcrumbs
+    {crumbs}
+    {crumbRevisions}
+    selectedVersions={crumbSelectedVersions}
+    onselect={selectVersion}
+    ondeleteversion={deleteVersion}
+    getlabel={getActiveVersionLabel}
+    oncommitlabel={commitVersionLabel}
+  />
+{/snippet}
+
+{#snippet revisionHeaderActions()}
+  {#if stackIndex > 0}
+    <span class="text-[10px] text-purple-400/60 italic shrink-0">
+      Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
+    </span>
+  {/if}
+  <button
+    class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
+        bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
+    onclick={addVersion}
+    title="New version ({modKey}↵)"
+  >
+    <PlusIcon size={10} />
+    <span>New version</span>
+    <Kbd keys={[modKey, "↵"]} />
+  </button>
+  <button
+    class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
+    onclick={deleteRevision}
+    title="Delete entire revision"
+    aria-label="Delete entire revision"
+  >
+    <Trash2 size={16} />
+  </button>
+{/snippet}
+
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 <dialog
   bind:this={dialogEl}
@@ -716,59 +784,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onkeydowncapture={onDialogKeydownCapture}
   onkeydown={onDialogKeydown}
 >
-  <div class="revision-modal-inner">
-    <!-- Header -->
-    <div
-      class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
-    >
-      <!-- Breadcrumb trail -->
-      <RevisionBreadcrumbs
-        {crumbs}
-        {crumbRevisions}
-        selectedVersions={crumbSelectedVersions}
-        onselect={selectVersion}
-        ondeleteversion={deleteVersion}
-        getlabel={getActiveVersionLabel}
-        oncommitlabel={commitVersionLabel}
-      />
+  <AnnotationModalFrame variant="revision">
+    <AnnotationModalHeader
+      accent="revision"
+      leading={revisionHeaderLeading}
+      actions={revisionHeaderActions}
+      onClose={close}
+      closeLabel="Close revision"
+    />
 
-      {#if stackIndex > 0}
-        <span class="text-[10px] text-purple-400/60 italic shrink-0">
-          Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
-        </span>
-      {/if}
-
-      <!-- Right actions -->
-      <div class="flex items-center gap-2 shrink-0">
-        <button
-          class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
-              bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
-          onclick={addVersion}
-          title="New version ({modKey}↵)"
-        >
-          <PlusIcon size={10} />
-          <span>New version</span>
-          <Kbd keys={[modKey, "↵"]} />
-        </button>
-        <button
-          class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
-          onclick={deleteRevision}
-          title="Delete entire revision"
-          aria-label="Delete entire revision"
-        >
-          <Trash2 size={16} />
-        </button>
-        <button
-          class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
-          onclick={close}
-        >
-          <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-          <X size={16} />
-        </button>
-      </div>
-    </div>
-
-        <TutorialGuide />
+    <TutorialGuide />
 
     <!-- Body: thread + editor + annotations panel -->
     <div class="flex flex-1 overflow-hidden">
@@ -811,52 +836,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <RevisionContextPanel {crumbs} refreshKey={modalAnnotations} />
 
           <!-- Annotations -->
-          <div class="flex-1 min-h-0 flex flex-col">
-            <button
-              class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors shrink-0"
-              onclick={() => annotationsCollapsed = !annotationsCollapsed}
-            >
-              <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Annotations</span>
-              {#if annotationsCollapsed}
-                <ChevronDown size={10} class="text-purple-400/50" />
-              {:else}
-                <ChevronUp size={10} class="text-purple-400/50" />
-              {/if}
-            </button>
-            {#if !annotationsCollapsed}
-              <div transition:slide={{ duration: 180 }} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {#if modalAnnotations && Object.keys(modalAnnotations).length > 0}
-                  <Annotations
-                    view={controller.editor}
-                    annotationsData={modalAnnotations}
-                    activeAnnotationData={modalActiveAnnotation ?? null}
-                    layout="inline"
-                  />
-                {:else}
-                  <div class="flex flex-col items-center px-2 pt-4 text-center justify-evenly space-y-8">
-                    <p class="text-[11px] text-black/30 leading-relaxed">No annotations yet.</p>
-                    {#if appSettings.showShortcutHints}
-                      <p class="text-[11px] text-black/25 mb-3">Create one with:</p>
-                      <div class="flex flex-col gap-2">
-                        <div class="flex items-center gap-2 text-black/40">
-                          <Kbd keys={[modKey, opt, "M"]} />
-                          <span class="text-[11px] font-medium text-black/35">comment</span>
-                        </div>
-                        <div class="flex items-center gap-2 text-black/40">
-                          <Kbd keys={[modKey, opt, "K"]} />
-                          <span class="text-[11px] font-medium text-black/35">revision</span>
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
+          <AnnotationPanel
+            bind:collapsed={annotationsCollapsed}
+            hasContent={!!modalAnnotations && Object.keys(modalAnnotations).length > 0}
+            content={annotationPanelContent}
+            empty={annotationPanelEmpty}
+          />
 
         </div>
     </div>
-  </div>
+  </AnnotationModalFrame>
 </dialog>
 
 <style>
@@ -879,17 +868,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   .revision-modal::backdrop {
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);
-  }
-
-  .revision-modal-inner {
-    display: flex;
-    flex-direction: column;
-    width: 1160px;
-    height: 72vh;
-    background: white;
-    border-radius: 1rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    overflow: hidden;
   }
 
   .revision-modal-thread {

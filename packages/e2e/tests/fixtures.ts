@@ -107,6 +107,29 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
     };
 }
 
+/** Wrap the linked fixture inside one revision version for real modal exploration tests. */
+export function buildNestedLinkedFixtureState(): EditorState {
+    const { state: nestedState } = buildFixtureState();
+    const nestedWire = serializeFixtureWire(nestedState);
+    const outerVersion = makeVersion({
+        ...nestedWire,
+        doc: nestedState.doc.toString(),
+    });
+    const outerRevision: GenericAnnotation = {
+        id: 10,
+        _type: "revision",
+        thread: [],
+        selection: EditorSelection.single(0, nestedState.doc.length),
+        activeVersionId: outerVersion.id,
+        versions: [outerVersion],
+    };
+    const outerState = EditorState.create({
+        doc: nestedState.doc.toString(),
+        extensions: [annotationField, versionGroupField],
+    });
+    return outerState.update({ effects: addAnnotation.of(outerRevision) }).state;
+}
+
 /**
  * The public-share WIRE payload: exactly what desktop's
  * `serializeShareState(state)` writes (`state.toJSON({ annotationField,

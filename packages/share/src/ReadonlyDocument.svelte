@@ -11,23 +11,13 @@
  * Switching a revision version dispatches into the editor, which cascades
  * through any linked version groups automatically.
  */
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { onDestroy, onMount, tick } from "svelte";
-import "./core/annotations.css";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { onMount, tick } from "svelte";
 import { fade, fly } from "svelte/transition";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyAnnotationModal from "./ReadonlyAnnotationModal.svelte";
-import {
-    type PersonaColor,
-    annotationField,
-    getActiveAnnotation,
-    getReadonlyExtensions,
-    isAnnotationOfType,
-    readonlySavedFields,
-    serializeFromState,
-    setActiveRevisionVersion,
-} from "./core";
+import ReadonlyEditorHost from "./ReadonlyEditorHost.svelte";
+import { type PersonaColor, ReadonlyEditorController, resolveRevisionVersionState } from "./core";
 import {
     AnnotationColumn,
     type AnnotationLayoutId,
@@ -52,12 +42,11 @@ let {
 
 type AnnotationPath = NonNullable<ReturnType<typeof findAnnotationPath>>;
 
-let host = $state<HTMLDivElement | null>(null);
 let editorSheet = $state<HTMLElement | null>(null);
 let view = $state<EditorView | null>(null);
+const editorController = new ReadonlyEditorController();
 // Bumped after every dispatch so the projection recomputes off the new state.
 let rev = $state(0);
-let mountError = $state<string | null>(null);
 
 let activeInlineAnnotationId = $state<AnnotationId | null>(null);
 let modalAnnotationStack = $state<AnnotationId[]>([]);
@@ -68,7 +57,7 @@ let floatingCards = $state(true);
 
 const projection = $derived.by(() => {
     void rev;
-    return view ? serializeFromState(view.state) : { content: "", annotations: [] };
+    return editorController.snapshot();
 });
 const annotations = $derived(projection.annotations);
 const annotationIds = $derived(annotations.map((annotation) => annotation.id));
@@ -86,28 +75,14 @@ const modalAnnotationPath = $derived(
 const modalAnnotation = $derived(
     (modalAnnotationPath.at(-1)?.annotation as SerializedAnnotation | undefined) ?? null,
 );
-
-/** Map a top-level serialized annotation id back to its numeric field key. */
-function fieldKeyOf(id: AnnotationId): number | null {
-    if (!view || id.includes(".v")) return null; // nested versions not switchable here
-    const map = view.state.field(annotationField, false);
-    if (!map) return null;
-    for (const key of Object.keys(map)) {
-        if (String(key) === id) return Number(key);
-    }
-    return null;
-}
+const modalRevisionState = $derived(
+    view && modalAnnotation?.type === "revision"
+        ? resolveRevisionVersionState(view.state, modalAnnotation.id, modalRevisionSelections)
+        : null,
+);
 
 function selectAnnotation(id: AnnotationId) {
-    const annotation = annotations.find((a) => a.id === id);
-    if (!view || !annotation) return;
-    // Move the (hidden) cursor into the range so getActiveAnnotation lights up
-    // the highlight, matching the desktop editor's active styling.
-    view.dispatch({
-        selection: EditorSelection.cursor(annotation.from),
-        scrollIntoView: true,
-    });
-    view.focus();
+    if (!editorController.selectAnnotation(id, { focus: true })) return;
     activeInlineAnnotationId = id;
     rev += 1;
 }
@@ -133,14 +108,7 @@ function getAnnotationColumnGeometry(): { left: number; width: number } {
 }
 
 function switchRevisionVersion(annotationId: AnnotationId, versionIndex: number) {
-    if (!view) return;
-    const key = fieldKeyOf(annotationId);
-    if (key === null) return;
-    const revision = view.state.field(annotationField, false)?.[key];
-    if (!revision || !isAnnotationOfType(revision, "revision")) return;
-    const target = revision.versions[versionIndex];
-    if (!target) return;
-    view.dispatch(setActiveRevisionVersion(view.state, key, target.id, { moveCursor: true }));
+    if (!editorController.switchRevisionVersion(annotationId, versionIndex)) return;
     rev += 1;
 }
 
@@ -167,12 +135,38 @@ function closeAnnotationModal() {
     }
 }
 
+function handleEditorReady(nextView: EditorView | null): void {
+    view = nextView;
+    editorController.attach(nextView);
+    rev += 1;
+    activeInlineAnnotationId = nextView ? editorController.activeAnnotationId() : null;
+}
+
+function handleEditorUpdate(update: ViewUpdate): void {
+    if (!update.docChanged && !update.selectionSet) return;
+    rev += 1;
+    activeInlineAnnotationId = editorController.activeAnnotationId();
+}
+
 function selectModalRevisionVersion(annotationId: AnnotationId, versionIndex: number) {
-    modalRevisionSelections = { ...modalRevisionSelections, [annotationId]: versionIndex };
+    const { [annotationId]: _previousSelection, ...otherSelections } = modalRevisionSelections;
+    modalRevisionSelections = { ...otherSelections, [annotationId]: versionIndex };
+}
+
+function syncModalRevisionSelections(selections: RevisionVersionSelections) {
+    const nextSelections = { ...modalRevisionSelections, ...selections };
+    const currentKeys = Object.keys(modalRevisionSelections);
+    const nextKeys = Object.keys(nextSelections);
+    if (
+        currentKeys.length === nextKeys.length &&
+        nextKeys.every((key) => modalRevisionSelections[key] === nextSelections[key])
+    ) {
+        return;
+    }
+    modalRevisionSelections = nextSelections;
 }
 
 onMount(() => {
-    if (!host) return;
     let frame: number | undefined;
     const updateFloatingCards = () => {
         const next = canFloatAnnotationColumn(getAnnotationColumnGeometry());
@@ -187,48 +181,25 @@ onMount(() => {
         }
     };
     window.addEventListener("resize", updateFloatingCards);
-    try {
-        const editorState = EditorState.fromJSON(
-            serializedState,
-            {
-                extensions: [
-                    getReadonlyExtensions({ atomicRevisions, personaColors }),
-                    EditorView.updateListener.of((update) => {
-                        if (!update.docChanged && !update.selectionSet) return;
-                        rev += 1;
-                        const active = getActiveAnnotation(update.state);
-                        activeInlineAnnotationId = active ? String(active.id) : null;
-                    }),
-                ],
-            },
-            readonlySavedFields,
-        );
-        view = new EditorView({ state: editorState, parent: host });
-        rev += 1;
-        const active = getActiveAnnotation(view.state);
-        activeInlineAnnotationId = active ? String(active.id) : null;
-        frame = requestAnimationFrame(updateFloatingCards);
-    } catch (err) {
-        mountError = err instanceof Error ? err.message : String(err);
-    }
+    frame = requestAnimationFrame(updateFloatingCards);
     return () => {
         window.removeEventListener("resize", updateFloatingCards);
         if (frame !== undefined) cancelAnimationFrame(frame);
     };
 });
-
-onDestroy(() => {
-    view?.destroy();
-    view = null;
-});
 </script>
 
 <div class="editor-stage" class:is-stacked={!floatingCards}>
 	<section class="editor-sheet" bind:this={editorSheet} in:fade={{ duration: 420 }}>
-		{#if mountError}
-			<p class="mount-error">This document couldn't be rendered.</p>
-		{/if}
-		<div class="share-document" class:is-indented={indented} bind:this={host}></div>
+		<div class="share-document" class:is-indented={indented}>
+			<ReadonlyEditorHost
+				{serializedState}
+				{personaColors}
+				{atomicRevisions}
+				onReady={handleEditorReady}
+				onUpdate={handleEditorUpdate}
+			/>
+		</div>
 	</section>
 
 	{#if floatingCards}
@@ -294,9 +265,11 @@ onDestroy(() => {
 		rootAnnotations={annotations}
 		activeAnnotationId={activeInlineAnnotationId}
 		revisionVersionSelections={modalRevisionSelections}
+		revisionState={modalRevisionState as Record<string, unknown> | null}
 		onClose={closeAnnotationModal}
 		onSelectAnnotation={openAnnotationModal}
 		onSelectRevisionVersion={selectModalRevisionVersion}
+		onRevisionSelectionsChange={syncModalRevisionSelections}
 	/>
 {/if}
 
@@ -353,12 +326,6 @@ onDestroy(() => {
 	}
 	.share-document.is-indented :global(.cm-line) {
 		text-indent: 2em;
-	}
-
-	.mount-error {
-		margin: 0 0 0.75rem;
-		color: var(--text-soft);
-		font-size: 0.9rem;
 	}
 
 	.annotation-column {

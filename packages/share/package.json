@@ -49,6 +49,11 @@
       "svelte": "./src/diff.ts",
       "types": "./src/diff.ts",
       "import": "./src/diff.ts"
+    },
+    "./versionPreview": {
+      "svelte": "./src/versionPreview.ts",
+      "types": "./src/versionPreview.ts",
+      "import": "./src/versionPreview.ts"
     }
   },
   "scripts": {

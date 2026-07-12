@@ -7,15 +7,16 @@
  * wire payload survives all the way to rendered content + annotation cards.
  */
 import {
+    ContextViewport,
     ReadonlyAnnotationCard,
     ReadonlyAnnotationModal,
     ReadonlyDocument,
     ReadonlyShareView,
     RevisionContextPanel,
 } from "@quillium/share";
-import { fireEvent, render, waitFor } from "@testing-library/svelte";
+import { fireEvent, render, waitFor, within } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
-import { buildFixtureState, serializeFixtureWire } from "./fixtures";
+import { buildFixtureState, buildNestedLinkedFixtureState, serializeFixtureWire } from "./fixtures";
 
 describe("ReadonlyDocument renders through the real editor", () => {
     it("mounts the CodeMirror view with the active-version document text", async () => {
@@ -202,6 +203,7 @@ describe("ReadonlyShareView integration paths", () => {
             },
         });
 
+        expect(container.querySelector('[data-readonly-renderer="legacy-static"]')).not.toBeNull();
         expect(container.querySelector(".cm-content")).toBeNull();
         expect(getByText("AI Suggestion")).toBeTruthy();
         expect(getByText("friend")).toBeTruthy();
@@ -272,6 +274,42 @@ describe("shared read-only thread adapters", () => {
 });
 
 describe("shared revision context panel", () => {
+    it("fills an underflowing viewport without waiting for a scroll event", async () => {
+        const onLoadMoreAfter = vi.fn();
+        const { container } = render(ContextViewport, {
+            props: {
+                layers: [
+                    {
+                        before: "Outer before ",
+                        revision: "outer target",
+                        after: " outer after",
+                        hasMoreBefore: false,
+                        hasMoreAfter: true,
+                    },
+                    {
+                        before: "Nested before ",
+                        revision: "DEEPEST TARGET",
+                        after: " nested after",
+                        hasMoreBefore: false,
+                        hasMoreAfter: false,
+                    },
+                ],
+                onLoadMoreAfter,
+            },
+        });
+        const context = container.querySelector<HTMLElement>("[data-context-scroll]");
+        expect(context).not.toBeNull();
+        Object.defineProperties(context, {
+            clientHeight: { configurable: true, value: 200 },
+            scrollHeight: { configurable: true, value: 200 },
+        });
+
+        await waitFor(() => expect(onLoadMoreAfter).toHaveBeenCalledOnce());
+        expect(container.querySelector('[data-context-target-depth="1"]')?.textContent).toContain(
+            "DEEPEST TARGET",
+        );
+    });
+
     it("updates both scroll-edge fades and requests lazy context at the boundary", async () => {
         const onLoadMoreBefore = vi.fn();
         const { container } = render(RevisionContextPanel, {
@@ -352,6 +390,255 @@ describe("shared revision context panel", () => {
         expect(context?.textContent).toContain("-END");
         await waitFor(() => {
             expect(context?.style.maskImage).toContain("linear-gradient");
+        });
+    });
+});
+
+describe("shared annotation modal parity", () => {
+    it("passes serialized breadcrumb version indices instead of array positions", async () => {
+        const onSelectRevisionVersion = vi.fn();
+        const revision = {
+            id: "sparse-revision",
+            type: "revision" as const,
+            from: 0,
+            to: 5,
+            selectedText: "first",
+            thread: [],
+            activeVersionIndex: 2,
+            versions: [
+                {
+                    index: 2,
+                    versionId: "sparse-first",
+                    label: "First sparse",
+                    text: "first",
+                    annotations: [],
+                },
+                {
+                    index: 7,
+                    versionId: "sparse-second",
+                    label: "Second sparse",
+                    text: "second",
+                    annotations: [],
+                },
+            ],
+        };
+        const { getByRole } = render(ReadonlyAnnotationModal, {
+            props: {
+                annotation: revision,
+                rootContent: "first",
+                rootAnnotations: [revision],
+                onClose: vi.fn(),
+                onSelectRevisionVersion,
+            },
+        });
+
+        await fireEvent.click(getByRole("button", { name: "Revision version: First sparse" }));
+        await fireEvent.click(getByRole("button", { name: "Second sparse" }));
+        expect(onSelectRevisionVersion).toHaveBeenCalledWith("sparse-revision", 7);
+    });
+
+    it("uses a real read-only CodeMirror host for state-backed revision versions", async () => {
+        const revisionState = {
+            doc: "Alpha beta",
+            annotationField: {
+                0: {
+                    id: 0,
+                    _type: "comment",
+                    thread: [],
+                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                },
+            },
+            versionGroupField: {},
+        };
+        const nestedComment = {
+            id: "1.v0.0",
+            type: "comment" as const,
+            from: 0,
+            to: 5,
+            selectedText: "Alpha",
+            thread: [],
+        };
+        const revision = {
+            id: "1",
+            type: "revision" as const,
+            from: 0,
+            to: 10,
+            selectedText: "Alpha beta",
+            thread: [],
+            activeVersionIndex: 0,
+            versions: [
+                {
+                    index: 0,
+                    versionId: "v0",
+                    text: "Alpha beta",
+                    annotations: [nestedComment],
+                },
+            ],
+        };
+
+        const { container } = render(ReadonlyAnnotationModal, {
+            props: {
+                annotation: revision,
+                rootContent: "Alpha beta",
+                rootAnnotations: [revision],
+                revisionState,
+                onClose: vi.fn(),
+                onSelectRevisionVersion: vi.fn(),
+            },
+        });
+
+        await waitFor(() => {
+            expect(
+                container.querySelector('[data-revision-modal-editor="codemirror"]'),
+            ).not.toBeNull();
+            expect(container.querySelector(".cm-content")?.textContent).toBe("Alpha beta");
+            expect(container.querySelector(".cm-comment")).not.toBeNull();
+        });
+        expect(container.querySelector('[data-revision-modal-editor="legacy-static"]')).toBeNull();
+        expect(container.querySelector('[data-annotation-card-view="comment"]')).not.toBeNull();
+        expect(container.querySelector(".cm-comment-active")).not.toBeNull();
+        expect(
+            container
+                .querySelector('[data-annotation-card-view="comment"]')
+                ?.getAttribute("data-active"),
+        ).toBe("true");
+        expect(container.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe(
+            "false",
+        );
+    });
+
+    it("keeps linked nested revision choices after the modal host cascades them", async () => {
+        const state = buildNestedLinkedFixtureState();
+        const { container, getByRole } = render(ReadonlyDocument, {
+            props: { serializedState: serializeFixtureWire(state) },
+        });
+
+        await waitFor(() => expect(container.querySelector(".cm-content")).not.toBeNull());
+        await fireEvent.click(getByRole("button", { name: "Expand revision editor" }));
+        const modal = await waitFor(() => {
+            const element = container.querySelector<HTMLElement>(".readonly-modal");
+            expect(element).not.toBeNull();
+            return element as HTMLElement;
+        });
+        await waitFor(() => {
+            expect(modal.querySelector(".cm-content")?.textContent).toContain(
+                "The quick brown fox",
+            );
+        });
+
+        await fireEvent.click(within(modal).getByTitle("swift"));
+        await waitFor(() => {
+            expect(modal.querySelector(".cm-content")?.textContent).toContain(
+                "The swift brown hound",
+            );
+            expect(within(modal).getByTitle("swift").hasAttribute("disabled")).toBe(true);
+            expect(within(modal).getByTitle("hound").hasAttribute("disabled")).toBe(true);
+        });
+    });
+
+    it("shows full surrounding comment context through the shared viewport", async () => {
+        const before = `START ${"before ".repeat(80)}`;
+        const after = `${" after".repeat(80)} END`;
+        const content = `${before}TARGET${after}`;
+        const comment = {
+            id: "comment-context",
+            type: "comment" as const,
+            from: before.length,
+            to: before.length + 6,
+            selectedText: "TARGET",
+            thread: [],
+        };
+        const { container, getByRole } = render(ReadonlyAnnotationModal, {
+            props: {
+                annotation: comment,
+                rootContent: content,
+                rootAnnotations: [comment],
+                onClose: vi.fn(),
+                onSelectRevisionVersion: vi.fn(),
+            },
+        });
+
+        const context = container.querySelector<HTMLElement>("[data-comment-context-scroll]");
+        expect(context?.textContent).toContain("START");
+        expect(context?.textContent).toContain("TARGET");
+        expect(context?.textContent).toContain("END");
+        expect(context?.style.maskImage).toContain("linear-gradient");
+
+        await fireEvent.click(getByRole("button", { name: "Collapse Context" }));
+        await waitFor(() => {
+            expect(
+                getByRole("button", { name: "Expand Context" }).getAttribute("aria-expanded"),
+            ).toBe("false");
+        });
+    });
+
+    it("switches suggestion replacements, renders token diffs, and preserves replies", async () => {
+        const suggestion = {
+            id: "suggestion-modal",
+            type: "suggestion" as const,
+            from: 0,
+            to: 9,
+            selectedText: "brown fox",
+            replacements: [
+                { text: "russet fox", rationale: "Specific color" },
+                { text: "brown hound", rationale: "Different animal" },
+            ],
+            thread: [
+                { author: "AI", message: "Try one focused change.", time: 1 },
+                { author: "Writer", message: "The second option fits.", time: 2 },
+            ],
+        };
+        const onClose = vi.fn();
+        const onSelectRevisionVersion = vi.fn();
+        const { container, getAllByText, getByRole, getByText, rerender } = render(
+            ReadonlyAnnotationModal,
+            {
+                props: {
+                    annotation: suggestion,
+                    rootContent: suggestion.selectedText,
+                    rootAnnotations: [suggestion],
+                    onClose,
+                    onSelectRevisionVersion,
+                },
+            },
+        );
+
+        expect(getAllByText("Try one focused change.")).toHaveLength(1);
+        expect(getByText("The second option fits.")).toBeTruthy();
+        expect(container.querySelector('[data-suggestion-diff="delete"]')?.textContent).toBe(
+            "brown",
+        );
+        expect(container.querySelector('[data-suggestion-diff="insert"]')?.textContent).toBe(
+            "russet",
+        );
+
+        await fireEvent.click(getByRole("button", { name: /brown hound/ }));
+        expect(container.querySelector('[data-suggestion-diff="delete"]')?.textContent).toBe("fox");
+        expect(container.querySelector('[data-suggestion-diff="insert"]')?.textContent).toBe(
+            "hound",
+        );
+        expect(getByText("Different animal")).toBeTruthy();
+
+        const nextSuggestion = {
+            ...suggestion,
+            id: "suggestion-modal-next",
+            selectedText: "quiet lake",
+            replacements: [{ text: "still lake" }, { text: "quiet sea" }],
+        };
+        await rerender({
+            annotation: nextSuggestion,
+            rootContent: nextSuggestion.selectedText,
+            rootAnnotations: [nextSuggestion],
+            onClose,
+            onSelectRevisionVersion,
+        });
+        await waitFor(() => {
+            expect(container.querySelector('[data-suggestion-diff="delete"]')?.textContent).toBe(
+                "quiet",
+            );
+            expect(container.querySelector('[data-suggestion-diff="insert"]')?.textContent).toBe(
+                "still",
+            );
         });
     });
 });

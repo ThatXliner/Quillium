@@ -28,8 +28,8 @@ import {
     VersionGroupsSchema,
     activeVersionIndex,
     groupOfMember,
-    normalizeRevision,
     isRawAnnotationOfType,
+    normalizeRevision,
     versionText,
 } from "./models";
 import { versionGroupField } from "./versionGroupField";
@@ -141,6 +141,7 @@ export function serializeAnnotationsFromData(
     doc: string,
     annotations: Annotations,
     versionGroups: VersionGroups = {},
+    idPrefix = "",
 ): SerializedAnnotation[] {
     const raw = Object.fromEntries(
         Object.entries(annotations).map(([id, annotation]) => [
@@ -148,7 +149,7 @@ export function serializeAnnotationsFromData(
             { ...annotation, selection: annotation.selection.toJSON() },
         ]),
     );
-    return serializeParsedAnnotationMap(doc, raw as RawAnnotations, versionGroups);
+    return serializeParsedAnnotationMap(doc, raw as RawAnnotations, versionGroups, idPrefix);
 }
 
 export type SerializedState = {
@@ -160,12 +161,12 @@ export type SerializedState = {
  * Project the current EditorState into the flat share shape (doc text +
  * annotations, with active revision versions already materialized in the doc).
  */
-export function serializeFromState(state: EditorState): SerializedState {
+export function serializeFromState(state: EditorState, idPrefix = ""): SerializedState {
     const doc = state.doc.toString();
     const annotations = state.field(annotationField, false) ?? {};
     const versionGroups = state.field(versionGroupField, false) ?? {};
     return {
         content: doc,
-        annotations: serializeAnnotationsFromData(doc, annotations, versionGroups),
+        annotations: serializeAnnotationsFromData(doc, annotations, versionGroups, idPrefix),
     };
 }

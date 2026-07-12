@@ -1,4 +1,5 @@
 import type { SerializedAnnotation } from "./types";
+import { formatVersionPreviewText } from "./versionPreview";
 
 export type AnnotationId = SerializedAnnotation["id"];
 export type RevisionVersionSelections = Record<string, number>;
@@ -140,9 +141,7 @@ export function buildShareFingerprint(
 }
 
 export function previewVersionText(version: SerializedRevisionVersion | undefined): string {
-    if (!version) return "Version";
-    const trimmed = version.text.replace(/\s+/g, " ").trim();
-    return trimmed ? trimmed.slice(0, 40) : "Empty version";
+    return formatVersionPreviewText(version?.text);
 }
 
 export function annotationLabel(annotation: SerializedAnnotation): string {

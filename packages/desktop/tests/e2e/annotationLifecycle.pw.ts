@@ -135,25 +135,78 @@ test.describe("revision lifecycle", () => {
         await q.expectModalText("hello world");
     });
 
-    test("revision modal context keeps the shared edge mask and can load the whole document", async ({
+    test("revision modal context proactively fills, wheel-scrolls, and loads the whole document", async ({
         page,
     }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
 
-        const before = `START ${"before ".repeat(70)}`;
-        const target = "TARGET";
-        const after = `${" after".repeat(70)} END`;
+        const before = "Opening: ";
+        const target = "Memory plays a cruel trick on us";
+        const memorySentence =
+            ": it keeps what we would most like to lose and loses what we most want to keep. ";
+        const failureSentence =
+            "We remember small failures with crystalline precision while good things soften. ";
+        const trailingPassage = `${memorySentence}${failureSentence}`;
+        const after = `${trailingPassage.repeat(8)}END`;
         await q.typeInEditor(`${before}${target}${after}`);
-        await q.selectRange(before.length, before.length + target.length);
+        await q.editor.click();
+        await page.keyboard.press("Control+Home");
+        await q.moveCursorRight(before.length);
+        await q.selectRight(target.length);
         await q.createRevision();
         await q.openRevisionModal();
+        await q.expectModalText(target);
 
         const context = page.locator("dialog[open] [data-revision-context-scroll]");
         await expect(context).toBeVisible();
         await expect(context).toHaveCSS("mask-image", /linear-gradient/);
-        await expect(context).toHaveAttribute("data-has-more-before", "true");
+
+        await expect(context).toHaveCSS("overflow-y", "auto");
+        await expect
+            .poll(() =>
+                context.evaluate((element) => {
+                    const exhausted =
+                        element.dataset.hasMoreBefore === "false" &&
+                        element.dataset.hasMoreAfter === "false";
+                    return element.scrollHeight > element.clientHeight || exhausted;
+                }),
+            )
+            .toBe(true);
+        await page.waitForTimeout(250);
+
+        const initialMetrics = await context.evaluate((element) => ({
+            maxScrollTop: element.scrollHeight - element.clientHeight,
+            scrollTop: element.scrollTop,
+        }));
+        expect(initialMetrics.maxScrollTop).toBeGreaterThan(0);
+        const wheelDelta = initialMetrics.scrollTop < initialMetrics.maxScrollTop ? 120 : -120;
+        await context.hover();
+        await page.mouse.wheel(0, wheelDelta);
+        await expect
+            .poll(() =>
+                context.evaluate((element, previousScrollTop) => {
+                    return Math.abs(element.scrollTop - previousScrollTop);
+                }, initialMetrics.scrollTop),
+            )
+            .toBeGreaterThan(0);
+
+        const manuallyScrolledTop = await context.evaluate((element) => {
+            element.scrollTop = (element.scrollHeight - element.clientHeight) / 2;
+            element.dispatchEvent(new Event("scroll", { bubbles: true }));
+            return element.scrollTop;
+        });
+        await page.locator("dialog[open] .revision-modal-editor .cm-content").click();
+        await page.keyboard.press("ArrowRight");
+        await expect
+            .poll(() =>
+                context.evaluate(
+                    (element, expected) => Math.abs(element.scrollTop - expected),
+                    manuallyScrolledTop,
+                ),
+            )
+            .toBeLessThanOrEqual(2);
 
         for (let attempt = 0; attempt < 20; attempt++) {
             if ((await context.getAttribute("data-has-more-before")) === "false") break;
@@ -164,7 +217,7 @@ test.describe("revision lifecycle", () => {
             await page.waitForTimeout(50);
         }
         await expect(context).toHaveAttribute("data-has-more-before", "false");
-        await expect.poll(() => context.textContent()).toContain("START");
+        await expect.poll(() => context.textContent()).toContain("Opening:");
 
         for (let attempt = 0; attempt < 20; attempt++) {
             if ((await context.getAttribute("data-has-more-after")) === "false") break;
