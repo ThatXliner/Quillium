@@ -208,10 +208,19 @@ read-only editor host; revision modals resolve the selected nested `VersionState
 and mount that same host, preserving decorations and nested annotations. The flat
 projection drives cards and modal navigation without duplicating editor behavior.
 
+The renderer follows the three-layer shared-editor model documented in
+[Monorepo Guide — Shared editor surface architecture](./monorepo.md#shared-editor-surface-architecture):
+app-neutral core/presentation, surface capability adapters, and consuming
+surfaces. `Readonly*` components are compositional adapters that omit persistence
+and mutation capabilities; they are not subclasses or a parallel visual system.
+
 Shares published before serialized state was added are isolated behind
 `LegacyReadonlyDocument`. That compatibility path keeps index-style active
 revision state and the static annotated-text renderer; new behavior should not be
 added there unless an old payload specifically requires it.
+The legacy path is retained only for rows where `published_state` is absent and
+is scheduled for removal after the production compatibility prerequisites in
+[GitHub issue #339](https://github.com/ThatXliner/Quillium/issues/339) are satisfied.
 
 Modal presentation shared with desktop lives in `@quillium/share`: context
 viewport lifecycle, modal frame/header sizing, revision breadcrumbs, suggestion
