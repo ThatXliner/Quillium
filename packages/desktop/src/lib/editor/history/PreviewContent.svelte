@@ -33,18 +33,14 @@ const {
     currentStateJson,
     previousStateJson,
     previousText,
-    hasPrevious,
     loading,
     hasContent,
-    bannerText = null,
 }: {
     currentStateJson: string | null;
     previousStateJson: string | null;
-    previousText: string;
-    hasPrevious: boolean;
+    previousText: string | null;
     loading: boolean;
     hasContent: boolean;
-    bannerText?: string | null;
 } = $props();
 
 let previewView: EditorView | undefined;
@@ -66,13 +62,15 @@ onMount(() => {
     }
 });
 
+const hasPrevious = $derived(previousText !== null);
+const previousBaseline = $derived(previousText ?? "");
 const serializedCurrentText = $derived(docTextFromStateJson(currentStateJson));
 const currentPreviewText = $derived.by(() => {
     void previewRevision;
     return previewView?.state.doc.toString() ?? serializedCurrentText;
 });
-const hasTextChanges = $derived(hasPrevious && currentPreviewText !== previousText);
-const selectedPaneLabel = $derived(bannerText ? "At selected point" : "Selected version");
+const hasTextChanges = $derived(hasPrevious && currentPreviewText !== previousBaseline);
+const selectedPaneLabel = "Selected version";
 const annotationProjection = $derived.by(() => {
     void previewRevision;
     return editorController.snapshot();
@@ -80,7 +78,7 @@ const annotationProjection = $derived.by(() => {
 const previewSerializedState = $derived.by(() => {
     // A baseline/layout change must rebuild the current view even when its
     // serialized snapshot did not change.
-    void previousText;
+    void previousBaseline;
     void hasPrevious;
     void diffLayout;
     return parseSerializedState(currentStateJson, "");
@@ -89,7 +87,7 @@ const previousSerializedState = $derived.by(() => {
     // Rebuild the previous pane when the selected snapshot changes, even if
     // the previous snapshot itself stays the same.
     void serializedCurrentText;
-    return parseSerializedState(previousStateJson, previousText);
+    return parseSerializedState(previousStateJson, previousBaseline);
 });
 
 function parseSerializedState(json: string | null, fallbackDoc: string): Record<string, unknown> {
@@ -118,8 +116,8 @@ function selectAnnotation(annotationId: string): void {
 function currentDiffExtension(current: string): Extension {
     if (!hasPrevious) return [];
     return diffLayout === "side-by-side"
-        ? sideBySideDiffDecorations(previousText, current, "selected")
-        : diffDecorations(previousText, current);
+        ? sideBySideDiffDecorations(previousBaseline, current, "selected")
+        : diffDecorations(previousBaseline, current);
 }
 
 function switchRevisionVersion(annotationId: string, versionIndex: number): void {
@@ -178,12 +176,13 @@ function createPreviousPreviewState(
     serializedState: Record<string, unknown>,
     updateListener: Extension,
 ): EditorState {
-    const previous = typeof serializedState.doc === "string" ? serializedState.doc : previousText;
+    const previous =
+        typeof serializedState.doc === "string" ? serializedState.doc : previousBaseline;
     const mountedPreviousDiffCompartment = new Compartment();
     const extensions = previewExtensions(
         updateListener,
         mountedPreviousDiffCompartment.of(
-            sideBySideDiffDecorations(previousText, serializedCurrentText, "previous"),
+            sideBySideDiffDecorations(previousBaseline, serializedCurrentText, "previous"),
         ),
     );
 
@@ -237,15 +236,6 @@ function handlePreviewUpdate(update: ViewUpdate): void {
 {/snippet}
 
 <div class="history-preview-content w-full flex flex-col items-center gap-3">
-    {#if bannerText}
-        <div
-            class="w-full max-w-[1280px] rounded-lg border border-black/[0.08] bg-blue-50/60
-                   px-4 py-2 text-xs text-black/65"
-        >
-            {bannerText}
-        </div>
-    {/if}
-
     {#if loading}
         <div class="flex items-center justify-center w-full py-20 text-black/55 text-sm">
             Loading…
@@ -319,7 +309,7 @@ function handlePreviewUpdate(update: ViewUpdate): void {
         {#if diffLayout === "inline"}
             <div class="history-preview-stage">
                 <div
-                    class="version-preview w-[816px] max-w-full min-h-[40vh] bg-white rounded-lg
+                    class="version-preview w-[816px] max-w-full min-h-[40vh] bg-white rounded-tr-lg rounded-b-lg
                            shadow-xl py-3 px-1 select-text"
                     data-diff-layout="inline"
                     aria-label="Selected version with inline changes"
@@ -540,3 +530,4 @@ function handlePreviewUpdate(update: ViewUpdate): void {
         }
     }
 </style>
+

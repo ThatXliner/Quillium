@@ -71,8 +71,8 @@ function buildDecorations(segments: DiffOp[], docLength: number): DecorationSet 
 /**
  * A CodeMirror extension that paints track-changes for `current` vs `previous`.
  * The view it's added to MUST hold the `current` text (build it from the current
- * snapshot). When there is no previous version, pass "" — everything shows as
- * added, matching "this is all new."
+ * snapshot). Callers with no comparable previous version should omit this
+ * extension; an empty string is still a valid, comparable prior document.
  */
 export function diffDecorations(previous: string, current: string): Extension {
     const segments = wordDiff(previous, current);

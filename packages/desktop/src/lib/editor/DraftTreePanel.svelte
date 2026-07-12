@@ -8,6 +8,8 @@
     Props:
       drafts         — flat DraftMeta list for the active tab
       activeDraftId  — id of the draft currently in the editor
+      readOnly       — navigation-only mode; hides and disables mutations
+      highlightedDraftId — optional secondary highlight (e.g. history target)
       ondraftselect  — (draftId) switch the editor to this draft
       ondraftiterate — (draftId) make the next version in this draft's run
       ondraftbranch  — (draftId) start a different take off this draft
@@ -21,25 +23,36 @@ import type { DraftMeta } from "$lib/db/types";
 import { ChevronsDownIcon, GitBranchIcon, LockIcon, LockOpenIcon, Trash2Icon } from "lucide-svelte";
 import { hasLiveChildren, isDeletableDraft, isRunHead, layoutDraftRows } from "./draftTree";
 
+type DraftMutationCallbacks = {
+    ondraftiterate: (draftId: string) => void;
+    ondraftbranch: (draftId: string) => void;
+    ondraftrename: (draftId: string, label: string) => void;
+    ondraftdelete: (draftId: string) => void;
+    ontogglelock: (draftId: string, locked: boolean) => void;
+};
+
+type Props = {
+    drafts: DraftMeta[];
+    activeDraftId: string | null;
+    highlightedDraftId?: string | null;
+    ondraftselect: (draftId: string) => void;
+} & (
+    | ({ readOnly: true } & Partial<DraftMutationCallbacks>)
+    | ({ readOnly?: false } & DraftMutationCallbacks)
+);
+
 const {
     drafts,
     activeDraftId,
+    readOnly = false,
+    highlightedDraftId = null,
     ondraftselect,
     ondraftiterate,
     ondraftbranch,
     ondraftrename,
     ondraftdelete,
     ontogglelock,
-}: {
-    drafts: DraftMeta[];
-    activeDraftId: string | null;
-    ondraftselect: (draftId: string) => void;
-    ondraftiterate: (draftId: string) => void;
-    ondraftbranch: (draftId: string) => void;
-    ondraftrename: (draftId: string, label: string) => void;
-    ondraftdelete: (draftId: string) => void;
-    ontogglelock: (draftId: string, locked: boolean) => void;
-} = $props();
+}: Props = $props();
 
 const rows = $derived(layoutDraftRows(drafts));
 
@@ -61,6 +74,7 @@ let renameValue = $state("");
 let renameInputEl = $state<HTMLInputElement | undefined>();
 
 function startRename(draft: DraftMeta) {
+    if (readOnly) return;
     renamingDraftId = draft.id;
     renameValue = draft.label;
     setTimeout(() => renameInputEl?.select(), 0);
@@ -69,7 +83,7 @@ function startRename(draft: DraftMeta) {
 function commitRename(draftId: string) {
     const trimmed = renameValue.trim() || "draft";
     renamingDraftId = null;
-    ondraftrename(draftId, trimmed);
+    if (!readOnly) ondraftrename?.(draftId, trimmed);
 }
 </script>
 
@@ -78,7 +92,12 @@ function commitRename(draftId: string) {
      corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
      + box-shadow squares the shadow at the corners; splitting avoids it while still
      clipping the blur. -->
-<div class="w-48 rounded-lg shadow-md" aria-label="Draft tree">
+<div
+    class="w-48 rounded-lg shadow-md"
+    aria-label="Draft tree"
+    data-component="draft-tree-panel"
+    data-read-only={readOnly}
+>
 <div class="overflow-hidden rounded-lg bg-white/45 backdrop-blur-sm py-2 px-1.5 select-none">
     <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-black/35">
         <GitBranchIcon size={12} />
@@ -87,11 +106,19 @@ function commitRename(draftId: string) {
 
     {#each rows as row (row.draft.id)}
         {@const isActive = row.draft.id === activeDraftId}
+        {@const isHighlighted = row.draft.id === highlightedDraftId}
         {@const isRenaming = renamingDraftId === row.draft.id}
-        {@const showLeafActions = isActive && !hasLiveChildren(row.draft.id, drafts)}
+        {@const showLeafActions = !readOnly && isActive && !hasLiveChildren(row.draft.id, drafts)}
         <div
+            data-draft-id={row.draft.id}
+            data-highlighted={isHighlighted}
             class="group relative flex items-stretch gap-1 rounded-md pr-1 transition-colors
-                {isActive ? 'bg-white shadow-sm' : 'hover:bg-white/50'}"
+                {isActive
+                    ? 'bg-white shadow-sm'
+                    : isHighlighted
+                      ? 'bg-blue-50/70 hover:bg-blue-50'
+                      : 'hover:bg-white/50'}
+                {isHighlighted ? 'ring-1 ring-inset ring-blue-300' : ''}"
         >
             <!-- Draft-tree rails, drawn over the row's left gutter and dot
                  column. The dot sits at x = depth*COL_W + DOT_X; ancestor
@@ -152,15 +179,23 @@ function commitRename(draftId: string) {
             </div>
             <button
                 onclick={() => { if (!isActive) ondraftselect(row.draft.id); }}
-                ondblclick={() => startRename(row.draft)}
+                ondblclick={() => { if (!readOnly) startRename(row.draft); }}
                 class="z-10 flex-1 min-w-0 flex items-center gap-2 py-1.5 text-left
-                    {showLeafActions ? 'pr-20 group-hover:pr-24 group-focus-within:pr-24' : 'pr-2.5 group-hover:pr-24 group-focus-within:pr-24'}
+                    {readOnly
+                        ? 'pr-2.5'
+                        : showLeafActions
+                          ? 'pr-20 group-hover:pr-24 group-focus-within:pr-24'
+                          : 'pr-2.5 group-hover:pr-24 group-focus-within:pr-24'}
                     transition-[padding]
                     {isActive ? 'text-black/80 font-medium cursor-default' : 'text-black/50 hover:text-black/70'}"
                 style="padding-left: {row.depth * COL_W + DOT_X - 3}px"
                 aria-current={isActive ? "true" : undefined}
+                aria-describedby={isHighlighted ? "draft-timeline-target" : undefined}
             >
-                <span class="w-1.5 h-1.5 rounded-full shrink-0 {isActive ? 'bg-amber-500' : 'bg-black/20'}"></span>
+                <span
+                    class="w-1.5 h-1.5 rounded-full shrink-0
+                        {isActive ? 'bg-amber-500' : isHighlighted ? 'bg-blue-500' : 'bg-black/20'}"
+                ></span>
                 {#if isRenaming}
                     <input
                         bind:this={renameInputEl}
@@ -182,16 +217,17 @@ function commitRename(draftId: string) {
                 {/if}
             </button>
 
-            <div
-                class="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 items-center gap-1
-                    transition-opacity
-                    {showLeafActions ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}
-                    group-hover:opacity-100 group-hover:pointer-events-auto
-                    group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
-            >
+            {#if !readOnly}
+                <div
+                    class="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 items-center gap-1
+                        transition-opacity
+                        {showLeafActions ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}
+                        group-hover:opacity-100 group-hover:pointer-events-auto
+                        group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+                >
                 {#if isDeletableDraft(row.draft.id, drafts)}
                     <button
-                        onclick={() => ondraftdelete(row.draft.id)}
+                        onclick={() => ondraftdelete?.(row.draft.id)}
                         title="Delete draft (undoable)"
                         aria-label="Delete {row.draft.label}"
                         class="hidden p-1 rounded text-black/30 hover:text-red-500 hover:bg-black/5
@@ -204,7 +240,7 @@ function commitRename(draftId: string) {
                      (iterating a superseded draft would fork the chain). -->
                 {#if row.isRunTip}
                     <button
-                        onclick={() => ondraftiterate(row.draft.id)}
+                        onclick={() => ondraftiterate?.(row.draft.id)}
                         title="New version (continue from this draft)"
                         aria-label="Iterate {row.draft.label}"
                         class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
@@ -214,7 +250,7 @@ function commitRename(draftId: string) {
                 {/if}
                 <!-- Branch: a different take off any draft, including run heads. -->
                 <button
-                    onclick={() => ondraftbranch(row.draft.id)}
+                    onclick={() => ondraftbranch?.(row.draft.id)}
                     title="Branch a different take from this draft"
                     aria-label="Branch from {row.draft.label}"
                     class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
@@ -223,7 +259,7 @@ function commitRename(draftId: string) {
                 </button>
                 {#if row.draft.locked}
                     <button
-                        onclick={() => ontogglelock(row.draft.id, false)}
+                        onclick={() => ontogglelock?.(row.draft.id, false)}
                         title="Unlock for editing"
                         aria-label="Unlock {row.draft.label}"
                         class="p-1 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
@@ -232,7 +268,7 @@ function commitRename(draftId: string) {
                     </button>
                 {:else}
                     <button
-                        onclick={() => ontogglelock(row.draft.id, true)}
+                        onclick={() => ontogglelock?.(row.draft.id, true)}
                         title="Lock against edits"
                         aria-label="Lock {row.draft.label}"
                         class="p-1 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
@@ -240,8 +276,10 @@ function commitRename(draftId: string) {
                         <LockIcon size={13} />
                     </button>
                 {/if}
-            </div>
+                </div>
+            {/if}
         </div>
     {/each}
+    <span id="draft-timeline-target" class="sr-only">Timeline target</span>
 </div>
 </div>

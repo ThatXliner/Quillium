@@ -5,8 +5,11 @@
 ## Layout
 
 Two-panel layout:
-- **Left**: Read-only CodeMirror preview
-- **Right**: Unified history timeline with snapshots and document activity grouped by date (Today / Yesterday / day-of-week / This month / month + year)
+- **Left**: Historical document shell using the live `DocumentTabs` and
+  `DraftTreePanel` presentation in navigation-only mode, plus the real read-only
+  CodeMirror document and snapshot annotations
+- **Right**: Unified history timeline with snapshots and document activity
+  grouped by date (Today / Yesterday / day-of-week / This month / month + year)
 
 ## Snapshot Types
 
@@ -39,6 +42,12 @@ The preview toolbar offers two persisted layouts:
 Side-by-side diffing reuses the shared word-level algorithm. The previous pane
 marks removals; the selected pane marks additions. At narrow content widths the
 panes stack without shrinking the configured document typography.
+
+Tabs and drafts remain navigable at the selected coordinate, but structural
+mutations (create, rename, reorder, delete, iterate, branch, and lock toggling)
+are unavailable. Diff decorations compare snapshots only within the selected
+draft. When no earlier snapshot exists for that draft, the document renders
+normally without an all-added diff.
 
 ## Restore
 
