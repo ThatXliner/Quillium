@@ -37,6 +37,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | [Persistence](./docs/persistence.md) | Event log, snapshots, crash safety, schema migrations |
 | [Tabs & Drafts](./docs/tabs-and-drafts.md) | Document tabs, draft trees, forking, locks |
 | [Collaboration](./docs/collaboration.md) | Yjs sync, relay, awareness |
+| [Monorepo Guide](./docs/monorepo.md#shared-editor-surface-architecture) | Shared editor surface layers |
 | [Auth](./docs/auth.md) | Supabase Auth, account UI, guest collaborator sessions |
 | [Provenance](./docs/provenance.md) | Authorship report, edit provenance, playback/export |
 | [AutoAI](./docs/autoai.md) | Review engine, widget, face FSM |

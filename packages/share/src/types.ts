@@ -48,6 +48,47 @@ export type SerializedAnnotation =
     | SerializedSuggestionAnnotation
     | SerializedRevisionAnnotation;
 
+export type ReadonlyShareTab = {
+    id: string;
+    label: string;
+    draftId: string;
+    state: Record<string, unknown>;
+};
+
+export type ReadonlyShareScope = "current-tab" | "all-tabs";
+
+export type ReadonlyShareStateV2 = {
+    kind: "quillium-readonly-share";
+    version: 2;
+    /** Missing only on early v2 payloads, which behaved like current-tab shares. */
+    scope?: ReadonlyShareScope;
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
+};
+
+export function isReadonlyShareStateV2(value: unknown): value is ReadonlyShareStateV2 {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<ReadonlyShareStateV2>;
+    return (
+        candidate.kind === "quillium-readonly-share" &&
+        candidate.version === 2 &&
+        Array.isArray(candidate.tabs)
+    );
+}
+
+export function readonlyShareScopeOf(value: unknown): ReadonlyShareScope {
+    if (!isReadonlyShareStateV2(value)) return "current-tab";
+    return value.scope === "all-tabs" ? "all-tabs" : "current-tab";
+}
+
+export function includesReadonlyShareTab(
+    scope: ReadonlyShareScope,
+    tabId: string,
+    currentTabId: string | null,
+): boolean {
+    return scope === "all-tabs" || tabId === currentTabId;
+}
+
 export type ReadonlyShareDocument = {
     token: string;
     title: string;

@@ -70,6 +70,47 @@ shared components receive those capabilities through callbacks or snippets.
 CodeMirror state serialization at the desktop/Supabase boundary remains in the
 desktop package, while state restoration and read-only rendering are shared.
 
+### Shared editor surface architecture
+
+Editor presentation shared by Desktop, Web Preview, and Version History follows
+three compositional layers:
+
+```mermaid
+flowchart TD
+    Core["1. Shared core and presentation<br/>core/, cards/, modals/, layout/"]
+    Adapters["2. Surface capability adapters<br/>Desktop adapters and Readonly* adapters"]
+    Surfaces["3. Consuming surfaces<br/>Desktop editor, Web Preview, Version History"]
+
+    Core --> Adapters --> Surfaces
+```
+
+1. **Shared core and presentation** owns app-neutral annotation state, editor
+   extensions, cards, modal content, threads, diffs, and layout. Presentation
+   components accept optional capabilities through callbacks and snippets.
+2. **Surface capability adapters** compose those shared pieces for a particular
+   environment. Desktop adapters provide mutation, persistence, analytics, and
+   modal-stack capabilities. `Readonly*` adapters deliberately omit mutation
+   capabilities while retaining safe local interactions such as selection,
+   modal navigation, and revision-version previewing.
+3. **Consuming surfaces** mount the configured adapters. The desktop editor is
+   editable; Web Preview and Version History are non-persisting read-only hosts.
+
+This is composition, not inheritance: there is no base Svelte document component
+that `ReadonlyDocument` subclasses. `ReadonlyDocument` and `ReadonlyEditorHost`
+are orchestration adapters around the same shared state and presentation used by
+editable surfaces. The `Readonly` prefix should be reserved for this capability
+boundary, not used for a second visual implementation of a shared component.
+
+Use these placement rules when changing the UI:
+
+- Put neutral visuals and state behavior in `core/`, `cards/`, `modals/`, or
+  `layout/` inside `packages/share`.
+- Keep desktop-only mutations and application services in `packages/desktop`.
+- Put non-mutating surface orchestration in a `Readonly*` adapter only when it
+  configures multiple shared pieces or owns read-only lifecycle behavior.
+- Do not create separate editable and read-only lookalikes when optional
+  capabilities can express the difference.
+
 The read-only Svelte UI should visually track the desktop annotation components
 first. Use these desktop files as the source of truth when changing shared share
 components:
@@ -85,6 +126,9 @@ keep a thin desktop capability adapter. Do not create a second read-only lookali
 inside the Web Preview. State-backed shares and revision modals use
 `ReadonlyEditorHost`; only pre-migration payloads without serialized CodeMirror
 state use `LegacyReadonlyDocument` and the static annotated-text fallback.
+That fallback is a temporary data-compatibility boundary, not a fourth
+architectural layer; removal is tracked in
+[GitHub issue #339](https://github.com/ThatXliner/Quillium/issues/339).
 
 ## Environment Files
 

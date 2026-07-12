@@ -34,6 +34,8 @@ import {
     serializeAnnotations,
     serializeShareState,
 } from "$lib/collab/sharePayload";
+import { serializeLoadedShareState } from "$lib/collab/shareState";
+import { getActiveDraft, listTabDrafts, listTabs, loadDocumentState } from "$lib/db";
 import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
@@ -42,10 +44,16 @@ import {
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
+    currentTabId,
     documentContent,
     editorView,
     versionGroups,
 } from "$lib/stores";
+import {
+    type ReadonlyShareScope,
+    includesReadonlyShareTab,
+    readonlyShareScopeOf,
+} from "@quillium/share";
 import { Loader2, RefreshCcw, Share2, X } from "lucide-svelte";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
@@ -96,22 +104,22 @@ const shareComparisonPayload = $derived(
           }
         : null,
 );
+let multiTabFingerprint = $state("");
+let shareScope = $state<ReadonlyShareScope>("all-tabs");
+let hydratedShareUpdatedAt = $state<string | null>(null);
 const currentShareFingerprint = $derived(
-    shareComparisonPayload
-        ? buildShareFingerprint(
-              shareComparisonPayload.title,
-              shareComparisonPayload.content,
-              shareComparisonPayload.annotations,
-          )
-        : "",
+    multiTabFingerprint ||
+        (shareComparisonPayload
+            ? buildShareFingerprint(
+                  shareComparisonPayload.title,
+                  shareComparisonPayload.content,
+                  shareComparisonPayload.annotations,
+              )
+            : ""),
 );
 const publishedShareFingerprint = $derived(
     readonlyShare?.enabled
-        ? buildShareFingerprint(
-              readonlyShare.publishedTitle,
-              readonlyShare.publishedContent,
-              readonlyShare.publishedAnnotations,
-          )
+        ? fingerprintPayload(readonlyShare.publishedTitle, readonlyShare.publishedState)
         : "",
 );
 const shareUpToDate = $derived(
@@ -135,6 +143,48 @@ $effect(() => {
     if (modalOpen && dialogEl && !dialogEl.open) {
         dialogEl.showModal();
     }
+});
+
+$effect(() => {
+    const share = readonlyShare;
+    if (!share?.enabled || share.updatedAt === hydratedShareUpdatedAt) return;
+    shareScope = readonlyShareScopeOf(share.publishedState);
+    hydratedShareUpdatedAt = share.updatedAt;
+});
+
+$effect(() => {
+    const title = $currentDocumentTitle;
+    const content = $documentContent;
+    const annotationsSnapshot = $annotations;
+    const tabId = $currentTabId;
+    const draftId = $currentDraftId;
+    const scope = shareScope;
+    if (!authenticated || !shareId || !readonlyShare?.enabled) {
+        multiTabFingerprint = "";
+        return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+        void buildPublishPayload(scope)
+            .then((payload) => {
+                if (!cancelled) {
+                    multiTabFingerprint = fingerprintPayload(payload.title, payload.state);
+                }
+            })
+            .catch((error: unknown) => {
+                console.error("[share] Failed to fingerprint multi-tab preview:", error);
+                if (!cancelled) multiTabFingerprint = "";
+            });
+    }, 150);
+    void title;
+    void content;
+    void annotationsSnapshot;
+    void tabId;
+    void draftId;
+    return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+    };
 });
 
 $effect(() => {
@@ -222,14 +272,35 @@ function openAuth() {
     onauthclick?.();
 }
 
-function buildPublishPayload() {
+function fingerprintPayload(title: string, state: Record<string, unknown> | null): string {
+    return buildShareFingerprint(title, JSON.stringify(state), []);
+}
+
+async function buildPublishPayload(scope: ReadonlyShareScope = shareScope) {
     const view = get(editorView);
-    // Content + annotations come from the live editor view — i.e. the last
-    // active tab+draft. The share row is keyed by the *document* (shareId), so
-    // updating from a different draft replaces what the single Omni view shows.
     const content = view?.state.doc.toString() ?? $documentContent;
     const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
     const liveVersionGroups = view?.state.field(versionGroupField, false) ?? $versionGroups ?? {};
+
+    const tabs = (await listTabs(shareId)).filter(
+        (tab) => tab.tabType === "draft" && includesReadonlyShareTab(scope, tab.id, $currentTabId),
+    );
+    const publishedTabs = await Promise.all(
+        tabs.map(async (tab) => {
+            const drafts = await listTabDrafts(tab.id);
+            const activeDraftId = await getActiveDraft(tab.id);
+            const draft = drafts.find((item) => item.id === activeDraftId) ?? drafts[0];
+            if (!draft) return null;
+            const state =
+                tab.id === $currentTabId && draft.id === $currentDraftId && view
+                    ? serializeShareState(view.state)
+                    : serializeLoadedShareState(await loadDocumentState(shareId, draft.id));
+            return { id: tab.id, label: tab.label, draftId: draft.id, state };
+        }),
+    );
+    const activeTabId = publishedTabs.some((tab) => tab?.id === $currentTabId)
+        ? $currentTabId
+        : (publishedTabs[0]?.id ?? null);
 
     return {
         documentId: shareId,
@@ -237,9 +308,15 @@ function buildPublishPayload() {
         title: $currentDocumentTitle,
         content,
         annotations: serializeAnnotations(content, liveAnnotations, liveVersionGroups),
-        // Real CM state blob for the read-only editor renderer; null if the
-        // view isn't available (falls back to flat annotations on the web).
-        state: view ? serializeShareState(view.state) : null,
+        // Versioned document payload: every prose tab carries the selected
+        // draft's real CM state for the shared read-only editor renderer.
+        state: {
+            kind: "quillium-readonly-share",
+            version: 2,
+            scope,
+            activeTabId,
+            tabs: publishedTabs.filter((tab) => tab !== null),
+        },
     };
 }
 
@@ -278,13 +355,9 @@ async function publishCurrentSnapshot(options: { automatic?: boolean } = {}) {
         return;
     }
 
-    const payload = buildPublishPayload();
+    const payload = await buildPublishPayload();
     payload.ownerId = user.id;
-    const payloadFingerprint = buildShareFingerprint(
-        payload.title,
-        payload.content,
-        payload.annotations,
-    );
+    const payloadFingerprint = fingerprintPayload(payload.title, payload.state);
     await publisher.publish(payload, payloadFingerprint, options);
 }
 
@@ -431,6 +504,7 @@ async function toggleReadonlyShare() {
                             {autoUpdateDebounceMs}
                             {autoUpdatePausedAfterFailure}
                             {draftAnnotationCount}
+                            {shareScope}
                             hasPreviewText={buildSharePreviewText($documentContent).length > 0}
                             onpublish={() => publishCurrentSnapshot()}
                             ontoggleshare={toggleReadonlyShare}
@@ -438,6 +512,7 @@ async function toggleReadonlyShare() {
                             onsetautoupdate={setReadonlyShareAutoUpdate}
                             ondebounceinput={handleAutoUpdateDebounceInput}
                             onresetdebounce={resetAutoUpdateDebounce}
+                            onsharescopechange={(scope) => (shareScope = scope)}
                             onopenauth={openAuth}
                         />
                     {:else}
