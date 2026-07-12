@@ -687,7 +687,9 @@ export class QuilliumPage {
     /** Navigate to "/history" and wait for the history page to render. */
     async gotoHistory(): Promise<void> {
         await this.page.goto("/history");
-        await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });
+        await expect(this.page.getByText("Version History", { exact: true })).toBeVisible({
+            timeout: 10_000,
+        });
     }
 
     /** setup() + gotoHistory() */
@@ -699,7 +701,9 @@ export class QuilliumPage {
     /** Click the History button in the status bar to navigate to /history. */
     async openHistoryFromStatusBar(): Promise<void> {
         await this.page.locator("#status-bar button[aria-label='Version history']").click();
-        await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });
+        await expect(this.page.getByText("Version History", { exact: true })).toBeVisible({
+            timeout: 10_000,
+        });
     }
 
     // ── Tauri mock introspection ────────────────────────────────────────

@@ -30,6 +30,8 @@ function defaultProps(
     overrides: Partial<{
         drafts: DraftMeta[];
         activeDraftId: string | null;
+        readOnly: boolean;
+        highlightedDraftId: string | null;
         ondraftselect: (id: string) => void;
         ondraftiterate: (id: string) => void;
         ondraftbranch: (id: string) => void;
@@ -41,6 +43,8 @@ function defaultProps(
     return {
         drafts: [MAIN, V1],
         activeDraftId: "v1",
+        readOnly: false,
+        highlightedDraftId: null,
         ondraftselect: vi.fn(),
         ondraftiterate: vi.fn(),
         ondraftbranch: vi.fn(),
@@ -70,6 +74,58 @@ describe("DraftTreePanel", () => {
         const { getByText } = render(DraftTreePanel, { props: defaultProps({ ondraftselect }) });
         await fireEvent.click(getByText("v1"));
         expect(ondraftselect).not.toHaveBeenCalled();
+    });
+
+    it("keeps inactive drafts selectable in read-only mode", async () => {
+        const ondraftselect = vi.fn();
+        const { getByText } = render(DraftTreePanel, {
+            props: defaultProps({ readOnly: true, ondraftselect }),
+        });
+
+        await fireEvent.click(getByText("main"));
+
+        expect(ondraftselect).toHaveBeenCalledWith("main");
+    });
+
+    it("omits every draft mutation control in read-only mode", () => {
+        const { queryByRole } = render(DraftTreePanel, {
+            props: defaultProps({ readOnly: true }),
+        });
+
+        expect(queryByRole("button", { name: "Delete v1" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Iterate v1" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Branch from main" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Branch from v1" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Unlock main" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Lock v1" })).not.toBeInTheDocument();
+    });
+
+    it("does not enter rename mode after a read-only draft is double-clicked", async () => {
+        const ondraftrename = vi.fn();
+        const { getByText, queryByRole } = render(DraftTreePanel, {
+            props: defaultProps({ readOnly: true, ondraftrename }),
+        });
+
+        await fireEvent.dblClick(getByText("v1"));
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(queryByRole("textbox", { name: "Rename draft" })).not.toBeInTheDocument();
+        expect(ondraftrename).not.toHaveBeenCalled();
+    });
+
+    it("marks a highlighted draft independently from the active draft", () => {
+        const { container } = render(DraftTreePanel, {
+            props: defaultProps({ activeDraftId: "v1", highlightedDraftId: "main" }),
+        });
+
+        const highlighted = container.querySelector('[data-highlighted="true"]');
+        expect(highlighted).toHaveTextContent("main");
+        const button = highlighted?.querySelector("button");
+        expect(button).not.toHaveAttribute("aria-current");
+        expect(button).toHaveAttribute("aria-describedby", "draft-timeline-target");
+        expect(container.querySelector("#draft-timeline-target")).toHaveTextContent(
+            "Timeline target",
+        );
     });
 
     it("offers Iterate only on the run tip", () => {

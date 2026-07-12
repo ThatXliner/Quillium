@@ -4,6 +4,8 @@
     Props:
       tabs        — ordered list of TabMeta
       activeTabId — id of the currently active tab
+      readOnly    — navigation-only mode; hides and disables every mutation
+      highlightedTabId — optional secondary highlight (e.g. history target)
       ontabselect — called with (tabId) when user clicks an inactive tab
       ontabcreate — called when user clicks +
       ontabrename — called with (tabId, newLabel) after inline rename
@@ -29,24 +31,35 @@ import { tick } from "svelte";
 import { flip } from "svelte/animate";
 import { computeReorder } from "./tabReorder";
 
-const {
-    tabs,
-    activeTabId,
-    ontabselect,
-    ontabcreate,
-    ontabrename,
-    ontabdelete,
-    ontabreorder,
-}: {
-    tabs: TabMeta[];
-    activeTabId: string | null;
-    ontabselect: (tabId: string) => void;
+type TabMutationCallbacks = {
     ontabcreate: () => void;
     ontabrename: (tabId: string, label: string) => void;
     ontabdelete: (tabId: string) => void;
     /** Called with the full tab-id list in its new order after a drag. */
     ontabreorder: (orderedIds: string[]) => void;
-} = $props();
+};
+
+type Props = {
+    tabs: TabMeta[];
+    activeTabId: string | null;
+    highlightedTabId?: string | null;
+    ontabselect: (tabId: string) => void;
+} & (
+    | ({ readOnly: true } & Partial<TabMutationCallbacks>)
+    | ({ readOnly?: false } & TabMutationCallbacks)
+);
+
+const {
+    tabs,
+    activeTabId,
+    readOnly = false,
+    highlightedTabId = null,
+    ontabselect,
+    ontabcreate,
+    ontabrename,
+    ontabdelete,
+    ontabreorder,
+}: Props = $props();
 
 let renamingTabId = $state<string | null>(null);
 let renameValue = $state("");
@@ -156,7 +169,7 @@ let pressedTabId: string | null = null;
 function onTabPointerDown(e: PointerEvent, tab: TabMeta) {
     // Left button only; ignore presses on the × or the rename input, and
     // never start a drag while renaming. Bail if a press is already in flight.
-    if (e.button !== 0 || renamingTabId !== null || pointerId !== -1) return;
+    if (readOnly || e.button !== 0 || renamingTabId !== null || pointerId !== -1) return;
     const target = e.target as HTMLElement;
     if (target.closest('[aria-label="Close tab"]') || target.closest("input")) return;
     if (!stripEl) return;
@@ -303,7 +316,7 @@ function endDrag() {
         // release doesn't also fire select. (No drag = no suppression, so a
         // plain press-release still selects normally.)
         suppressClick = true;
-        if (changed) ontabreorder(order);
+        if (changed && !readOnly) ontabreorder?.(order);
     }
     draggingId = null;
     dragDx = 0;
@@ -324,6 +337,7 @@ $effect(() => () => {
 });
 
 function startRename(tab: TabMeta) {
+    if (readOnly) return;
     renamingTabId = tab.id;
     renameValue = tab.label;
     setTimeout(() => renameInputEl?.select(), 0);
@@ -332,11 +346,35 @@ function startRename(tab: TabMeta) {
 function commitRename(tabId: string) {
     const trimmed = renameValue.trim() || "Tab";
     renamingTabId = null;
-    ontabrename(tabId, trimmed);
+    if (!readOnly) ontabrename?.(tabId, trimmed);
 }
 
 function cancelRename() {
     renamingTabId = null;
+}
+
+function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
+    if ((event.target as HTMLElement).closest("input")) return;
+
+    if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        if (tab.id !== activeTabId) ontabselect(tab.id);
+        return;
+    }
+
+    const currentIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
+    if (currentIndex === -1 || tabs.length < 2) return;
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    if (nextTab.id !== activeTabId) ontabselect(nextTab.id);
+    void tick().then(() => tabEls[nextTab.id]?.focus());
 }
 </script>
 
@@ -347,6 +385,8 @@ function cancelRename() {
     over a tab dragged toward the top edge. `relative` makes z-index apply.
 -->
 <div
+    data-component="document-tabs"
+    data-read-only={readOnly}
     class="mx-auto w-full max-w-[816px] flex items-end gap-0.5 select-none mt-8 max-[840px]:mx-3 max-[840px]:w-auto relative {draggingId ? 'z-[60]' : ''}"
 >
     <!--
@@ -365,6 +405,7 @@ function cancelRename() {
     >
         {#each displayTabs as tab (tab.id)}
             {@const isActive = tab.id === activeTabId}
+            {@const isHighlighted = tab.id === highlightedTabId}
             {@const isRenaming = renamingTabId === tab.id}
             {@const isDragged = draggingId === tab.id}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -374,17 +415,21 @@ function cancelRename() {
                 animate:flip={{ duration: isDragged ? 0 : FLIP_MS }}
                 role="tab"
                 aria-selected={isActive}
+                aria-describedby={isHighlighted ? "document-tab-timeline-target" : undefined}
+                data-highlighted={isHighlighted}
                 tabindex={isActive ? 0 : -1}
                 onpointerdown={(e) => onTabPointerDown(e, tab)}
+                onkeydown={(e) => onTabKeyDown(e, tab)}
                 onclick={() => {
                     if (suppressClick) { suppressClick = false; return; }
                     if (!isActive) ontabselect(tab.id);
                 }}
-                ondblclick={() => startRename(tab)}
+                ondblclick={() => { if (!readOnly) startRename(tab); }}
                 style={isDragged ? `transform: translateX(${dragDx}px); z-index: 30;` : ""}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg overflow-hidden transition-colors duration-100
+                    {isHighlighted ? 'ring-1 ring-inset ring-blue-300' : ''}
                     {isDragged ? '!transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]' : ''}
                     {isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold z-10 cursor-default'
@@ -412,15 +457,14 @@ function cancelRename() {
                 {:else}
                     <span class="flex-1 min-w-0 max-w-[8rem] truncate">{tab.label}</span>
                 {/if}
-
-                {#if tabs.length > 1}
+                {#if !readOnly && tabs.length > 1}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <span
                         role="button"
                         tabindex="-1"
                         aria-label="Close tab"
                         onpointerdown={(e) => e.stopPropagation()}
-                        onclick={(e) => { e.stopPropagation(); ontabdelete(tab.id); }}
+                        onclick={(e) => { e.stopPropagation(); ontabdelete?.(tab.id); }}
                         class="
                             ml-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0
                             opacity-0 group-hover:opacity-100 transition-opacity
@@ -432,14 +476,18 @@ function cancelRename() {
         {/each}
     </div>
 
-    <button
-        onclick={ontabcreate}
-        aria-label="New tab"
-        title="New tab"
-        class="shrink-0 mb-1 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
-    >
-        <PlusIcon size={14} />
-    </button>
+    <span id="document-tab-timeline-target" class="sr-only">Timeline target</span>
+
+    {#if !readOnly}
+        <button
+            onclick={() => ontabcreate?.()}
+            aria-label="New tab"
+            title="New tab"
+            class="shrink-0 mb-1 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
+        >
+            <PlusIcon size={14} />
+        </button>
+    {/if}
 </div>
 
 <style>

@@ -26,6 +26,8 @@ function defaultProps(
     overrides: Partial<{
         tabs: TabMeta[];
         activeTabId: string | null;
+        readOnly: boolean;
+        highlightedTabId: string | null;
         ontabselect: (id: string) => void;
         ontabcreate: () => void;
         ontabrename: (id: string, label: string) => void;
@@ -36,6 +38,8 @@ function defaultProps(
     return {
         tabs: [TAB_A, TAB_B],
         activeTabId: "a",
+        readOnly: false,
+        highlightedTabId: null,
         ontabselect: vi.fn(),
         ontabcreate: vi.fn(),
         ontabrename: vi.fn(),
@@ -161,6 +165,66 @@ describe("DocumentTabs", () => {
         expect(ontabcreate).toHaveBeenCalledOnce();
     });
 
+    it("keeps inactive tabs selectable in read-only mode", async () => {
+        const ontabselect = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true, ontabselect }),
+        });
+
+        await fireEvent.click(getByText("Tab B").closest("[role='tab']")!);
+
+        expect(ontabselect).toHaveBeenCalledWith("b");
+    });
+
+    it("moves between tabs with the keyboard", async () => {
+        const ontabselect = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true, ontabselect }),
+        });
+
+        await fireEvent.keyDown(getByText("Tab A").closest("[role='tab']")!, {
+            key: "ArrowRight",
+        });
+
+        expect(ontabselect).toHaveBeenCalledWith("b");
+    });
+
+    it("omits tab creation and deletion controls in read-only mode", () => {
+        const { queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true }),
+        });
+
+        expect(queryByRole("button", { name: "New tab" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Close tab" })).not.toBeInTheDocument();
+    });
+
+    it("does not enter rename mode after a read-only tab is double-clicked", async () => {
+        const ontabrename = vi.fn();
+        const { getByText, queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true, ontabrename }),
+        });
+
+        await fireEvent.dblClick(getByText("Tab A").closest("[role='tab']")!);
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(queryByRole("textbox", { name: "Rename tab" })).not.toBeInTheDocument();
+        expect(ontabrename).not.toHaveBeenCalled();
+    });
+
+    it("marks a highlighted tab independently from the active tab", () => {
+        const { container } = render(DocumentTabs, {
+            props: defaultProps({ activeTabId: "a", highlightedTabId: "b" }),
+        });
+
+        const highlighted = container.querySelector('[data-highlighted="true"]');
+        expect(highlighted).toHaveTextContent("Tab B");
+        expect(highlighted).toHaveAttribute("aria-selected", "false");
+        expect(highlighted).toHaveAttribute("aria-describedby", "document-tab-timeline-target");
+        expect(container.querySelector("#document-tab-timeline-target")).toHaveTextContent(
+            "Timeline target",
+        );
+    });
+
     // Drag is a custom pointer-events implementation. jsdom has no layout and
     // no pointer capture, so we stub element geometry + the capture methods and
     // drive a real pointerdown → move (past threshold) → up sequence. The pure
@@ -262,6 +326,28 @@ describe("DocumentTabs", () => {
         await pointer(tabA, "pointerup", 51);
 
         expect(ontabreorder).not.toHaveBeenCalled();
+    });
+
+    it("does not reorder tabs after a pointer drag in read-only mode", async () => {
+        const ontabreorder = vi.fn();
+        const { container, getByText } = render(DocumentTabs, {
+            props: defaultProps({
+                tabs: [TAB_A, TAB_B, TAB_C],
+                readOnly: true,
+                ontabreorder,
+            }),
+        });
+        stubGeometry(container);
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
+
+        await pointer(tabA, "pointerdown", 50);
+        await pointer(tabA, "pointermove", 300);
+        await pointer(tabA, "pointerup", 300);
+
+        expect(ontabreorder).not.toHaveBeenCalled();
+        expect(
+            [...container.querySelectorAll("[role='tab']")].map((tab) => tab.textContent?.trim()),
+        ).toEqual(["Tab A", "Tab B", "Tab C"]);
     });
 
     it("suppresses the post-drag click so a reordered tab isn't also selected", async () => {

@@ -394,8 +394,9 @@ export async function listSnapshots(draftId: string): Promise<SnapshotMeta[]> {
 
 /**
  * Lists every snapshot across a whole document — all drafts, including
- * soft-deleted ones — for the document-wide version-history timeline. Excludes
- * internal "Branch point" seeds. Newest first.
+ * soft-deleted ones — for document-wide history and preview resolution.
+ * Includes internal "Branch point" seeds; callers must omit them from visible
+ * timeline coordinates. Newest first.
  */
 export async function listDocumentSnapshots(docId: string): Promise<DocumentSnapshotMeta[]> {
     return invoke<DocumentSnapshotMeta[]>("cmd_list_document_snapshots", { docId });

@@ -5,6 +5,7 @@ import {
     describeDocEvent,
     headingForDate,
     reconstructStructureAsOf,
+    resolveDraftContentAt,
     resolveTabContentAt,
     resolveTimelineTarget,
 } from "$lib/editor/history/timeline";
@@ -90,6 +91,15 @@ describe("buildTimelineItems", () => {
         // a lexical "snapshot:10" < "snapshot:2" compare would get backwards.
         const items = buildTimelineItems([snapshot(2, "d", 100), snapshot(10, "d", 100)], []);
         expect(items.map((i) => i.id)).toEqual(["snapshot:10", "snapshot:2"]);
+    });
+
+    it("keeps branch-point seeds out of visible timeline coordinates", () => {
+        const seed = { ...snapshot(1, "draft", 200), upToEventId: -1 };
+        const visible = snapshot(2, "draft", 100);
+
+        expect(buildTimelineItems([seed, visible], []).map((item) => item.id)).toEqual([
+            "snapshot:2",
+        ]);
     });
 
     it("derives event and snapshot tie-breaker coordinates", () => {
@@ -338,6 +348,50 @@ describe("resolveTabContentAt", () => {
         expect(
             resolveTabContentAt(sameTime, drafts, "tabA", coord(100, null, 10)).current?.id,
         ).toBe(10);
+    });
+
+    it("chooses the most recently snapshotted draft as a tab's default", () => {
+        const otherDraft = { ...draft("dA2", 0), tabId: "tabA" };
+        const otherSnapshot = {
+            ...snapshot(4, "dA2", 325),
+            tabId: "tabA",
+        };
+
+        const ref = resolveTabContentAt(
+            [otherSnapshot, ...snaps],
+            [...drafts, otherDraft],
+            "tabA",
+            coord(350),
+        );
+
+        expect(ref.draftId).toBe("dA2");
+        expect(ref.current?.id).toBe(4);
+        expect(ref.previous).toBeNull();
+    });
+});
+
+describe("resolveDraftContentAt", () => {
+    const snaps = [
+        snapshot(4, "other", 400),
+        snapshot(3, "selected", 300),
+        snapshot(2, "other", 200),
+        snapshot(1, "selected", 100),
+    ];
+
+    it("returns current and previous snapshots from the requested draft only", () => {
+        const ref = resolveDraftContentAt(snaps, "selected", coord(350));
+
+        expect(ref.draftId).toBe("selected");
+        expect(ref.current?.id).toBe(3);
+        expect(ref.previous?.id).toBe(1);
+    });
+
+    it("returns no content when the requested draft has no eligible snapshot", () => {
+        const ref = resolveDraftContentAt(snaps, "selected", coord(50));
+
+        expect(ref.draftId).toBe("selected");
+        expect(ref.current).toBeNull();
+        expect(ref.previous).toBeNull();
     });
 });
 
