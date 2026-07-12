@@ -22,6 +22,13 @@ import {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const BASE_TIME = Date.now();
+const baseDate = new Date(BASE_TIME);
+const PREVIOUS_CALENDAR_DAY = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate() - 1,
+    12,
+).getTime();
 
 function makeAnnotatedStateJson(): string {
     let state = EditorState.create({
@@ -100,7 +107,7 @@ function makeSnapshots(): MockSnapshot[] {
             id: 1,
             draftId: "draft-test-1",
             upToEventId: 10,
-            createdAt: BASE_TIME - 1000 * 60 * 60 * 25, // 25 h ago — "Yesterday"
+            createdAt: PREVIOUS_CALENDAR_DAY,
             label: "Initial draft",
             doc: "First version of the document.",
         },
@@ -170,6 +177,92 @@ function makeTwoTabStructure(): { tabs: MockTab[]; drafts: MockDraft[] } {
     };
 }
 
+function makeNavigableHistoryFixture(): {
+    tabs: MockTab[];
+    drafts: MockDraft[];
+    snapshots: MockSnapshot[];
+} {
+    const structure = makeTwoTabStructure();
+    structure.tabs[1].label = "Notes";
+    structure.drafts = [
+        {
+            ...structure.drafts[0],
+            label: "main",
+            locked: true,
+        },
+        {
+            id: "draft-test-2",
+            documentId: "doc-test-1",
+            label: "second pass",
+            createdAt: 1,
+            isActive: true,
+            tabId: "tab-test-1",
+            parentDraftId: "draft-test-1",
+            branchedFrom: null,
+            locked: false,
+            deletedAt: null,
+        },
+        {
+            id: "draft-test-3",
+            documentId: "doc-test-1",
+            label: "notes",
+            createdAt: 2,
+            isActive: true,
+            tabId: "tab-test-2",
+            parentDraftId: null,
+            branchedFrom: null,
+            locked: false,
+            deletedAt: null,
+        },
+    ];
+
+    return {
+        ...structure,
+        snapshots: [
+            {
+                id: 4,
+                draftId: "draft-test-1",
+                tabId: "tab-test-1",
+                draftLabel: "main",
+                upToEventId: 40,
+                createdAt: BASE_TIME - 1000,
+                label: "Latest main",
+                doc: "Main revised prose.",
+            },
+            {
+                id: 3,
+                draftId: "draft-test-3",
+                tabId: "tab-test-2",
+                draftLabel: "notes",
+                upToEventId: 30,
+                createdAt: BASE_TIME - 1500,
+                label: null,
+                doc: "Historical notes content.",
+            },
+            {
+                id: 2,
+                draftId: "draft-test-2",
+                tabId: "tab-test-1",
+                draftLabel: "second pass",
+                upToEventId: -1,
+                createdAt: BASE_TIME - 2000,
+                label: "Branch point",
+                doc: "A standalone second pass.",
+            },
+            {
+                id: 1,
+                draftId: "draft-test-1",
+                tabId: "tab-test-1",
+                draftLabel: "main",
+                upToEventId: 10,
+                createdAt: BASE_TIME - 3000,
+                label: null,
+                doc: "Main original prose.",
+            },
+        ],
+    };
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test("history page renders version list with date groups", async ({ page }) => {
@@ -207,7 +300,7 @@ test("history page navigates here from status bar History button", async ({ page
 
     await qp.openHistoryFromStatusBar();
     expect(page.url()).toContain("/history");
-    await expect(page.getByText("Version History")).toBeVisible();
+    await expect(page.getByText("Version History", { exact: true })).toBeVisible();
 });
 
 test("selecting a snapshot loads its document text in the preview", async ({ page }) => {
@@ -222,7 +315,7 @@ test("selecting a snapshot loads its document text in the preview", async ({ pag
         .toContain("Third version");
 
     // Click the auto-saved entry (snapshot id=2, no label) in the Today group
-    const unselected = page.locator("[aria-selected='false']").first();
+    const unselected = page.locator("#versions-panel [aria-selected='false']").first();
     await unselected.click();
 
     await expect
@@ -230,6 +323,119 @@ test("selecting a snapshot loads its document text in the preview", async ({ pag
             page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? ""),
         )
         .toContain("Second version");
+});
+
+test("history reuses the live tab and draft components in read-only mode", async ({ page }) => {
+    const qp = new QuilliumPage(page, makeNavigableHistoryFixture());
+    await qp.initHistory();
+
+    const tabShell = page.locator('[data-component="document-tabs"]');
+    const draftShell = page.locator('[data-component="draft-tree-panel"]');
+    await expect(tabShell).toHaveAttribute("data-read-only", "true");
+    await expect(draftShell).toHaveAttribute("data-read-only", "true");
+    await expect(tabShell.getByRole("tab", { name: "Main" })).toBeVisible();
+    await expect(draftShell.getByRole("button", { name: "main" })).toBeVisible();
+    await expect(tabShell.getByRole("tab", { name: "Main" })).toHaveAttribute(
+        "aria-describedby",
+        "document-tab-timeline-target",
+    );
+    await expect(draftShell.getByRole("button", { name: "main" })).toHaveAttribute(
+        "aria-describedby",
+        "draft-timeline-target",
+    );
+    await expect(draftShell.locator('[data-rail="run-continues"]')).toBeVisible();
+    await expect(page.locator(".version-preview")).toHaveCSS("width", "816px");
+    await expect(page.locator("#versions-panel").getByText("Branch point")).toHaveCount(0);
+
+    await expect(tabShell.getByRole("button", { name: "New tab" })).toHaveCount(0);
+    await expect(tabShell.getByRole("button", { name: "Close tab" })).toHaveCount(0);
+    await expect(draftShell.getByRole("button", { name: /^Delete / })).toHaveCount(0);
+    await expect(draftShell.getByRole("button", { name: /^Iterate / })).toHaveCount(0);
+    await expect(draftShell.getByRole("button", { name: /^Branch from / })).toHaveCount(0);
+    await expect(draftShell.getByRole("button", { name: /^(?:Lock|Unlock) / })).toHaveCount(0);
+
+    await tabShell.getByRole("tab", { name: "Main" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(tabShell.getByRole("tab", { name: "Notes" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+    );
+    await page.keyboard.press("ArrowLeft");
+    await expect(tabShell.getByRole("tab", { name: "Main" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+    );
+
+    await tabShell.getByRole("tab", { name: "Main" }).dblclick();
+    await draftShell.getByRole("button", { name: "main" }).dblclick();
+    await expect(page.getByRole("textbox", { name: "Rename tab" })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Rename draft" })).toHaveCount(0);
+});
+
+test("historical tab and draft navigation loads exact content with comparable diffs only", async ({
+    page,
+}) => {
+    const qp = new QuilliumPage(page, makeNavigableHistoryFixture());
+    await qp.initHistory();
+
+    const preview = page.locator(".version-preview");
+    const tabShell = page.getByRole("tablist", { name: "Document tabs" });
+    const draftShell = page.locator('[data-component="draft-tree-panel"]');
+
+    const projectedText = () =>
+        preview.locator(".cm-content").evaluate((element) => {
+            const projection = element.cloneNode(true) as HTMLElement;
+            for (const deletion of projection.querySelectorAll(".cm-history-diff-del")) {
+                deletion.remove();
+            }
+            return projection.textContent ?? "";
+        });
+
+    await expect.poll(projectedText).toContain("Main revised prose.");
+    await expect(page.getByText("vs. previous version")).toBeVisible();
+    await expect.poll(() => preview.locator(".cm-history-diff-add").count()).toBeGreaterThan(0);
+    await expect.poll(() => preview.locator(".cm-history-diff-del").count()).toBeGreaterThan(0);
+
+    await draftShell.getByRole("button", { name: "second pass" }).click();
+    await expect(draftShell.getByRole("button", { name: "second pass" })).toHaveAttribute(
+        "aria-current",
+        "true",
+    );
+    await expect(draftShell.locator('[data-draft-id="draft-test-1"]')).toHaveAttribute(
+        "data-highlighted",
+        "true",
+    );
+    await expect.poll(projectedText).toContain("A standalone second pass.");
+    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
+
+    await tabShell.getByRole("tab", { name: "Notes" }).click();
+    await expect(tabShell.getByRole("tab", { name: "Notes" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+    );
+    await expect.poll(projectedText).toContain("Historical notes content.");
+
+    await tabShell.getByRole("tab", { name: "Main" }).click();
+    await expect.poll(projectedText).toContain("Main revised prose.");
+
+    const mutationCommands = [
+        "cmd_set_active_tab",
+        "cmd_set_active_draft",
+        "cmd_create_tab",
+        "cmd_rename_tab",
+        "cmd_reorder_tabs",
+        "cmd_delete_tab",
+        "cmd_iterate_draft",
+        "cmd_branch_draft",
+        "cmd_rename_draft",
+        "cmd_delete_draft",
+        "cmd_set_draft_locked",
+    ];
+    for (const command of mutationCommands) {
+        expect(await qp.countInvocations(command), command).toBe(0);
+    }
 });
 
 test("history preview uses the configured document typography", async ({ page }) => {
@@ -384,7 +590,7 @@ test("most recent snapshot is selected by default", async ({ page }) => {
 
     // The most recent snapshot is ID 3, labelled "Before refactor"
     // Its entry should be marked selected (blue border class applied)
-    const selected = page.locator("[aria-selected='true']");
+    const selected = page.locator("#versions-panel [aria-selected='true']");
     await expect(selected).toBeVisible();
     await expect(selected).toContainText("Before refactor");
 });
@@ -427,7 +633,9 @@ test("draft activity selects its owning tab by default", async ({ page }) => {
     });
     await qp.initHistory();
 
-    await expect(page.getByRole("button", { name: "Tab 2" })).toHaveClass(/bg-blue-50/);
+    await expect(
+        page.getByRole("tablist", { name: "Document tabs" }).getByRole("tab", { name: "Tab 2" }),
+    ).toHaveAttribute("aria-selected", "true");
     await expect
         .poll(() =>
             page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? ""),
@@ -507,7 +715,7 @@ test("inline label editing calls cmd_label_snapshot", async ({ page }) => {
     await qp.initHistory();
 
     // Click the pencil icon on the "Before refactor" entry to enter edit mode
-    const entry = page.locator("[aria-selected='true']");
+    const entry = page.locator("#versions-panel [aria-selected='true']");
     await entry.locator("button[aria-label='Edit label']").first().click();
 
     const labelInput = entry.locator("input[type='text']");

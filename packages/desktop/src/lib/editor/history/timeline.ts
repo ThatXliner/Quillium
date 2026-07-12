@@ -72,12 +72,14 @@ export function buildTimelineItems(
     docEvents: DocEventRecord[],
 ): TimelineItem[] {
     const items: TimelineItem[] = [
-        ...snapshots.map((snapshot) => ({
-            id: `snapshot:${snapshot.id}`,
-            kind: "snapshot" as const,
-            createdAt: snapshot.createdAt,
-            snapshot,
-        })),
+        ...snapshots
+            .filter((snapshot) => snapshot.upToEventId >= 0)
+            .map((snapshot) => ({
+                id: `snapshot:${snapshot.id}`,
+                kind: "snapshot" as const,
+                createdAt: snapshot.createdAt,
+                snapshot,
+            })),
         ...docEvents.map((event) => ({
             id: `activity:${event.id}`,
             kind: "activity" as const,
@@ -455,6 +457,30 @@ export type TabContentRef = {
 };
 
 /**
+ * Resolves one explicitly selected draft's content at coordinate `t`.
+ * A missing `previous` means there is no comparable version, not that the
+ * comparable document was empty.
+ */
+export function resolveDraftContentAt(
+    snapshots: DocumentSnapshotMeta[],
+    draftId: string,
+    coordinate: TimelineCoordinate,
+): TabContentRef {
+    const eligible = snapshots
+        .filter(
+            (snapshot) =>
+                snapshot.draftId === draftId && snapshotAtOrBeforeCoordinate(snapshot, coordinate),
+        )
+        .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
+
+    return {
+        draftId,
+        current: eligible[0] ?? null,
+        previous: eligible[1] ?? null,
+    };
+}
+
+/**
  * Resolves which content to show for `tabId` at coordinate `t`.
  *
  * Picks the tab's draft that had the most recent snapshot at/before `t` (the
@@ -477,10 +503,7 @@ export function resolveTabContentAt(
 
     if (eligible.length === 0) return { draftId: null, current: null, previous: null };
 
-    const current = eligible[0];
-    // Baseline: the next-older snapshot OF THE SAME DRAFT (track-changes is
-    // within one draft's history, not across drafts).
-    const previous =
-        eligible.find((s) => s.draftId === current.draftId && s.id !== current.id) ?? null;
-    return { draftId: current.draftId, current, previous };
+    // Baseline is resolved within the selected draft; track-changes never
+    // compares two different drafts merely because they share a tab.
+    return resolveDraftContentAt(snapshots, eligible[0].draftId, coordinate);
 }

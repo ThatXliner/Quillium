@@ -7,8 +7,8 @@
     structure AND content as it was then; "Restore to here" non-destructively
     rewinds the whole document to that point (later coordinates remain).
 
-    Decomposed into: TimelinePanel (the stream), PreviewPane (structure map +
-    content), and the storage-management panel kept inline below.
+    Decomposed into: TimelinePanel (the stream), PreviewPane (shared read-only
+    document shell + content), and the storage-management panel kept inline below.
 -->
 <script lang="ts">
 import {
@@ -55,6 +55,7 @@ import {
     formatTimeShort,
     groupByDate,
     reconstructStructureAsOf,
+    resolveDraftContentAt,
     resolveTabContentAt,
     resolveTimelineTarget,
 } from "./history/timeline";
@@ -70,11 +71,14 @@ let loading = $state(true);
 let selectedItem = $state<TimelineItem | null>(null);
 let confirmingRestore = $state(false);
 
-// Preview content (real read-only editor + track-changes) for the viewed tab.
+// Preview content (real read-only editor + track-changes) for the viewed tab/draft.
 let viewedTabId = $state<string | null>(null);
+let viewedDraftId = $state<string | null>(null);
 let previewLoading = $state(false);
 let previewCurrentJson = $state<string | null>(null);
-let previewPreviousText = $state("");
+// `null` means there is no comparable prior snapshot. An empty string is a
+// real baseline and must remain distinguishable from that state.
+let previewPreviousText = $state<string | null>(null);
 let previewHasContent = $state(false);
 // Monotonic token so a slow content load can't overwrite a newer selection.
 let previewToken = 0;
@@ -171,11 +175,31 @@ async function handleRetentionChange(e: Event) {
     snapshotRetention = days;
 }
 
+function resolveViewedDraftId(
+    structure: { tabs: TabMeta[]; drafts: DraftMeta[] },
+    tabId: string,
+    item: TimelineItem,
+    preferredDraftId: string | null,
+): string | null {
+    const preferred = structure.drafts.find(
+        (draft) => draft.id === preferredDraftId && draft.tabId === tabId,
+    );
+    if (preferred) return preferred.id;
+
+    const content = resolveTabContentAt(
+        snapshots,
+        structure.drafts,
+        tabId,
+        coordinateForItem(item),
+    );
+    return content.draftId ?? structure.drafts.find((draft) => draft.tabId === tabId)?.id ?? null;
+}
+
 async function selectItem(item: TimelineItem) {
     selectedItem = item;
     confirmingRestore = false;
     // Default the viewed tab to the coordinate's target tab, else the first tab
-    // live at this point. The user can switch tabs in the structure map after.
+    // live at this point. The user can switch tabs in the document shell after.
     // The structure computed here is threaded into loadContent so IT doesn't
     // redo the O(events) replay (the `previewStructure` derived still runs its
     // own replay for the map render).
@@ -185,23 +209,53 @@ async function selectItem(item: TimelineItem) {
         docEvents,
         coordinateForItem(item),
     );
-    const target = resolveTimelineTarget(item, allDrafts).tabId;
+    const target = resolveTimelineTarget(item, allDrafts);
     viewedTabId =
-        (target && structure.tabs.some((t) => t.id === target) ? target : null) ??
+        (target.tabId && structure.tabs.some((tab) => tab.id === target.tabId)
+            ? target.tabId
+            : null) ??
         structure.tabs[0]?.id ??
         null;
+    viewedDraftId = viewedTabId
+        ? resolveViewedDraftId(structure, viewedTabId, item, target.draftId)
+        : null;
     await loadContent(structure);
 }
 
 /** Switch which tab's content the preview shows (same coordinate). */
 async function viewTab(tabId: string) {
-    if (tabId === viewedTabId) return;
+    const item = selectedItem;
+    if (!item || tabId === viewedTabId) return;
+    const structure = reconstructStructureAsOf(
+        allTabs,
+        allDrafts,
+        docEvents,
+        coordinateForItem(item),
+    );
     viewedTabId = tabId;
-    await loadContent();
+    viewedDraftId = resolveViewedDraftId(structure, tabId, item, null);
+    await loadContent(structure);
+}
+
+/** Switch which historical draft's content the preview shows. */
+async function viewDraft(draftId: string) {
+    const item = selectedItem;
+    if (!item || draftId === viewedDraftId) return;
+    const structure = reconstructStructureAsOf(
+        allTabs,
+        allDrafts,
+        docEvents,
+        coordinateForItem(item),
+    );
+    const draft = structure.drafts.find((candidate) => candidate.id === draftId);
+    if (!draft) return;
+    if (draft.tabId) viewedTabId = draft.tabId;
+    viewedDraftId = draft.id;
+    await loadContent(structure);
 }
 
 /**
- * Loads the viewed tab's content at the selected coordinate and diffs it
+ * Loads the viewed draft's content at the selected coordinate and diffs it
  * against the same draft's previous version → track-changes segments. Guarded
  * by `previewToken` so a slow load can't clobber a newer selection. The caller
  * may pass an already-computed structure for the current coordinate to avoid a
@@ -209,24 +263,31 @@ async function viewTab(tabId: string) {
  */
 async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] }) {
     const item = selectedItem;
-    const tabId = viewedTabId;
-    if (!item || !tabId) {
+    const draftId = viewedDraftId;
+    // Invalidate an earlier request even when the new coordinate has no
+    // previewable draft. Otherwise the stale request could repopulate the
+    // empty state after it resolves.
+    const token = ++previewToken;
+    if (!item || !draftId) {
+        previewLoading = false;
         previewCurrentJson = null;
-        previewPreviousText = "";
+        previewPreviousText = null;
         previewHasContent = false;
         return;
     }
-    const token = ++previewToken;
     previewLoading = true;
     try {
         const resolved =
             structure ??
             reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinateForItem(item));
-        const ref = resolveTabContentAt(snapshots, resolved.drafts, tabId, coordinateForItem(item));
-        if (!ref.current) {
+        const draftExists = resolved.drafts.some((draft) => draft.id === draftId);
+        const ref = draftExists
+            ? resolveDraftContentAt(snapshots, draftId, coordinateForItem(item))
+            : null;
+        if (!ref?.current) {
             if (token === previewToken) {
                 previewCurrentJson = null;
-                previewPreviousText = "";
+                previewPreviousText = null;
                 previewHasContent = false;
             }
             return;
@@ -237,7 +298,7 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         ]);
         if (token !== previewToken) return; // a newer selection superseded us
         previewCurrentJson = currentJson;
-        previewPreviousText = docTextFromStateJson(previousJson);
+        previewPreviousText = previousJson === null ? null : docTextFromStateJson(previousJson);
         previewHasContent = true;
     } catch (e) {
         // Called from event handlers — swallow instead of leaking an
@@ -245,7 +306,7 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         console.error("[VersionHistory] preview load failed:", e);
         if (token === previewToken) {
             previewCurrentJson = null;
-            previewPreviousText = "";
+            previewPreviousText = null;
             previewHasContent = false;
         }
     } finally {
@@ -266,6 +327,31 @@ async function reconcileSelection() {
     const fresh = selectedItem ? timelineItems.find((it) => it.id === selectedItem?.id) : undefined;
     if (fresh) {
         selectedItem = fresh;
+        const structure = reconstructStructureAsOf(
+            allTabs,
+            allDrafts,
+            docEvents,
+            coordinateForItem(fresh),
+        );
+        const target = resolveTimelineTarget(fresh, allDrafts);
+        const currentTabStillExists = structure.tabs.some((tab) => tab.id === viewedTabId);
+        if (!currentTabStillExists) {
+            viewedTabId =
+                (target.tabId && structure.tabs.some((tab) => tab.id === target.tabId)
+                    ? target.tabId
+                    : null) ??
+                structure.tabs[0]?.id ??
+                null;
+        }
+        const currentDraftStillExists = structure.drafts.some(
+            (draft) => draft.id === viewedDraftId && draft.tabId === viewedTabId,
+        );
+        if (!currentDraftStillExists) {
+            viewedDraftId = viewedTabId
+                ? resolveViewedDraftId(structure, viewedTabId, fresh, target.draftId)
+                : null;
+        }
+        await loadContent(structure);
         return;
     }
     if (timelineItems.length > 0) {
@@ -386,7 +472,7 @@ function formatBytes(bytes: number): string {
 // Use the most recent snapshot's createdAt as a fallback when lastSavedAt is
 // null (direct nav to /history before any save in this session).
 const displayLastSavedAt = $derived(
-    $lastSavedAt ?? (snapshots.length > 0 ? snapshots[0].createdAt : null),
+    $lastSavedAt ?? snapshots.find((snapshot) => snapshot.upToEventId >= 0)?.createdAt ?? null,
 );
 
 const selectedTitle = $derived.by(() => {
@@ -484,12 +570,14 @@ function handleKeydown(e: KeyboardEvent) {
 
     <!-- Body -->
     <div class="flex flex-1 overflow-hidden">
-        <!-- Preview (structure map + content) -->
+        <!-- Preview (shared read-only document shell + content) -->
         <div class="flex-1 overflow-y-auto py-10 px-8 flex justify-center">
             <PreviewPane
                 tabs={previewStructure.tabs}
                 drafts={previewStructure.drafts}
                 {viewedTabId}
+                {viewedDraftId}
+                highlightTabId={selectedTarget.tabId}
                 highlightDraftId={selectedTarget.draftId}
                 currentStateJson={previewCurrentJson}
                 previousText={previewPreviousText}
@@ -498,6 +586,7 @@ function handleKeydown(e: KeyboardEvent) {
                 {bannerText}
                 empty={!selectedItem}
                 ontabselect={viewTab}
+                ondraftselect={viewDraft}
             />
         </div>
 

@@ -118,7 +118,8 @@ export type SnapshotMeta = {
  * A snapshot listed across a whole document (not one draft), tagged with the
  * owning draft's label and tab so the document-wide version-history timeline
  * can show which draft each content checkpoint belongs to. Includes snapshots
- * of since-deleted drafts; excludes internal "Branch point" seeds.
+ * of since-deleted drafts and internal "Branch point" seeds; visible timeline
+ * builders filter seeds while the historical preview uses them as content.
  */
 export type DocumentSnapshotMeta = {
     id: number;
