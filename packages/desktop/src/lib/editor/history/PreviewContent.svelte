@@ -51,6 +51,9 @@ let previousDiffCompartment: Compartment | undefined;
 let previewRevision = $state(0);
 let activeAnnotationId = $state<string | null>(null);
 let diffLayout = $state<DiffLayout>("inline");
+let previewRoot = $state<HTMLElement | null>(null);
+let previewWorkingStateJson = $state<string | null>(null);
+let previewWorkingSourceJson = $state<string | null>(null);
 
 onMount(() => {
     try {
@@ -75,12 +78,18 @@ const annotationProjection = $derived.by(() => {
     void previewRevision;
     return editorController.snapshot();
 });
+const annotationCountLabel = $derived(
+    `${annotationProjection.annotations.length} ${annotationProjection.annotations.length === 1 ? "annotation" : "annotations"}`,
+);
 const previewSerializedState = $derived.by(() => {
-    // A baseline/layout change must rebuild the current view even when its
-    // serialized snapshot did not change.
+    // A baseline change must rebuild the current view even when its serialized
+    // snapshot did not change. Layout changes reconfigure the live diff layer
+    // so revision alternatives being explored are not reset.
     void previousBaseline;
     void hasPrevious;
-    void diffLayout;
+    if (previewWorkingStateJson && previewWorkingSourceJson === currentStateJson) {
+        return parseSerializedState(previewWorkingStateJson, "");
+    }
     return parseSerializedState(currentStateJson, "");
 });
 const previousSerializedState = $derived.by(() => {
@@ -100,7 +109,28 @@ function parseSerializedState(json: string | null, fallbackDoc: string): Record<
 }
 
 function setDiffLayout(layout: DiffLayout): void {
+    if (previewView) {
+        previewWorkingStateJson = JSON.stringify(previewView.state.toJSON(savedFields));
+        previewWorkingSourceJson = currentStateJson;
+    }
     diffLayout = layout;
+    const current = previewView?.state.doc.toString() ?? serializedCurrentText;
+    if (previewView && diffCompartment) {
+        previewView.dispatch({
+            effects: diffCompartment.reconfigure(currentDiffExtension(current, layout)),
+        });
+    }
+    if (previousPreviewView && previousDiffCompartment) {
+        previousPreviewView.dispatch({
+            effects: previousDiffCompartment.reconfigure(
+                sideBySideDiffDecorations(
+                    previousPreviewView.state.doc.toString(),
+                    current,
+                    "previous",
+                ),
+            ),
+        });
+    }
     try {
         localStorage.setItem(DIFF_LAYOUT_STORAGE_KEY, layout);
     } catch {
@@ -113,9 +143,9 @@ function selectAnnotation(annotationId: string): void {
     activeAnnotationId = annotationId;
 }
 
-function currentDiffExtension(current: string): Extension {
+function currentDiffExtension(current: string, layout = diffLayout): Extension {
     if (!hasPrevious) return [];
-    return diffLayout === "side-by-side"
+    return layout === "side-by-side"
         ? sideBySideDiffDecorations(previousBaseline, current, "selected")
         : diffDecorations(previousBaseline, current);
 }
@@ -216,26 +246,54 @@ function handlePreviewUpdate(update: ViewUpdate): void {
     activeAnnotationId = editorController.activeAnnotationId();
     previewRevision = performance.now();
 }
+
+$effect(() => {
+    const annotationId = activeAnnotationId;
+    if (!annotationId || !previewRoot) return;
+    const card = previewRoot.querySelector<HTMLElement>(
+        `[data-history-annotation-id="${CSS.escape(annotationId)}"]`,
+    );
+    card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
 </script>
 
 {#snippet annotationCards()}
     {#each annotationProjection.annotations as annotation (annotation.id)}
-        <ReadonlyAnnotationCard
-            {annotation}
-            active={activeAnnotationId === annotation.id}
-            {activeAnnotationId}
-            selectedRevisionVersionIndex={annotation.type === "revision"
-                ? annotation.activeVersionIndex
-                : null}
-            onSelect={() => selectAnnotation(annotation.id)}
-            onSelectAnnotation={selectAnnotation}
-            onSelectRevisionVersion={(versionIndex) =>
-                switchRevisionVersion(annotation.id, versionIndex)}
-        />
+        <div data-history-annotation-id={annotation.id}>
+            <ReadonlyAnnotationCard
+                {annotation}
+                active={activeAnnotationId === annotation.id}
+                {activeAnnotationId}
+                selectedRevisionVersionIndex={annotation.type === "revision"
+                    ? annotation.activeVersionIndex
+                    : null}
+                onSelect={() => selectAnnotation(annotation.id)}
+                onSelectAnnotation={selectAnnotation}
+                onSelectRevisionVersion={(versionIndex) =>
+                    switchRevisionVersion(annotation.id, versionIndex)}
+            />
+        </div>
     {/each}
 {/snippet}
 
-<div class="history-preview-content w-full flex flex-col items-center gap-3">
+{#snippet annotationPanel()}
+    <div class="history-annotation-heading">
+        <div>
+            <h3>Selected version annotations</h3>
+            <p>{annotationCountLabel} saved at this point</p>
+        </div>
+        <span>Selected pane</span>
+    </div>
+    <p class="history-annotation-help">
+        Revision alternatives preview in the selected version. Green and red marks still compare
+        that preview with the previous historical version.
+    </p>
+    <div class="history-annotation-cards">
+        {@render annotationCards()}
+    </div>
+{/snippet}
+
+<div bind:this={previewRoot} class="history-preview-content w-full flex flex-col items-center gap-3">
     {#if loading}
         <div class="flex items-center justify-center w-full py-20 text-black/55 text-sm">
             Loading…
@@ -324,7 +382,7 @@ function handlePreviewUpdate(update: ViewUpdate): void {
 
                 {#if annotationProjection.annotations.length > 0}
                     <aside class="history-annotation-column" aria-label="Snapshot annotations">
-                        {@render annotationCards()}
+                        {@render annotationPanel()}
                     </aside>
                 {/if}
             </div>
@@ -371,16 +429,15 @@ function handlePreviewUpdate(update: ViewUpdate): void {
                             />
                         </div>
                     </section>
+                    {#if annotationProjection.annotations.length > 0}
+                        <aside
+                            class="history-annotation-column history-annotation-column-split"
+                            aria-label="Snapshot annotations"
+                        >
+                            {@render annotationPanel()}
+                        </aside>
+                    {/if}
                 </div>
-
-                {#if annotationProjection.annotations.length > 0}
-                    <aside
-                        class="history-annotation-column history-annotation-column-split"
-                        aria-label="Snapshot annotations"
-                    >
-                        {@render annotationCards()}
-                    </aside>
-                {/if}
             </div>
         {/if}
     {/if}
@@ -474,11 +531,56 @@ function handlePreviewUpdate(update: ViewUpdate): void {
 
     .history-annotation-column-split {
         position: static;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        width: 100%;
+        grid-column: 2;
+        width: auto;
         max-height: none;
         flex: none;
         overflow: visible;
+        border-top: 1px solid rgba(0, 0, 0, 0.07);
+        padding: 0.9rem 0.2rem 0.2rem;
+    }
+
+    .history-annotation-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0 0.2rem;
+    }
+
+    .history-annotation-heading h3 {
+        color: rgba(0, 0, 0, 0.72);
+        font-size: 0.75rem;
+        font-weight: 650;
+    }
+
+    .history-annotation-heading p,
+    .history-annotation-help {
+        color: rgba(0, 0, 0, 0.5);
+        font-size: 0.6875rem;
+        line-height: 1.45;
+    }
+
+    .history-annotation-heading span {
+        flex: none;
+        border-radius: 999px;
+        background: rgba(34, 197, 94, 0.1);
+        color: rgb(21, 128, 61);
+        padding: 0.2rem 0.45rem;
+        font-size: 0.625rem;
+        font-weight: 600;
+    }
+
+    .history-annotation-help {
+        margin: 0.45rem 0.2rem 0;
+        padding-bottom: 0.7rem;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .history-annotation-cards {
+        display: grid;
+        gap: 0.75rem;
+        padding-top: 0.75rem;
     }
 
     :global(.version-preview .cm-editor.cm-focused),
@@ -528,6 +630,9 @@ function handlePreviewUpdate(update: ViewUpdate): void {
         .history-split-grid {
             grid-template-columns: minmax(0, 1fr);
         }
+
+        .history-annotation-column-split {
+            grid-column: 1;
+        }
     }
 </style>
-

@@ -596,9 +596,30 @@ test("history preview renders linked annotations read-only and explores grouped 
         .toBe("The swift brown hound");
     await expect(cards.getByRole("button", { name: /^swift, linked in / })).toBeDisabled();
     await expect(cards.getByRole("button", { name: /^hound, linked in / })).toBeDisabled();
+    await expect(page.getByRole("heading", { name: "Selected version annotations" })).toBeVisible();
+    await expect(page.getByText("4 annotations saved at this point")).toBeVisible();
+    await expect(
+        page.getByText("Revision alternatives preview in the selected version."),
+    ).toBeVisible();
     await expect(page.getByText("Compared with the previous version")).toBeVisible();
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(2);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(2);
+
+    await page.getByRole("button", { name: "Side by side" }).click();
+    const selectedPane = page.locator('[data-diff-pane="selected"]');
+    const annotationPanel = page.getByRole("complementary", { name: "Snapshot annotations" });
+    await expect(annotationPanel).toBeVisible();
+    await expect
+        .poll(async () => {
+            const [paneBox, panelBox] = await Promise.all([
+                selectedPane.boundingBox(),
+                annotationPanel.boundingBox(),
+            ]);
+            return paneBox && panelBox
+                ? Math.abs(paneBox.x - panelBox.x)
+                : Number.POSITIVE_INFINITY;
+        })
+        .toBeLessThan(2);
 
     // Clicking annotated prose updates the card focus from the actual editor
     // selection, just as it does in the writable editor.
