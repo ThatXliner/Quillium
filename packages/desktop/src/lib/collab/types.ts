@@ -1,5 +1,6 @@
 import type { Awareness } from "y-protocols/awareness";
 import type { WebsocketProvider } from "y-websocket";
+import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 /**
  * types.ts — Collab-related types.
  *
@@ -22,10 +23,12 @@ import type { AnnotationIdMap } from "./annotationSchema";
  *   "annotations":        Y.Map<YjsAnnotationNode>
  *   "replacements"?:      Y.Array<SuggestionReplacement>  (suggestion only)
  *   "author"?:            string                           (suggestion only)
- *   "versions"?:          Y.Map<string, Y.Map<unknown>>    (revision only; key = vIdx string)
+ *   "versions"?:          Y.Map<string, Y.Map<unknown>>    (revision only; key = version.id)
  *                            each version Y.Map has { text: Y.Text, label?: string,
  *                                                   annotations: Y.Map<YjsAnnotationNode> }
- *   "activeVersionIndex"?: number                          (revision only)
+ *   "order"?:             Y.Array<string>                  (revision only; ordered version ids)
+ *   "activeVersionId"?:   string                           (revision only)
+ *   "activeVersionIndex"?: number                          (legacy revision rooms only)
  *
  * The TypeScript alias is `Y.Map<unknown>` because Yjs does not support
  * discriminated-union typing of child types; runtime validation is the
@@ -45,6 +48,7 @@ export type CollabSession = {
     awareness: Awareness;
     ytext: Y.Text; // Main document Y.Text
     ymap: Y.Map<YjsAnnotationNode>; // Annotation sync map (recursive Y.Map entries)
+    yVersionGroups: Y.Map<VersionGroup>; // Version-group sync map (plain JSON entries)
     undoManager: Y.UndoManager; // Plan 8.5c-02: For subtree undo scope registration
     mainIdMap: AnnotationIdMap; // Plan 8.5c-02: For CM ID ↔ Yjs ID resolution
 };

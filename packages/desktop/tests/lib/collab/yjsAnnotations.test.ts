@@ -297,10 +297,13 @@ describe("yjsAnnotations", () => {
 
             const yjsAnn = Array.from(ymap.values())[0];
             expect(yjsAnn.get("_type")).toBe("revision");
-            expect(yjsAnn.get("activeVersionIndex")).toBe(0);
+            expect(yjsAnn.get("activeVersionId")).toBe(revVersions[0].id);
+            expect(yjsAnn.get("activeVersionIndex")).toBeUndefined();
             const versions = yjsAnn.get("versions") as Y.Map<Y.Map<unknown>>;
             expect(versions instanceof Y.Map).toBe(true);
             expect(versions.size).toBe(2);
+            const order = yjsAnn.get("order") as Y.Array<string>;
+            expect(order.toArray()).toEqual(revVersions.map((version) => version.id));
         });
     });
 });
@@ -352,7 +355,7 @@ describe("revision sync", () => {
     });
 
     // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
-    it("syncs activeVersionIndex change to Y.Map via remove+add", () => {
+    it("syncs activeVersionId change to Y.Map via remove+add", () => {
         const annotation = createRevisionAnnotation(
             0,
             0,
@@ -362,14 +365,14 @@ describe("revision sync", () => {
         );
 
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
+        if (!isAnnotationOfType(annotation, "revision")) throw new Error("Expected revision");
 
         const yjsId = Array.from(ymap.keys())[0];
-        expect(requireYNode(ymap, yjsId).get("activeVersionIndex")).toBe(0);
+        expect(requireYNode(ymap, yjsId).get("activeVersionId")).toBe(annotation.versions[0].id);
 
         // Simulate what setActiveRevisionVersion does: it emits a doc change
         // plus internal effects. In tests we approximate via remove+add with
         // updated data (the same path that the CM->Yjs sync uses).
-        if (!isAnnotationOfType(annotation, "revision")) throw new Error("Expected revision");
         const updatedAnnotation = {
             ...annotation,
             activeVersionId: annotation.versions[1].id,
@@ -382,7 +385,8 @@ describe("revision sync", () => {
         expect(ymap.size).toBe(1);
         const newYjsId = Array.from(ymap.keys())[0];
         const yjsAnn = requireYNode(ymap, newYjsId);
-        expect(yjsAnn.get("activeVersionIndex")).toBe(1);
+        expect(yjsAnn.get("activeVersionId")).toBe(annotation.versions[1].id);
+        expect(yjsAnn.get("activeVersionIndex")).toBeUndefined();
     });
 
     it("syncs new version addition to Y.Map via remove+add", () => {
@@ -410,13 +414,15 @@ describe("revision sync", () => {
         const yjsAnn = requireYNode(ymap, newYjsId);
         const versions = yjsAnn.get("versions") as Y.Map<Y.Map<unknown>>;
         expect(versions.size).toBe(2);
-        const v1 = versions.get("1") as Y.Map<unknown>;
+        const order = yjsAnn.get("order") as Y.Array<string>;
+        expect(order.toArray()).toEqual(newVersions.map((version) => version.id));
+        const v1 = versions.get(newVersions[1].id) as Y.Map<unknown>;
         const v1Text = v1.get("text") as Y.Text;
         expect(v1Text.toString()).toBe("new version");
     });
 
     // Phase 10: This test requires write path to add the initial annotation
-    it("receives remote activeVersionIndex change via shallow Y.Map update", () => {
+    it("receives remote activeVersionId change via shallow Y.Map update", () => {
         const annotation = createRevisionAnnotation(
             0,
             0,
@@ -426,14 +432,15 @@ describe("revision sync", () => {
         );
 
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
+        if (!isAnnotationOfType(annotation, "revision")) throw new Error("Expected revision");
 
         const yjsId = Array.from(ymap.keys())[0];
         const existing = requireYNode(ymap, yjsId);
 
-        // Simulate remote version switch by updating the activeVersionIndex field
+        // Simulate remote version switch by updating the activeVersionId field.
         // This is a shallow Y.Map key update that observeDeep detects
         ydoc.transact(() => {
-            existing.set("activeVersionIndex", 1);
+            existing.set("activeVersionId", annotation.versions[1].id);
         }, "remote");
 
         const annotations = view.state.field(annotationField);

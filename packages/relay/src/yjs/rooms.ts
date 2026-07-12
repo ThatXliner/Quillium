@@ -9,6 +9,7 @@ import * as Y from "yjs";
 import { createLogger } from "../logger.js";
 import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
 import { clearYjsUpdates, loadYjsState, persistYjsState } from "../persistence/yjsUpdates.js";
+import { migrateYjsDoc } from "./migrations.js";
 import type { YjsRoom } from "./types.js";
 
 const logger = createLogger("yjs/rooms");
@@ -31,6 +32,16 @@ export async function getOrCreateYjsRoom(documentId: string): Promise<YjsRoom> {
     if (!room) {
         // Load state from DB
         const { ydoc } = await loadYjsState(documentId);
+        const migration = migrateYjsDoc(ydoc);
+        if (migration.changed) {
+            const persisted = await persistYjsState(documentId, ydoc);
+            if (persisted.success) {
+                await clearYjsUpdates(documentId);
+            }
+            logger.info(
+                `Migrated room ${documentId.slice(0, 8)}... to Yjs schema v${migration.currentVersion}`,
+            );
+        }
         const awareness = new Awareness(ydoc);
 
         room = {

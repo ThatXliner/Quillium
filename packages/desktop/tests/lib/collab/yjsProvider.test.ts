@@ -113,9 +113,13 @@ describe("yjsProvider", () => {
         expect(result.awareness).toBeDefined();
         expect(result.ydoc).toBeDefined();
         expect(result.ytext).toBeDefined();
+        expect(result.ymap).toBeDefined();
+        expect(result.yVersionGroups).toBeDefined();
 
         // ytext should be from ydoc
         expect(result.ytext).toBe(result.ydoc.getText("document"));
+        expect(result.ymap).toBe(result.ydoc.getMap("annotations"));
+        expect(result.yVersionGroups).toBe(result.ydoc.getMap("versionGroups"));
     });
 
     it("passes JWT in params.auth", async () => {
