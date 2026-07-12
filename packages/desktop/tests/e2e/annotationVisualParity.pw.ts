@@ -8,7 +8,7 @@
  * actual/expected/diff images and retained trace.
  */
 
-import { type Page, expect, test } from "@playwright/test";
+import { type Locator, type Page, expect, test } from "@playwright/test";
 import {
     VISUAL_FIXTURE_TIME,
     buildFixtureState,
@@ -30,7 +30,9 @@ const VIEWPORTS: ReadonlyArray<{
     { name: "tablet", width: 1024, height: 768, anchor: "middle" },
     { name: "mobile", width: 430, height: 820, anchor: "end" },
 ];
-const COLOR_SCHEMES: readonly ColorScheme[] = ["light", "dark"];
+// Desktop and Version History currently expose only a light theme. Omni Web Preview owns the
+// light/dark matrix; keeping duplicate dark snapshots here would create false coverage.
+const COLOR_SCHEMES: readonly ColorScheme[] = ["light"];
 
 const VISUAL_FIXTURE = buildVisualFixtureState();
 const VISUAL_STATE_JSON = JSON.stringify(serializeFixtureWire(VISUAL_FIXTURE.state));
@@ -80,7 +82,6 @@ test.beforeEach(async ({ page }, testInfo) => {
         } catch {
             // The fixture already carries fixed ids; this only covers incidental UI ids.
         }
-
         document.addEventListener(
             "DOMContentLoaded",
             () => {
@@ -123,6 +124,9 @@ function fixtureOptions(initialStateJson = VISUAL_STATE_JSON): Partial<TauriMock
             grammarCheckEnabled: false,
             showNestedEditor: true,
             showShortcutHints: false,
+            // The default hover title briefly lingers after mount. Hide that unrelated chrome so
+            // screenshot timing cannot decide whether the editor loses an extra title row.
+            titleVisibility: "never",
             uiFontFamily: '"Inter", system-ui, sans-serif',
             uiZoom: 1,
         },
@@ -206,10 +210,14 @@ async function scrollDesktopToAnchor(page: Page, anchor: Anchor): Promise<void> 
             ? revisions.first()
             : revisions.filter({ hasText: VISUAL_FIXTURE.targets.end }).first();
     await expect(revision).toBeAttached();
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    // CodeMirror replaces its virtual gap with rendered lines after every large scroll. Repeat
+    // against the freshly measured target so the final frame cannot capture an intermediate gap.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
         await revision.evaluate((element) => {
             const scrollContainer = document.querySelector("#editor-document")?.parentElement;
-            if (!scrollContainer) return;
+            if (!(scrollContainer instanceof HTMLElement)) {
+                throw new Error("Could not resolve the desktop editor scroll container");
+            }
             const containerRect = scrollContainer.getBoundingClientRect();
             const targetRect = element.getBoundingClientRect();
             scrollContainer.scrollTop +=
@@ -218,6 +226,39 @@ async function scrollDesktopToAnchor(page: Page, anchor: Anchor): Promise<void> 
                 (scrollContainer.clientHeight - targetRect.height) / 2;
         });
         await settleVisuals(page);
+    }
+    await expect
+        .poll(() =>
+            revision.evaluate((element) => {
+                const scrollContainer = document.querySelector("#editor-document")?.parentElement;
+                if (!(scrollContainer instanceof HTMLElement)) {
+                    return Number.POSITIVE_INFINITY;
+                }
+                const containerRect = scrollContainer.getBoundingClientRect();
+                const targetRect = element.getBoundingClientRect();
+                const targetOffset =
+                    targetRect.top -
+                    containerRect.top -
+                    (scrollContainer.clientHeight - targetRect.height) / 2;
+                const maxScrollTop = Math.max(
+                    0,
+                    scrollContainer.scrollHeight - scrollContainer.clientHeight,
+                );
+                const desiredScrollTop = Math.min(
+                    Math.max(0, scrollContainer.scrollTop + targetOffset),
+                    maxScrollTop,
+                );
+                return Math.abs(scrollContainer.scrollTop - desiredScrollTop);
+            }),
+        )
+        .toBeLessThanOrEqual(2);
+    await expect(revision).toBeVisible();
+    if (anchor === "end") {
+        await expect(
+            page
+                .locator("#editor-document .cm-line")
+                .filter({ hasText: "She closed the folder only after the rain eased." }),
+        ).toBeVisible();
     }
 }
 
@@ -244,21 +285,6 @@ async function isolateHistoryPreview(page: Page): Promise<void> {
             timeline.style.display = "none";
             if (topBar instanceof HTMLElement) topBar.style.display = "none";
         }
-
-        // On constrained layouts the document precedes the annotation column.
-        // Hide it after the semantic assertions above so an element screenshot
-        // does not have to stitch the off-screen column past route chrome.
-        if (window.innerWidth <= 1_024) {
-            const preview = content.querySelector(".version-preview");
-            if (preview instanceof HTMLElement) preview.style.display = "none";
-            const annotationColumn = content.querySelector(".history-annotation-column");
-            if (annotationColumn instanceof HTMLElement) {
-                annotationColumn.dataset.visualHistoryScroll = "true";
-                annotationColumn.style.height = `${window.innerHeight}px`;
-                annotationColumn.style.maxHeight = `${window.innerHeight}px`;
-                annotationColumn.style.overflowY = "auto";
-            }
-        }
     });
     await expect
         .poll(() =>
@@ -270,32 +296,82 @@ async function isolateHistoryPreview(page: Page): Promise<void> {
     await settleVisuals(page);
 }
 
-async function selectHistoryAnchor(page: Page, anchor: Anchor): Promise<void> {
+async function selectHistoryAnchor(page: Page, anchor: Anchor): Promise<Locator> {
     const annotationId = anchor === "start" ? 100 : anchor === "middle" ? 102 : 105;
     const annotation = page
         .getByRole("complementary", { name: "Snapshot annotations" })
         .locator(`[data-annotation-id="${annotationId}"]`);
-    await annotation.click();
-
-    const scrollRegion = page.locator('[data-visual-history-scroll="true"]');
-    if ((await scrollRegion.count()) > 0) {
-        await scrollRegion.evaluate(
-            (region, { annotationId: id, anchor: targetAnchor }) => {
-                if (targetAnchor === "start") {
-                    region.scrollTop = 0;
-                    return;
-                }
-                const target = region.querySelector(`[data-annotation-id="${id}"]`);
-                if (!(target instanceof HTMLElement)) return;
-                const regionRect = region.getBoundingClientRect();
-                const targetRect = target.getBoundingClientRect();
-                region.scrollTop +=
-                    targetRect.top - regionRect.top - (region.clientHeight - targetRect.height) / 2;
-            },
-            { annotationId, anchor },
-        );
+    const cardType = await annotation.getAttribute("data-annotation-card");
+    if (cardType === "revision") {
+        // Select through the read-only document so linked version state remains untouched.
+        const inlineRevision = page
+            .locator(".version-preview .cm-revision")
+            .filter({ hasText: VISUAL_FIXTURE.targets.middle })
+            .first();
+        await inlineRevision.scrollIntoViewIfNeeded();
+        await inlineRevision.click();
+    } else {
+        await annotation.locator('button[title^="Jump to this comment"]').click();
     }
+    await expect(annotation).toHaveAttribute("data-active", "true");
     await settleVisuals(page);
+    return annotation;
+}
+
+async function positionHistoryTarget(
+    page: Page,
+    target: Locator,
+    viewportFraction: number,
+): Promise<void> {
+    await expect(target).toBeAttached();
+    // The CodeMirror document above the target redraws its virtual viewport as the containing pane
+    // scrolls. Repeat the adjustment so its stable height, not an intermediate gap, owns the shot.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        await target.evaluate((element, fraction) => {
+            let candidate: HTMLElement | null = element.parentElement;
+            while (candidate) {
+                const overflowY = getComputedStyle(candidate).overflowY;
+                if (
+                    (overflowY === "auto" || overflowY === "scroll") &&
+                    candidate.scrollHeight > candidate.clientHeight + 1
+                ) {
+                    break;
+                }
+                candidate = candidate.parentElement;
+            }
+            const scrollContainer = candidate ?? document.scrollingElement;
+            if (!(scrollContainer instanceof HTMLElement)) {
+                throw new Error("Could not resolve the History preview scroll container");
+            }
+            scrollContainer.dataset.visualHistoryScroller = "true";
+            const isRoot = scrollContainer === document.documentElement;
+            const containerTop = isRoot ? 0 : scrollContainer.getBoundingClientRect().top;
+            const containerHeight = isRoot ? window.innerHeight : scrollContainer.clientHeight;
+            const targetRect = element.getBoundingClientRect();
+            scrollContainer.scrollTop += targetRect.top - containerTop - containerHeight * fraction;
+        }, viewportFraction);
+        await settleVisuals(page);
+    }
+    await expect
+        .poll(() =>
+            target.evaluate((element, fraction) => {
+                const scrollContainer = document.querySelector(
+                    '[data-visual-history-scroller="true"]',
+                );
+                if (!(scrollContainer instanceof HTMLElement)) return Number.POSITIVE_INFINITY;
+                const isRoot = scrollContainer === document.documentElement;
+                const containerTop = isRoot ? 0 : scrollContainer.getBoundingClientRect().top;
+                const containerHeight = isRoot ? window.innerHeight : scrollContainer.clientHeight;
+                return Math.abs(
+                    element.getBoundingClientRect().top - containerTop - containerHeight * fraction,
+                );
+            }, viewportFraction),
+        )
+        .toBeLessThanOrEqual(2);
+}
+
+async function positionHistoryStackBoundary(page: Page): Promise<void> {
+    await positionHistoryTarget(page, page.locator(".history-annotation-column"), 0.45);
 }
 
 function mainAnnotationCard(page: Page, annotationId: number) {
@@ -367,17 +443,26 @@ for (const viewport of VIEWPORTS) {
                 "flex-direction",
                 viewport.name === "wide" ? "row" : "column",
             );
-            await selectHistoryAnchor(page, viewport.anchor);
+            const selectedAnnotation = await selectHistoryAnchor(page, viewport.anchor);
 
-            const historyCapture =
-                viewport.name === "wide"
-                    ? page.locator(".history-preview-stage")
-                    : page.locator('[data-visual-history-scroll="true"]');
-            await expect(historyCapture).toBeVisible();
-            await expect(historyCapture).toHaveScreenshot(
-                `history-annotations-${viewport.name}-${colorScheme}.png`,
-                SCREENSHOT_OPTIONS,
-            );
+            const screenshotName = `history-annotations-${viewport.name}-${colorScheme}.png`;
+            if (viewport.name === "wide") {
+                const historyCapture = page.locator(".history-preview-stage");
+                await expect(historyCapture).toBeVisible();
+                await expect(historyCapture).toHaveScreenshot(screenshotName, SCREENSHOT_OPTIONS);
+            } else {
+                // Capture the true responsive boundary: the document remains above the annotation
+                // column, and the viewport contains the end of one plus the beginning of the other.
+                await positionHistoryStackBoundary(page);
+                await expect(page).toHaveScreenshot(screenshotName, SCREENSHOT_OPTIONS);
+
+                // A focused card baseline proves the viewport's middle/end fixture target without
+                // replacing the real document-to-annotation boundary captured above.
+                await expect(selectedAnnotation).toHaveScreenshot(
+                    `history-selected-${viewport.anchor}-${viewport.name}-${colorScheme}.png`,
+                    SCREENSHOT_OPTIONS,
+                );
+            }
         });
     }
 }
@@ -415,9 +500,17 @@ test("revision Context preserves a real wheel position through edits and resize"
     expect(afterTransaction).toBeGreaterThan(0);
     expect(Math.abs(afterTransaction - afterWheel)).toBeLessThan(80);
 
+    const beforeResize = afterTransaction;
     await page.setViewportSize({ width: 1000, height: 720 });
     await expect(context).toBeVisible();
-    await expect.poll(() => context.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect
+        .poll(() =>
+            context.evaluate((element, previousScrollTop) => {
+                const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+                return Math.abs(element.scrollTop - Math.min(previousScrollTop, maxScrollTop));
+            }, beforeResize),
+        )
+        .toBeLessThanOrEqual(2);
     await expect(page.locator('[data-context-target-depth="0"]')).toContainText(
         "She underlined the passage twice.!",
     );

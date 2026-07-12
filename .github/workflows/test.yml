@@ -51,8 +51,10 @@ jobs:
           filters: |
             code:
               - '**'
-              - '!**/*.md'
               - '!docs/**'
+              - '!*.md'
+              - '!**/README.md'
+              - '!.github/**/*.md'
               - '!LICENSE'
 
       - name: Classify changed packages

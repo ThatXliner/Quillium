@@ -38,8 +38,12 @@ The checked-in baseline sets are:
 
 | Surface | Matrix | Expected images |
 |---------|--------|-----------------|
-| Desktop and Version History | Light/dark at wide, tablet, and mobile sizes, plus modal and nested states | `packages/desktop/tests/e2e/annotationVisualParity.pw.ts-snapshots/` |
+| Desktop and Version History | Light theme at wide, tablet, and mobile sizes, plus modal and nested states; desktop does not currently expose a dark theme | `packages/desktop/tests/e2e/annotationVisualParity.pw.ts-snapshots/` |
 | Omni Web Preview | Modern/legacy renderers in light/dark at wide, tablet, and mobile sizes, plus modern revision, comment, and suggestion modals | `packages/e2e/tests/webPreview.pw.ts-snapshots/` |
+
+Dark cross-surface parity cannot be asserted until desktop exposes a dark theme. The Web Preview
+dark baselines protect the dark UI that exists today without presenting duplicate light pixels as
+coverage.
 
 Animations, fixture data, clocks, generated IDs, fonts, viewport, color scheme, and device scale
 factor must be fixed by the visual harness. Mask a region only when its value is genuinely
@@ -77,16 +81,18 @@ pull request as the source change and called out explicitly in the pull request 
 which scenarios changed and why. Reviewers should inspect the old expected image, the CI actual and
 diff images, and the new expected image rather than approving a filename-only change.
 
-Web Preview baselines require Docker and the repository's ephemeral local Supabase stack. The full
-runner applies local migrations and forwards the snapshot-update flag only to Playwright:
+Web Preview baselines require the repository's ephemeral local Supabase stack and must be generated
+on Ubuntu 24.04 (native or in a correctly configured container). On that Linux host, the full runner
+applies local migrations and forwards the snapshot-update flag only to Playwright:
 
 ```bash
 bun run --cwd packages/e2e playwright install chromium --with-deps
 CI=1 bun run e2e:test:full -- --update-snapshots --retries=0
 ```
 
-This produces the Linux images in `packages/e2e/tests/webPreview.pw.ts-snapshots/`. Do not use
-production Supabase credentials to create or update a baseline.
+This produces the Linux images in `packages/e2e/tests/webPreview.pw.ts-snapshots/`. Running the same
+command directly on macOS produces separate Darwin images, not canonical Linux baselines. Do not
+use production Supabase credentials to create or update a baseline.
 
 Never update a baseline merely because CI produced a new actual image. First rule out missing fonts,
 unfrozen time or IDs, unfinished animations, incorrect fixture state, viewport drift, clipping,
