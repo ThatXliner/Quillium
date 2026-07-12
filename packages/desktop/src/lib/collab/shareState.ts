@@ -1,3 +1,7 @@
+import { history, historyField } from "@codemirror/commands";
+import { EditorState } from "@codemirror/state";
+import { readonlySavedFields } from "@quillium/share/core";
+
 /**
  * shareState.ts — Production serializer for Omni Web Preview editor state.
  *
@@ -5,12 +9,9 @@
  * core so cross-package contract tests can exercise the exact desktop producer
  * without loading the desktop collaboration/Yjs stack.
  */
-import type { LoadResult } from "$lib/db/types";
-import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
-import { replayEvents } from "$lib/editor/replay";
-import { history, historyField } from "@codemirror/commands";
-import { EditorState } from "@codemirror/state";
-import { readonlySavedFields } from "@quillium/share/core";
+import type { LoadResult } from "../db/types";
+import { annotationField, versionGroupField } from "../editor/plugins/annotations";
+import { replayEvents } from "../editor/replay";
 
 /** Serialize the fields understood by the public read-only editor. */
 export function serializeShareState(state: EditorState): Record<string, unknown> {
