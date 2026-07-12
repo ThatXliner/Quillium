@@ -12,7 +12,12 @@ import type { DraftMeta, TabMeta } from "$lib/db/types";
 import DocumentTabs from "$lib/editor/DocumentTabs.svelte";
 import DraftTreePanel from "$lib/editor/DraftTreePanel.svelte";
 import { ClockIcon } from "lucide-svelte";
+import { onMount } from "svelte";
 import PreviewContent from "./PreviewContent.svelte";
+import { docTextFromStateJson } from "./diff";
+
+type DiffLayout = "inline" | "side-by-side";
+const DIFF_LAYOUT_STORAGE_KEY = "quillium.versionHistory.diffLayout";
 
 const {
     tabs,
@@ -22,7 +27,9 @@ const {
     highlightTabId = null,
     highlightDraftId = null,
     currentStateJson,
+    previousStateJson,
     previousText,
+    comparisonStatus,
     loading,
     hasContent,
     bannerText = null,
@@ -37,7 +44,9 @@ const {
     highlightTabId?: string | null;
     highlightDraftId?: string | null;
     currentStateJson: string | null;
+    previousStateJson: string | null;
     previousText: string | null;
+    comparisonStatus: "changed" | "unchanged" | "no-previous";
     loading: boolean;
     hasContent: boolean;
     bannerText?: string | null;
@@ -47,6 +56,34 @@ const {
 } = $props();
 
 const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabId));
+let diffLayout = $state<DiffLayout>("inline");
+let projectedText = $state("");
+const hasTextChanges = $derived(
+    comparisonStatus === "changed" && previousText !== null && projectedText !== previousText,
+);
+const effectiveDiffLayout = $derived(hasTextChanges ? diffLayout : "inline");
+
+$effect(() => {
+    projectedText = docTextFromStateJson(currentStateJson);
+});
+
+onMount(() => {
+    try {
+        const saved = localStorage.getItem(DIFF_LAYOUT_STORAGE_KEY);
+        if (saved === "inline" || saved === "side-by-side") diffLayout = saved;
+    } catch {
+        // Storage can be unavailable in hardened webviews.
+    }
+});
+
+function setDiffLayout(layout: DiffLayout): void {
+    diffLayout = layout;
+    try {
+        localStorage.setItem(DIFF_LAYOUT_STORAGE_KEY, layout);
+    } catch {
+        // Persistence is a convenience, never a requirement.
+    }
+}
 </script>
 
 {#if empty}
@@ -55,7 +92,7 @@ const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabI
         <p class="text-sm text-black/40">Select a version to preview it</p>
     </div>
 {:else}
-    <div class="history-document-shell w-full max-w-[1480px]">
+    <div class="history-document-shell w-full max-w-[1680px]">
         {#if bannerText}
             <div
                 class="mx-auto mb-3 w-[816px] max-w-full rounded-lg border border-black/[0.08]
@@ -66,6 +103,66 @@ const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabI
         {/if}
 
         <div class="history-document-grid">
+            <div class="history-comparison-bar">
+                <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-black/60">
+                    {#if hasTextChanges}
+                        <span class="flex items-center gap-1.5">
+                            <span
+                                class="inline-block w-3 h-3 rounded-sm bg-green-200 border border-green-400"
+                            ></span>
+                            Added (underlined)
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span
+                                class="inline-block w-3 h-3 rounded-sm bg-red-200 border border-red-400"
+                            ></span>
+                            Removed (struck through)
+                        </span>
+                        <span class="text-black/50">Compared with the previous version</span>
+                    {:else if comparisonStatus === "no-previous"}
+                        <span>No earlier version to compare</span>
+                    {:else}
+                        <span>No differences at this point</span>
+                    {/if}
+                </div>
+
+                {#if hasTextChanges}
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="text-xs font-medium text-black/55">View</span>
+                        <div
+                            class="flex rounded-lg border border-black/[0.10] bg-black/[0.04] p-0.5"
+                            role="group"
+                            aria-label="Diff layout"
+                        >
+                            <button
+                                type="button"
+                                aria-pressed={diffLayout === "inline"}
+                                onclick={() => setDiffLayout("inline")}
+                                class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors
+                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60
+                                    {diffLayout === 'inline'
+                                        ? 'bg-white text-blue-700 shadow-sm'
+                                        : 'text-black/55 hover:bg-white/60 hover:text-black/75'}"
+                            >
+                                Inline
+                            </button>
+                            <button
+                                type="button"
+                                aria-pressed={diffLayout === "side-by-side"}
+                                onclick={() => setDiffLayout("side-by-side")}
+                                class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors
+                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60
+                                    {diffLayout === 'side-by-side'
+                                        ? 'bg-white text-blue-700 shadow-sm'
+                                        : 'text-black/55 hover:bg-white/60 hover:text-black/75'}"
+                            >
+                                Side by side
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+
             <div class="history-tabs min-w-0">
                 <DocumentTabs
                     readOnly
@@ -90,7 +187,15 @@ const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabI
             </aside>
 
             <div class="history-content min-w-0">
-                <PreviewContent {currentStateJson} {previousText} {loading} {hasContent} />
+                <PreviewContent
+                    {currentStateJson}
+                    {previousStateJson}
+                    {previousText}
+                    diffLayout={effectiveDiffLayout}
+                    {loading}
+                    {hasContent}
+                    oncurrenttextchange={(text) => (projectedText = text)}
+                />
             </div>
         </div>
     </div>
@@ -109,17 +214,27 @@ const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabI
 
     .history-tabs {
         grid-column: 2;
+        grid-row: 2;
+    }
+
+    .history-comparison-bar {
+        grid-column: 2;
         grid-row: 1;
+        display: flex;
+        min-height: 2.5rem;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0 0.25rem 0.65rem;
     }
 
     .history-drafts {
         grid-column: 1;
-        grid-row: 2;
+        grid-row: 3;
     }
 
     .history-content {
         grid-column: 2;
-        grid-row: 2;
+        grid-row: 3;
     }
 
     /* Keep the 816px document surface intact when the history timeline leaves
@@ -140,12 +255,17 @@ const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabI
 
         .history-tabs {
             grid-column: 1;
+            grid-row: 3;
+        }
+
+        .history-comparison-bar {
+            grid-column: 1;
             grid-row: 2;
         }
 
         .history-content {
             grid-column: 1;
-            grid-row: 3;
+            grid-row: 4;
         }
     }
 </style>

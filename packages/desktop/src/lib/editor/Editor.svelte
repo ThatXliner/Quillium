@@ -160,7 +160,7 @@ const getExtensionOptions: ListenerOptions = {
 // State + actions live in TabDraftController (tabDrafts.svelte.ts);
 // the editor supplies the lifecycle pieces via deps below.
 const drafts = new TabDraftController({
-    switchToDraft: (draftId) => switchToDraft(draftId),
+    switchToDraft: (tabId, draftId) => switchToDraft(tabId, draftId),
     flushPendingPersist: () => flushPendingPersist(),
     seedStateJson: (sourceDraftId) => seedStateJson(sourceDraftId),
 });
@@ -287,6 +287,14 @@ export async function reload() {
  * Called by the library when the user opens a document.
  */
 let loadGeneration = 0;
+let activeDraftWrite: Promise<void> = Promise.resolve();
+
+function persistActiveDraft(tabId: string, draftId: string): Promise<void> {
+    const write = activeDraftWrite.then(() => setActiveDraft(tabId, draftId));
+    activeDraftWrite = write.catch(() => {});
+    return write;
+}
+
 export async function loadDocument(id: string) {
     if (!$editorView) return;
 
@@ -338,34 +346,51 @@ export async function loadDocument(id: string) {
  * Loads a draft of the current document into the editor view.
  * Shared by tab switching, draft switching, fork, and lock toggling.
  */
-async function switchToDraft(draftId: string): Promise<void> {
+async function switchToDraft(tabId: string, draftId: string): Promise<void> {
     const docId = get(currentDocumentId);
-    const tabId = get(currentTabId);
     if (!docId || !$editorView) return;
 
     const gen = ++loadGeneration;
     await flushPendingPersist();
-    annotationEventBus.clearPendingSelections();
-    if (tabId) await setActiveDraft(tabId, draftId);
-    currentDraftId.set(draftId);
-    lastPersistedEventId.set(-1);
-    lastSavedAt.set(null);
+    if (gen !== loadGeneration || get(currentDocumentId) !== docId || get(currentTabId) !== tabId) {
+        return;
+    }
 
     const loaded = await loadDocumentState(docId, draftId);
-    if (gen !== loadGeneration) return;
+    if (gen !== loadGeneration || get(currentDocumentId) !== docId || get(currentTabId) !== tabId) {
+        return;
+    }
     const latestEventId =
         loaded.eventsSince.length > 0
             ? loaded.eventsSince[loaded.eventsSince.length - 1].id
             : loaded.snapshotEventId >= 0
               ? loaded.snapshotEventId
               : -1;
-    lastPersistedEventId.set(latestEventId);
-
     const locked = drafts.lockedOf(draftId);
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
+
+    // Commit the tab/draft pointer only after its state is ready and this is
+    // still the newest request. That keeps an older, slower load from changing
+    // identity while a newer draft owns the visible editor.
+    await persistActiveDraft(tabId, draftId);
+    // Active-draft writes are serialized. Once this request reaches the commit
+    // queue, finish its same-tab UI commit even if a newer load started; that
+    // newer request will commit after this one, while a failed newer load
+    // leaves the last successfully persisted draft and editor state aligned.
+    if (get(currentDocumentId) !== docId || get(currentTabId) !== tabId) {
+        return;
+    }
+    annotationEventBus.clearPendingSelections();
+    currentDraftId.set(draftId);
+    lastPersistedEventId.set(-1);
+    lastSavedAt.set(null);
+    lastPersistedEventId.set(latestEventId);
+
     $editorView.setState(state);
-    const text = state.doc.toString();
-    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+    // EditorView.setState() does not emit an update event. Refresh every Svelte
+    // mirror now so annotations, AI context, selections, and stats cannot leak
+    // from the tab that was previously open.
+    syncStoresToEditorState(state);
 }
 
 /**

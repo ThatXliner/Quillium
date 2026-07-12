@@ -43,7 +43,7 @@ import { collectSubtree, hasLiveChildren } from "./draftTree";
 
 export type TabDraftControllerDeps = {
     /** Load a draft of the current document into the live editor view. */
-    switchToDraft: (draftId: string) => Promise<void>;
+    switchToDraft: (tabId: string, draftId: string) => Promise<void>;
     /** Flush queued events + debounced meta writes before switching context. */
     flushPendingPersist: () => Promise<void>;
     /** Serialize a draft's current state to seed a new draft. */
@@ -58,6 +58,10 @@ export class TabDraftController {
     pendingDelete = $state<{ id: string; label: string; descendants: number } | null>(null);
 
     readonly #deps: TabDraftControllerDeps;
+    /** Latest-wins guard shared by document refreshes and tab selections. */
+    #contextGeneration = 0;
+    /** Preserve request order for the persisted active-tab pointer. */
+    #activeTabWrite: Promise<void> = Promise.resolve();
 
     constructor(deps: TabDraftControllerDeps) {
         this.#deps = deps;
@@ -67,29 +71,51 @@ export class TabDraftController {
         return this.tabDrafts.find((d) => d.id === draftId)?.locked ?? false;
     }
 
+    #isCurrentContext(generation: number, docId: string): boolean {
+        return generation === this.#contextGeneration && get(currentDocumentId) === docId;
+    }
+
+    #persistActiveTab(docId: string, tabId: string): Promise<void> {
+        const write = this.#activeTabWrite.then(() => setActiveTab(docId, tabId));
+        // A failed write is still returned to its caller, but must not poison
+        // every later selection queued behind it.
+        this.#activeTabWrite = write.catch(() => {});
+        return write;
+    }
+
     /**
      * Resolves the active tab + draft for a document, creating a default
      * "Main" tab (with its root draft) for documents that have none yet.
      * Refreshes the local tab/draft-tree state and the currentTabId store.
      */
     async refreshTabState(docId: string): Promise<{ tabId: string; draftId: string } | null> {
+        const generation = ++this.#contextGeneration;
         let tabList = await listTabs(docId);
+        if (!this.#isCurrentContext(generation, docId)) return null;
         if (tabList.length === 0) {
             tabList = [await createTab(docId, "Main")];
+            if (!this.#isCurrentContext(generation, docId)) return null;
         }
         const persistedTab = await getActiveTab(docId);
-        const activeTab = tabList.find((t) => t.id === persistedTab) ?? tabList[0];
+        if (!this.#isCurrentContext(generation, docId)) return null;
+        let activeTab = tabList.find((t) => t.id === persistedTab) ?? tabList[0];
 
         let drafts = await listTabDrafts(activeTab.id);
+        if (!this.#isCurrentContext(generation, docId)) return null;
         if (drafts.length === 0) {
             // Should not happen (createTab seeds a root draft; deleting the
             // last draft of a tab is rejected) — heal with a fresh tab.
             const fresh = await createTab(docId, "Main");
+            if (!this.#isCurrentContext(generation, docId)) return null;
             tabList = [...tabList, fresh];
             drafts = await listTabDrafts(fresh.id);
-            await setActiveTab(docId, fresh.id);
+            if (!this.#isCurrentContext(generation, docId)) return null;
+            await this.#persistActiveTab(docId, fresh.id);
+            if (!this.#isCurrentContext(generation, docId)) return null;
+            activeTab = fresh;
         }
         const persistedDraft = await getActiveDraft(activeTab.id);
+        if (!this.#isCurrentContext(generation, docId)) return null;
         const activeDraft = drafts.find((d) => d.id === persistedDraft) ?? drafts[0];
 
         this.tabs = tabList;
@@ -102,16 +128,29 @@ export class TabDraftController {
 
     async handleTabSelect(tabId: string) {
         const docId = get(currentDocumentId);
-        if (!docId || tabId === get(currentTabId)) return;
+        if (!docId) return;
+        const generation = ++this.#contextGeneration;
         await this.#deps.flushPendingPersist();
-        await setActiveTab(docId, tabId);
-        currentTabId.set(tabId);
+        if (!this.#isCurrentContext(generation, docId)) return;
+        // Clicking back to the already-committed tab must still cancel and
+        // outlast an in-flight switch to another tab.
+        if (tabId === get(currentTabId)) {
+            await this.#persistActiveTab(docId, tabId);
+            return;
+        }
+        await this.#persistActiveTab(docId, tabId);
+        if (!this.#isCurrentContext(generation, docId)) return;
 
-        const drafts = await listTabDrafts(tabId);
+        const [drafts, persisted] = await Promise.all([
+            listTabDrafts(tabId),
+            getActiveDraft(tabId),
+        ]);
+        if (!this.#isCurrentContext(generation, docId)) return;
         this.tabDrafts = drafts;
-        const persisted = await getActiveDraft(tabId);
         const draft = drafts.find((d) => d.id === persisted) ?? drafts[0];
-        if (draft) await this.#deps.switchToDraft(draft.id);
+        currentTabId.set(tabId);
+        if (draft) await this.#deps.switchToDraft(tabId, draft.id);
+        if (!this.#isCurrentContext(generation, docId)) return;
         posthog.capture("tab_switched");
     }
 
@@ -193,7 +232,9 @@ export class TabDraftController {
 
     async handleDraftSelect(draftId: string) {
         if (draftId === get(currentDraftId)) return;
-        await this.#deps.switchToDraft(draftId);
+        const tabId = get(currentTabId);
+        if (!tabId) return;
+        await this.#deps.switchToDraft(tabId, draftId);
         posthog.capture("draft_switched");
     }
 
@@ -212,7 +253,7 @@ export class TabDraftController {
             const next = await iterateDraft(sourceId, `v${this.tabDrafts.length}`, stateJson);
             this.tabDrafts = await listTabDrafts(tabId);
             posthog.capture("draft_iterated");
-            await this.#deps.switchToDraft(next.id);
+            await this.#deps.switchToDraft(tabId, next.id);
         } catch (e) {
             console.error("[Editor] iterate draft failed", e);
             captureException(e);
@@ -236,7 +277,7 @@ export class TabDraftController {
             const branch = await branchDraft(sourceId, "new take", stateJson);
             this.tabDrafts = await listTabDrafts(tabId);
             posthog.capture("draft_branched");
-            await this.#deps.switchToDraft(branch.id);
+            await this.#deps.switchToDraft(tabId, branch.id);
         } catch (e) {
             console.error("[Editor] branch draft failed", e);
             captureException(e);
@@ -277,7 +318,9 @@ export class TabDraftController {
         const doomedSet = new Set(doomed);
         const survivor = this.tabDrafts.find((d) => !doomedSet.has(d.id));
         if (!survivor) return false;
-        await this.#deps.switchToDraft(survivor.id);
+        const tabId = get(currentTabId);
+        if (!tabId) return false;
+        await this.#deps.switchToDraft(tabId, survivor.id);
         return true;
     }
 
@@ -376,7 +419,7 @@ export class TabDraftController {
         this.tabDrafts = await listTabDrafts(tabId);
         const nowLocked = this.lockedOf(current);
         if (current && nowLocked !== wasLocked) {
-            await this.#deps.switchToDraft(current);
+            await this.#deps.switchToDraft(tabId, current);
         }
     }
 
@@ -386,7 +429,8 @@ export class TabDraftController {
         this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
         posthog.capture(locked ? "draft_locked" : "draft_unlocked");
         if (draftId === get(currentDraftId)) {
-            await this.#deps.switchToDraft(draftId);
+            const tabId = get(currentTabId);
+            if (tabId) await this.#deps.switchToDraft(tabId, draftId);
         }
     }
 }

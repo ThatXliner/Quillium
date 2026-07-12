@@ -1547,6 +1547,20 @@ pub fn get_active_draft(conn: &Connection, tab_id: &str) -> Result<Option<String
 }
 
 pub fn set_active_draft(conn: &Connection, tab_id: &str, draft_id: &str) -> Result<()> {
+    let belongs_to_tab: bool = conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM drafts
+            WHERE id = ?1 AND tab_id = ?2 AND deleted_at IS NULL
+         )",
+        params![draft_id, tab_id],
+        |row| row.get(0),
+    )?;
+    if !belongs_to_tab {
+        return Err(refuse(
+            "Active draft must be a live draft in the selected tab",
+        ));
+    }
+
     conn.execute(
         "INSERT INTO _meta (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1589,6 +1603,21 @@ mod tests {
             |r| r.get(0),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn active_draft_rejects_a_draft_from_another_tab() {
+        let (conn, tab1, _main) = setup();
+        let tab2 = create_tab(&conn, "doc", "Second").unwrap();
+        let draft2: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL",
+                params![tab2.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(set_active_draft(&conn, &tab1, &draft2).is_err());
     }
     fn branched_from(conn: &Connection, id: &str) -> Option<String> {
         conn.query_row(

@@ -30,9 +30,9 @@ const PREVIOUS_CALENDAR_DAY = new Date(
     12,
 ).getTime();
 
-function makeAnnotatedStateJson(): string {
+function makeAnnotatedStateJson(doc = "The quick brown fox"): string {
     let state = EditorState.create({
-        doc: "The quick brown fox",
+        doc,
         extensions: [annotationField, versionGroupField],
     });
 
@@ -392,7 +392,7 @@ test("historical tab and draft navigation loads exact content with comparable di
         });
 
     await expect.poll(projectedText).toContain("Main revised prose.");
-    await expect(page.getByText("vs. previous version")).toBeVisible();
+    await expect(page.getByText("Compared with the previous version")).toBeVisible();
     await expect.poll(() => preview.locator(".cm-history-diff-add").count()).toBeGreaterThan(0);
     await expect.poll(() => preview.locator(".cm-history-diff-del").count()).toBeGreaterThan(0);
 
@@ -406,7 +406,9 @@ test("historical tab and draft navigation loads exact content with comparable di
         "true",
     );
     await expect.poll(projectedText).toContain("A standalone second pass.");
-    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
+    await expect(page.getByText("No differences at this point")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
@@ -436,6 +438,116 @@ test("historical tab and draft navigation loads exact content with comparable di
     for (const command of mutationCommands) {
         expect(await qp.countInvocations(command), command).toBe(0);
     }
+});
+
+test("history diff switches between inline and side-by-side layouts", async ({ page }) => {
+    const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
+    await qp.initHistory();
+
+    const layout = page.getByRole("group", { name: "Diff layout" });
+    const inline = layout.getByRole("button", { name: "Inline" });
+    const sideBySide = layout.getByRole("button", { name: "Side by side" });
+    await expect(inline).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
+
+    const comparisonBar = page.getByText("Compared with the previous version").locator("..");
+    const tabStrip = page.locator('[data-component="document-tabs"]');
+    await expect
+        .poll(async () => {
+            const [barBox, tabsBox] = await Promise.all([
+                comparisonBar.boundingBox(),
+                tabStrip.boundingBox(),
+            ]);
+            return barBox && tabsBox ? barBox.y + barBox.height <= tabsBox.y + 1 : false;
+        })
+        .toBe(true);
+
+    await sideBySide.click();
+    await expect(sideBySide).toHaveAttribute("aria-pressed", "true");
+
+    const previous = page.locator('[data-diff-pane="previous"]');
+    const selected = page.locator('[data-diff-pane="selected"]');
+    await expect(previous.getByRole("heading", { name: "Previous version" })).toBeVisible();
+    await expect(selected.getByRole("heading", { name: "Selected version" })).toBeVisible();
+    await expect(previous.locator(".cm-content")).toHaveText("Second version of the document.");
+    await expect(selected.locator(".cm-content")).toHaveText("Third version of the document.");
+    await expect(previous.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+    await expect(selected.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+    await expect(previous.locator(".cm-history-diff-del")).not.toHaveCount(0);
+    await expect(previous.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(selected.locator(".cm-history-diff-add")).not.toHaveCount(0);
+    await expect(selected.locator(".cm-history-diff-del")).toHaveCount(0);
+
+    // Keep split mode mounted while changing coordinates. Both pane payloads
+    // and their decorations must advance together rather than retaining the
+    // selected text from the previous EditorView.
+    await page.locator("#versions-panel [aria-selected='false']").first().click();
+    await expect(previous.locator(".cm-content")).toHaveText("First version of the document.");
+    await expect(selected.locator(".cm-content")).toHaveText("Second version of the document.");
+    await expect(previous.locator(".cm-history-diff-del")).not.toHaveCount(0);
+    await expect(selected.locator(".cm-history-diff-add")).not.toHaveCount(0);
+
+    await inline.click();
+    await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
+    await expect(page.locator('[data-diff-pane="previous"]')).toHaveCount(0);
+    await expect(page.locator(".version-preview .cm-history-diff-add")).not.toHaveCount(0);
+    await expect(page.locator(".version-preview .cm-history-diff-del")).not.toHaveCount(0);
+});
+
+test("side-by-side mode explains when no earlier version exists", async ({ page }) => {
+    const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
+    await qp.initHistory();
+
+    await page.getByRole("button", { name: "Side by side" }).click();
+    await page.locator("#versions-panel [role='option']").last().click();
+
+    await expect(page.getByText("No earlier version to compare", { exact: true })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
+    await expect(page.locator('[data-diff-pane="previous"]')).toHaveCount(0);
+    await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
+    await expect(page.locator('[data-diff-pane="selected"] .cm-history-diff-add')).toHaveCount(0);
+});
+
+test("side-by-side mode shows annotations for both historical versions", async ({ page }) => {
+    const qp = new QuilliumPage(page, {
+        snapshots: [
+            {
+                id: 2,
+                draftId: "draft-test-1",
+                upToEventId: 20,
+                createdAt: BASE_TIME - 1000,
+                label: "Selected annotations",
+                doc: "The quick brown fox",
+                stateJson: makeAnnotatedStateJson(),
+            },
+            {
+                id: 1,
+                draftId: "draft-test-1",
+                upToEventId: 10,
+                createdAt: BASE_TIME - 2000,
+                label: "Previous annotations",
+                doc: "The slow brown fox",
+                stateJson: makeAnnotatedStateJson("The slow brown fox"),
+            },
+        ],
+    });
+    await qp.initHistory();
+    await page.getByRole("button", { name: "Side by side" }).click();
+
+    const previousAnnotations = page.getByRole("complementary", {
+        name: "Previous version annotations",
+    });
+    const selectedAnnotations = page.getByRole("complementary", {
+        name: "Selected version annotations",
+    });
+    await expect(
+        previousAnnotations.getByRole("heading", { name: "Previous annotations" }),
+    ).toBeVisible();
+    await expect(
+        selectedAnnotations.getByRole("heading", { name: "Selected annotations" }),
+    ).toBeVisible();
+    await expect(previousAnnotations.locator("[data-annotation-card]")).toHaveCount(4);
+    await expect(selectedAnnotations.locator("[data-annotation-card]")).toHaveCount(4);
 });
 
 test("history preview uses the configured document typography", async ({ page }) => {
@@ -519,7 +631,9 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(suggestionCard.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
     await expect(suggestionCard.locator('[data-suggestion-diff="insert"]')).toHaveText("russet");
 
-    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
+    await expect(page.getByText("No differences at this point")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
@@ -537,9 +651,14 @@ test("history preview renders linked annotations read-only and explores grouped 
         .toBe("The swift brown hound");
     await expect(cards.getByRole("button", { name: /^swift, linked in / })).toBeDisabled();
     await expect(cards.getByRole("button", { name: /^hound, linked in / })).toBeDisabled();
-    await expect(page.getByText("vs. previous version")).toBeVisible();
-    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(2);
-    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(2);
+    await expect(page.getByRole("heading", { name: "Annotations" })).toBeVisible();
+    await expect(page.getByText("4 annotations in this version")).toBeVisible();
+    await expect(page.getByText("Selected pane")).toHaveCount(0);
+    await expect(page.getByText("Revision alternatives preview")).toHaveCount(0);
+    await expect(page.getByText("No differences at this point")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Diff layout" })).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
     // Clicking annotated prose updates the card focus from the actual editor
     // selection, just as it does in the writable editor.
@@ -554,7 +673,7 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(preview.locator(".cm-content")).toHaveText("The quick brown fox");
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
-    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
 });
 
 test("history annotation layout responds to the remaining preview pane width", async ({ page }) => {
