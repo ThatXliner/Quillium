@@ -47,10 +47,13 @@ const {
 let previewView: EditorView | undefined;
 let previousPreviewView: EditorView | undefined;
 const editorController = new ReadonlyEditorController();
+const previousEditorController = new ReadonlyEditorController();
 let diffCompartment: Compartment | undefined;
 let previousDiffCompartment: Compartment | undefined;
 let previewRevision = $state(0);
 let activeAnnotationId = $state<string | null>(null);
+let previousPreviewRevision = $state(0);
+let previousActiveAnnotationId = $state<string | null>(null);
 let previewRoot = $state<HTMLElement | null>(null);
 let previewWorkingStateJson = $state<string | null>(null);
 let previewWorkingSourceJson = $state<string | null>(null);
@@ -66,6 +69,13 @@ const annotationProjection = $derived.by(() => {
 });
 const annotationCountLabel = $derived(
     `${annotationProjection.annotations.length} ${annotationProjection.annotations.length === 1 ? "annotation" : "annotations"}`,
+);
+const previousAnnotationProjection = $derived.by(() => {
+    void previousPreviewRevision;
+    return previousEditorController.snapshot();
+});
+const previousAnnotationCountLabel = $derived(
+    `${previousAnnotationProjection.annotations.length} ${previousAnnotationProjection.annotations.length === 1 ? "annotation" : "annotations"}`,
 );
 const previewSerializedState = $derived.by(() => {
     // A baseline change must rebuild the current view even when its serialized
@@ -125,11 +135,44 @@ function selectAnnotation(annotationId: string): void {
     activeAnnotationId = annotationId;
 }
 
-function currentDiffExtension(current: string, layout = diffLayout): Extension {
+function selectPreviousAnnotation(annotationId: string): void {
+    if (!previousEditorController.selectAnnotation(annotationId)) return;
+    previousActiveAnnotationId = annotationId;
+}
+
+function currentDiffExtension(
+    current: string,
+    layout = diffLayout,
+    baseline = previousBaseline,
+): Extension {
     if (!hasPrevious) return [];
     return layout === "side-by-side"
-        ? sideBySideDiffDecorations(previousBaseline, current, "selected")
-        : diffDecorations(previousBaseline, current);
+        ? sideBySideDiffDecorations(baseline, current, "selected")
+        : diffDecorations(baseline, current);
+}
+
+function switchPreviousRevisionVersion(annotationId: string, versionIndex: number): void {
+    if (
+        !previousPreviewView ||
+        !previousEditorController.switchRevisionVersion(annotationId, versionIndex)
+    )
+        return;
+    const previous = previousPreviewView.state.doc.toString();
+    const current = previewView?.state.doc.toString() ?? serializedCurrentText;
+    if (diffCompartment && previewView) {
+        previewView.dispatch({
+            effects: diffCompartment.reconfigure(
+                currentDiffExtension(current, diffLayout, previous),
+            ),
+        });
+    }
+    if (previousDiffCompartment) {
+        previousPreviewView.dispatch({
+            effects: previousDiffCompartment.reconfigure(
+                sideBySideDiffDecorations(previous, current, "previous"),
+            ),
+        });
+    }
 }
 
 function switchRevisionVersion(annotationId: string, versionIndex: number): void {
@@ -208,7 +251,20 @@ function createPreviousPreviewState(
 
 function handlePreviousPreviewReady(nextView: EditorView | null): void {
     previousPreviewView = nextView ?? undefined;
-    if (!nextView) previousDiffCompartment = undefined;
+    previousEditorController.attach(nextView);
+    previousPreviewRevision = performance.now();
+    if (!nextView) {
+        previousDiffCompartment = undefined;
+        previousActiveAnnotationId = null;
+        return;
+    }
+    previousActiveAnnotationId = previousEditorController.activeAnnotationId();
+}
+
+function handlePreviousPreviewUpdate(update: ViewUpdate): void {
+    if (!update.selectionSet && !update.docChanged) return;
+    previousActiveAnnotationId = previousEditorController.activeAnnotationId();
+    previousPreviewRevision = performance.now();
 }
 
 function handlePreviewReady(nextView: EditorView | null): void {
@@ -235,7 +291,16 @@ $effect(() => {
     const annotationId = activeAnnotationId;
     if (!annotationId || !previewRoot) return;
     const card = previewRoot.querySelector<HTMLElement>(
-        `[data-history-annotation-id="${CSS.escape(annotationId)}"]`,
+        `[data-history-selected-annotation-id="${CSS.escape(annotationId)}"]`,
+    );
+    card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
+$effect(() => {
+    const annotationId = previousActiveAnnotationId;
+    if (!annotationId || !previewRoot) return;
+    const card = previewRoot.querySelector<HTMLElement>(
+        `[data-history-previous-annotation-id="${CSS.escape(annotationId)}"]`,
     );
     card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 });
@@ -243,7 +308,7 @@ $effect(() => {
 
 {#snippet annotationCards()}
     {#each annotationProjection.annotations as annotation (annotation.id)}
-        <div data-history-annotation-id={annotation.id}>
+        <div data-history-selected-annotation-id={annotation.id}>
             <ReadonlyAnnotationCard
                 {annotation}
                 active={activeAnnotationId === annotation.id}
@@ -260,18 +325,52 @@ $effect(() => {
     {/each}
 {/snippet}
 
+{#snippet previousAnnotationCards()}
+    {#each previousAnnotationProjection.annotations as annotation (annotation.id)}
+        <div data-history-previous-annotation-id={annotation.id}>
+            <ReadonlyAnnotationCard
+                {annotation}
+                active={previousActiveAnnotationId === annotation.id}
+                activeAnnotationId={previousActiveAnnotationId}
+                selectedRevisionVersionIndex={annotation.type === "revision"
+                    ? annotation.activeVersionIndex
+                    : null}
+                onSelect={() => selectPreviousAnnotation(annotation.id)}
+                onSelectAnnotation={selectPreviousAnnotation}
+                onSelectRevisionVersion={(versionIndex) =>
+                    switchPreviousRevisionVersion(annotation.id, versionIndex)}
+            />
+        </div>
+    {/each}
+{/snippet}
+
 {#snippet annotationPanel()}
     <div class="history-annotation-heading">
         <div>
-            <h3>Selected version annotations</h3>
-            <p>{annotationCountLabel} saved at this point</p>
+            <h3>Annotations</h3>
+            <p>{annotationCountLabel} in this version</p>
         </div>
-        <span>Selected pane</span>
     </div>
-    <p class="history-annotation-help">
-        Revision alternatives preview in the selected version. Green and red marks still compare
-        that preview with the previous historical version.
-    </p>
+    <div class="history-annotation-cards">
+        {@render annotationCards()}
+    </div>
+{/snippet}
+
+{#snippet previousAnnotationPanel()}
+    <div class="history-annotation-heading">
+        <h3>Previous annotations</h3>
+        <p>{previousAnnotationCountLabel} in this version</p>
+    </div>
+    <div class="history-annotation-cards">
+        {@render previousAnnotationCards()}
+    </div>
+{/snippet}
+
+{#snippet selectedAnnotationPanel()}
+    <div class="history-annotation-heading">
+        <h3>Selected annotations</h3>
+        <p>{annotationCountLabel} in this version</p>
+    </div>
     <div class="history-annotation-cards">
         {@render annotationCards()}
     </div>
@@ -330,6 +429,7 @@ $effect(() => {
                                     serializedState={previousSerializedState}
                                     stateFactory={createPreviousPreviewState}
                                     onReady={handlePreviousPreviewReady}
+                                    onUpdate={handlePreviousPreviewUpdate}
                                 />
                             </div>
                         {:else}
@@ -355,12 +455,20 @@ $effect(() => {
                             />
                         </div>
                     </section>
+                    {#if previousAnnotationProjection.annotations.length > 0}
+                        <aside
+                            class="history-annotation-column history-annotation-column-split history-annotation-column-previous"
+                            aria-label="Previous version annotations"
+                        >
+                            {@render previousAnnotationPanel()}
+                        </aside>
+                    {/if}
                     {#if annotationProjection.annotations.length > 0}
                         <aside
                             class="history-annotation-column history-annotation-column-split"
-                            aria-label="Snapshot annotations"
+                            aria-label="Selected version annotations"
                         >
-                            {@render annotationPanel()}
+                            {@render selectedAnnotationPanel()}
                         </aside>
                     {/if}
                 </div>
@@ -466,12 +574,13 @@ $effect(() => {
         padding: 0.9rem 0.2rem 0.2rem;
     }
 
+    .history-annotation-column-previous {
+        grid-column: 1;
+    }
+
     .history-annotation-heading {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem;
-        padding: 0 0.2rem;
+        padding: 0 0.2rem 0.65rem;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
 
     .history-annotation-heading h3 {
@@ -480,27 +589,10 @@ $effect(() => {
         font-weight: 650;
     }
 
-    .history-annotation-heading p,
-    .history-annotation-help {
+    .history-annotation-heading p {
         color: rgba(0, 0, 0, 0.5);
         font-size: 0.6875rem;
         line-height: 1.45;
-    }
-
-    .history-annotation-heading span {
-        flex: none;
-        border-radius: 999px;
-        background: rgba(34, 197, 94, 0.1);
-        color: rgb(21, 128, 61);
-        padding: 0.2rem 0.45rem;
-        font-size: 0.625rem;
-        font-weight: 600;
-    }
-
-    .history-annotation-help {
-        margin: 0.45rem 0.2rem 0;
-        padding-bottom: 0.7rem;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
 
     .history-annotation-cards {
