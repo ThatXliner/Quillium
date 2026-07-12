@@ -74,11 +74,11 @@ test.describe("revision cursor teleport", () => {
         // Verify inline editor closed
         await expect(inlineEditor).toBeHidden({ timeout: 3000 });
 
-        // Now click on the revision text ("world") — should reopen inline editor
-        // "hello " is 6 chars, so "world" starts roughly 60% across the line
-        if (box) {
-            await page.mouse.click(box.x + box.width * 0.8, box.y + box.height / 2);
-        }
+        // Click the actual revision mark rather than estimating its position from the
+        // full-width editor box. The prose occupies only a small part of that box.
+        const revisionText = page.locator("#editor-document .cm-revision").first();
+        await expect(revisionText).toHaveText("world");
+        await revisionText.click();
 
         // Inline editor should reopen
         const reopened = page.locator(".revision-inline-editor .cm-content").first();
@@ -95,12 +95,10 @@ test.describe("revision cursor teleport", () => {
         await expect(inlineEditor).toBeVisible({ timeout: 8000 });
         await expect.poll(() => getCmText(inlineEditor)).toBe("hello world");
 
-        // Click on the revision text in the main editor
-        const mainEditor = page.locator("#editor-document .cm-content");
-        const box = await mainEditor.boundingBox();
-        if (box) {
-            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        }
+        // Click on the marked revision text in the main editor.
+        const revisionText = page.locator("#editor-document .cm-revision").first();
+        await expect(revisionText).toHaveText("hello world");
+        await revisionText.click();
 
         // The inline editor should still be visible and focusable
         await expect(inlineEditor).toBeVisible();
