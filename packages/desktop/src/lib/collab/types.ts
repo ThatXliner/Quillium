@@ -1,6 +1,5 @@
 import type { Awareness } from "y-protocols/awareness";
 import type { WebsocketProvider } from "y-websocket";
-import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 /**
  * types.ts — Collab-related types.
  *
@@ -36,6 +35,13 @@ import type { AnnotationIdMap } from "./annotationSchema";
  */
 export type YjsAnnotationNode = Y.Map<unknown>;
 
+/** Stable wire representation. Revision ids are Yjs annotation keys, never peer-local CM ids. */
+export type YjsVersionGroup = {
+    id: string;
+    label: string;
+    members: Array<{ revisionId: string; versionId: string }>;
+};
+
 /** Active collab session state (Yjs-based) */
 export type CollabSession = {
     docId: string;
@@ -48,7 +54,7 @@ export type CollabSession = {
     awareness: Awareness;
     ytext: Y.Text; // Main document Y.Text
     ymap: Y.Map<YjsAnnotationNode>; // Annotation sync map (recursive Y.Map entries)
-    yVersionGroups: Y.Map<VersionGroup>; // Version-group sync map (plain JSON entries)
+    yVersionGroups: Y.Map<YjsVersionGroup>; // Version-group sync map (plain JSON entries)
     undoManager: Y.UndoManager; // Plan 8.5c-02: For subtree undo scope registration
     mainIdMap: AnnotationIdMap; // Plan 8.5c-02: For CM ID ↔ Yjs ID resolution
 };
