@@ -30,6 +30,7 @@ provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
 import ModelGuideModal from "$lib/ai/ModelGuideModal.svelte";
+import { disconnectOpenAI, getStoredOpenAISession, signInWithChatGPT } from "$lib/ai/openaiOAuth";
 import type { Provider } from "$lib/ai/provider";
 import {
     HAS_API_KEY_KEY,
@@ -128,9 +129,11 @@ const MODEL_KEY = "quillium-ai-model";
 function loadTabProvider(): TabProvider {
     if (typeof localStorage === "undefined") return "openai";
     const stored = localStorage.getItem(PROVIDER_KEY) ?? "openai";
-    // "openai-codex" and "openai-compatible" both show the OpenAI tab
+    // OpenAI's alternate connection modes all live under the OpenAI tab.
     // with the custom endpoint toggle enabled.
-    if (stored === "openai-codex" || stored === "openai-compatible") return "openai";
+    if (stored === "openai-codex" || stored === "openai-compatible" || stored === "openai-oauth") {
+        return "openai";
+    }
     if (stored === "anthropic" || stored === "google" || stored === "deepseek") return stored;
     return "openai";
 }
@@ -138,7 +141,12 @@ function loadTabProvider(): TabProvider {
 function loadUseCustomEndpoint(): boolean {
     if (typeof localStorage === "undefined") return false;
     const stored = localStorage.getItem(PROVIDER_KEY);
-    return stored === "openai-compatible" || stored === "openai-codex";
+    return stored === "openai-compatible" || stored === "openai-codex" || stored === "openai-oauth";
+}
+
+function loadUseChatGPT(): boolean {
+    if (typeof localStorage === "undefined") return false;
+    return localStorage.getItem(PROVIDER_KEY) === "openai-oauth";
 }
 
 function loadModel(): string {
@@ -148,6 +156,7 @@ function loadModel(): string {
 
 let selectedTab = $state<TabProvider>(loadTabProvider());
 let useCustomEndpoint = $state(loadUseCustomEndpoint());
+let useChatGPT = $state(loadUseChatGPT());
 let selectedModel = $state(loadModel());
 let baseUrl = $state(aiSettings.baseURL);
 
@@ -158,14 +167,48 @@ let saveStatus = $state<"idle" | "saved" | "error">("idle");
 let saveTimer: ReturnType<typeof setTimeout>;
 let canSave = $derived(!!apiKey.trim() || hasApiKey());
 
+function initialOAuthStatus(): "checking" | "signed-out" {
+    return loadUseChatGPT() ? "checking" : "signed-out";
+}
+
+let oauthStatus = $state<"checking" | "signed-out" | "starting" | "signed-in" | "error">(
+    initialOAuthStatus(),
+);
+let oauthError = $state("");
+
 let effectiveProvider = $derived<Provider>(
-    selectedTab === "openai" && useCustomEndpoint ? "openai-compatible" : selectedTab,
+    selectedTab === "openai" && useChatGPT
+        ? "openai-oauth"
+        : selectedTab === "openai" && useCustomEndpoint
+          ? "openai-compatible"
+          : selectedTab,
 );
 
 $effect(() => {
     const provider = effectiveProvider;
+    if (provider === "openai-oauth") {
+        keyLoading = false;
+        return;
+    }
     aiSettings.provider = provider;
     localStorage.setItem(PROVIDER_KEY, provider);
+});
+
+$effect(() => {
+    if (!useChatGPT) return;
+    let cancelled = false;
+    getStoredOpenAISession()
+        .then((session) => {
+            if (!cancelled) oauthStatus = session ? "signed-in" : "signed-out";
+        })
+        .catch((error) => {
+            if (cancelled) return;
+            oauthStatus = "error";
+            oauthError = String(error);
+        });
+    return () => {
+        cancelled = true;
+    };
 });
 
 $effect(() => {
@@ -202,6 +245,7 @@ function selectTab(id: TabProvider) {
     selectedTab = id;
     if (id !== "openai") {
         useCustomEndpoint = false;
+        useChatGPT = false;
     }
     const first = MODEL_OPTIONS[id][0];
     selectedModel = first.id;
@@ -212,6 +256,7 @@ function selectTab(id: TabProvider) {
 
 function toggleCustomEndpoint(enabled: boolean) {
     useCustomEndpoint = enabled;
+    if (!enabled) useChatGPT = false;
     if (enabled) {
         // Switch to freeform model — keep whatever the user types.
         posthog.capture("ai_settings_provider_changed", { provider: "openai-compatible" });
@@ -222,6 +267,36 @@ function toggleCustomEndpoint(enabled: boolean) {
         localStorage.setItem(MODEL_KEY, first.id);
         aiSettings.model = first.id;
         posthog.capture("ai_settings_provider_changed", { provider: "openai" });
+    }
+}
+
+function selectOpenAIConnection(connection: "endpoint" | "chatgpt") {
+    useCustomEndpoint = true;
+    useChatGPT = connection === "chatgpt";
+    if (useChatGPT && !selectedModel.trim()) selectModel("gpt-5.4-mini");
+    posthog.capture("ai_settings_provider_changed", { provider: effectiveProvider });
+}
+
+async function toggleChatGPTSignIn() {
+    oauthError = "";
+    if (oauthStatus === "signed-in") {
+        try {
+            await disconnectOpenAI();
+            oauthStatus = "signed-out";
+        } catch (error) {
+            oauthStatus = "error";
+            oauthError = String(error);
+        }
+        return;
+    }
+    oauthStatus = "starting";
+    try {
+        await signInWithChatGPT();
+        oauthStatus = "signed-in";
+    } catch (error) {
+        oauthStatus = "error";
+        oauthError = String(error);
+        captureException(error);
     }
 }
 
@@ -350,6 +425,14 @@ async function saveApiKey() {
         <div class="flex flex-col gap-2">
             <div
                 onclick={() => toggleCustomEndpoint(!useCustomEndpoint)}
+                onkeydown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleCustomEndpoint(!useCustomEndpoint);
+                    }
+                }}
+                role="button"
+                tabindex="0"
                 class="flex items-center gap-2 rounded-lg bg-white/50 border border-black/10 px-3 py-2.5 text-left transition-colors hover:bg-white/70 cursor-pointer"
             >
                 <ChevronDownIcon
@@ -361,7 +444,11 @@ async function saveApiKey() {
                     <p class="text-xs font-medium text-black/70 leading-tight">Custom endpoint</p>
                     <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
                         {#if useCustomEndpoint}
-                            Using <span class="font-mono text-black/50">{baseUrl || "http://localhost:11434/v1"}</span>
+                            {#if useChatGPT}
+                                Use your ChatGPT plan through OpenAI OAuth
+                            {:else}
+                                Using <span class="font-mono text-black/50">{baseUrl || "http://localhost:11434/v1"}</span>
+                            {/if}
                         {:else}
                             Use a compatible API (Ollama, LM Studio, etc.)
                         {/if}
@@ -383,6 +470,21 @@ async function saveApiKey() {
             </div>
             {#if useCustomEndpoint}
                 <div class="flex flex-col gap-2 pl-1">
+                    <div class="grid grid-cols-2 gap-1 rounded-lg bg-black/5 p-1">
+                        <button
+                            onclick={() => selectOpenAIConnection("endpoint")}
+                            class="rounded-md px-2 py-1.5 text-[11px] transition-colors {useChatGPT
+                                ? 'text-black/40 hover:text-black/60'
+                                : 'bg-white text-black/70 shadow-sm'}"
+                        >Local endpoint</button>
+                        <button
+                            onclick={() => selectOpenAIConnection("chatgpt")}
+                            class="rounded-md px-2 py-1.5 text-[11px] transition-colors {useChatGPT
+                                ? 'bg-white text-black/70 shadow-sm'
+                                : 'text-black/40 hover:text-black/60'}"
+                        >ChatGPT account</button>
+                    </div>
+                    {#if !useChatGPT}
                     <div>
                         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1.5">
                             Base URL
@@ -400,6 +502,7 @@ async function saveApiKey() {
                             Endpoint for any OpenAI-compatible API.
                         </p>
                     </div>
+                    {/if}
                 </div>
             {/if}
         </div>
@@ -512,6 +615,36 @@ async function saveApiKey() {
                 </p>
             {/if}
         </div>
+    {:else if useChatGPT}
+        <div>
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+                ChatGPT account
+            </p>
+            <button
+                onclick={toggleChatGPTSignIn}
+                disabled={oauthStatus === "checking" || oauthStatus === "starting"}
+                class="flex items-center justify-center gap-2 w-full rounded-full border border-black/15 bg-white px-4 py-3 text-sm font-medium text-black/80 shadow-sm transition-colors hover:bg-black/[0.02] disabled:opacity-50"
+            >
+                {#if oauthStatus === "signed-in"}
+                    <CheckIcon size={16} class="text-green-600" />
+                    Disconnect ChatGPT
+                {:else if oauthStatus === "starting"}
+                    Signing in…
+                {:else if oauthStatus === "checking"}
+                    Checking connection…
+                {:else}
+                    Sign in with ChatGPT
+                {/if}
+            </button>
+            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                Opens your browser. Your OAuth session is stored in the system keychain.
+            </p>
+            {#if oauthError}
+                <p class="text-[10px] text-red-600/80 mt-1.5 leading-relaxed break-all">
+                    {oauthError}
+                </p>
+            {/if}
+        </div>
     {:else}
         <!-- Optional API Key for custom endpoint -->
         <div>
@@ -554,7 +687,12 @@ async function saveApiKey() {
     <p class="text-[10px] text-black/30 leading-relaxed px-0.5">
         By using AI features, your writing is sent directly to
         {#if useCustomEndpoint}
-            your custom endpoint. Check its terms and privacy policy.
+            {#if useChatGPT}
+                OpenAI through your ChatGPT account. This beta integration uses the unofficial
+                openai-oauth package. Check OpenAI's terms and privacy policy.
+            {:else}
+                your custom endpoint. Check its terms and privacy policy.
+            {/if}
         {:else if selectedTab === "openai"}
             OpenAI. You agree to their
             <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>privacy policy</button>.

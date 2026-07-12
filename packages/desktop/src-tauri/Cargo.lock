@@ -4091,6 +4091,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "textwrap",
+ "url",
  "uuid",
 ]
 

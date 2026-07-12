@@ -27,6 +27,7 @@ import { appEventBus } from "$lib/events/appEventBus";
  *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
  */
 import { invoke } from "@tauri-apps/api/core";
+import { HAS_OPENAI_OAUTH_KEY } from "./openaiOAuth";
 import type { Provider } from "./provider";
 
 const PROVIDER_KEY = "quillium-ai-provider";
@@ -204,6 +205,9 @@ export const aiSettings = $state({
 });
 
 export function hasApiKey(): boolean {
+    if (aiSettings.provider === "openai-oauth") {
+        return typeof localStorage !== "undefined" && !!localStorage.getItem(HAS_OPENAI_OAUTH_KEY);
+    }
     if (aiSettings.provider === "openai-compatible") return true;
     if (aiSettings.apiKey.trim().length > 0) return true;
     // The key hasn't loaded from the keychain yet, but we know one

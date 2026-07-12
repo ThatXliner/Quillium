@@ -19,9 +19,17 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAIOAuth } from "@openai-oauth/ai-sdk";
 import type { LanguageModel } from "ai";
+import { getFreshOpenAISession } from "./openaiOAuth";
 
-export type Provider = "openai" | "openai-compatible" | "anthropic" | "google" | "deepseek";
+export type Provider =
+    | "openai"
+    | "openai-oauth"
+    | "openai-compatible"
+    | "anthropic"
+    | "google"
+    | "deepseek";
 
 /**
  * Instantiate a vendor-specific LanguageModel for the given provider.
@@ -43,6 +51,11 @@ export function createModel(
     switch (provider) {
         case "openai":
             return createOpenAI({ apiKey })(modelId) as LanguageModel;
+        case "openai-oauth":
+            return createOpenAIOAuth({
+                kind: "openai-oauth",
+                getSession: getFreshOpenAISession,
+            })(modelId) as unknown as LanguageModel;
         case "openai-compatible":
             return createOpenAI({
                 apiKey: apiKey || "unused",

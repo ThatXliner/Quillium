@@ -2,6 +2,7 @@ mod app_log;
 pub mod db;
 pub mod embeddings;
 mod keychain;
+mod oauth;
 mod pdf_export;
 
 use std::{fs, path::PathBuf, sync::Mutex};
@@ -35,6 +36,7 @@ use db::{
     DraftMeta, EventRecord, LoadResult, SnapshotMeta, TabMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
+use oauth::await_openai_oauth_callback;
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
@@ -1282,6 +1284,7 @@ pub fn run() {
             set_api_key,
             get_api_key,
             delete_api_key,
+            await_openai_oauth_callback,
             cmd_open_in_new_window,
             cmd_register_open_doc,
             cmd_deregister_open_doc,
