@@ -1,12 +1,12 @@
 name: Test
 
 on:
-  push:
+  pull_request:
     branches:
       - main
 
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}
+  group: test-${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:

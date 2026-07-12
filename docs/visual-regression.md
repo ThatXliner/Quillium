@@ -1,10 +1,10 @@
 # Visual Regression and CI Policy
 
-Quillium's post-merge `CI Gate` checks the behavior and presentation shared by the desktop editor,
-Version History, and Omni Web Preview after changes reach `main`. It intentionally does not run for
-new commits on an open pull request, keeping the expensive browser matrix to one run after merge.
+Quillium's pre-merge `CI Gate` checks the behavior and presentation shared by the desktop editor,
+Version History, and Omni Web Preview. It runs only for pull requests targeting `main` and does not
+run again when the pull request merges.
 
-## Post-merge jobs
+## Pull request jobs
 
 The workflow classifies the changed paths before starting the expensive jobs:
 
@@ -15,16 +15,16 @@ The workflow classifies the changed paths before starting the expensive jobs:
 | Desktop Playwright | Desktop, shared UI, dependency, or CI harness changes | Focused annotation, modal, history, and visual suite |
 | Web Preview | Landing, share, publishing, Supabase, E2E, dependency, or CI harness changes | Real landing route against an ephemeral local Supabase stack |
 
-Documentation-only changes skip those jobs. `CI Gate` still runs after the change lands and fails if
-any path-selected job fails, is cancelled, or is skipped unexpectedly. Because the workflow is
-post-merge, it reports regressions on `main`; it is not a branch-protection check.
+Documentation-only changes skip those jobs. `CI Gate` still runs on the pull request and fails if
+any path-selected job fails, is cancelled, or is skipped unexpectedly. Its stable name can be used
+as the required status check in branch protection for `main`.
 
 Behavioral browser jobs retain a small, finite retry budget to preserve evidence about intermittent
 failures. Playwright's `failOnFlakyTests` option makes a retry-pass fail CI, so a flake cannot become
-a green run. Desktop behavioral coverage is capped at two workers with a 60-second test timeout;
-the pixel matrix runs separately with one worker and no retries to avoid contending over its shared
-preview server and rendering initialization. Each browser job records its wall-clock runtime and
-expected, flaky, and failed test counts in the GitHub Actions job summary.
+a green pull request. Desktop behavioral coverage is capped at two workers with a 60-second test
+timeout; the pixel matrix runs separately with one worker and no retries to avoid contending over
+its shared preview server and rendering initialization. Each browser job records its wall-clock
+runtime and expected, flaky, and failed test counts in the GitHub Actions job summary.
 
 ## Canonical visual environment
 
