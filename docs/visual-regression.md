@@ -1,34 +1,34 @@
 # Visual Regression and CI Policy
 
-Quillium's required `CI Gate` check protects the behavior and presentation shared by the desktop
-editor, Version History, and Omni Web Preview. The gate runs for pull requests, merge queues, and
-pushes to `main`.
+Quillium's post-merge `CI Gate` checks the behavior and presentation shared by the desktop editor,
+Version History, and Omni Web Preview after changes reach `main`. It intentionally does not run for
+new commits on an open pull request, keeping the expensive browser matrix to one run after merge.
 
-## Required jobs
+## Post-merge jobs
 
 The workflow classifies the changed paths before starting the expensive jobs:
 
-| Job | Runs when | Required command or coverage |
+| Job | Runs when | Command or coverage |
 |-----|-----------|------------------------------|
 | Static checks | Source, configuration, or workflow code changes | `bun ci`, `bun run check:all`, `bun run landing:build` |
 | Cross-package tests | Source, configuration, or workflow code changes | `bun ci`, `bun run test:all` |
 | Desktop Playwright | Desktop, shared UI, dependency, or CI harness changes | Focused annotation, modal, history, and visual suite |
 | Web Preview | Landing, share, publishing, Supabase, E2E, dependency, or CI harness changes | Real landing route against an ephemeral local Supabase stack |
 
-Documentation-only changes skip those jobs. `CI Gate` still runs and is the single stable check to
-require in branch protection; it fails if any path-required job fails, is cancelled, or is skipped
-unexpectedly.
+Documentation-only changes skip those jobs. `CI Gate` still runs after the change lands and fails if
+any path-selected job fails, is cancelled, or is skipped unexpectedly. Because the workflow is
+post-merge, it reports regressions on `main`; it is not a branch-protection check.
 
 Behavioral browser jobs retain a small, finite retry budget to preserve evidence about intermittent
 failures. Playwright's `failOnFlakyTests` option makes a retry-pass fail CI, so a flake cannot become
-a green merge. Desktop behavioral coverage is capped at two workers with a 60-second test timeout;
+a green run. Desktop behavioral coverage is capped at two workers with a 60-second test timeout;
 the pixel matrix runs separately with one worker and no retries to avoid contending over its shared
 preview server and rendering initialization. Each browser job records its wall-clock runtime and
 expected, flaky, and failed test counts in the GitHub Actions job summary.
 
 ## Canonical visual environment
 
-Required image comparisons use the Bun-locked Playwright version and Chromium on Ubuntu 24.04.
+Canonical image comparisons use the Bun-locked Playwright version and Chromium on Ubuntu 24.04.
 Linux snapshots are canonical. A run on macOS or Windows is useful for diagnosis, but its output
 must not replace the Linux baseline because font rasterization and browser rendering differ by OS.
 Expected filenames retain Playwright's platform suffix (`-chromium-linux.png`); a developer run on
