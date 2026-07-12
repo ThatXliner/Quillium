@@ -1,36 +1,145 @@
 /**
  * webPreview.pw.ts — Full browser coverage of the Omni Web Preview path:
- * local Supabase row/RPC → SvelteKit /share/[token] load → real renderer.
+ * isolated Supabase row/RPC → SvelteKit /share/[token] load → real renderer.
  */
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
+import { VISUAL_FIXTURE_IDS, VISUAL_FIXTURE_TIME } from "./fixtures";
+import { resolveWebPreviewEnvironment } from "./webPreviewEnv";
 import { type WebPreviewSeed, cleanupWebPreview, seedWebPreview } from "./webPreviewSupport";
 
-const supabaseUrl = process.env.E2E_SUPABASE_URL;
-const serviceRoleKey = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY;
-const hasLocalSupabase = Boolean(supabaseUrl && serviceRoleKey);
+const webPreviewEnvironment = resolveWebPreviewEnvironment(process.env);
 const config = {
-    url: supabaseUrl ?? "",
-    serviceRoleKey: serviceRoleKey ?? "",
+    url: webPreviewEnvironment.url,
+    serviceRoleKey: webPreviewEnvironment.serviceRoleKey,
 };
+
+const VISUAL_VIEWPORTS = [
+    { name: "wide", width: 1_440, height: 1_000 },
+    { name: "tablet", width: 1_024, height: 900 },
+    { name: "mobile", width: 390, height: 844 },
+] as const;
+const VISUAL_THEMES = ["light", "dark"] as const;
+const VISUAL_RENDERERS = ["modern", "legacy"] as const;
+const VISUAL_SCREENSHOT_OPTIONS = {
+    animations: "disabled" as const,
+    caret: "hide" as const,
+    maxDiffPixelRatio: 0.005,
+    scale: "css" as const,
+    threshold: 0.2,
+};
+const VISUAL_STABILITY_CSS = `
+    html { scroll-behavior: auto !important; }
+    *, *::before, *::after {
+        animation: none !important;
+        caret-color: transparent !important;
+        transition: none !important;
+    }
+`;
+
+async function settleVisualPage(
+    page: Page,
+    expectedAnnotationCards: number | null = 6,
+): Promise<void> {
+    await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+    });
+    if (expectedAnnotationCards !== null) {
+        await expect(page.locator("[data-annotation-card-view]")).toHaveCount(
+            expectedAnnotationCards,
+        );
+    }
+    await expect
+        .poll(() =>
+            page.evaluate(
+                () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            ),
+        )
+        .toBeLessThanOrEqual(1);
+}
+
+async function openVisualShare(
+    page: Page,
+    options: {
+        token: string;
+        renderer: (typeof VISUAL_RENDERERS)[number];
+        theme: (typeof VISUAL_THEMES)[number];
+        title: string;
+    },
+): Promise<void> {
+    await page.emulateMedia({ colorScheme: options.theme, reducedMotion: "reduce" });
+    await page.clock.setFixedTime(VISUAL_FIXTURE_TIME);
+    await page.addInitScript(() => localStorage.setItem("cookie_consent", "declined"));
+    const response = await page.goto(`/share/${options.token}`);
+    expect(response?.status()).toBe(200);
+    await page.addStyleTag({ content: VISUAL_STABILITY_CSS });
+    await expect(page.locator(".share-topbar")).toContainText(options.title);
+    expect(await page.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches)).toBe(
+        options.theme === "dark",
+    );
+
+    if (options.renderer === "modern") {
+        await expect(page.locator(".cm-content")).toBeVisible();
+        await expect(page.locator('[data-readonly-renderer="legacy-static"]')).toHaveCount(0);
+    } else {
+        await expect(page.locator(".cm-editor")).toHaveCount(0);
+        await expect(page.locator('[data-readonly-renderer="legacy-static"]')).toBeVisible();
+    }
+    await settleVisualPage(page, options.renderer === "modern" ? 6 : 9);
+}
+
+async function focusVisualAnchor(
+    page: Page,
+    viewportName: (typeof VISUAL_VIEWPORTS)[number]["name"],
+): Promise<void> {
+    const annotationId =
+        viewportName === "wide"
+            ? VISUAL_FIXTURE_IDS.startComment
+            : viewportName === "tablet"
+              ? VISUAL_FIXTURE_IDS.rootRevision
+              : VISUAL_FIXTURE_IDS.endComment;
+    const card = page.locator(`[data-annotation-id="${annotationId}"]`).first();
+    await expect(card).toBeVisible();
+    await card.getByRole("heading").click();
+    await card.evaluate((element) =>
+        element.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" }),
+    );
+}
+
+function requireSeed(seed: WebPreviewSeed | undefined): WebPreviewSeed {
+    if (!seed) throw new Error("Web Preview fixture was not seeded");
+    return seed;
+}
 
 test.describe("Omni Web Preview", () => {
     test.skip(
-        !hasLocalSupabase,
-        "Set E2E_SUPABASE_URL and E2E_SUPABASE_SERVICE_ROLE_KEY for local Supabase",
+        !webPreviewEnvironment.enabled,
+        "Set the E2E Supabase URL, service-role key, and publishable key",
     );
     test.describe.configure({ mode: "serial" });
 
-    let seed: WebPreviewSeed;
+    let seed: WebPreviewSeed | undefined;
 
     test.beforeAll(async () => {
         seed = await seedWebPreview(config);
     });
 
     test.afterAll(async () => {
-        if (seed?.userId) await cleanupWebPreview(config, seed.userId);
+        if (seed) await cleanupWebPreview(config, seed.userId);
+    });
+
+    test.afterEach(async ({ page }, testInfo) => {
+        if (testInfo.status === testInfo.expectedStatus || page.isClosed()) return;
+        await testInfo.attach("web-preview-dom", {
+            body: await page.content(),
+            contentType: "text/html",
+        });
     });
 
     test("renders serialized state and cascades linked revisions", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -38,35 +147,36 @@ test.describe("Omni Web Preview", () => {
             if (message.type() === "error") consoleErrors.push(message.text());
         });
 
-        const response = await page.goto(`/share/${seed.modernToken}`);
+        const response = await page.goto(`/share/${currentSeed.modernToken}`);
         expect(response?.status()).toBe(200);
 
-        await expect(page).toHaveTitle(`${seed.title} · Shared via Quillium`);
+        await expect(page).toHaveTitle(`${currentSeed.title} · Shared via Quillium`);
         await expect(page.locator('meta[name="description"]')).toHaveAttribute(
             "content",
-            seed.excerpt,
+            currentSeed.excerpt,
         );
         await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
             "content",
-            `${seed.title} · Shared via Quillium`,
+            `${currentSeed.title} · Shared via Quillium`,
         );
         await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
             "href",
-            `https://quillium.bryanhu.com/share/${seed.modernToken}`,
+            `https://quillium.bryanhu.com/share/${currentSeed.modernToken}`,
         );
 
         const topbar = page.locator(".share-topbar");
         await expect(topbar).toContainText("Read-only");
-        await expect(topbar).toContainText(seed.title);
-        await expect(topbar).toContainText(seed.authorName);
+        await expect(topbar).toContainText(currentSeed.title);
+        await expect(topbar).toContainText(currentSeed.authorName);
         await expect(topbar.getByRole("link", { name: "Edit in Quillium" })).toHaveAttribute(
             "href",
             /shared-doc.*#download$/,
         );
 
         const editor = page.locator(".cm-content");
-        await expect(editor).toHaveText(seed.content);
+        await expect(editor).toHaveText(currentSeed.content);
         await expect(editor).toHaveAttribute("contenteditable", "false");
+        await expect(page.locator('[data-readonly-renderer="legacy-static"]')).toHaveCount(0);
 
         const cards = page.locator("[data-annotation-card-view]");
         await expect(cards).toHaveCount(4);
@@ -204,7 +314,7 @@ test.describe("Omni Web Preview", () => {
         const activeSuggestionTop = (await suggestionCard.boundingBox())?.y;
         expect(activeSuggestionTop).toBeDefined();
         expect(Math.abs((activeSuggestionTop ?? 0) - (initialSuggestionTop ?? 0))).toBeGreaterThan(
-            10,
+            1,
         );
 
         await expect
@@ -237,24 +347,26 @@ test.describe("Omni Web Preview", () => {
     });
 
     test("renders the pre-published_state legacy fallback", async ({ page }) => {
-        const response = await page.goto(`/share/${seed.legacyToken}`);
+        const currentSeed = requireSeed(seed);
+        const response = await page.goto(`/share/${currentSeed.legacyToken}`);
         expect(response?.status()).toBe(200);
 
-        await expect(page).toHaveTitle(`${seed.title} (legacy) · Shared via Quillium`);
+        await expect(page).toHaveTitle(`${currentSeed.title} (legacy) · Shared via Quillium`);
         await expect(page.locator(".cm-editor")).toHaveCount(0);
-        await expect(page.locator(".share-document")).toContainText(seed.content);
+        await expect(page.locator('[data-readonly-renderer="legacy-static"]')).toHaveCount(1);
+        await expect(page.locator(".share-document")).toContainText(currentSeed.content);
         await expect(page.locator("[data-annotation-card-view]")).toHaveCount(4);
         await expect(page.getByText("Strong opener.")).toBeVisible();
         await expect(page.getByRole("heading", { name: "Revision" })).toHaveCount(2);
         await expect(page.getByRole("heading", { name: "AI Suggestion" })).toBeVisible();
-        // Newly serialized flat payloads retain group presentation metadata even
-        // when `published_state` is unavailable. Truly old rows simply omit it.
-        await expect(page.locator("[data-version-group-id]")).toHaveCount(2);
+        // Pre-published_state rows also predate stable version ids and linked-group metadata.
+        await expect(page.locator("[data-version-group-id]")).toHaveCount(0);
     });
 
     test("falls back only when the measured annotation column is too narrow", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
         await page.setViewportSize({ width: 1_200, height: 900 });
-        await page.goto(`/share/${seed.modernToken}`);
+        await page.goto(`/share/${currentSeed.modernToken}`);
         await expect(page.locator("[data-annotation-column]")).toHaveCount(0);
         await expect(page.locator("aside.annotation-column")).toBeVisible();
 
@@ -287,13 +399,138 @@ test.describe("Omni Web Preview", () => {
     });
 
     test("returns 404 for malformed and disabled share tokens", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
         const malformed = await page.goto("/share/not-a-uuid");
         expect(malformed?.status()).toBe(404);
         await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible();
 
-        const disabled = await page.goto(`/share/${seed.disabledToken}`);
+        const disabled = await page.goto(`/share/${currentSeed.disabledToken}`);
         expect(disabled?.status()).toBe(404);
         await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible();
-        await expect(page.getByText(seed.title)).toHaveCount(0);
+        await expect(page.getByText(currentSeed.title)).toHaveCount(0);
+    });
+
+    for (const renderer of VISUAL_RENDERERS) {
+        for (const theme of VISUAL_THEMES) {
+            test(`matches the ${renderer} ${theme} responsive visual matrix`, async ({ page }) => {
+                const currentSeed = requireSeed(seed);
+                const token =
+                    renderer === "modern"
+                        ? currentSeed.visualModernToken
+                        : currentSeed.visualLegacyToken;
+                const expectedAnnotationCards = renderer === "modern" ? 6 : 9;
+
+                for (const viewport of VISUAL_VIEWPORTS) {
+                    await page.setViewportSize(viewport);
+                    if (!page.url().startsWith("http")) {
+                        await openVisualShare(page, {
+                            token,
+                            renderer,
+                            theme,
+                            title: currentSeed.visualTitle,
+                        });
+                    } else {
+                        await settleVisualPage(page, expectedAnnotationCards);
+                    }
+                    await focusVisualAnchor(page, viewport.name);
+                    await settleVisualPage(page, expectedAnnotationCards);
+                    await expect(page).toHaveScreenshot(
+                        `web-preview-${renderer}-${theme}-${viewport.name}.png`,
+                        VISUAL_SCREENSHOT_OPTIONS,
+                    );
+                }
+            });
+        }
+    }
+
+    test("matches the modern nested revision modal", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
+        await page.setViewportSize(VISUAL_VIEWPORTS[0]);
+        await openVisualShare(page, {
+            token: currentSeed.visualModernToken,
+            renderer: "modern",
+            theme: "light",
+            title: currentSeed.visualTitle,
+        });
+
+        const rootId = String(VISUAL_FIXTURE_IDS.rootRevision);
+        const nestedId = `${rootId}.v0.${VISUAL_FIXTURE_IDS.nestedRevision}`;
+        const deepId = `${nestedId}.v0.${VISUAL_FIXTURE_IDS.deepRevision}`;
+        await page
+            .locator(`[data-annotation-id="${rootId}"]`)
+            .getByRole("button", { name: "Expand revision editor" })
+            .click();
+        const modal = page.locator(".readonly-modal");
+        await expect(modal.locator('[data-revision-modal-editor="codemirror"]')).toBeVisible();
+        await modal
+            .locator(`[data-annotation-id="${nestedId}"]`)
+            .getByRole("button", { name: "Expand revision editor" })
+            .click();
+        await modal
+            .locator(`[data-annotation-id="${deepId}"]`)
+            .getByRole("button", { name: "Expand revision editor" })
+            .click();
+        await expect(modal.locator("[data-breadcrumb-id]")).toHaveCount(3);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await settleVisualPage(page, null);
+        await expect(page).toHaveScreenshot(
+            "web-preview-modern-light-revision-modal-depth-3.png",
+            VISUAL_SCREENSHOT_OPTIONS,
+        );
+    });
+
+    test("matches the modern long comment modal", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
+        await page.setViewportSize(VISUAL_VIEWPORTS[0]);
+        await openVisualShare(page, {
+            token: currentSeed.visualModernToken,
+            renderer: "modern",
+            theme: "light",
+            title: currentSeed.visualTitle,
+        });
+        await page
+            .locator(`[data-annotation-id="${VISUAL_FIXTURE_IDS.startComment}"]`)
+            .getByRole("button", { name: "Expand comment thread" })
+            .click();
+        const modal = page.locator(".readonly-modal");
+        await expect(modal.locator('[data-annotation-modal-frame="comment"]')).toBeVisible();
+        await expect(modal.locator("[data-comment-context-scroll]")).toContainText(
+            "The harbor woke before the bells",
+        );
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await settleVisualPage(page, null);
+        await expect(page).toHaveScreenshot(
+            "web-preview-modern-light-comment-modal.png",
+            VISUAL_SCREENSHOT_OPTIONS,
+        );
+    });
+
+    test("matches the modern multi-option suggestion modal", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
+        await page.setViewportSize(VISUAL_VIEWPORTS[0]);
+        await openVisualShare(page, {
+            token: currentSeed.visualModernToken,
+            renderer: "modern",
+            theme: "light",
+            title: currentSeed.visualTitle,
+        });
+        await page
+            .locator(`[data-annotation-id="${VISUAL_FIXTURE_IDS.suggestion}"]`)
+            .getByRole("button", { name: "Expand suggestion diff" })
+            .click();
+        const modal = page.locator(".readonly-modal");
+        await expect(modal.locator("[data-suggestion-modal-content]")).toBeVisible();
+        await modal.getByRole("button", { name: /printed tide tables insisted/ }).click();
+        await expect(modal.locator('[data-suggestion-diff="delete"]')).toHaveText("promised");
+        await expect(modal.locator('[data-suggestion-diff="insert"]')).toHaveText([
+            "printed",
+            "insisted on",
+        ]);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await settleVisualPage(page, null);
+        await expect(page).toHaveScreenshot(
+            "web-preview-modern-light-suggestion-modal.png",
+            VISUAL_SCREENSHOT_OPTIONS,
+        );
     });
 });

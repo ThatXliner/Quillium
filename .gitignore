@@ -13,6 +13,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 playwright-report/
+playwright-results.json
 test-results/
 coverage/
 tests/e2e/screenshots/

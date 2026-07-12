@@ -14,6 +14,7 @@ type SupabaseStatus = {
 };
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const playwrightArgs = process.argv.slice(2);
 
 function run(command: string, args: string[], env = process.env): void {
     const result = spawnSync(command, args, {
@@ -51,10 +52,22 @@ if (!publicKey) throw new Error("Local Supabase did not report a publishable or 
 
 const env = {
     ...process.env,
+    E2E_WEB_PREVIEW_REQUIRED: "1",
     E2E_SUPABASE_URL: status.API_URL,
     E2E_SUPABASE_SERVICE_ROLE_KEY: status.SERVICE_ROLE_KEY,
     E2E_SUPABASE_PUBLISHABLE_KEY: publicKey,
 };
 
 run("bun", ["run", "--cwd", "packages/e2e", "test:run"], env);
-run("bun", ["run", "--cwd", "packages/e2e", "test:web"], env);
+run(
+    "bun",
+    [
+        "run",
+        "--cwd",
+        "packages/e2e",
+        "test:web",
+        ...(playwrightArgs.length ? ["--"] : []),
+        ...playwrightArgs,
+    ],
+    env,
+);

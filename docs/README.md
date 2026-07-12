@@ -34,6 +34,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 
 ### Reference (look up when needed)
 - [File Structure](./file-structure.md) — "Where is X?"
+- [Visual Regression and CI](./visual-regression.md) — Required checks, artifacts, and baseline policy
 - [Keybindings](./keybindings.md) — All shortcuts
 - [PostHog Events](./posthog-events.md) — Analytics catalog
 - [Known Limitations](./known-limitations.md) — Current gaps
@@ -45,6 +46,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 | [Monorepo Guide](./monorepo.md) | Package layout, workspace commands, deployment boundaries |
 | [Architecture Overview](./architecture-overview.md) | Core technologies, layers, data flow |
 | [File Structure](./file-structure.md) | Complete source tree with descriptions |
+| [Visual Regression and CI](./visual-regression.md) | Required checks, failure artifacts, and baseline update policy |
 | [State Management](./state-management.md) | CodeMirror ↔ Svelte sync, transactions vs effects |
 | [Annotations](./annotations.md) | Data model, annotationField, three-phase update, undo/redo |
 | [Nested Editors](./nested-editors.md) | Controller lifecycle, parent sync, infinite nesting |
