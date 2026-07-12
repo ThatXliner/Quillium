@@ -17,8 +17,13 @@
 -->
 <script lang="ts">
 import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import {
+    ReadonlyAnnotationCard,
+    ReadonlyEditorController,
+    ReadonlyEditorHost,
+} from "@quillium/share";
 import { docTextFromStateJson } from "./diff";
 import { diffDecorations, diffTheme } from "./diffDecorations";
 
@@ -36,50 +41,92 @@ const {
     bannerText?: string | null;
 } = $props();
 
-let previewEl = $state<HTMLDivElement | undefined>();
 let previewView: EditorView | undefined;
+const editorController = new ReadonlyEditorController();
+let diffCompartment: Compartment | undefined;
+let previewRevision = $state(0);
+let activeAnnotationId = $state<string | null>(null);
 
-const hasChanges = $derived(hasContent && docTextFromStateJson(currentStateJson) !== previousText);
+const currentPreviewText = $derived.by(() => {
+    void previewRevision;
+    return previewView?.state.doc.toString() ?? docTextFromStateJson(currentStateJson);
+});
+const hasChanges = $derived(hasContent && currentPreviewText !== previousText);
+const annotationProjection = $derived.by(() => {
+    void previewRevision;
+    return editorController.snapshot();
+});
+const previewSerializedState = $derived.by((): Record<string, unknown> => {
+    void previousText;
+    if (!currentStateJson || currentStateJson === "{}") return { doc: "" };
+    try {
+        return JSON.parse(currentStateJson) as Record<string, unknown>;
+    } catch {
+        return { doc: "" };
+    }
+});
 
-// Mount/remount a read-only editor from the current version's state, with the
-// track-changes overlay. Re-runs when the element binds or the inputs change.
-$effect(() => {
-    if (!previewEl || loading || !hasContent) return;
+function selectAnnotation(annotationId: string) {
+    if (!editorController.selectAnnotation(annotationId)) return;
+    activeAnnotationId = annotationId;
+}
 
-    previewView?.destroy();
+function switchRevisionVersion(annotationId: string, versionIndex: number) {
+    if (!previewView || !editorController.switchRevisionVersion(annotationId, versionIndex)) return;
+    if (diffCompartment) {
+        previewView.dispatch({
+            effects: diffCompartment.reconfigure(
+                diffDecorations(previousText, previewView.state.doc.toString()),
+            ),
+        });
+    }
+}
 
-    const current = docTextFromStateJson(currentStateJson);
+function createPreviewState(
+    serializedState: Record<string, unknown>,
+    updateListener: Extension,
+): EditorState {
+    const current = typeof serializedState.doc === "string" ? serializedState.doc : "";
+    const mountedDiffCompartment = new Compartment();
     const extensions = [
         // Same stack the editor and locked-draft / library previews use, so the
         // typography and layout match exactly.
         ...getExtensions({ persist: false, history: false }),
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
+        updateListener,
         diffTheme,
-        diffDecorations(previousText, current),
+        mountedDiffCompartment.of(diffDecorations(previousText, current)),
     ];
 
-    let state: EditorState;
-    const json = currentStateJson;
-    if (json && json !== "{}") {
-        try {
-            state = EditorState.fromJSON(JSON.parse(json), { extensions }, savedFields);
-        } catch {
-            state = EditorState.create({ extensions });
-        }
-    } else {
-        state = EditorState.create({ extensions });
+    diffCompartment = mountedDiffCompartment;
+    try {
+        return EditorState.fromJSON(serializedState, { extensions }, savedFields);
+    } catch {
+        return EditorState.create({ doc: current, extensions });
     }
+}
 
-    previewView = new EditorView({ state, parent: previewEl });
+function handlePreviewReady(nextView: EditorView | null): void {
+    previewView = nextView ?? undefined;
+    editorController.attach(nextView);
+    previewRevision = performance.now();
+    if (!nextView) {
+        diffCompartment = undefined;
+        activeAnnotationId = null;
+        return;
+    }
+    activeAnnotationId = editorController.activeAnnotationId();
+}
 
-    return () => {
-        previewView?.destroy();
-    };
-});
+function handlePreviewUpdate(update: ViewUpdate): void {
+    if (!update.selectionSet && !update.docChanged) return;
+    activeAnnotationId = editorController.activeAnnotationId();
+    previewRevision = performance.now();
+}
 </script>
 
-<div class="w-full flex flex-col items-center gap-3">
+<div class="history-preview-content w-full flex flex-col items-center gap-3">
     {#if bannerText}
         <div
             class="w-[816px] max-w-full rounded-lg border border-black/[0.08] bg-blue-50/60
@@ -115,15 +162,67 @@ $effect(() => {
             </div>
         {/if}
 
-        <div
-            class="version-preview w-[816px] max-w-full min-h-[40vh] bg-white rounded-lg shadow-xl
-                   py-3 px-1 select-text"
-            bind:this={previewEl}
-        ></div>
+        <div class="history-preview-stage">
+            <div
+                class="version-preview w-[816px] max-w-full min-h-[40vh] bg-white rounded-lg shadow-xl
+                       py-3 px-1 select-text"
+            >
+                <ReadonlyEditorHost
+                    serializedState={previewSerializedState}
+                    stateFactory={createPreviewState}
+                    onReady={handlePreviewReady}
+                    onUpdate={handlePreviewUpdate}
+                />
+            </div>
+
+            {#if annotationProjection.annotations.length > 0}
+                <aside class="history-annotation-column" aria-label="Snapshot annotations">
+                    {#each annotationProjection.annotations as annotation (annotation.id)}
+                        <ReadonlyAnnotationCard
+                            {annotation}
+                            active={activeAnnotationId === annotation.id}
+                            {activeAnnotationId}
+                            selectedRevisionVersionIndex={annotation.type === "revision"
+                                ? annotation.activeVersionIndex
+                                : null}
+                            onSelect={() => selectAnnotation(annotation.id)}
+                            onSelectAnnotation={selectAnnotation}
+                            onSelectRevisionVersion={(versionIndex) =>
+                                switchRevisionVersion(annotation.id, versionIndex)}
+                        />
+                    {/each}
+                </aside>
+            {/if}
+        </div>
     {/if}
 </div>
 
 <style>
+    .history-preview-content {
+        container-type: inline-size;
+    }
+
+    .history-preview-stage {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        width: 100%;
+        gap: 1.5rem;
+    }
+
+    .history-annotation-column {
+        position: sticky;
+        top: 1rem;
+        display: grid;
+        width: min(320px, 28vw);
+        max-height: calc(100vh - 10rem);
+        flex: 0 0 min(320px, 28vw);
+        gap: 0.75rem;
+        overflow-y: auto;
+        padding: 0.2rem;
+        scrollbar-width: thin;
+    }
+
     :global(.version-preview .cm-editor.cm-focused) {
         outline: none;
     }
@@ -144,5 +243,21 @@ $effect(() => {
 
     :global(.version-preview .cm-cursor) {
         display: none !important;
+    }
+
+    /* Query the content pane after the structure sidebar has taken its width,
+       rather than the viewport that also contains that sidebar. */
+    @container (max-width: 1179px) {
+        .history-preview-stage {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .history-annotation-column {
+            position: static;
+            width: min(816px, 100%);
+            max-height: none;
+            flex-basis: auto;
+        }
     }
 </style>

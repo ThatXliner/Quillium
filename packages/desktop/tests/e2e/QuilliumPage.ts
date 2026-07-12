@@ -20,6 +20,8 @@ export type MockSnapshot = {
     label: string | null;
     /** The plain-text doc content stored in this snapshot. */
     doc: string;
+    /** Optional full serialized EditorState, including annotations and version groups. */
+    stateJson?: string;
 };
 
 export type MockDocEvent = {
@@ -577,6 +579,7 @@ export class QuilliumPage {
                             const a = args as { snapshotId: number };
                             const snap = payload.snapshots.find((s) => s.id === a.snapshotId);
                             if (!snap) return null;
+                            if (snap.stateJson !== undefined) return snap.stateJson;
                             return JSON.stringify({
                                 doc: snap.doc,
                                 selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },

@@ -1,21 +1,23 @@
 <script lang="ts">
-import {
-    Check,
-    ChevronDown,
-    ChevronRight,
-    ChevronUp,
-    MessageSquare,
-    SparklesIcon,
-    X,
-} from "lucide-svelte";
-import { slide } from "svelte/transition";
+import { EditorSelection } from "@codemirror/state";
+import type { EditorView, ViewUpdate } from "@codemirror/view";
+import { ChevronRight, MessageSquare, SparklesIcon } from "lucide-svelte";
 import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
+import ReadonlyEditorHost from "./ReadonlyEditorHost.svelte";
 import ReadonlyThreadMessage from "./ReadonlyThreadMessage.svelte";
+import AnnotationPanel from "./cards/AnnotationPanel.svelte";
+import ContextViewport from "./cards/ContextViewport.svelte";
+import RevisionBreadcrumbsView from "./cards/RevisionBreadcrumbs.svelte";
+import RevisionContextPanel from "./cards/RevisionContextPanel.svelte";
+import type { RevisionBreadcrumbCrumbView } from "./cards/types";
+import { getActiveAnnotation, serializeFromState } from "./core";
+import AnnotationModalFrame from "./modals/AnnotationModalFrame.svelte";
+import AnnotationModalHeader from "./modals/AnnotationModalHeader.svelte";
+import SuggestionModalContent from "./modals/SuggestionModalContent.svelte";
 import {
     type AnnotationId,
     type AnnotationPathEntry,
-    type RevisionContextLayer,
     type RevisionVersionSelections,
     annotationLabel,
     buildDisplayedShare,
@@ -33,23 +35,37 @@ let {
     rootAnnotations = [],
     activeAnnotationId = null,
     revisionVersionSelections = {},
+    revisionState = null,
     onClose,
     onSelectAnnotation,
     onSelectRevisionVersion,
+    onRevisionSelectionsChange,
 }: {
     annotation: SerializedAnnotation;
     rootContent?: string;
     rootAnnotations?: SerializedAnnotation[];
     activeAnnotationId?: AnnotationId | null;
     revisionVersionSelections?: RevisionVersionSelections;
+    revisionState?: Record<string, unknown> | null;
     onClose: () => void;
     onSelectAnnotation?: (annotationId: AnnotationId) => void;
     onSelectRevisionVersion: (annotationId: AnnotationId, versionIndex: number) => void;
+    onRevisionSelectionsChange?: (selections: RevisionVersionSelections) => void;
 } = $props();
 
-let openDropdown = $state(-1);
-let contextCollapsed = $state(false);
 let annotationsCollapsed = $state(false);
+const COMMENT_CONTEXT_CHUNK = 300;
+const COMMENT_CONTEXT_INITIAL = 1500;
+let commentContextAnnotationId = $state<AnnotationId | null>(null);
+let commentContextBefore = $state(COMMENT_CONTEXT_INITIAL);
+let commentContextAfter = $state(COMMENT_CONTEXT_INITIAL);
+let modalEditorProjection = $state<{
+    key: string;
+    content: string;
+    annotations: SerializedAnnotation[];
+} | null>(null);
+let modalEditorActiveAnnotationId = $state<AnnotationId | null>(null);
+let modalEditorView = $state<EditorView | null>(null);
 
 const annotationPath = $derived.by((): AnnotationPathEntry[] => {
     return (
@@ -71,17 +87,34 @@ const revisionCrumbs = $derived(
     ),
 );
 
+const breadcrumbViews = $derived.by((): RevisionBreadcrumbCrumbView[] =>
+    revisionCrumbs.map((crumb) => {
+        const selectedIndex = selectedIndexForCrumb(crumb);
+        const selectedVersion =
+            crumb.annotation.versions.find((version) => version.index === selectedIndex) ??
+            crumb.annotation.versions[crumb.annotation.activeVersionIndex] ??
+            crumb.annotation.versions[0];
+        return {
+            id: crumb.annotation.id,
+            label: "Revision",
+            current: crumb.annotation.id === annotation.id,
+            selectedVersionId: selectedVersion?.versionId ?? String(selectedIndex),
+            versions: crumb.annotation.versions.map((version) => ({
+                id: version.versionId ?? String(version.index),
+                label: version.label ?? previewVersionText(version),
+                editableLabel: version.label,
+            })),
+        };
+    }),
+);
+
 const selectedRevisionVersion = $derived(
     annotation.type === "revision"
         ? getSelectedRevisionVersion(annotation, revisionVersionSelections)
         : null,
 );
 
-const selectedSuggestion = $derived(
-    annotation.type === "suggestion" ? (annotation.replacements[0] ?? null) : null,
-);
-
-const displayedRevisionShare = $derived(
+const fallbackDisplayedRevisionShare = $derived(
     selectedRevisionVersion
         ? buildDisplayedShare(
               selectedRevisionVersion.text,
@@ -92,7 +125,65 @@ const displayedRevisionShare = $derived(
         : { content: "", annotations: [] },
 );
 
+const selectedRevisionPrefix = $derived(
+    annotation.type === "revision" && selectedRevisionVersion
+        ? `${annotation.id}.v${selectedRevisionVersion.index}.`
+        : "",
+);
+
+const modalEditorKey = $derived(
+    annotation.type === "revision" && selectedRevisionVersion
+        ? `${annotation.id}.v${selectedRevisionVersion.index}`
+        : "",
+);
+
+const displayedRevisionShare = $derived(
+    revisionState && modalEditorProjection?.key === modalEditorKey
+        ? modalEditorProjection
+        : fallbackDisplayedRevisionShare,
+);
+
+const nestedRevisionSelections = $derived.by(
+    (): { annotationId: number; versionIndex: number }[] => {
+        if (!selectedRevisionPrefix) return [];
+        const selections: { annotationId: number; versionIndex: number }[] = [];
+        for (const [annotationId, versionIndex] of Object.entries(revisionVersionSelections)) {
+            if (!annotationId.startsWith(selectedRevisionPrefix)) continue;
+            const localId = annotationId.slice(selectedRevisionPrefix.length);
+            if (!/^\d+$/.test(localId)) continue;
+            selections.push({ annotationId: Number(localId), versionIndex });
+        }
+        return selections;
+    },
+);
+
 const revisionContextLayers = $derived(buildRevisionContextLayers(annotationPath));
+
+$effect(() => {
+    if (annotation.type !== "comment" || annotation.id === commentContextAnnotationId) return;
+    commentContextAnnotationId = annotation.id;
+    commentContextBefore = COMMENT_CONTEXT_INITIAL;
+    commentContextAfter = COMMENT_CONTEXT_INITIAL;
+});
+
+const commentContextLayers = $derived.by(() => {
+    if (annotation.type !== "comment") return [];
+    const entry = annotationPath.at(-1);
+    if (!entry) return [];
+    const from = Math.min(Math.max(annotation.from, 0), entry.parentContent.length);
+    const to = Math.min(Math.max(annotation.to, from), entry.parentContent.length);
+    const beforeStart = Math.max(0, from - commentContextBefore);
+    const afterEnd = Math.min(entry.parentContent.length, to + commentContextAfter);
+    return [
+        {
+            before: entry.parentContent.slice(beforeStart, from),
+            revision: entry.parentContent.slice(from, to),
+            after: entry.parentContent.slice(to, afterEnd),
+            hasMoreBefore: beforeStart > 0,
+            hasMoreAfter: afterEnd < entry.parentContent.length,
+        },
+    ];
+});
 
 function selectedIndexForCrumb(
     entry: AnnotationPathEntry & { annotation: SerializedRevisionAnnotation },
@@ -104,14 +195,15 @@ function selectedIndexForCrumb(
     );
 }
 
-function selectBreadcrumbVersion(
-    entry: AnnotationPathEntry & { annotation: SerializedRevisionAnnotation },
-    versionIndex: number,
-    isCurrentRevision: boolean,
-) {
-    openDropdown = -1;
-    onSelectRevisionVersion(entry.annotation.id, versionIndex);
-    if (!isCurrentRevision) {
+function selectBreadcrumbVersion(crumbId: string, versionId: string) {
+    const entry = revisionCrumbs.find((crumb) => crumb.annotation.id === crumbId);
+    if (!entry) return;
+    const version = entry.annotation.versions.find(
+        (version) => (version.versionId ?? String(version.index)) === versionId,
+    );
+    if (!version) return;
+    onSelectRevisionVersion(entry.annotation.id, version.index);
+    if (entry.annotation.id !== annotation.id) {
         onSelectAnnotation?.(entry.annotation.id);
     }
 }
@@ -120,15 +212,107 @@ function selectNestedAnnotation(annotationId: AnnotationId) {
     onSelectAnnotation?.(annotationId);
 }
 
-function handleWindowKeydown(event: KeyboardEvent) {
-    if (event.key !== "Escape") return;
-    if (openDropdown !== -1) {
-        openDropdown = -1;
+function activateNestedAnnotation(annotationId: AnnotationId): void {
+    modalEditorActiveAnnotationId = annotationId;
+    if (!revisionState || !modalEditorView) return;
+    const nestedAnnotation = displayedRevisionShare.annotations.find(
+        (candidate) => candidate.id === annotationId,
+    );
+    if (!nestedAnnotation) return;
+    modalEditorView.dispatch({
+        selection: EditorSelection.cursor(nestedAnnotation.from),
+        scrollIntoView: true,
+    });
+}
+
+function syncModalEditor(view: EditorView): void {
+    const projection = serializeFromState(view.state, selectedRevisionPrefix);
+    modalEditorProjection = { key: modalEditorKey, ...projection };
+    const active = getActiveAnnotation(view.state);
+    modalEditorActiveAnnotationId = active ? `${selectedRevisionPrefix}${active.id}` : null;
+    onRevisionSelectionsChange?.(
+        Object.fromEntries(
+            projection.annotations
+                .filter(
+                    (nestedAnnotation): nestedAnnotation is SerializedRevisionAnnotation =>
+                        nestedAnnotation.type === "revision",
+                )
+                .map((nestedAnnotation) => [
+                    nestedAnnotation.id,
+                    nestedAnnotation.activeVersionIndex,
+                ]),
+        ),
+    );
+}
+
+function handleModalEditorReady(view: EditorView | null): void {
+    modalEditorView = view;
+    if (!view) {
+        modalEditorProjection = null;
+        modalEditorActiveAnnotationId = null;
         return;
     }
+    syncModalEditor(view);
+}
+
+function handleModalEditorUpdate(update: ViewUpdate): void {
+    if (!update.docChanged && !update.selectionSet) return;
+    syncModalEditor(update.view);
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key !== "Escape") return;
     onClose();
 }
 </script>
+
+{#snippet revisionHeaderLeading()}
+    <RevisionBreadcrumbsView
+        crumbs={breadcrumbViews}
+        onNavigate={(crumbId) => onSelectAnnotation?.(crumbId)}
+        onSelectVersion={selectBreadcrumbVersion}
+    />
+{/snippet}
+
+{#snippet commentHeaderLeading()}
+    <MessageSquare size={13} class="shrink-0 text-blue-500/70" />
+    <nav class="comment-breadcrumbs">
+        {#each revisionCrumbs as crumb}
+            <button
+                class="max-w-[120px] shrink-0 truncate text-[10px] text-blue-500/60 transition-colors hover:text-blue-700/80"
+                type="button"
+                onclick={() => onSelectAnnotation?.(crumb.annotation.id)}
+            >
+                Revision
+            </button>
+            <ChevronRight size={10} class="shrink-0 text-blue-300/60" />
+        {/each}
+        <span
+            class="shrink-0 text-[10px] font-semibold tracking-wider text-blue-700/70 uppercase"
+            >Comment</span
+        >
+    </nav>
+{/snippet}
+
+{#snippet suggestionHeaderLeading()}
+    <SparklesIcon size={13} class="shrink-0 text-green-500/70" />
+    <nav class="suggestion-breadcrumbs">
+        {#each revisionCrumbs as crumb}
+            <button
+                class="max-w-[120px] shrink-0 truncate text-[10px] text-green-500/60 transition-colors hover:text-green-700/80"
+                type="button"
+                onclick={() => onSelectAnnotation?.(crumb.annotation.id)}
+            >
+                Revision
+            </button>
+            <ChevronRight size={10} class="shrink-0 text-green-300/60" />
+        {/each}
+        <span
+            class="truncate text-[10px] font-semibold tracking-wider text-green-700/70 uppercase"
+            >{annotationLabel(annotation)}</span
+        >
+    </nav>
+{/snippet}
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
@@ -138,89 +322,13 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	onclick={(event) => event.currentTarget === event.target && onClose()}
 >
 	{#if annotation.type === 'revision'}
-		<div class="revision-modal-inner">
-			<div class="modal-header border-purple">
-				<nav class="revision-breadcrumbs">
-					{#each revisionCrumbs as crumb, ci}
-						{@const isCurrent = crumb.annotation.id === annotation.id}
-						{@const selectedVi = selectedIndexForCrumb(crumb)}
-
-						{#if ci > 0}
-							<ChevronRight size={10} class="shrink-0 text-purple-300/60" />
-						{/if}
-
-						<div class="flex items-center gap-1.5">
-							{#if isCurrent}
-								<span
-									class="shrink-0 text-[10px] font-semibold tracking-wider text-purple-700/70 uppercase"
-									>Revision</span
-								>
-							{:else}
-								<button
-									class="shrink-0 text-[10px] tracking-wider text-purple-400/60 uppercase transition-colors hover:text-purple-600/80"
-									type="button"
-									onclick={() => onSelectAnnotation?.(crumb.annotation.id)}
-								>
-									Revision
-								</button>
-							{/if}
-
-							<div class="relative">
-								<button
-									class="version-trigger flex items-center gap-1 rounded-md py-0.5 pr-1.5 pl-2 text-[10px] font-medium transition-all duration-150 {isCurrent
-										? 'bg-purple-100/70 text-purple-700/80 ring-1 ring-purple-200/60 hover:bg-purple-100'
-										: 'bg-[color:var(--surface-2)] text-[color:var(--text-faint)] ring-1 ring-[color:var(--border)] hover:bg-[color:var(--border)]'} {openDropdown ===
-									ci
-										? 'ring-2 ' + (isCurrent ? 'ring-purple-300/60' : 'ring-[color:var(--border-strong)]')
-										: ''}"
-									type="button"
-									onclick={(event) => {
-										event.stopPropagation();
-										openDropdown = openDropdown === ci ? -1 : ci;
-									}}
-								>
-									<span class="max-w-[160px] truncate">
-										{crumb.annotation.versions[selectedVi]?.label ??
-											previewVersionText(crumb.annotation.versions[selectedVi])}
-									</span>
-									<ChevronDown
-										size={9}
-										class="transition-transform duration-200 {openDropdown === ci
-											? 'rotate-180'
-											: ''} {isCurrent ? 'text-purple-400/70' : 'text-[color:var(--text-faint)]'}"
-									/>
-								</button>
-
-								{#if openDropdown === ci}
-									<div class="version-popover" style="transform-origin: top left;">
-										{#each crumb.annotation.versions as version}
-											{@const isSelected = version.index === selectedVi}
-											<button
-												class="version-option"
-												class:version-option-active={isSelected}
-												type="button"
-												onclick={() => selectBreadcrumbVersion(crumb, version.index, isCurrent)}
-											>
-												<span class="flex-1 truncate text-left">
-													{version.label ?? previewVersionText(version)}
-												</span>
-												{#if isSelected}
-													<Check size={10} class="shrink-0 text-purple-500/70" />
-												{/if}
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</nav>
-
-				<button type="button" class="modal-close" onclick={onClose} aria-label="Close revision">
-					<span>esc</span>
-					<X size={16} />
-				</button>
-			</div>
+		<AnnotationModalFrame variant="revision">
+			<AnnotationModalHeader
+				accent="revision"
+				leading={revisionHeaderLeading}
+				onClose={onClose}
+				closeLabel="Close revision"
+			/>
 
 			<div class="revision-modal-body">
 				<div class="revision-modal-thread">
@@ -241,131 +349,81 @@ function handleWindowKeydown(event: KeyboardEvent) {
 				</div>
 
 				<div class="revision-modal-editor">
-					<div class="revision-modal-document">
-						<ReadonlyAnnotatedText
-							content={selectedRevisionVersion?.text ?? ''}
-							annotations={selectedRevisionVersion?.annotations ?? []}
-							{activeAnnotationId}
-							{revisionVersionSelections}
-							onSelectAnnotation={selectNestedAnnotation}
-						/>
+					<div
+						class="revision-modal-document"
+						class:real-editor={!!revisionState}
+						data-revision-modal-editor={revisionState ? 'codemirror' : 'legacy-static'}
+					>
+						{#if revisionState}
+							<ReadonlyEditorHost
+								serializedState={revisionState}
+								revisionSelections={nestedRevisionSelections}
+								onReady={handleModalEditorReady}
+								onUpdate={handleModalEditorUpdate}
+								onActiveAnnotationChange={(localId) => {
+									modalEditorActiveAnnotationId = localId === null
+										? null
+										: `${selectedRevisionPrefix}${localId}`;
+								}}
+							/>
+						{:else}
+							<ReadonlyAnnotatedText
+								content={selectedRevisionVersion?.text ?? ''}
+								annotations={selectedRevisionVersion?.annotations ?? []}
+								activeAnnotationId={modalEditorActiveAnnotationId ?? activeAnnotationId}
+								{revisionVersionSelections}
+								onSelectAnnotation={selectNestedAnnotation}
+							/>
+						{/if}
 					</div>
 				</div>
 
 				<div class="revision-right-panel">
-					{#if revisionContextLayers.length > 0}
-						<div class="context-panel">
-							<button
-								class="panel-toggle"
-								type="button"
-								onclick={() => (contextCollapsed = !contextCollapsed)}
-							>
-								<span>Context</span>
-								{#if contextCollapsed}
-									<ChevronDown size={10} class="text-purple-400/50" />
-								{:else}
-									<ChevronUp size={10} class="text-purple-400/50" />
-								{/if}
-							</button>
-							{#if !contextCollapsed}
-								<div transition:slide={{ duration: 180 }} class="relative">
-									<div class="context-scroll">
-										{#snippet renderLayer(depth: number)}
-											{@const layer = revisionContextLayers[depth] as RevisionContextLayer}
-											{@const isDeepest = depth === revisionContextLayers.length - 1}
-											<span class="context-text context-depth-{depth}">
-												{#if layer.before}<span class="context-surrounding">{layer.before}</span
-													>{/if}<!--
-												--><span class="context-nest context-nest-{Math.min(depth, 3)}"
-													>{#if isDeepest}{layer.revision || '(empty)'}{:else}{@render renderLayer(
-															depth + 1
-														)}{/if}</span
-												><!--
-												-->{#if layer.after}<span class="context-surrounding"
-														>{layer.after}</span
-													>{/if}
-											</span>
-										{/snippet}
-										{@render renderLayer(0)}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{/if}
+					<RevisionContextPanel layers={revisionContextLayers} />
 
-					<div class="nested-annotations-panel">
-						<button
-							class="panel-toggle"
-							type="button"
-							onclick={() => (annotationsCollapsed = !annotationsCollapsed)}
-						>
-							<span>Annotations</span>
-							{#if annotationsCollapsed}
-								<ChevronDown size={10} class="text-purple-400/50" />
-							{:else}
-								<ChevronUp size={10} class="text-purple-400/50" />
-							{/if}
-						</button>
-						{#if !annotationsCollapsed}
-							<div transition:slide={{ duration: 180 }} class="nested-annotation-scroll">
-								{#if displayedRevisionShare.annotations.length > 0}
-									<div class="space-y-2">
-										{#each displayedRevisionShare.annotations as nestedAnnotation (nestedAnnotation.id)}
-											<ReadonlyAnnotationCard
-												annotation={nestedAnnotation}
-												active={activeAnnotationId === nestedAnnotation.id}
-												{activeAnnotationId}
-												{revisionVersionSelections}
-												selectedRevisionVersionIndex={nestedAnnotation.type === 'revision'
-													? getSelectedRevisionVersionIndex(
-															nestedAnnotation,
-															revisionVersionSelections
-														)
-													: null}
-												onSelect={() => onSelectAnnotation?.(nestedAnnotation.id)}
-												onSelectAnnotation={selectNestedAnnotation}
-												onOpen={() => onSelectAnnotation?.(nestedAnnotation.id)}
-												onSelectRevisionVersion={(versionIndex) =>
-													onSelectRevisionVersion(nestedAnnotation.id, versionIndex)}
-											/>
-										{/each}
-									</div>
-								{:else}
-									<p class="empty-state centered">No annotations yet.</p>
-								{/if}
-							</div>
-						{/if}
-					</div>
+					{#snippet annotationPanelContent()}
+						<div class="space-y-2">
+							{#each displayedRevisionShare.annotations as nestedAnnotation (nestedAnnotation.id)}
+								<ReadonlyAnnotationCard
+									annotation={nestedAnnotation}
+									active={(modalEditorActiveAnnotationId ?? activeAnnotationId) ===
+										nestedAnnotation.id}
+									activeAnnotationId={modalEditorActiveAnnotationId ?? activeAnnotationId}
+									{revisionVersionSelections}
+									selectedRevisionVersionIndex={nestedAnnotation.type === 'revision'
+										? revisionState
+											? nestedAnnotation.activeVersionIndex
+											: getSelectedRevisionVersionIndex(
+													nestedAnnotation,
+													revisionVersionSelections
+												)
+										: null}
+									onSelect={() => activateNestedAnnotation(nestedAnnotation.id)}
+									onSelectAnnotation={selectNestedAnnotation}
+									onOpen={() => onSelectAnnotation?.(nestedAnnotation.id)}
+									onSelectRevisionVersion={(versionIndex) =>
+										onSelectRevisionVersion(nestedAnnotation.id, versionIndex)}
+								/>
+							{/each}
+						</div>
+					{/snippet}
+
+					<AnnotationPanel
+						bind:collapsed={annotationsCollapsed}
+						hasContent={displayedRevisionShare.annotations.length > 0}
+						content={annotationPanelContent}
+					/>
 				</div>
 			</div>
-		</div>
+		</AnnotationModalFrame>
 	{:else if annotation.type === 'comment'}
-		<div class="comment-modal-inner">
-			<div class="modal-header border-blue">
-				<div class="flex min-w-0 flex-1 items-center gap-2">
-					<MessageSquare size={13} class="shrink-0 text-blue-500/70" />
-					<nav class="comment-breadcrumbs">
-						{#each revisionCrumbs as crumb, ci}
-							<button
-								class="max-w-[120px] shrink-0 truncate text-[10px] text-blue-500/60 transition-colors hover:text-blue-700/80"
-								type="button"
-								onclick={() => onSelectAnnotation?.(crumb.annotation.id)}
-							>
-								Revision
-							</button>
-							<ChevronRight size={10} class="shrink-0 text-blue-300/60" />
-						{/each}
-						<span
-							class="shrink-0 text-[10px] font-semibold tracking-wider text-blue-700/70 uppercase"
-							>Comment</span
-						>
-					</nav>
-				</div>
-				<button type="button" class="modal-close" onclick={onClose} aria-label="Close comment">
-					<span>esc</span>
-					<X size={16} />
-				</button>
-			</div>
+		<AnnotationModalFrame variant="comment">
+			<AnnotationModalHeader
+				accent="comment"
+				leading={commentHeaderLeading}
+				onClose={onClose}
+				closeLabel="Close comment"
+			/>
 
 			<div class="comment-modal-body">
 				<div class="comment-thread-main">
@@ -380,74 +438,36 @@ function handleWindowKeydown(event: KeyboardEvent) {
 					{/if}
 				</div>
 				<div class="comment-context-panel">
-					<button type="button" class="panel-toggle blue-panel-toggle">
-						<span>Context</span>
-					</button>
-					<div class="comment-context-scroll">
-						<span class="comment-context-text">
-							<span class="context-comment">{annotation.selectedText || '(empty)'}</span>
-						</span>
-					</div>
+					<ContextViewport
+						layers={commentContextLayers}
+						variant="comment"
+						targetLabel="comment"
+						centerKey={annotation.id}
+						fill
+						onLoadMoreBefore={() => (commentContextBefore += COMMENT_CONTEXT_CHUNK)}
+						onLoadMoreAfter={() => (commentContextAfter += COMMENT_CONTEXT_CHUNK)}
+					/>
 				</div>
 			</div>
-		</div>
+		</AnnotationModalFrame>
 	{:else}
-		<div class="diff-modal-inner">
-			<div class="modal-header border-green">
-				<div class="flex min-w-0 flex-1 items-center gap-2">
-					<SparklesIcon size={13} class="shrink-0 text-green-500/70" />
-					<nav class="suggestion-breadcrumbs">
-						{#each revisionCrumbs as crumb}
-							<button
-								class="max-w-[120px] shrink-0 truncate text-[10px] text-green-500/60 transition-colors hover:text-green-700/80"
-								type="button"
-								onclick={() => onSelectAnnotation?.(crumb.annotation.id)}
-							>
-								Revision
-							</button>
-							<ChevronRight size={10} class="shrink-0 text-green-300/60" />
-						{/each}
-						<span
-							class="truncate text-[10px] font-semibold tracking-wider text-green-700/70 uppercase"
-							>{annotationLabel(annotation)}</span
-						>
-					</nav>
-				</div>
-				<button type="button" class="modal-close" onclick={onClose} aria-label="Close suggestion">
-					<span>esc</span>
-					<X size={16} />
-				</button>
-			</div>
+		<AnnotationModalFrame variant="suggestion">
+			<AnnotationModalHeader
+				accent="suggestion"
+				leading={suggestionHeaderLeading}
+				onClose={onClose}
+				closeLabel="Close suggestion"
+			/>
 
 			<div class="diff-modal-body">
-				<div class="diff-pane">
-					{#if annotation.selectedText}
-						<span class="diff-delete">{annotation.selectedText}</span>
-					{/if}
-					{#if selectedSuggestion}
-						<span class="diff-insert">{selectedSuggestion.text}</span>
-					{/if}
-				</div>
-
-				<div class="suggestion-sidebar">
-					{#if annotation.thread[0]?.author === 'AI'}
-						<div class="ai-comment">
-							<p>{annotation.thread[0].message}</p>
-						</div>
-					{/if}
-					<div class="replacement-stack">
-						{#each annotation.replacements as replacement, index (`modal-suggestion-${index}`)}
-							<article class="replacement-card" class:is-active={index === 0}>
-								<p>{replacement.text}</p>
-								{#if replacement.rationale}
-									<p class="replacement-rationale">{replacement.rationale}</p>
-								{/if}
-							</article>
-						{/each}
-					</div>
-				</div>
+				<SuggestionModalContent
+					selectionKey={annotation.id}
+					originalText={annotation.selectedText}
+					replacements={annotation.replacements}
+					messages={annotation.thread}
+				/>
 			</div>
-		</div>
+		</AnnotationModalFrame>
 	{/if}
 </div>
 
@@ -464,57 +484,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		backdrop-filter: blur(4px);
 	}
 
-	.revision-modal-inner,
-	.comment-modal-inner,
-	.diff-modal-inner {
-		display: flex;
-		flex-direction: column;
-		height: 72vh;
-		overflow: hidden;
-		border-radius: 1rem;
-		background: var(--surface);
-		box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.25);
-		transition:
-			background-color 300ms ease,
-			color 300ms ease;
-	}
-
-	.revision-modal-inner {
-		width: min(1160px, 100%);
-	}
-
-	.comment-modal-inner {
-		width: min(1060px, 100%);
-	}
-
-	.diff-modal-inner {
-		width: min(820px, 100%);
-	}
-
-	.modal-header {
-		display: flex;
-		min-width: 0;
-		flex-shrink: 0;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
-		border-bottom: 1px solid;
-		padding: 0.75rem 1.25rem;
-	}
-
-	.border-purple {
-		border-color: rgba(243, 232, 255, 0.8);
-	}
-
-	.border-blue {
-		border-color: rgba(219, 234, 254, 0.8);
-	}
-
-	.border-green {
-		border-color: rgba(220, 252, 231, 0.8);
-	}
-
-	.revision-breadcrumbs,
 	.comment-breadcrumbs,
 	.suggestion-breadcrumbs {
 		display: flex;
@@ -523,74 +492,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.375rem;
-	}
-
-	.modal-close {
-		display: inline-flex;
-		flex-shrink: 0;
-		align-items: center;
-		gap: 0.25rem;
-		border-radius: 0.375rem;
-		padding: 0.25rem 0.25rem 0.25rem 0.375rem;
-		color: var(--text-faint);
-		transition:
-			background-color 0.15s ease,
-			color 0.15s ease;
-	}
-
-	.modal-close span {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		font-size: 9px;
-		line-height: 1;
-		color: var(--text-faint);
-	}
-
-	.modal-close:hover {
-		background: var(--border);
-		color: var(--text-soft);
-	}
-
-	.version-popover {
-		position: absolute;
-		top: calc(100% + 4px);
-		left: 0;
-		z-index: 10;
-		min-width: 160px;
-		max-width: 240px;
-		overflow: hidden;
-		border: 1px solid rgba(147, 112, 219, 0.15);
-		border-radius: 10px;
-		background: var(--surface);
-		padding: 4px;
-		box-shadow:
-			0 8px 24px -4px rgba(var(--shadow-color), 0.12),
-			0 2px 8px -2px rgba(var(--shadow-color), 0.08);
-	}
-
-	.version-option {
-		display: flex;
-		width: 100%;
-		align-items: center;
-		gap: 6px;
-		border-radius: 6px;
-		padding: 5px 8px;
-		color: var(--text-soft);
-		font-size: 11px;
-		cursor: pointer;
-		transition:
-			background 0.1s,
-			color 0.1s;
-	}
-
-	.version-option:hover {
-		background: rgba(147, 112, 219, 0.08);
-		color: rgba(109, 40, 217, 0.85);
-	}
-
-	.version-option-active {
-		background: rgba(147, 112, 219, 0.1);
-		color: rgba(109, 40, 217, 0.9);
-		font-weight: 500;
 	}
 
 	.revision-modal-body,
@@ -618,8 +519,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		padding: 0.75rem 1rem;
 	}
 
-	.thread-panel-header span,
-	.panel-toggle span {
+	.thread-panel-header span {
 		font-size: 9px;
 		font-weight: 700;
 		letter-spacing: 0.12em;
@@ -633,8 +533,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		padding: 0.75rem 1rem;
 	}
 
-	.thread-stack,
-	.replacement-stack {
+	.thread-stack {
 		display: grid;
 		gap: 0.8rem;
 	}
@@ -656,6 +555,28 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		color: var(--text);
 	}
 
+	.revision-modal-document.real-editor {
+		height: 100%;
+		min-height: 0;
+		padding: 0;
+	}
+
+	.revision-modal-document.real-editor :global(.cm-scroller) {
+		overflow: auto;
+		line-height: 1.7;
+	}
+
+	.revision-modal-document.real-editor :global(.cm-content) {
+		min-height: 100%;
+		padding: 20px 32px 32px;
+		font-family: var(--doc-font-family, system-ui, sans-serif);
+		font-size: 15px;
+	}
+
+	.revision-modal-document.real-editor :global(.cm-line) {
+		padding: 0;
+	}
+
 	.revision-right-panel {
 		display: flex;
 		width: 18rem;
@@ -665,99 +586,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		overflow-x: hidden;
 		border-left: 1px solid rgba(243, 232, 255, 0.6);
 		background: rgba(250, 245, 255, 0.2);
-	}
-
-	.context-panel {
-		flex-shrink: 0;
-		border-bottom: 1px solid rgba(243, 232, 255, 0.6);
-	}
-
-	.nested-annotations-panel {
-		display: flex;
-		min-height: 0;
-		flex: 1;
-		flex-direction: column;
-	}
-
-	.panel-toggle {
-		display: flex;
-		width: 100%;
-		flex-shrink: 0;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.625rem 1rem;
-		transition: background-color 0.15s ease;
-	}
-
-	.panel-toggle:hover {
-		background: rgba(250, 245, 255, 0.6);
-	}
-
-	.context-scroll {
-		height: 200px;
-		overflow-y: auto;
-		padding: 10px 14px;
-		background: rgba(245, 240, 255, 0.45);
-		scrollbar-width: none;
-		backdrop-filter: blur(12px) saturate(1.3);
-		-webkit-backdrop-filter: blur(12px) saturate(1.3);
-	}
-
-	.context-scroll::-webkit-scrollbar,
-	.nested-annotation-scroll::-webkit-scrollbar {
-		display: none;
-	}
-
-	.context-text {
-		font-family: var(--doc-font-family, system-ui, sans-serif);
-		font-size: 11px;
-		line-height: 1.7;
-		color: rgba(80, 40, 120, 0.35);
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
-	.context-depth-0 {
-		display: block;
-	}
-
-	.context-nest {
-		display: inline;
-		border-radius: 4px;
-		padding: 1px 3px;
-	}
-
-	.context-nest-0 {
-		background: rgba(147, 112, 219, 0.1);
-		color: rgba(88, 28, 135, 0.55);
-		box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.18);
-	}
-
-	.context-nest-1 {
-		background: rgba(126, 87, 194, 0.16);
-		color: rgba(88, 28, 135, 0.7);
-		box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.25);
-	}
-
-	.context-nest-2 {
-		background: rgba(109, 40, 217, 0.2);
-		color: rgba(88, 28, 135, 0.82);
-		box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.3);
-	}
-
-	.context-nest-3 {
-		background: rgba(88, 28, 135, 0.24);
-		color: rgba(88, 28, 135, 0.92);
-		font-weight: 500;
-		box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
-	}
-
-	.nested-annotation-scroll {
-		min-height: 0;
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.5rem;
-		scrollbar-width: none;
 	}
 
 	.comment-thread-main {
@@ -777,137 +605,10 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		background: rgba(239, 246, 255, 0.2);
 	}
 
-	.blue-panel-toggle span {
-		color: rgba(37, 99, 235, 0.6);
-	}
-
-	.comment-context-scroll {
-		flex: 1;
-		overflow-y: auto;
-		padding: 10px 14px;
-		background: rgba(239, 246, 255, 0.45);
-		backdrop-filter: blur(12px) saturate(1.3);
-		-webkit-backdrop-filter: blur(12px) saturate(1.3);
-	}
-
-	.comment-context-text {
-		display: block;
-		font-family: var(--doc-font-family, system-ui, sans-serif);
-		font-size: 11px;
-		line-height: 1.7;
-		color: rgba(30, 64, 120, 0.35);
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
-	.context-comment {
-		display: inline;
-		border-radius: 4px;
-		background: rgba(253, 224, 71, 0.25);
-		padding: 1px 3px;
-		color: rgba(120, 80, 10, 0.75);
-		box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.45);
-	}
-
-	.diff-pane {
-		min-width: 0;
-		flex: 1;
-		overflow-y: auto;
-		border-right: 1px solid var(--border);
-		padding: 1.25rem 1.5rem;
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		font-size: 0.875rem;
-		line-height: 1.65;
-		color: var(--text);
-	}
-
-	.diff-delete,
-	.diff-insert {
-		border-radius: 0.125rem;
-		padding: 0 0.125rem;
-	}
-
-	.diff-delete {
-		background: rgba(254, 226, 226, 0.8);
-		color: rgb(185, 28, 28);
-		text-decoration: line-through;
-	}
-
-	.diff-insert {
-		background: rgba(220, 252, 231, 0.9);
-		color: rgb(21, 128, 61);
-	}
-
-	.suggestion-sidebar {
-		display: flex;
-		width: 16rem;
-		flex-shrink: 0;
-		flex-direction: column;
-		overflow: hidden;
-		border-left: 1px solid rgba(187, 247, 208, 0.6);
-	}
-
-	.ai-comment {
-		border-bottom: 1px solid rgba(187, 247, 208, 0.6);
-		padding: 1rem 1rem 0.75rem;
-	}
-
-	.ai-comment p,
-	.replacement-card p {
-		margin: 0;
-	}
-
-	.ai-comment p {
-		font-size: 11px;
-		line-height: 1.5;
-		color: var(--text-soft);
-	}
-
-	.suggestion-sidebar .replacement-stack {
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.75rem;
-	}
-
-	.replacement-card {
-		border: 1px solid rgba(34, 197, 94, 0.16);
-		border-radius: 0.65rem;
-		background: var(--surface-2);
-		padding: 0.75rem;
-	}
-
-	.replacement-card.is-active {
-		border-color: var(--tint-green-border);
-		background: var(--tint-green-active);
-		box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.4);
-	}
-
-	.replacement-card p {
-		font-size: 0.82rem;
-		line-height: 1.55;
-		color: var(--text);
-	}
-
-	.replacement-card.is-active p {
-		color: var(--text-strong);
-	}
-
-	.replacement-rationale {
-		margin-top: 0.5rem !important;
-		color: rgba(21, 128, 61, 0.72) !important;
-	}
-
 	.empty-state {
 		margin: 0;
 		font-size: 0.82rem;
 		line-height: 1.55;
-		color: var(--text-faint);
-	}
-
-	.empty-state.centered {
-		padding: 1rem 0.5rem;
-		text-align: center;
-		font-size: 11px;
 		color: var(--text-faint);
 	}
 
@@ -916,30 +617,21 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			padding: 0.75rem;
 		}
 
-		.revision-modal-inner,
-		.comment-modal-inner,
-		.diff-modal-inner {
-			height: min(88vh, 780px);
-		}
-
 		.revision-modal-body,
-		.comment-modal-body,
-		.diff-modal-body {
+		.comment-modal-body {
 			display: block;
 			overflow-y: auto;
 		}
 
 		.revision-modal-thread,
 		.revision-right-panel,
-		.comment-context-panel,
-		.suggestion-sidebar {
+		.comment-context-panel {
 			width: auto;
 			border-width: 1px 0;
 		}
 
 		.revision-modal-editor,
-		.comment-thread-main,
-		.diff-pane {
+		.comment-thread-main {
 			min-height: 18rem;
 		}
 	}

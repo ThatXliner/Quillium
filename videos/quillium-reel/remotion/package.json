@@ -1,0 +1,19 @@
+{
+  "name": "quillium-remotion-reel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "remotion render src/index.ts QuilliumReel ../renders/video.mp4 --codec=h264 --crf=16",
+    "still": "remotion still src/index.ts QuilliumReel"
+  },
+  "dependencies": {
+    "@remotion/cli": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "remotion": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "typescript": "5.9.3"
+  }
+}

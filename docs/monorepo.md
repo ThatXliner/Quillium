@@ -58,10 +58,17 @@ For package-local one-offs, use `bun run --cwd packages/<name> <script>`.
 - Serialized annotation and document wire types.
 - Pure fingerprinting, paragraph segmentation, annotation ordering, and revision
   rendering utilities.
-- Read-only Svelte components for public share pages.
+- The canonical CodeMirror annotation fields/models plus the app-neutral
+  read-only extension stack and editor host.
+- Capability-driven Svelte presentation used by both desktop and public share
+  pages (cards, threads, breadcrumbs, context viewports, diff content, and
+  annotation-panel shells).
 
-It must not import Supabase, PostHog, Tauri APIs, CodeMirror, or app-specific
-stores. Desktop keeps CodeMirror-specific serialization in `packages/desktop`.
+It must not import Supabase, PostHog, Tauri APIs, or app-specific stores. Desktop
+adapters retain mutations, analytics, persistence, and modal-stack navigation;
+shared components receive those capabilities through callbacks or snippets.
+CodeMirror state serialization at the desktop/Supabase boundary remains in the
+desktop package, while state restoration and read-only rendering are shared.
 
 The read-only Svelte UI should visually track the desktop annotation components
 first. Use these desktop files as the source of truth when changing shared share
@@ -73,9 +80,11 @@ components:
 - `packages/desktop/src/lib/editor/plugins/annotations/Thread.svelte`
 - `packages/desktop/src/lib/editor/plugins/annotations/ThreadMessage.svelte`
 
-Port the read-only markup and styling into `packages/share` rather than importing
-desktop components directly; the desktop components are interactive and depend on
-CodeMirror, stores, analytics, and mutation callbacks.
+When presentation exists on both surfaces, extract it into `packages/share` and
+keep a thin desktop capability adapter. Do not create a second read-only lookalike
+inside the Web Preview. State-backed shares and revision modals use
+`ReadonlyEditorHost`; only pre-migration payloads without serialized CodeMirror
+state use `LegacyReadonlyDocument` and the static annotated-text fallback.
 
 ## Environment Files
 

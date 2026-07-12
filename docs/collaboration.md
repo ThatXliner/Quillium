@@ -202,9 +202,23 @@ why that keeps the door open for a future multi-tab public renderer.
 | Copy link | `buildReadonlyShareUrl(token)` | `https://quillium.bryanhu.com/share/{token}` |
 | Disable | `disableReadonlyShare(documentId)` | Deletes the share row |
 
-The public payload intentionally uses the share renderer's compatibility shape:
-revision versions are serialized with index-style active state even though local
-annotations use stable version ids.
+Modern public payloads carry both the serialized CodeMirror state and a flat
+annotation projection. `ReadonlyDocument` restores the state through the shared
+read-only editor host; revision modals resolve the selected nested `VersionState`
+and mount that same host, preserving decorations and nested annotations. The flat
+projection drives cards and modal navigation without duplicating editor behavior.
+
+Shares published before serialized state was added are isolated behind
+`LegacyReadonlyDocument`. That compatibility path keeps index-style active
+revision state and the static annotated-text renderer; new behavior should not be
+added there unless an old payload specifically requires it.
+
+Modal presentation shared with desktop lives in `@quillium/share`: context
+viewport lifecycle, modal frame/header sizing, revision breadcrumbs, suggestion
+diff/selection state, and the collapsible annotation panel. Desktop supplies
+edit/delete/reply capabilities; Web Preview omits them and remains read-only.
+`ReadonlyEditorController` also keeps projection, active-annotation selection,
+and linked revision switching identical between Web Preview and desktop history.
 
 ### Owner Goes Live
 

@@ -9,6 +9,7 @@ type PublicShareRpcRow = {
     preview_text: string;
     published_content: string;
     published_annotations: SerializedAnnotation[] | null;
+    published_state: Record<string, unknown> | null;
     author_name: string | null;
     published_at: string | null;
 };
@@ -83,6 +84,7 @@ export async function loadPublicShare(
         excerpt: share.preview_text || "",
         content: share.published_content || "",
         annotations: share.published_annotations ?? [],
+        state: share.published_state ?? null,
         authorName: share.author_name,
         publishedAt: share.published_at,
         canonicalUrl: `${SITE_URL}/share/${token}`,

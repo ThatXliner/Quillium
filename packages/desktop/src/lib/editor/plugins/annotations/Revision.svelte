@@ -27,7 +27,12 @@ import Kbd from "$lib/ui/Kbd.svelte";
  * updates/deltas to the existing nested editor instance.
  */
 import { EditorView } from "@codemirror/view";
-import { ChevronDown, ChevronUp, Link2, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
+import {
+    RevisionCard,
+    type RevisionVersionView,
+    groupColor as sharedGroupColor,
+} from "@quillium/share";
+import { ChevronDown, ChevronUp, Link2, PlusIcon, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
@@ -138,12 +143,10 @@ let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
 // Label editing state
 let editingLabelIndex = $state<number | null>(null);
 let labelInputValue = $state("");
-let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
 
 function startLabelEdit(i: number) {
     editingLabelIndex = i;
     labelInputValue = revision.versions[i]?.label ?? "";
-    tick().then(() => labelInputEl?.focus());
 }
 
 function commitLabelEdit() {
@@ -169,18 +172,8 @@ function cancelLabelEdit() {
 // elsewhere. Keyed by group id hashed into the palette. Linking is the brand
 // blue, so the first (common single-group) color is blue-500; the rest are
 // distinct categorical hues for telling multiple groups apart.
-const GROUP_COLORS = [
-    "#3b82f6", // blue-500 — the link color
-    "#f97316", // orange
-    "#a855f7", // purple
-    "#14b8a6", // teal
-    "#ec4899", // pink
-    "#eab308", // amber
-];
 function groupColor(groupId: string): string {
-    let h = 0;
-    for (let i = 0; i < groupId.length; i++) h = (h * 31 + groupId.charCodeAt(i)) >>> 0;
-    return GROUP_COLORS[h % GROUP_COLORS.length];
+    return sharedGroupColor(groupId);
 }
 
 const allGroups = $derived($versionGroups ?? {});
@@ -206,6 +199,27 @@ function focusThisRevision() {
 function groupForVersion(versionId: string) {
     return groupOfMember(allGroups, memberOf(versionId));
 }
+
+const revisionVersionViews = $derived(
+    revision.versions.map((version, index): RevisionVersionView => {
+        const group = groupForVersion(version.id);
+        return {
+            id: version.id,
+            index,
+            label: version.label ?? previewVersionText(version),
+            text: versionText(version),
+            active: index === activeVersionIndex(revision),
+            group: group
+                ? {
+                      id: group.id,
+                      label: group.label,
+                      memberCount: group.members.length,
+                      color: groupColor(group.id),
+                  }
+                : undefined,
+        };
+    }),
+);
 
 // Which version's link dropdown is open (-1 = none).
 let openLinkMenu = $state<number | null>(null);
@@ -581,217 +595,127 @@ onDestroy(() => {
     clearTimeout(cursorArrivingTimeout);
     destroyNestedEditor();
 });
+
+function openRevisionModal() {
+    posthog.capture("revision_modal_opened", { version_count: revision.versions.length });
+    modalStack.push({
+        type: "revision",
+        revisionId: revision.id,
+        parentView: view,
+        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+    });
+}
+
+function deleteEntireRevision() {
+    posthog.capture("annotation_deleted", {
+        type: "revision",
+        version_count: revision.versions.length,
+    });
+    remove();
+}
+
+function selectRevisionVersion(version: RevisionVersionView) {
+    if (linkTargetable) {
+        completeLink(version.id);
+        return;
+    }
+    if (!version.active) {
+        posthog.capture("revision_version_switched", {
+            version_index: version.index,
+            version_count: revision.versions.length,
+        });
+        controller.flushCurrentStateToParent(false);
+        view.dispatch(
+            setActiveRevisionVersion(view.state, revision.id, version.id, { moveCursor: true }),
+        );
+    }
+    if (appSettings.showNestedEditor) {
+        userClosedEditor = false;
+        isEditorOpen = true;
+    }
+}
 </script>
 
-<!-- The glass blur+tint is rendered by the `.revision-glass::before` pseudo-element
-     (see <style>), NOT inline on this element. WebKit does not clip a backdrop-filter
-     to border-radius (it leaks a square halo past the rounded corners), and neither
-     `clip-path` nor a clip on the root works here: the version-pill link dropdown
-     intentionally escapes the card's bottom edge, so the root must stay unclipped.
-     The ::before is an inset, overflow-clipped, rounded layer behind the content
-     (z-index:-1) that carries the blur, so it clips cleanly while the dropdown still
-     escapes the root. -->
-<div
-    data-tutorial-role="revision-card"
-    data-revision-id={revision.id}
-    class="revision-glass relative border rounded-[14px] transition-all duration-200
-        {isActive
-            ? 'border-purple-200/60 shadow-xl revision-glass-active'
-            : 'border-purple-200/40 shadow-lg opacity-90 hover:opacity-100'}"
->
-    <!-- Header -->
-    <div class="flex items-center justify-between px-3 pt-3 pb-2">
-        <h3 class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</h3>
-        <div class="flex items-center gap-0.5">
-            <button
-                data-tutorial-action="expand-revision-modal"
-                data-revision-id={revision.id}
-                class="p-1 rounded-md text-purple-400/50 hover:text-purple-600/70 hover:bg-white/40 transition-colors"
-                onclick={() => {
-                    posthog.capture("revision_modal_opened", {
-                        version_count: revision.versions.length,
-                    });
-                    modalStack.push({
-                        type: "revision",
-                        revisionId: revision.id,
-                        parentView: view,
-                        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-                    });
-                }}
-                title="Expand editor"
-                aria-label="Expand revision editor"
-            >
-                <Maximize2 size={14} />
-            </button>
-            <button
-                class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-                onclick={() => {
-                    posthog.capture("annotation_deleted", {
-                        type: "revision",
-                        version_count: revision.versions.length,
-                    });
-                    remove();
-                }}
-                title="Delete entire revision"
-            >
-                <Trash2 size={16} />
-            </button>
-        </div>
-    </div>
+{#snippet versionControls(versionView: RevisionVersionView)}
+    {@const version = revision.versions[versionView.index]}
+    {@const versionGroup = groupForVersion(version.id)}
+    <button
+        class="px-1 py-1 transition-colors text-black/30 hover:text-blue-600
+            {versionGroup ? 'text-blue-600' : ''}"
+        onclick={() => {
+            focusThisRevision();
+            openLinkMenu = openLinkMenu === versionView.index ? null : versionView.index;
+        }}
+        title="Link to a version of another revision"
+        aria-label="Link version"
+    >
+        <Link2 size={10} />
+    </button>
+    <button
+        class="pr-1.5 pl-0.5 py-1 transition-colors
+            {versionView.active
+                ? 'text-white/60 hover:text-white'
+                : 'text-black/30 hover:text-red-500/70'}"
+        onclick={() => {
+            if (editingLabelIndex === versionView.index) cancelLabelEdit();
+            controller.flushCurrentStateToParent(false);
+            view.dispatch(deleteRevisionVersion(view.state, revision.id, version.id));
+        }}
+        title={`Delete version ${versionView.index + 1}`}
+    >
+        <X size={9} />
+    </button>
+{/snippet}
 
-    <!-- Version pills -->
-    <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
-        {#each revision.versions as version, i}
-            {@const versionActive = i === activeVersionIndex(revision)}
-            {@const isEditingThis = editingLabelIndex === i}
-            {@const versionGroup = groupForVersion(version.id)}
-            <!-- Outer wrapper is the positioning context for the link dropdown and
-                 does NOT clip — the inner pill keeps overflow-hidden for its
-                 rounded corners, so the popover can't be rendered inside it. -->
-            <div class="relative inline-flex">
-            <div class="inline-flex items-center rounded-md overflow-hidden
-                {versionActive
-                    ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
-                    : 'bg-white/60 ring-1 ring-purple-200/40'}
-                {linkTargetable ? 'ring-2 ring-dashed ring-blue-500/50' : ''}">
-                {#if versionGroup}
-                    <!-- Group badge: a colored dot matching this version's group -->
-                    <span
-                        class="ml-1.5 w-1.5 h-1.5 rounded-full shrink-0"
-                        style="background-color: {groupColor(versionGroup.id)}"
-                        title={`Linked — group "${versionGroup.label}" (${versionGroup.members.length} versions)`}
-                    ></span>
-                {/if}
-                {#if isEditingThis}
-                    <input
-                        bind:this={labelInputEl}
-                        bind:value={labelInputValue}
-                        class="px-2 py-1 text-[11px] font-medium w-[100px] bg-transparent text-white outline-none placeholder-white/50"
-                        placeholder="Version name…"
-                        onblur={commitLabelEdit}
-                        onkeydown={(e) => {
-                            if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
-                            else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
-                        }}
-                    />
-                {:else}
-                    <button
-                        class="max-w-[120px] {versionGroup ? 'pl-1' : 'pl-2'} pr-2 py-1 text-[11px] font-medium truncate transition-colors
-                            {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                        disabled={versionActive && !linkTargetable}
-                        title={linkTargetable
-                            ? "Link this version to the anchored one"
-                            : versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
-                        onclick={() => {
-                            // In link mode, clicking any pill on this (different)
-                            // revision completes the link instead of switching.
-                            if (linkTargetable) {
-                                completeLink(version.id);
-                                return;
-                            }
-                            if (!versionActive) {
-                                posthog.capture("revision_version_switched", {
-                                    version_index: i,
-                                    version_count: revision.versions.length,
-                                });
-                                controller.flushCurrentStateToParent(false);
-                                // Move the cursor into this revision so it becomes
-                                // the active/anchored card — no double-selection.
-                                view.dispatch(
-                                    setActiveRevisionVersion(view.state, revision.id, version.id, {
-                                        moveCursor: true,
-                                    }),
-                                );
-                            }
-                            if (appSettings.showNestedEditor) {
-                                userClosedEditor = false;
-                                isEditorOpen = true;
-                            }
-                        }}
-                        ondblclick={() => {
-                            if (versionActive && !linkTargetable) startLabelEdit(i);
-                        }}
-                    >
-                        {version.label ?? previewVersionText(version)}
-                    </button>
-                {/if}
-                <!-- Link affordance -->
+{#snippet versionMenu(versionView: RevisionVersionView)}
+    {@const version = revision.versions[versionView.index]}
+    {@const versionGroup = groupForVersion(version.id)}
+    {#if openLinkMenu === versionView.index}
+        <div
+            class="absolute z-30 top-full mt-1 left-0 min-w-[170px] rounded-lg bg-white shadow-lg ring-1 ring-black/10 py-1 text-[11px]"
+            transition:slide={{ duration: 120, easing: cubicOut }}
+        >
+            {#if versionGroup}
                 <button
-                    class="px-1 py-1 transition-colors text-black/30 hover:text-blue-600
-                        {versionGroup ? 'text-blue-600' : ''}"
-                    onclick={() => {
-                        focusThisRevision();
-                        openLinkMenu = openLinkMenu === i ? null : i;
-                    }}
-                    title="Link to a version of another revision"
-                    aria-label="Link version"
+                    class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
+                    onclick={() => unlinkVersion(version.id)}
                 >
-                    <Link2 size={10} />
+                    Unlink from "{versionGroup.label}"
                 </button>
-                <button
-                    class="pr-1.5 pl-0.5 py-1 transition-colors
-                        {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
-                    onclick={() => {
-                        if (editingLabelIndex === i) cancelLabelEdit();
-                        controller.flushCurrentStateToParent(false);
-                        view.dispatch(
-                            deleteRevisionVersion(view.state, revision.id, version.id),
-                        );
-                    }}
-                    title={`Delete version ${i + 1}`}
-                >
-                    <X size={9} />
-                </button>
-            </div>
-
-            {#if openLinkMenu === i}
-                <!-- Link dropdown — sibling of the clipped pill, inside the
-                     non-clipping outer wrapper, so it's actually visible. -->
-                <div
-                    class="absolute z-30 top-full mt-1 left-0 min-w-[170px] rounded-lg bg-white shadow-lg ring-1 ring-black/10 py-1 text-[11px]"
-                    transition:slide={{ duration: 120, easing: cubicOut }}
-                >
-                    {#if versionGroup}
-                        <button
-                            class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
-                            onclick={() => unlinkVersion(version.id)}
-                        >
-                            Unlink from "{versionGroup.label}"
-                        </button>
-                        <div class="my-1 border-t border-black/5"></div>
-                    {/if}
-                    <button
-                        class="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700 font-medium"
-                        onclick={() => startLink(version.id)}
-                    >
-                        Link to another revision…
-                    </button>
-                    {#each joinableGroups(version.id) as g}
-                        <button
-                            class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5"
-                            onclick={() => linkToExistingGroup(version.id, g.id)}
-                        >
-                            <span
-                                class="w-1.5 h-1.5 rounded-full shrink-0"
-                                style="background-color: {groupColor(g.id)}"
-                            ></span>
-                            <span class="truncate">Join "{g.label}"</span>
-                        </button>
-                    {/each}
-                </div>
+                <div class="my-1 border-t border-black/5"></div>
             {/if}
-            </div>
-        {/each}
-    </div>
+            <button
+                class="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700 font-medium"
+                onclick={() => startLink(version.id)}
+            >
+                Link to another revision…
+            </button>
+            {#each joinableGroups(version.id) as group}
+                <button
+                    class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5"
+                    onclick={() => linkToExistingGroup(version.id, group.id)}
+                >
+                    <span
+                        class="w-1.5 h-1.5 rounded-full shrink-0"
+                        style:background-color={groupColor(group.id)}
+                    ></span>
+                    <span class="truncate">Join "{group.label}"</span>
+                </button>
+            {/each}
+        </div>
+    {/if}
+{/snippet}
+
+{#snippet afterVersions()}
     {#if $linkAnchor && $linkAnchor.member.revisionId === revision.id}
-        <!-- This card holds the anchor; prompt to pick a partner elsewhere -->
         <div class="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-blue-700">
             <span>Pick a version on another revision to link…</span>
             <button class="underline hover:text-blue-800" onclick={cancelLink}>cancel</button>
         </div>
     {/if}
+{/snippet}
 
-    <!-- Actions row -->
+{#snippet actions()}
     <div class="px-3 pb-3 flex gap-1.5">
         <button
             class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
@@ -807,12 +731,7 @@ onDestroy(() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
                 } else {
-                    modalStack.push({
-                        type: "revision",
-                        revisionId: revision.id,
-                        parentView: view,
-                        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-                    });
+                    openRevisionModal();
                 }
             }}
             title="Create a new version ({modKey}↵)"
@@ -822,29 +741,26 @@ onDestroy(() => {
             <span class="ml-0.5 opacity-50"><Kbd keys={["Cmd", "↵"]} /></span>
         </button>
         {#if appSettings.showNestedEditor}
-        <button
-            data-tutorial-action="toggle-nested-editor"
-            data-revision-id={revision.id}
-            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
-                {isEditorOpen
-                    ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
-                    : 'text-purple-600/60 bg-white/50 ring-purple-200/40 hover:bg-white/70'}"
-            onclick={() => {
-                userClosedEditor = isEditorOpen;
-                isEditorOpen = !isEditorOpen;
-            }}
-            title={isEditorOpen ? "Hide editor" : "Open editor"}
-        >
-            {#if isEditorOpen}
-                <ChevronUp size={10} />
-            {:else}
-                <ChevronDown size={10} />
-            {/if}
-        </button>
+            <button
+                data-tutorial-action="toggle-nested-editor"
+                data-revision-id={revision.id}
+                class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
+                    {isEditorOpen
+                        ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
+                        : 'text-purple-600/60 bg-white/50 ring-purple-200/40 hover:bg-white/70'}"
+                onclick={() => {
+                    userClosedEditor = isEditorOpen;
+                    isEditorOpen = !isEditorOpen;
+                }}
+                title={isEditorOpen ? "Hide editor" : "Open editor"}
+            >
+                {#if isEditorOpen}<ChevronUp size={10} />{:else}<ChevronDown size={10} />{/if}
+            </button>
         {/if}
     </div>
+{/snippet}
 
-    <!-- Boundary hint -->
+{#snippet editorContent()}
     {#if showBoundaryHint}
         {#if appSettings.showNestedEditor}
             <button
@@ -865,7 +781,7 @@ onDestroy(() => {
                 class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
                     bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
                     hover:bg-purple-100/60 transition-colors text-left"
-                onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
+                onclick={openRevisionModal}
             >
                 <span class="shrink-0 mt-px">↗</span>
                 <span>Open in the revision editor to edit at boundaries.</span>
@@ -873,16 +789,18 @@ onDestroy(() => {
         {/if}
     {/if}
 
-    <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
-        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+        <div
+            transition:slide={{ duration: 120, easing: cubicOut }}
+            class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60"
+        >
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
                 bind:this={nestedEditorHost}
                 class="revision-inline-editor"
                 class:cursor-arriving={cursorArriving}
-                onfocusin={() => nestedEditorFocused = true}
-                onfocusout={() => nestedEditorFocused = false}
+                onfocusin={() => (nestedEditorFocused = true)}
+                onfocusout={() => (nestedEditorFocused = false)}
             ></div>
             {#if !nestedEditorFocused}
                 <div class="flex items-center justify-center gap-1.5 px-2.5 pb-1.5 text-[10px] text-purple-400/70">
@@ -891,53 +809,48 @@ onDestroy(() => {
             {/if}
         </div>
     {:else if isActive}
-        <!-- If !showNestedEditor -->
         <div class="mx-3 mb-2 flex items-center gap-1.5 text-[10px] text-purple-400/70">
             <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
         </div>
     {/if}
+{/snippet}
 
-    <!-- Thread -->
-    {#if thread.length > 0 || isActive}
-        <div class="border-t border-black/[0.07] px-3 py-2.5">
-            <Thread
-                {thread}
-                {updateThread}
-                {view}
-                annotationId={revision.id}
-                previewOnly={!isActive}
-                accentClass="text-purple-600/80 hover:text-purple-700"
-                sendPillClass="bg-purple-500 text-white hover:bg-purple-600"
-            />
-        </div>
-    {/if}
-</div>
+{#snippet threadContent()}
+    <Thread
+        {thread}
+        {updateThread}
+        {view}
+        annotationId={revision.id}
+        previewOnly={!isActive}
+        accentClass="text-purple-600/80 hover:text-purple-700"
+        sendPillClass="bg-purple-500 text-white hover:bg-purple-600"
+    />
+{/snippet}
+
+<RevisionCard
+    revisionId={revision.id}
+    active={isActive}
+    versions={revisionVersionViews}
+    {linkTargetable}
+    editingVersionIndex={editingLabelIndex}
+    editingLabel={labelInputValue}
+    onEditingLabelInput={(value) => (labelInputValue = value)}
+    onCommitRename={commitLabelEdit}
+    onCancelRename={cancelLabelEdit}
+    onRenameVersion={(version) => startLabelEdit(version.index)}
+    onSelectVersion={selectRevisionVersion}
+    onOpen={openRevisionModal}
+    onDelete={deleteEntireRevision}
+    {versionControls}
+    {versionMenu}
+    {afterVersions}
+    {actions}
+    editor={editorContent}
+    thread={thread.length > 0 || isActive ? threadContent : undefined}
+/>
 
 
 <style>
-    /* Glass blur layer for the revision card. Lives on a ::before so it can be
-       overflow-clipped (the only thing that clips backdrop-filter in WebKit) and sit
-       behind the content (z-index:-1) WITHOUT clipping the card root — the version
-       link dropdown escapes the root's bottom edge, so the root must stay unclipped. */
-    .revision-glass {
-        isolation: isolate;
-    }
-    .revision-glass::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        border-radius: 14px;
-        overflow: hidden;
-        background: rgba(250, 245, 255, 0.6); /* purple-50/60 */
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        pointer-events: none;
-    }
-    .revision-glass-active::before {
-        background: rgba(250, 245, 255, 0.9); /* purple-50/90 */
-    }
-
     .revision-inline-editor {
         min-height: 220px;
     }

@@ -57,7 +57,7 @@ const {
         <p class="text-sm text-black/40">Select a version to preview it</p>
     </div>
 {:else}
-    <div class="flex w-full gap-6 max-w-[1100px]">
+    <div class="flex w-full gap-6 max-w-[1480px]">
         <!-- Structure map (clickable tabs) -->
         <aside class="w-64 flex-shrink-0">
             <h3 class="text-[11px] font-semibold text-black/35 uppercase tracking-wide mb-2 px-1">

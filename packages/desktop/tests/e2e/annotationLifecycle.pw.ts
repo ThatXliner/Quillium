@@ -31,6 +31,7 @@ test.describe("comment lifecycle", () => {
         // which is hidden, and .first() would grab that instead.
         const card = page.locator(".annotation-card", { hasText: "Comment" }).first();
         await expect(card).toBeVisible({ timeout: 5_000 });
+        await expect(card.locator("[data-annotation-card-view='comment']")).toHaveCount(1);
     });
 
     test("reply to comment shows in thread", async ({ page }) => {
@@ -96,6 +97,9 @@ test.describe("revision lifecycle", () => {
         await expect(q.annotationCards.first()).toBeVisible({
             timeout: 5_000,
         });
+        await expect(
+            q.annotationCards.first().locator("[data-annotation-card-view='revision']"),
+        ).toHaveCount(1);
     });
 
     test("revision inline editor shows correct text", async ({ page }) => {
@@ -129,6 +133,102 @@ test.describe("revision lifecycle", () => {
 
         await q.createRevisionAndOpenModal("hello world");
         await q.expectModalText("hello world");
+    });
+
+    test("revision modal context proactively fills, wheel-scrolls, and loads the whole document", async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page);
+        await q.setup();
+        await q.goto();
+
+        const before = "Opening: ";
+        const target = "Memory plays a cruel trick on us";
+        const memorySentence =
+            ": it keeps what we would most like to lose and loses what we most want to keep. ";
+        const failureSentence =
+            "We remember small failures with crystalline precision while good things soften. ";
+        const trailingPassage = `${memorySentence}${failureSentence}`;
+        const after = `${trailingPassage.repeat(8)}END`;
+        await q.typeInEditor(`${before}${target}${after}`);
+        await q.editor.click();
+        await page.keyboard.press("Control+Home");
+        await q.moveCursorRight(before.length);
+        await q.selectRight(target.length);
+        await q.createRevision();
+        await q.openRevisionModal();
+        await q.expectModalText(target);
+
+        const context = page.locator("dialog[open] [data-revision-context-scroll]");
+        await expect(context).toBeVisible();
+        await expect(context).toHaveCSS("mask-image", /linear-gradient/);
+
+        await expect(context).toHaveCSS("overflow-y", "auto");
+        await expect
+            .poll(() =>
+                context.evaluate((element) => {
+                    const exhausted =
+                        element.dataset.hasMoreBefore === "false" &&
+                        element.dataset.hasMoreAfter === "false";
+                    return element.scrollHeight > element.clientHeight || exhausted;
+                }),
+            )
+            .toBe(true);
+        await page.waitForTimeout(250);
+
+        const initialMetrics = await context.evaluate((element) => ({
+            maxScrollTop: element.scrollHeight - element.clientHeight,
+            scrollTop: element.scrollTop,
+        }));
+        expect(initialMetrics.maxScrollTop).toBeGreaterThan(0);
+        const wheelDelta = initialMetrics.scrollTop < initialMetrics.maxScrollTop ? 120 : -120;
+        await context.hover();
+        await page.mouse.wheel(0, wheelDelta);
+        await expect
+            .poll(() =>
+                context.evaluate((element, previousScrollTop) => {
+                    return Math.abs(element.scrollTop - previousScrollTop);
+                }, initialMetrics.scrollTop),
+            )
+            .toBeGreaterThan(0);
+
+        const manuallyScrolledTop = await context.evaluate((element) => {
+            element.scrollTop = (element.scrollHeight - element.clientHeight) / 2;
+            element.dispatchEvent(new Event("scroll", { bubbles: true }));
+            return element.scrollTop;
+        });
+        await page.locator("dialog[open] .revision-modal-editor .cm-content").click();
+        await page.keyboard.press("ArrowRight");
+        await expect
+            .poll(() =>
+                context.evaluate(
+                    (element, expected) => Math.abs(element.scrollTop - expected),
+                    manuallyScrolledTop,
+                ),
+            )
+            .toBeLessThanOrEqual(2);
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+            if ((await context.getAttribute("data-has-more-before")) === "false") break;
+            await context.evaluate((element) => {
+                element.scrollTop = 0;
+                element.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await page.waitForTimeout(50);
+        }
+        await expect(context).toHaveAttribute("data-has-more-before", "false");
+        await expect.poll(() => context.textContent()).toContain("Opening:");
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+            if ((await context.getAttribute("data-has-more-after")) === "false") break;
+            await context.evaluate((element) => {
+                element.scrollTop = element.scrollHeight;
+                element.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await page.waitForTimeout(50);
+        }
+        await expect(context).toHaveAttribute("data-has-more-after", "false");
+        await expect.poll(() => context.textContent()).toContain("END");
     });
 
     test("editing in modal updates content", async ({ page }) => {

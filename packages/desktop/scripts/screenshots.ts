@@ -53,16 +53,17 @@ import { PNG } from "pngjs";
 
 const noServer = process.argv.includes("--no-server");
 const force = process.argv.includes("--force");
+const videoRain = process.argv.includes("--video-rain");
 const SCREENSHOT_PORT = Number(process.env.SCREENSHOT_PORT) || 4173;
 const BASE_URL = noServer ? "http://localhost:1420" : `http://localhost:${SCREENSHOT_PORT}`;
-const OUT_DIR = "screenshots";
+const OUT_DIR = videoRain ? "../../videos/quillium-reel/capture/rain" : "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
-const DEVICE_SCALE_FACTOR = 2;
+const DEVICE_SCALE_FACTOR = videoRain ? 4 : 2;
 
 // Minimum fraction of pixels that must differ for a screenshot to be considered
 // "significantly changed" and worth committing. 0.01 = 1% of total pixels.
 // If --force is set, all screenshots are updated (threshold = 0).
-const DIFF_THRESHOLD = force ? 0 : 0.01;
+const DIFF_THRESHOLD = force || videoRain ? 0 : 0.01;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -734,14 +735,22 @@ async function scenarioRevisionActive(ctx: BrowserContext): Promise<void> {
     await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
-    const applied = await applyDebugScenario(page, "screenshot-revision-active");
+    const applied = await applyDebugScenario(
+        page,
+        videoRain ? "video-rain-revision-active" : "screenshot-revision-active",
+    );
     if (!applied) {
         await setEditorText(page, PROSE_SHORT);
     }
     // Activate the revision card — nested editor auto-opens when active
-    await activateAnnotation(page, "Spiritual revelations were conceded");
+    await activateAnnotation(
+        page,
+        videoRain
+            ? "The rain found her beneath the station clock"
+            : "Spiritual revelations were conceded",
+    );
     await page.waitForTimeout(400); // extra time for nested editor to mount
-    await shot(page, "05-revision-active");
+    await shot(page, videoRain ? "rain-revision-active" : "05-revision-active");
     await page.close();
 }
 
@@ -916,29 +925,41 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
     await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
-    const applied = await applyDebugScenario(page, "screenshot-inline-nested-revision");
+    const applied = await applyDebugScenario(
+        page,
+        videoRain ? "video-rain-inline-nested-revision" : "screenshot-inline-nested-revision",
+    );
     if (!applied) {
         await page.close();
         return;
     }
     // Activate the outer revision card
-    await activateAnnotation(page, "running his fingers along the brass gears");
+    await activateAnnotation(
+        page,
+        videoRain
+            ? "The rain found her beneath the station clock"
+            : "running his fingers along the brass gears",
+    );
     await page.waitForTimeout(400);
+    const outerLabel = videoRain ? "Expanded" : "Extended";
+    const innerTarget = videoRain
+        ? "her rain-dark coat shining under the lamps"
+        : "the way a pianist runs scales before the hall fills";
     // Switch to the "Extended" version (index 1) before opening the modal
-    await page.evaluate(() => {
+    await page.evaluate((desiredLabel) => {
         const revCard = document.querySelector("[data-tutorial-role='revision-card']");
         if (!revCard) return;
         const pills = revCard.querySelectorAll("button");
         for (const btn of pills) {
-            if (btn.textContent?.trim() === "Extended") {
+            if (btn.textContent?.trim() === desiredLabel) {
                 btn.click();
                 break;
             }
         }
-    });
+    }, outerLabel);
     await page.waitForTimeout(600);
     // Push the outer revision into a modal
-    await page.evaluate(() => {
+    await page.evaluate((label) => {
         const w = window as unknown as Record<string, unknown>;
         const stack = w.__modalStack__ as { push(entry: object): void } | undefined;
         const editorViewStore = w.__editorView__ as
@@ -960,46 +981,57 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
             type: "revision",
             revisionId,
             parentView: view,
-            label: "Extended",
+            label,
         });
-    });
+    }, outerLabel);
     await page.waitForTimeout(800); // wait for modal to mount
     // Switch to the "Extended" version inside the modal by clicking its pill
     // Create a sub-revision inside the modal's nested editor using the
     // __createRevision__ DEV bridge.
-    await page.evaluate(() => {
-        const w = window as unknown as Record<string, unknown>;
-        const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
-        const createRevision = w.__createRevision__ as
-            | ((opts: {
-                  targetText: string;
-                  versions: Array<{ label: string; text: string }>;
-                  threadMessage: string;
-                  author: string;
-                  view: unknown;
-              }) => boolean)
-            | undefined;
-        if (!modalEditors || !createRevision) return;
-        const modalView = modalEditors[0];
-        if (!modalView) return;
-        createRevision({
-            targetText: "the way a pianist runs scales before the hall fills",
-            versions: [
-                {
-                    label: "Alternate image",
-                    text: "the way a watchmaker tests springs before the shop opens",
-                },
-            ],
-            threadMessage:
-                "The pianist image recurs from the outer version — try a different trade to avoid repetition.",
-            author: "Editor",
-            view: modalView,
-        });
-    });
+    await page.evaluate(
+        ({ targetText, versionLabel, versionText, threadMessage }) => {
+            const w = window as unknown as Record<string, unknown>;
+            const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
+            const createRevision = w.__createRevision__ as
+                | ((opts: {
+                      targetText: string;
+                      versions: Array<{ label: string; text: string }>;
+                      threadMessage: string;
+                      author: string;
+                      view: unknown;
+                  }) => boolean)
+                | undefined;
+            if (!modalEditors || !createRevision) return;
+            const modalView = modalEditors[0];
+            if (!modalView) return;
+            createRevision({
+                targetText,
+                versions: [
+                    {
+                        label: versionLabel,
+                        text: versionText,
+                    },
+                ],
+                threadMessage,
+                author: "Editor",
+                view: modalView,
+            });
+        },
+        {
+            targetText: innerTarget,
+            versionLabel: videoRain ? "Sharper image" : "Alternate image",
+            versionText: videoRain
+                ? "her soaked wool coat catching the station light"
+                : "the way a watchmaker tests springs before the shop opens",
+            threadMessage: videoRain
+                ? "This image can carry more texture without leaving the same rainy station moment."
+                : "The pianist image recurs from the outer version — try a different trade to avoid repetition.",
+        },
+    );
     await page.waitForTimeout(600);
     // Activate the inner revision by placing the cursor inside its range
     // within the modal's nested editor, which opens the inline editor.
-    await page.evaluate(() => {
+    await page.evaluate((target) => {
         const w = window as unknown as Record<string, unknown>;
         const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
         if (!modalEditors) return;
@@ -1009,16 +1041,15 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
             focus(): void;
         };
         if (!modalView) return;
-        const target = "the way a pianist runs scales before the hall fills";
         const pos = modalView.state.doc.toString().indexOf(target);
         if (pos === -1) return;
         modalView.focus();
         modalView.dispatch({
             selection: { anchor: pos + Math.floor(target.length / 2) },
         });
-    });
+    }, innerTarget);
     await page.waitForTimeout(600);
-    await shot(page, "13-inline-nested-revision");
+    await shot(page, videoRain ? "rain-inline-nested-revision" : "13-inline-nested-revision");
     await page.close();
 }
 
@@ -1558,38 +1589,43 @@ async function main(): Promise<void> {
 
     try {
         console.log("\nCapturing screenshots…\n");
-        await scenarioEditor(context);
-        await scenarioAnnotationsNoAi(context);
-        await scenarioAnnotations(context);
-        await scenarioCommentActive(context);
-        await scenarioRevisionActive(context);
-        await scenarioLibrary(context);
-        await scenarioRevisionModal(context);
-        await scenarioNestedRevision(context);
-        await scenarioInlineNestedRevision(context);
-        await scenarioPersonaAnnotations(context);
-        await scenarioReadersPanel(context);
-        await scenarioDictionary(context);
-        // ── New scenarios ────────────────────────────────────────────
-        await scenarioSettings(context);
-        await scenarioStats(context);
-        await scenarioAIChat(context);
-        await scenarioAIFeedback(context);
-        await scenarioAIRevise(context);
-        await scenarioAIContext(context);
-        await scenarioAutoAIWidget(context);
-        await scenarioVersionHistory(context);
-        await scenarioAuthorshipPlayback(context);
-        await scenarioFullUI(context);
-        await scenarioDenseAnnotations(context);
-        await scenarioSuggestionActive(context);
-        await scenarioLibraryEmpty(context);
-        await scenarioLibraryTrash(context);
-        await scenarioChangelog(context);
-        await scenarioExportMenu(context);
-        await scenarioTutorial(context);
-        await scenarioErrorBanner(context);
-        await scenarioShareOmniWaitlist(context);
+        if (videoRain) {
+            await scenarioRevisionActive(context);
+            await scenarioInlineNestedRevision(context);
+        } else {
+            await scenarioEditor(context);
+            await scenarioAnnotationsNoAi(context);
+            await scenarioAnnotations(context);
+            await scenarioCommentActive(context);
+            await scenarioRevisionActive(context);
+            await scenarioLibrary(context);
+            await scenarioRevisionModal(context);
+            await scenarioNestedRevision(context);
+            await scenarioInlineNestedRevision(context);
+            await scenarioPersonaAnnotations(context);
+            await scenarioReadersPanel(context);
+            await scenarioDictionary(context);
+            // ── New scenarios ────────────────────────────────────────────
+            await scenarioSettings(context);
+            await scenarioStats(context);
+            await scenarioAIChat(context);
+            await scenarioAIFeedback(context);
+            await scenarioAIRevise(context);
+            await scenarioAIContext(context);
+            await scenarioAutoAIWidget(context);
+            await scenarioVersionHistory(context);
+            await scenarioAuthorshipPlayback(context);
+            await scenarioFullUI(context);
+            await scenarioDenseAnnotations(context);
+            await scenarioSuggestionActive(context);
+            await scenarioLibraryEmpty(context);
+            await scenarioLibraryTrash(context);
+            await scenarioChangelog(context);
+            await scenarioExportMenu(context);
+            await scenarioTutorial(context);
+            await scenarioErrorBanner(context);
+            await scenarioShareOmniWaitlist(context);
+        }
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {

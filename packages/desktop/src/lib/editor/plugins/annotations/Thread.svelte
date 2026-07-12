@@ -4,6 +4,7 @@ import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { editorView } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
+import { ThreadList, type ThreadMessageView } from "@quillium/share";
 /**
  * Thread.svelte — Renders a message list, reply textarea, and optional
  * AI suggest button for a comment/revision/suggestion thread.
@@ -28,8 +29,8 @@ import { SparklesIcon } from "lucide-svelte";
 import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
-import ThreadMessage from "./ThreadMessage.svelte";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
+import ThreadMessage from "./ThreadMessage.svelte";
 
 let {
     thread,
@@ -93,38 +94,16 @@ function send() {
 }
 </script>
 
-<!-- Messages -->
-{#if thread.length > 0}
-    <div class="space-y-3 {previewOnly ? '' : 'mb-0'}">
-        {#each thread as message, i}
-            {#if i === 0}
-                <ThreadMessage
-                    {message}
-                    index={i}
-                    {updateThread}
-                    {thread}
-                    truncate={previewOnly && i === 0}
-                />
-            {:else if !previewOnly}
-                <div transition:slide={{ duration: 180, easing: cubicOut }}>
-                    <ThreadMessage
-                        {message}
-                        index={i}
-                        {updateThread}
-                        {thread}
-                        truncate={false}
-                    />
-                </div>
-            {/if}
-        {/each}
+{#snippet threadMessage(message: ThreadMessageView, index: number, truncate: boolean)}
+    <ThreadMessage {message} {index} {thread} {updateThread} {truncate} />
+{/snippet}
 
-        {#if previewOnly && thread.length > 1}
-            <p transition:slide={{ duration: 180, easing: cubicOut }} class="text-[10px] text-black/40 pl-9">
-                {thread.length - 1} more repl{thread.length === 2 ? "y" : "ies"}
-            </p>
-        {/if}
-    </div>
-{/if}
+<!-- Messages -->
+<ThreadList
+    {thread}
+    {previewOnly}
+    messageRenderer={threadMessage}
+/>
 
 <!-- Reply input — hidden in previewOnly or hideReply mode -->
 {#if !previewOnly && !hideReply}

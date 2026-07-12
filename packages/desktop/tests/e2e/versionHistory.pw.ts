@@ -5,7 +5,12 @@
  * Snapshots are seeded via the `snapshots` option and served in-memory.
  */
 
+import { EditorSelection, EditorState } from "@codemirror/state";
 import { expect, test } from "@playwright/test";
+import { type GenericAnnotation, annotationField, versionGroupField } from "@quillium/share/core";
+import { addAnnotation } from "@quillium/share/core/annotationField";
+import { makeVersion } from "@quillium/share/core/models";
+import { createVersionGroup } from "@quillium/share/core/versionGroupField";
 import {
     type MockDocEvent,
     type MockDraft,
@@ -17,6 +22,61 @@ import {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const BASE_TIME = Date.now();
+
+function makeAnnotatedStateJson(): string {
+    let state = EditorState.create({
+        doc: "The quick brown fox",
+        extensions: [annotationField, versionGroupField],
+    });
+
+    const quick = makeVersion({ doc: "quick" });
+    const swift = makeVersion({ doc: "swift" });
+    const fox = makeVersion({ doc: "fox" });
+    const hound = makeVersion({ doc: "hound" });
+    const annotations: GenericAnnotation[] = [
+        {
+            id: 1,
+            _type: "revision",
+            thread: [],
+            selection: EditorSelection.single(4, 9),
+            activeVersionId: quick.id,
+            versions: [quick, swift],
+        },
+        {
+            id: 2,
+            _type: "revision",
+            thread: [],
+            selection: EditorSelection.single(16, 19),
+            activeVersionId: fox.id,
+            versions: [fox, hound],
+        },
+        {
+            id: 3,
+            _type: "comment",
+            thread: [{ author: "Reviewer", message: "Strong opener.", time: 1 }],
+            selection: EditorSelection.single(0, 3),
+        },
+        {
+            id: 4,
+            _type: "suggestion",
+            author: "AI",
+            thread: [{ author: "AI", message: "Consider a richer color.", time: 2 }],
+            selection: EditorSelection.single(10, 15),
+            replacements: [{ text: "russet", rationale: "More specific" }],
+        },
+    ];
+
+    state = state.update({
+        effects: annotations.map((annotation) => addAnnotation.of(annotation)),
+    }).state;
+    const { spec } = createVersionGroup("Formal voice", [
+        { revisionId: 1, versionId: swift.id },
+        { revisionId: 2, versionId: hound.id },
+    ]);
+    state = state.update(spec).state;
+
+    return JSON.stringify(state.toJSON({ annotationField, versionGroupField }));
+}
 
 function makeSnapshots(): MockSnapshot[] {
     return [
@@ -188,6 +248,134 @@ test("history preview uses the configured document typography", async ({ page })
     expect(style.fontFamily).toContain("Georgia");
     expect(style.fontSize).toBe("18px");
     expect(style.textIndent).toBe("36px");
+});
+
+test("history preview renders linked annotations read-only and explores grouped versions", async ({
+    page,
+}) => {
+    const stateJson = makeAnnotatedStateJson();
+    const qp = new QuilliumPage(page, {
+        snapshots: [
+            {
+                id: 2,
+                draftId: "draft-test-1",
+                upToEventId: 20,
+                createdAt: BASE_TIME - 1000,
+                label: "Annotated draft",
+                doc: "The quick brown fox",
+                stateJson,
+            },
+            {
+                id: 1,
+                draftId: "draft-test-1",
+                upToEventId: 10,
+                createdAt: BASE_TIME - 2000,
+                label: null,
+                doc: "The quick brown fox",
+            },
+        ],
+    });
+    await qp.initHistory();
+
+    const preview = page.locator(".version-preview");
+    await expect(preview.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+
+    const cards = page.getByRole("complementary", { name: "Snapshot annotations" });
+    await expect(cards.locator("[data-annotation-card]")).toHaveCount(4);
+    await expect(cards.getByRole("heading", { name: "Revision" })).toHaveCount(2);
+    await expect(cards.getByRole("heading", { name: "Comment" })).toHaveCount(1);
+    await expect(cards.getByRole("heading", { name: "AI Suggestion" })).toHaveCount(1);
+    await expect(cards.getByText("Strong opener.")).toBeVisible();
+
+    const linked = cards.locator("[title='Linked — group \"Formal voice\" (2 versions)']");
+    await expect(linked).toHaveCount(2);
+    const groupColors = await linked.evaluateAll((elements) =>
+        elements.map((element) => {
+            const dot = element.querySelector("span");
+            return dot ? getComputedStyle(dot).backgroundColor : "";
+        }),
+    );
+    expect(groupColors[0]).not.toBe("");
+    expect(new Set(groupColors).size).toBe(1);
+
+    await expect(cards.getByRole("button", { name: "Link version" })).toHaveCount(0);
+    await expect(cards.getByRole("button", { name: "Delete comment" })).toHaveCount(0);
+    await expect(cards.getByRole("button", { name: "Delete suggestion" })).toHaveCount(0);
+    await expect(cards.getByTitle("Delete entire revision")).toHaveCount(0);
+    await expect(cards.locator('[title^="Delete version"]')).toHaveCount(0);
+    await expect(cards.getByText("New Version", { exact: true })).toHaveCount(0);
+    await expect(cards.getByRole("button", { name: "Branch instead" })).toHaveCount(0);
+    await expect(cards.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
+    await expect(cards.getByRole("textbox")).toHaveCount(0);
+
+    const suggestionCard = cards.locator('[data-annotation-id="4"]');
+    await suggestionCard.getByRole("button", { name: "View changes" }).click();
+    await expect(suggestionCard.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
+    await expect(suggestionCard.locator('[data-suggestion-diff="insert"]')).toHaveText("russet");
+
+    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
+
+    await cards.getByRole("button", { name: /^swift, linked in / }).click();
+    await expect
+        .poll(() =>
+            preview.locator(".cm-content").evaluate((element) => {
+                const projection = element.cloneNode(true) as HTMLElement;
+                for (const deletion of projection.querySelectorAll(".cm-history-diff-del")) {
+                    deletion.remove();
+                }
+                return projection.textContent;
+            }),
+        )
+        .toBe("The swift brown hound");
+    await expect(cards.getByRole("button", { name: /^swift, linked in / })).toBeDisabled();
+    await expect(cards.getByRole("button", { name: /^hound, linked in / })).toBeDisabled();
+    await expect(page.getByText("vs. previous version")).toBeVisible();
+    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(2);
+    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(2);
+
+    // Clicking annotated prose updates the card focus from the actual editor
+    // selection, just as it does in the writable editor.
+    await preview.locator(".cm-suggestion").first().click();
+    await expect(cards.locator('[data-annotation-id="4"]')).toHaveAttribute("data-active", "true");
+    await expect(cards.locator('[data-annotation-id="3"]')).toHaveAttribute("data-active", "false");
+
+    // Reverting both independent originals removes the live diff and legend;
+    // the overlay cannot remain frozen at the initially-mounted projection.
+    await cards.getByRole("button", { name: "quick", exact: true }).click();
+    await cards.getByRole("button", { name: "fox", exact: true }).click();
+    await expect(preview.locator(".cm-content")).toHaveText("The quick brown fox");
+    await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
+    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+});
+
+test("history annotation layout responds to the remaining preview pane width", async ({ page }) => {
+    const stateJson = makeAnnotatedStateJson();
+    const qp = new QuilliumPage(page, {
+        snapshots: [
+            {
+                id: 1,
+                draftId: "draft-test-1",
+                upToEventId: 10,
+                createdAt: BASE_TIME - 1000,
+                label: "Annotated draft",
+                doc: "The quick brown fox",
+                stateJson,
+            },
+        ],
+    });
+
+    await page.setViewportSize({ width: 2000, height: 1000 });
+    await qp.initHistory();
+    const stage = page.locator(".history-preview-stage");
+    await expect(stage).toHaveCSS("flex-direction", "row");
+
+    // The viewport is still desktop-sized, but the structure and timeline
+    // sidebars leave too little width for an editor plus card column.
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await expect(stage).toHaveCSS("flex-direction", "column");
 });
 
 test("most recent snapshot is selected by default", async ({ page }) => {

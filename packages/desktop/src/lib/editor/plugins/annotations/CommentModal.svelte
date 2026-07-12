@@ -6,6 +6,12 @@ import { appSettings } from "$lib/settings.svelte";
 import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
+import {
+    type AnnotationContextViewLayer,
+    AnnotationModalFrame,
+    AnnotationModalHeader,
+    ContextViewport,
+} from "@quillium/share";
 /**
  * CommentModal.svelte — Full-screen modal that shows a comment
  * thread expanded, making long discussions easy to read and reply to.
@@ -25,17 +31,8 @@ import type { EditorView } from "@codemirror/view";
  * Parent: rendered by the modal layer in +page.svelte
  * Children: Thread.svelte
  */
-import {
-    ChevronDown,
-    ChevronRight,
-    ChevronUp,
-    MessageSquare,
-    SparklesIcon,
-    Trash2,
-    X,
-} from "lucide-svelte";
-import { slide } from "svelte/transition";
-import type { Annotation, Thread as ThreadType } from ".";
+import { ChevronRight, MessageSquare, SparklesIcon, Trash2 } from "lucide-svelte";
+import { type Annotation, type Thread as ThreadType, isAnnotationOfType } from ".";
 import Thread from "./Thread.svelte";
 import { annotationField, removeAnnotation, updateThread } from "./annotationField";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
@@ -55,11 +52,13 @@ let dialogEl = $state<HTMLDialogElement>();
 // Read comment from the correct annotation source:
 // - stackIndex 0 → main editor's global annotations store
 // - stackIndex N → parent modal's nested annotation store (index N-1)
-const comment = $derived(
-    (stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[commentId] as
-        | Annotation<"comment">
-        | undefined,
-);
+const comment = $derived.by((): Annotation<"comment"> | undefined => {
+    const annotation =
+        (stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
+            commentId
+        ] ?? parentView.state.field(annotationField)[commentId];
+    return annotation && isAnnotationOfType(annotation, "comment") ? annotation : undefined;
+});
 
 const selectedText = $derived(
     comment
@@ -72,22 +71,8 @@ const CHUNK = 300;
 const INITIAL_CHUNK = 1500;
 let contextBefore = $state(INITIAL_CHUNK);
 let contextAfter = $state(INITIAL_CHUNK);
-let contextCollapsed = $state(false);
-let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
-let contextCommentEl = $state<HTMLSpanElement | undefined>(undefined);
-let commentDirection = $state<"above" | "below" | null>(null);
-let contextAtTop = $state(true);
-let contextAtBottom = $state(false);
 
-type DocContext = {
-    before: string;
-    comment: string;
-    after: string;
-    hasMoreBefore: boolean;
-    hasMoreAfter: boolean;
-};
-
-const docContext = $derived.by((): DocContext | null => {
+const docContext = $derived.by((): AnnotationContextViewLayer | null => {
     if (!comment) return null;
     const doc = parentView.state.doc;
     const from = comment.selection.main.from;
@@ -96,83 +81,13 @@ const docContext = $derived.by((): DocContext | null => {
     const afterEnd = Math.min(doc.length, to + contextAfter);
     return {
         before: doc.sliceString(beforeStart, from),
-        comment: doc.sliceString(from, to),
+        revision: doc.sliceString(from, to),
         after: doc.sliceString(to, afterEnd),
         hasMoreBefore: beforeStart > 0,
         hasMoreAfter: afterEnd < doc.length,
     };
 });
-
-function scrollCommentIntoCenter(behavior: ScrollBehavior = "smooth") {
-    if (!contextScrollEl || !contextCommentEl) return;
-    const container = contextScrollEl;
-    const containerRect = container.getBoundingClientRect();
-    const commentRect = contextCommentEl.getBoundingClientRect();
-    const currentTop = container.scrollTop;
-    const targetTop =
-        currentTop +
-        (commentRect.top - containerRect.top) -
-        (container.clientHeight / 2 - commentRect.height / 2);
-    container.scrollTo({ top: targetTop, behavior });
-}
-
-$effect(() => {
-    if (contextCollapsed || !contextCommentEl || !contextScrollEl) return;
-    requestAnimationFrame(() => scrollCommentIntoCenter("auto"));
-    const id = window.setTimeout(() => scrollCommentIntoCenter("auto"), 220);
-    return () => window.clearTimeout(id);
-});
-
-$effect(() => {
-    if (!contextCommentEl || !contextScrollEl) return;
-    const observer = new IntersectionObserver(
-        ([entry]) => {
-            if (entry.isIntersecting) {
-                commentDirection = null;
-            } else {
-                const rect = entry.boundingClientRect;
-                const rootRect = entry.rootBounds;
-                if (rootRect) {
-                    commentDirection = rect.top < rootRect.top ? "above" : "below";
-                }
-            }
-        },
-        { root: contextScrollEl, threshold: 0.1 },
-    );
-    observer.observe(contextCommentEl);
-    return () => observer.disconnect();
-});
-
-$effect(() => {
-    const el = contextScrollEl;
-    if (!el) return;
-    function updateEdges() {
-        if (!el) return;
-        contextAtTop = el.scrollTop <= 0;
-        contextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 0;
-    }
-    updateEdges();
-    function handleScroll() {
-        if (!el) return;
-        updateEdges();
-        const THRESHOLD = 40;
-        if (el.scrollTop < THRESHOLD && docContext?.hasMoreBefore) {
-            const prevHeight = el.scrollHeight;
-            contextBefore += CHUNK;
-            requestAnimationFrame(() => {
-                el.scrollTop += el.scrollHeight - prevHeight;
-            });
-        }
-        if (
-            el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD &&
-            docContext?.hasMoreAfter
-        ) {
-            contextAfter += CHUNK;
-        }
-    }
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
-});
+const contextLayers = $derived(docContext ? [docContext] : []);
 
 // ── Reply box state ──────────────────────────────────────────
 // Reply draft lives in the shared drafts store (keyed by annotation id) so
@@ -260,6 +175,39 @@ async function aiSuggestion() {
 }
 </script>
 
+{#snippet commentHeaderLeading()}
+    <MessageSquare size={13} class="text-blue-500/70 shrink-0" />
+    <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
+        {#each crumbs as crumb, ci}
+            {#if ci > 0}
+                <ChevronRight size={10} class="text-blue-300/60 shrink-0" />
+            {/if}
+            {#if ci < crumbs.length - 1}
+                <button
+                    class="text-[10px] text-blue-500/60 hover:text-blue-700/80 transition-colors truncate max-w-[120px] shrink-0"
+                    onclick={() => modalStack.popTo(ci)}
+                >{crumb.label}</button>
+            {:else}
+                <span
+                    class="text-[10px] font-semibold text-blue-700/70 uppercase tracking-wider shrink-0"
+                    >Comment</span
+                >
+            {/if}
+        {/each}
+    </nav>
+{/snippet}
+
+{#snippet commentHeaderActions()}
+    <button
+        class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
+        onclick={deleteComment}
+        title="Delete comment"
+        aria-label="Delete comment"
+    >
+        <Trash2 size={16} />
+    </button>
+{/snippet}
+
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 <dialog
     bind:this={dialogEl}
@@ -267,45 +215,14 @@ async function aiSuggestion() {
     onclick={(e) => { if (e.target === dialogEl) close(); }}
     oncancel={(e) => { e.preventDefault(); close(); }}
 >
-    <div class="comment-modal-inner">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-blue-100/80 shrink-0 gap-3 min-w-0">
-            <div class="flex items-center gap-2 min-w-0 flex-1">
-                <MessageSquare size={13} class="text-blue-500/70 shrink-0" />
-                <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
-                    {#each crumbs as crumb, ci}
-                        {#if ci > 0}
-                            <ChevronRight size={10} class="text-blue-300/60 shrink-0" />
-                        {/if}
-                        {#if ci < crumbs.length - 1}
-                            <button
-                                class="text-[10px] text-blue-500/60 hover:text-blue-700/80 transition-colors truncate max-w-[120px] shrink-0"
-                                onclick={() => modalStack.popTo(ci)}
-                            >{crumb.label}</button>
-                        {:else}
-                            <span class="text-[10px] font-semibold text-blue-700/70 uppercase tracking-wider shrink-0">Comment</span>
-                        {/if}
-                    {/each}
-                </nav>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-                <button
-                    class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
-                    onclick={deleteComment}
-                    title="Delete comment"
-                    aria-label="Delete comment"
-                >
-                    <Trash2 size={16} />
-                </button>
-                <button
-                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
-                    onclick={close}
-                >
-                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                    <X size={16} />
-                </button>
-            </div>
-        </div>
+    <AnnotationModalFrame variant="comment">
+        <AnnotationModalHeader
+            accent="comment"
+            leading={commentHeaderLeading}
+            actions={commentHeaderActions}
+            onClose={close}
+            closeLabel="Close comment"
+        />
 
         <!-- Body -->
         <div class="flex flex-1 overflow-hidden">
@@ -390,55 +307,19 @@ async function aiSuggestion() {
             <!-- Right sidebar: context + future sections (1/3 of modal) -->
             {#if docContext}
                 <div class="w-1/3 shrink-0 border-l border-blue-100/60 flex flex-col min-h-0 bg-blue-50/20">
-                    <!-- Context panel — currently flex-1 to fill sidebar;
-                         constrain to shrink-0 + fixed height when adding more sections -->
-                    <div class="flex-1 min-h-0 flex flex-col border-b border-blue-100/60">
-                        <button
-                            class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50/60 transition-colors shrink-0"
-                            onclick={() => (contextCollapsed = !contextCollapsed)}
-                        >
-                            <span class="text-[9px] font-semibold text-blue-600/60 uppercase tracking-wider">Context</span>
-                            {#if contextCollapsed}
-                                <ChevronDown size={10} class="text-blue-400/50" />
-                            {:else}
-                                <ChevronUp size={10} class="text-blue-400/50" />
-                            {/if}
-                        </button>
-                        {#if !contextCollapsed}
-                            <div transition:slide={{ duration: 180 }} class="relative flex-1 min-h-0">
-                                <div
-                                    bind:this={contextScrollEl}
-                                    class="context-scroll"
-                                    style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
-                                >
-                                    <span class="context-text">
-                                        {#if docContext.before}<span class="context-surrounding">{docContext.before}</span>{/if}<!--
-                                        --><span bind:this={contextCommentEl} class="context-comment">{docContext.comment || "(empty)"}</span><!--
-                                        -->{#if docContext.after}<span class="context-surrounding">{docContext.after}</span>{/if}
-                                    </span>
-                                </div>
-                                {#if commentDirection}
-                                    <button
-                                        class="context-jump-btn {commentDirection === 'above' ? 'context-jump-top' : 'context-jump-bottom'}"
-                                        onclick={() => scrollCommentIntoCenter()}
-                                        title="Jump to comment"
-                                    >
-                                        <span class="context-jump-inner">
-                                            {#if commentDirection === "above"}
-                                                <ChevronUp size={14} />
-                                            {:else}
-                                                <ChevronDown size={14} />
-                                            {/if}
-                                        </span>
-                                    </button>
-                                {/if}
-                            </div>
-                        {/if}
-                    </div>
+                    <ContextViewport
+                        layers={contextLayers}
+                        variant="comment"
+                        targetLabel="comment"
+                        centerKey={commentId}
+                        fill
+                        onLoadMoreBefore={() => (contextBefore += CHUNK)}
+                        onLoadMoreAfter={() => (contextAfter += CHUNK)}
+                    />
                 </div>
             {/if}
         </div>
-    </div>
+    </AnnotationModalFrame>
 </dialog>
 
 <style>
@@ -463,99 +344,4 @@ async function aiSuggestion() {
         backdrop-filter: blur(4px);
     }
 
-    .comment-modal-inner {
-        display: flex;
-        flex-direction: column;
-        width: 1060px;
-        height: 72vh;
-        background: white;
-        border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        overflow: hidden;
-    }
-
-    .context-scroll {
-        height: 100%;
-        overflow-y: auto;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-        padding: 10px 14px;
-        background: rgba(239, 246, 255, 0.45);
-        backdrop-filter: blur(12px) saturate(1.3);
-        -webkit-backdrop-filter: blur(12px) saturate(1.3);
-    }
-
-    .context-scroll::-webkit-scrollbar {
-        display: none;
-    }
-
-    .context-text {
-        display: block;
-        font-size: 11px;
-        line-height: 1.7;
-        color: rgba(30, 64, 120, 0.35);
-        font-family: var(--doc-font-family, system-ui, sans-serif);
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
-
-    .context-surrounding {
-        color: rgba(30, 64, 120, 0.35);
-    }
-
-    .context-comment {
-        display: inline;
-        border-radius: 4px;
-        padding: 1px 3px;
-        background: rgba(253, 224, 71, 0.25);
-        color: rgba(120, 80, 10, 0.75);
-        box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.45);
-    }
-
-    /* Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
-       inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
-       corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
-       + box-shadow squares the shadow at the corners; splitting avoids it. */
-    .context-jump-btn {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        border-radius: 99px;
-        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
-        cursor: pointer;
-        padding: 0;
-        border: none;
-        background: transparent;
-        z-index: 2;
-    }
-
-    .context-jump-inner {
-        display: flex;
-        align-items: center;
-        gap: 3px;
-        padding: 3px 5px;
-        font-size: 10px;
-        font-weight: 500;
-        color: rgba(37, 99, 235, 0.8);
-        background: rgba(239, 246, 255, 0.85);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(147, 197, 253, 0.5);
-        border-radius: 99px;
-        overflow: hidden;
-        transition: background 0.15s, color 0.15s;
-    }
-
-    .context-jump-btn:hover .context-jump-inner {
-        background: rgba(219, 234, 254, 0.95);
-        color: rgba(37, 99, 235, 1);
-    }
-
-    .context-jump-top {
-        top: 4px;
-    }
-
-    .context-jump-bottom {
-        bottom: 4px;
-    }
 </style>

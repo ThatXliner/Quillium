@@ -10,7 +10,7 @@
     },
     "packages/desktop": {
       "name": "@quillium/desktop",
-      "version": "0.21.0",
+      "version": "0.21.8",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.72",
         "@ai-sdk/deepseek": "^2.0.35",
@@ -91,6 +91,26 @@
         "vitest": "^4.1.5",
       },
     },
+    "packages/e2e": {
+      "name": "@quillium/e2e",
+      "dependencies": {
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/view": "^6.41.1",
+        "@quillium/share": "workspace:*",
+        "@supabase/supabase-js": "2.110.0",
+      },
+      "devDependencies": {
+        "@playwright/test": "1.59.1",
+        "@sveltejs/vite-plugin-svelte": "^5.1.1",
+        "@testing-library/svelte": "^5.3.1",
+        "fast-check": "4.7.0",
+        "jsdom": "^28.1.0",
+        "lucide-svelte": "^0.475.0",
+        "svelte": "^5.55.5",
+        "vite": "^6.4.2",
+        "vitest": "^4.1.5",
+      },
+    },
     "packages/landing": {
       "name": "@quillium/landing",
       "version": "0.0.1",
@@ -147,8 +167,18 @@
     "packages/share": {
       "name": "@quillium/share",
       "version": "0.1.0",
+      "dependencies": {
+        "@codemirror/commands": "^6.10.3",
+        "@codemirror/search": "^6.7.0",
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/view": "^6.41.1",
+        "lodash-es": "^4.18.1",
+        "zod": "^4.4.1",
+      },
       "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^5.1.1",
+        "@types/lodash-es": "^4.17.12",
+        "fast-check": "^4.7.0",
         "lucide-svelte": "^0.475.0",
         "svelte": "^5.55.5",
         "svelte-check": "^4.4.6",
@@ -476,6 +506,8 @@
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.0", "", {}, "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="],
 
     "@quillium/desktop": ["@quillium/desktop@workspace:packages/desktop"],
+
+    "@quillium/e2e": ["@quillium/e2e@workspace:packages/e2e"],
 
     "@quillium/landing": ["@quillium/landing@workspace:packages/landing"],
 

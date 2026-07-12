@@ -51,7 +51,7 @@ import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
  */
 import type { EditorView } from "@codemirror/view";
 import { Minimize2 } from "lucide-svelte";
-import { tick } from "svelte";
+import { onDestroy, tick } from "svelte";
 import { toast } from "svelte-sonner";
 import type { Action } from "svelte/action";
 import Comment from "./Comment.svelte";
@@ -59,10 +59,12 @@ import PreComment from "./PreComment.svelte";
 import Revision from "./Revision.svelte";
 import Suggestion from "./Suggestion.svelte";
 import {
+    ANNOTATION_CARD_TOP_TRANSITION,
+    AnnotationColumnDomController,
     type ColumnSide,
+    MIN_ANNOTATION_COLUMN_WIDTH,
     balanceColumns,
     idSignature,
-    layoutColumnPositions,
     sidesEqual,
 } from "./annotationLayout";
 
@@ -105,7 +107,6 @@ const effectiveLayout = $derived(appSettings.aiEnabled ? "single" : appSettings.
  * cards beside the document. In this mode, clicking an annotation
  * decoration opens a modal instead of the floating card.
  */
-const MIN_ANNOTATION_WIDTH = 150;
 // Minimum gap kept between the left annotation column and the window edge.
 const LEFT_MARGIN = 16;
 let narrowMode = $state(false);
@@ -117,7 +118,7 @@ $effect(() => {
     void resolvedView; // re-run when the view becomes available
     function checkWidth() {
         if (!resolvedView) return;
-        narrowMode = window.innerWidth - getAnnotationLeft() - 32 < MIN_ANNOTATION_WIDTH;
+        narrowMode = window.innerWidth - getAnnotationLeft() - 32 < MIN_ANNOTATION_COLUMN_WIDTH;
         leftColumnFits = getAnnotationLeftColumnX() >= LEFT_MARGIN;
     }
     checkWidth();
@@ -234,6 +235,15 @@ function dispatchUpdateThread(annotationId: number, newThread: Thread) {
 function isInteractiveTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
     return !!target.closest("button, input, textarea, select, a[href], [contenteditable='true']");
+}
+
+function activateAnnotation(annotation: GenericAnnotation): void {
+    if (!resolvedView) return;
+    resolvedView.dispatch({
+        selection: { anchor: annotation.selection.main.from },
+        scrollIntoView: true,
+    });
+    resolvedView.focus();
 }
 
 /**
@@ -369,8 +379,7 @@ function getPositionedAnnotations(): Positioned[] {
 
 /** Measured height of a card, with the same 80px fallback the layout uses. */
 function getCardHeight(id: number): number {
-    const el = annotationElements[id];
-    return el ? el.offsetHeight || 80 : 80;
+    return annotationColumnDom.getCardHeight(id);
 }
 
 // Last-known *collapsed* (inactive) height per card. Cards grow when active
@@ -463,35 +472,23 @@ function computeCardSides(positions: Positioned[]): { [id: number]: ColumnSide }
     return balancedSides;
 }
 
-const annotationElements: { [id: number]: HTMLDivElement | undefined } = {};
 let annotationElementsVersion = $state(0);
+const annotationColumnDom = new AnnotationColumnDomController<number>(updateAnnotationPositions);
 
 const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
-    let currentId = id;
-    if (currentId !== undefined) {
-        annotationElements[currentId] = node;
-        annotationElementsVersion++;
-    }
+    const mounted = annotationColumnDom.mountCard(node, id);
+    annotationElementsVersion++;
     return {
         update(nextId) {
-            if (currentId !== undefined && annotationElements[currentId] === node) {
-                delete annotationElements[currentId];
-            }
-            currentId = nextId;
-            if (currentId !== undefined) {
-                annotationElements[currentId] = node;
-            }
+            mounted.update(nextId);
             annotationElementsVersion++;
         },
         destroy() {
-            if (currentId !== undefined && annotationElements[currentId] === node) {
-                delete annotationElements[currentId];
-                annotationElementsVersion++;
-            }
+            mounted.destroy();
+            annotationElementsVersion++;
         },
     };
 };
-let resizeObserver: ResizeObserver | undefined;
 
 // Reposition cards when the active annotation or list changes
 $effect(() => {
@@ -518,20 +515,11 @@ $effect(() => {
     if (!isFloating) return;
     void sortedAnnotations; // track additions/removals
     void annotationElementsVersion; // re-observe when elements register
-    resizeObserver?.disconnect();
-    resizeObserver = new ResizeObserver(() => debouncedUpdatePositions());
-    tick().then(() => {
-        for (const el of Object.values(annotationElements)) {
-            if (el) resizeObserver?.observe(el);
-        }
-    });
-    return () => resizeObserver?.disconnect();
+    tick().then(() => annotationColumnDom.observeCards());
 });
 
-let updateTimeout: ReturnType<typeof setTimeout>;
 function debouncedUpdatePositions() {
-    clearTimeout(updateTimeout);
-    updateTimeout = setTimeout(updateAnnotationPositions, 16);
+    annotationColumnDom.schedule();
 }
 
 // A single floating column to lay out. The right column (or the only
@@ -602,7 +590,6 @@ function layoutColumn(col: Column) {
     const items = col.cards.map(({ annotation, viewportY }) => ({
         id: annotation.id,
         viewportY,
-        height: getCardHeight(annotation.id),
     }));
     // The active card anchors at its natural Y only if it lives in this column.
     const activeId =
@@ -610,19 +597,12 @@ function layoutColumn(col: Column) {
         col.cards.some((p) => p.annotation.id === resolvedActiveAnnotation.id)
             ? resolvedActiveAnnotation.id
             : null;
-    const { adjustedY, overhead, maxBottom } = layoutColumnPositions(items, activeId);
-
-    updateScrollContainerSize(col, maxBottom);
-    applyCardPositions(col.cards, adjustedY);
-
-    // Scroll so the active card sits at its natural viewport Y.
-    // When nothing is active, restore scroll to 0 (top of column).
-    if (col.el) {
-        const targetScroll = overhead;
-        if (Math.abs(col.el.scrollTop - targetScroll) > 1) {
-            col.el.scrollTo({ top: targetScroll, behavior: "smooth" });
-        }
-    }
+    annotationColumnDom.apply({
+        container: col.el,
+        items,
+        activeId,
+        geometry: getColumnGeometry(col),
+    });
 }
 
 /**
@@ -632,10 +612,7 @@ function layoutColumn(col: Column) {
  * the viewport (the right edge for the right column, the left edge for
  * the left column).
  */
-function updateScrollContainerSize(col: Column, lastBottom: number) {
-    if (!col.el) return;
-    const inner = col.el.querySelector<HTMLElement>(".annotation-scroll-inner");
-    if (inner) inner.style.height = `${lastBottom + 24}px`;
+function getColumnGeometry(col: Column): { left: number; width: number } {
     const desiredWidth = getPanelWidth();
     let leftPx = col.leftPx;
     let availableWidth: number;
@@ -650,8 +627,7 @@ function updateScrollContainerSize(col: Column, lastBottom: number) {
             Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
         );
     }
-    col.el.style.left = `${leftPx}px`;
-    col.el.style.width = `${availableWidth}px`;
+    return { left: leftPx, width: availableWidth };
 }
 
 // Drag gesture (pointer capture, window listeners, body style overrides,
@@ -690,16 +666,6 @@ function resetPanelWidth() {
  * positioned relative to their (already placed) column container, so
  * left stays 0 within the column.
  */
-function applyCardPositions(positions: Positioned[], adjustedY: { [id: number]: number }) {
-    for (const { annotation } of positions) {
-        const el = annotationElements[annotation.id];
-        if (el) {
-            el.style.top = `${adjustedY[annotation.id] ?? 0}px`;
-            el.style.left = "0px";
-        }
-    }
-}
-
 // Track which pending card is currently showing the alert animation
 let alertingPendingId: number | undefined = $state();
 
@@ -711,7 +677,7 @@ $effect(() => {
     return annotationEventBus.on("pending-comment-alert", () => {
         if (!isFloating || !pendingComment) return;
 
-        const el = annotationElements[pendingComment.id];
+        const el = annotationColumnDom.getCardElement(pendingComment.id);
         if (!el) return;
 
         // Scroll the editor to show the pending comment's highlighted text
@@ -756,19 +722,13 @@ $effect(() => {
         if (!active) return;
 
         if (e.key === "/" && !e.shiftKey) {
-            if (
-                active._type === "comment" ||
-                active._type === "suggestion" ||
-                active._type === "revision"
-            ) {
-                e.preventDefault();
-                annotationEventBus.emit({
-                    type: "annotation-focus-reply",
-                    annotationId: active.id,
-                });
-            }
+            e.preventDefault();
+            annotationEventBus.emit({
+                type: "annotation-focus-reply",
+                annotationId: active.id,
+            });
         } else if ((e.key === "e" || e.key === "E") && !e.shiftKey) {
-            if (active._type === "revision") {
+            if (isAnnotationOfType(active, "revision")) {
                 e.preventDefault();
                 annotationEventBus.emit({
                     type: "annotation-enter-editor",
@@ -784,15 +744,15 @@ $effect(() => {
 // Listen for editor scroll and window resize to reposition cards
 $effect(() => {
     if (!isFloating || !resolvedView) return;
-    const update = () => debouncedUpdatePositions();
-    resolvedView.scrollDOM.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
+    annotationColumnDom.setEventTargets([resolvedView.scrollDOM]);
+    window.addEventListener("resize", annotationColumnDom.schedule);
     return () => {
-        clearTimeout(updateTimeout);
-        resolvedView.scrollDOM.removeEventListener("scroll", update);
-        window.removeEventListener("resize", update);
+        annotationColumnDom.setEventTargets([]);
+        window.removeEventListener("resize", annotationColumnDom.schedule);
     };
 });
+
+onDestroy(() => annotationColumnDom.destroy());
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
@@ -874,34 +834,27 @@ $effect(() => {
         {@const i = c.id}
         {@const isActive = resolvedActiveAnnotation?.id === c.id}
         {@const isPendingComment = pendingComment?.id === c.id}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             use:annotationElement={i}
             class="annotation-card"
             class:is-active={isActive}
-            style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
+            style:z-index={isActive ? 120 : isPendingComment ? 110 : 50}
+            style:transition={ANNOTATION_CARD_TOP_TRANSITION}
             onclick={(e) => {
                 if (isInteractiveTarget(e.target)) return;
-                if (!isActive && resolvedView) {
-                    resolvedView.dispatch({
-                        selection: { anchor: c.selection.main.from },
-                        scrollIntoView: true,
-                    });
-                    resolvedView.focus();
-                }
+                if (!isActive) activateAnnotation(c);
             }}
-            role="button"
-            tabindex="0"
-            onkeydown={(e) => {
-                if (isInteractiveTarget(e.target)) return;
-                if ((e.key === "Enter" || e.key === " ") && resolvedView) {
-                    resolvedView.dispatch({
-                        selection: { anchor: c.selection.main.from },
-                        scrollIntoView: true,
-                    });
-                    resolvedView.focus();
-                }
-            }}
+            role="group"
+            aria-label="Annotation card"
         >
+            <button
+                type="button"
+                class="sr-only"
+                aria-label="Focus annotation"
+                onclick={() => activateAnnotation(c)}
+            ></button>
             {@render cardContent(c, i, isActive, isPendingComment)}
             {#if alertingPendingId === c.id}
                 <div
@@ -961,33 +914,25 @@ $effect(() => {
                 {@const i = c.id}
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
                 {@const isPendingComment = pendingComment?.id === c.id}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
                 <div
                     use:annotationElement={i}
                     class="annotation-card-inline"
                     class:is-active={isActive}
                     onclick={(e) => {
                         if (isInteractiveTarget(e.target)) return;
-                        if (!isActive && resolvedView) {
-                            resolvedView.dispatch({
-                                selection: { anchor: c.selection.main.from },
-                                scrollIntoView: true,
-                            });
-                            resolvedView.focus();
-                        }
+                        if (!isActive) activateAnnotation(c);
                     }}
-                    role="button"
-                    tabindex="0"
-                    onkeydown={(e) => {
-                        if (isInteractiveTarget(e.target)) return;
-                        if ((e.key === "Enter" || e.key === " ") && resolvedView) {
-                            resolvedView.dispatch({
-                                selection: { anchor: c.selection.main.from },
-                                scrollIntoView: true,
-                            });
-                            resolvedView.focus();
-                        }
-                    }}
+                    role="group"
+                    aria-label="Annotation card"
                 >
+                    <button
+                        type="button"
+                        class="sr-only"
+                        aria-label="Focus annotation"
+                        onclick={() => activateAnnotation(c)}
+                    ></button>
                     {@render cardContent(c, i, isActive, isPendingComment)}
                 </div>
             {/each}
@@ -1095,7 +1040,6 @@ $effect(() => {
         left: 0;
         width: 100%;
         pointer-events: auto;
-        transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
 
     .annotation-inline-list {

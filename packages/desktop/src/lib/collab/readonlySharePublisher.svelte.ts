@@ -29,6 +29,8 @@ export type PublishPayload = {
     title: string;
     content: string;
     annotations: SerializedAnnotation[];
+    /** Serialized CM state blob (doc + annotationField + versionGroupField). */
+    state: Record<string, unknown> | null;
 };
 
 export class ReadonlySharePublisher {
@@ -79,6 +81,7 @@ export class ReadonlySharePublisher {
                 publishedTitle: payload.title.trim() || "Untitled",
                 publishedContent: payload.content,
                 publishedAnnotations: payload.annotations,
+                publishedState: payload.state,
             };
             readonlyShareState.set(this.share);
             this.failedFingerprint = "";

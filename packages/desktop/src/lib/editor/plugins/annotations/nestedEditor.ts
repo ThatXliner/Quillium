@@ -37,6 +37,10 @@ import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
 import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import {
+    VERSION_PREVIEW_MAX_LENGTH,
+    formatVersionPreviewText,
+} from "@quillium/share/versionPreview";
 import { get } from "svelte/store";
 import {
     _nestedEditRevision,
@@ -52,8 +56,6 @@ import {
     isAnnotationOfType,
     versionText,
 } from "./models";
-
-const VERSION_PREVIEW_MAX = 34;
 
 /**
  * Creates a nested EditorState for a revision version.
@@ -588,8 +590,9 @@ export function translateAndDispatch(
  * Returns a short preview string for a version's text content,
  * suitable for labels in version pills or breadcrumb dropdowns.
  */
-export function previewVersionText(version: VersionState, maxLen = VERSION_PREVIEW_MAX): string {
-    const flattened = versionText(version).replace(/\s+/g, " ").trim();
-    if (!flattened) return "(empty)";
-    return flattened.length > maxLen ? `${flattened.slice(0, maxLen)}…` : flattened;
+export function previewVersionText(
+    version: VersionState,
+    maxLen = VERSION_PREVIEW_MAX_LENGTH,
+): string {
+    return formatVersionPreviewText(versionText(version), maxLen);
 }

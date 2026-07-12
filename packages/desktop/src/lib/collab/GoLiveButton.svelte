@@ -29,8 +29,12 @@ import {
 } from "$lib/collab/readonlyShareAutoUpdate";
 import { ReadonlySharePublisher } from "$lib/collab/readonlySharePublisher.svelte";
 import { buildReadonlyShareUrl, buildSharePreviewText } from "$lib/collab/share";
-import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
-import { annotationField } from "$lib/editor/plugins/annotations";
+import {
+    buildShareFingerprint,
+    serializeAnnotations,
+    serializeShareState,
+} from "$lib/collab/sharePayload";
+import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
@@ -40,6 +44,7 @@ import {
     currentDraftId,
     documentContent,
     editorView,
+    versionGroups,
 } from "$lib/stores";
 import { Loader2, RefreshCcw, Share2, X } from "lucide-svelte";
 import { toast } from "svelte-sonner";
@@ -83,7 +88,11 @@ const shareComparisonPayload = $derived(
         ? {
               title: $currentDocumentTitle,
               content: $documentContent,
-              annotations: serializeAnnotations($documentContent, $annotations),
+              annotations: serializeAnnotations(
+                  $documentContent,
+                  $annotations,
+                  $versionGroups ?? {},
+              ),
           }
         : null,
 );
@@ -118,7 +127,7 @@ const autoUpdatePausedAfterFailure = $derived(
 );
 const draftAnnotationCount = $derived(
     modalOpen && activeTab === "preview" && !readonlyShare?.enabled
-        ? serializeAnnotations($documentContent, $annotations).length
+        ? serializeAnnotations($documentContent, $annotations, $versionGroups ?? {}).length
         : 0,
 );
 
@@ -220,13 +229,17 @@ function buildPublishPayload() {
     // updating from a different draft replaces what the single Omni view shows.
     const content = view?.state.doc.toString() ?? $documentContent;
     const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
+    const liveVersionGroups = view?.state.field(versionGroupField, false) ?? $versionGroups ?? {};
 
     return {
         documentId: shareId,
         ownerId: getUser()?.id ?? "",
         title: $currentDocumentTitle,
         content,
-        annotations: serializeAnnotations(content, liveAnnotations),
+        annotations: serializeAnnotations(content, liveAnnotations, liveVersionGroups),
+        // Real CM state blob for the read-only editor renderer; null if the
+        // view isn't available (falls back to flat annotations on the web).
+        state: view ? serializeShareState(view.state) : null,
     };
 }
 

@@ -128,6 +128,13 @@ We had everything before us, we had nothing before us, we were all going direct 
 
 It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster.`;
 
+// Video-only micro-story used by the Quillium product reel capture mode.
+// Keeping every screenshot on the same sentence makes the branching metaphor
+// legible across cuts instead of pairing demo copy with unrelated fixture text.
+const VIDEO_RAIN_DOC = `The rain found her beneath the station clock, coat darkened at the shoulders, one hand closed around a letter she had not opened.
+
+She watched the departures board change twice before she finally looked down at the envelope. The ink had begun to feather at the edges, but the name was still hers.`;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
@@ -1133,6 +1140,32 @@ export const scenarios: Scenario[] = [
             });
         },
     },
+    {
+        id: "video-rain-revision-active",
+        label: "Video: rain revision active",
+        description: "Rain micro-story with matching active and compressed alternatives",
+        category: "debug",
+        doc: VIDEO_RAIN_DOC,
+        setup(view) {
+            createRevision({
+                targetText: "The rain found her beneath the station clock",
+                versions: [
+                    {
+                        label: "Active voice",
+                        text: "Rain found her beneath the station clock",
+                    },
+                    {
+                        label: "Compressed",
+                        text: "Rain found her at the station",
+                    },
+                ],
+                threadMessage:
+                    "Keep the discovery, then decide how much atmosphere the sentence should carry.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
     // ── Screenshot: doubly-nested revision modal ──────────────────────────────
     // Used by scripts/screenshots.ts to show a revision modal open over the main
     // editor, with a second inner revision ready to be expanded into its own modal.
@@ -1191,6 +1224,33 @@ export const scenarios: Scenario[] = [
                 ],
                 threadMessage:
                     "The original simile is evocative but could go further. 'Extended' builds out the tactile detail and earns the pianist comparison; 'Spare' strips back to pure function.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
+        id: "video-rain-inline-nested-revision",
+        label: "Video: rain inline nested revision",
+        description: "Rain micro-story with an expanded version ready for a nested revision",
+        category: "debug",
+        doc: VIDEO_RAIN_DOC,
+        setup(view) {
+            createRevision({
+                targetText:
+                    "The rain found her beneath the station clock, coat darkened at the shoulders, one hand closed around a letter she had not opened.",
+                versions: [
+                    {
+                        label: "Expanded",
+                        text: "The rain found her beneath the station clock, her rain-dark coat shining under the lamps, one hand closed around a letter she had not opened.",
+                    },
+                    {
+                        label: "Spare",
+                        text: "Rain found her at the station, holding a sealed letter.",
+                    },
+                ],
+                threadMessage:
+                    "The expanded version keeps the weather in the room; the spare version protects the mystery.",
                 author: "Editor",
                 view,
             });
