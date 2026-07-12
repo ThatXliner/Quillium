@@ -48,6 +48,30 @@ export type SerializedAnnotation =
     | SerializedSuggestionAnnotation
     | SerializedRevisionAnnotation;
 
+export type ReadonlyShareTab = {
+    id: string;
+    label: string;
+    draftId: string;
+    state: Record<string, unknown>;
+};
+
+export type ReadonlyShareStateV2 = {
+    kind: "quillium-readonly-share";
+    version: 2;
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
+};
+
+export function isReadonlyShareStateV2(value: unknown): value is ReadonlyShareStateV2 {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<ReadonlyShareStateV2>;
+    return (
+        candidate.kind === "quillium-readonly-share" &&
+        candidate.version === 2 &&
+        Array.isArray(candidate.tabs)
+    );
+}
+
 export type ReadonlyShareDocument = {
     token: string;
     title: string;

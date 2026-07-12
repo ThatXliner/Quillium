@@ -3,7 +3,7 @@ import { onMount } from "svelte";
 import { fly } from "svelte/transition";
 import LegacyReadonlyDocument from "./LegacyReadonlyDocument.svelte";
 import ReadonlyDocument from "./ReadonlyDocument.svelte";
-import type { ReadonlyShareDocument } from "./types";
+import { type ReadonlyShareDocument, isReadonlyShareStateV2 } from "./types";
 
 let {
     share,
@@ -24,6 +24,18 @@ function formatPublishedAt(value: string | null): string {
         timeStyle: "short",
     }).format(new Date(value));
 }
+
+const multiTabState = $derived(isReadonlyShareStateV2(share.state) ? share.state : null);
+let selectedTabId = $state<string | null>(null);
+const selectedTab = $derived(
+    multiTabState?.tabs.find((tab) => tab.id === selectedTabId) ?? multiTabState?.tabs[0] ?? null,
+);
+
+$effect(() => {
+    if (!multiTabState) return;
+    if (multiTabState.tabs.some((tab) => tab.id === selectedTabId)) return;
+    selectedTabId = multiTabState.activeTabId ?? multiTabState.tabs[0]?.id ?? null;
+});
 
 onMount(() => {
     onView?.();
@@ -56,7 +68,23 @@ onMount(() => {
 			</div>
 		</div>
 
-		{#if share.state}
+		{#if multiTabState && multiTabState.tabs.length > 1}
+			<nav class="share-tabs" aria-label="Published tabs">
+				{#each multiTabState.tabs as tab (tab.id)}
+					<button
+						type="button"
+						class:active={tab.id === selectedTab?.id}
+						onclick={() => (selectedTabId = tab.id)}
+					>
+						{tab.label}
+					</button>
+				{/each}
+			</nav>
+		{/if}
+
+		{#if selectedTab}
+			<ReadonlyDocument serializedState={selectedTab.state} indented />
+		{:else if share.state}
 			<!-- New path: render through the real read-only CodeMirror editor. -->
 			<ReadonlyDocument serializedState={share.state} indented />
 		{:else}
@@ -82,6 +110,40 @@ onMount(() => {
 		justify-content: center;
 		margin-bottom: 3rem;
 		pointer-events: none;
+	}
+
+	.share-tabs {
+		display: flex;
+		gap: 0.35rem;
+		max-width: min(100%, 52rem);
+		margin: -1.75rem auto 1.5rem;
+		overflow-x: auto;
+		padding: 0.25rem;
+		border: 1px solid var(--border);
+		border-radius: 0.65rem;
+		background: var(--surface);
+	}
+
+	.share-tabs button {
+		flex: 0 0 auto;
+		max-width: 14rem;
+		overflow: hidden;
+		padding: 0.55rem 0.9rem;
+		border: 0;
+		border-radius: 0.45rem;
+		background: transparent;
+		color: var(--text-faint);
+		font: inherit;
+		font-size: 0.82rem;
+		font-weight: 600;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.share-tabs button.active {
+		background: var(--surface-2);
+		color: var(--text-strong);
 	}
 
 	.share-topbar {
