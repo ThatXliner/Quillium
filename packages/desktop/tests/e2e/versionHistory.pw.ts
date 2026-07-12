@@ -627,6 +627,7 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(cards.getByRole("textbox")).toHaveCount(0);
 
     const suggestionCard = cards.locator('[data-annotation-id="4"]');
+    await suggestionCard.getByRole("button", { name: /russet/ }).click();
     await suggestionCard.getByRole("button", { name: "View changes" }).click();
     await expect(suggestionCard.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
     await expect(suggestionCard.locator('[data-suggestion-diff="insert"]')).toHaveText("russet");

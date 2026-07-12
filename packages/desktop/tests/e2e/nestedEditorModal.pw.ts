@@ -54,8 +54,11 @@ test.describe("inline editor lifecycle", () => {
         await q.clickEditorStart();
         await expect(q.inlineEditor).toBeHidden({ timeout: 3_000 });
 
-        // Click back on "world"
-        await q.clickAt(q.editor, 0.8);
+        // Click back on the marked revision text. A fractional click on the full-width
+        // editor can land far beyond the short line of prose on wide viewports.
+        const revisionText = page.locator("#editor-document .cm-revision").first();
+        await expect(revisionText).toHaveText("world");
+        await revisionText.click();
         await expect(q.inlineEditor).toBeVisible({ timeout: 8_000 });
     });
 

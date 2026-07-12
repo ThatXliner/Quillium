@@ -68,6 +68,11 @@ export type TauriMockOptions = {
      */
     initialDoc: string | null;
     /**
+     * Full serialized EditorState for the writable editor. Takes precedence over
+     * initialDoc so cross-surface tests can load annotations and version groups.
+     */
+    initialStateJson: string | null;
+    /**
      * Pre-seeded version history snapshots returned by cmd_list_snapshots.
      * cmd_load_snapshot_state returns a minimal state blob from each snapshot's doc.
      */
@@ -90,6 +95,7 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
         autoVersionOnRevisionCreate: false,
     },
     initialDoc: null,
+    initialStateJson: null,
     snapshots: [],
     docEvents: [],
     tabs: [],
@@ -151,6 +157,7 @@ export class QuilliumPage {
                 skipTutorial: boolean;
                 settings: Record<string, unknown>;
                 initialDoc: string | null;
+                initialStateJson: string | null;
                 snapshots: MockSnapshot[];
                 docEvents: MockDocEvent[];
                 tabs: MockTab[];
@@ -525,6 +532,13 @@ export class QuilliumPage {
                         }
 
                         if (cmd === "cmd_load_document_state") {
+                            if (payload.initialStateJson) {
+                                return {
+                                    snapshotStateJson: payload.initialStateJson,
+                                    snapshotEventId: 0,
+                                    eventsSince: [],
+                                };
+                            }
                             if (payload.initialDoc) {
                                 return {
                                     snapshotStateJson: JSON.stringify({
@@ -664,6 +678,7 @@ export class QuilliumPage {
                 skipTutorial: opts.skipTutorial,
                 settings: opts.settings,
                 initialDoc: opts.initialDoc,
+                initialStateJson: opts.initialStateJson,
                 snapshots: opts.snapshots,
                 docEvents: opts.docEvents,
                 tabs: opts.tabs,

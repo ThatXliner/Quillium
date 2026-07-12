@@ -22,6 +22,7 @@ import { collabState, ownerLeftSignal, reconnectAttempt, relayConfigured } from 
 import ShareModalCollabTab from "$lib/collab/ShareModalCollabTab.svelte";
 import ShareModalPreviewTab from "$lib/collab/ShareModalPreviewTab.svelte";
 import { LiveSessionController } from "$lib/collab/liveSession.svelte";
+import { serializeLoadedShareState } from "$lib/collab/loadedShareState";
 import {
     READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     normalizeReadonlyShareAutoUpdateDebounceMs,
@@ -34,7 +35,6 @@ import {
     serializeAnnotations,
     serializeShareState,
 } from "$lib/collab/sharePayload";
-import { serializeLoadedShareState } from "$lib/collab/shareState";
 import { getActiveDraft, listTabDrafts, listTabs, loadDocumentState } from "$lib/db";
 import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";

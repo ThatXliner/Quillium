@@ -14,11 +14,13 @@ import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import { createShareRepository } from "../../desktop/src/lib/collab/shareRepository";
 import { buildFixtureState, serializeFixtureWire } from "./fixtures";
+import { resolveWebPreviewEnvironment } from "./webPreviewEnv";
 
-const SUPABASE_URL = process.env.E2E_SUPABASE_URL?.replace(/\/$/, "");
-const SERVICE_ROLE_KEY = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY;
-const PUBLIC_KEY = process.env.E2E_SUPABASE_ANON_KEY ?? process.env.E2E_SUPABASE_PUBLISHABLE_KEY;
-const enabled = Boolean(SUPABASE_URL && SERVICE_ROLE_KEY && PUBLIC_KEY);
+const webPreviewEnvironment = resolveWebPreviewEnvironment(process.env);
+const SUPABASE_URL = webPreviewEnvironment.url || undefined;
+const SERVICE_ROLE_KEY = webPreviewEnvironment.serviceRoleKey || undefined;
+const PUBLIC_KEY = webPreviewEnvironment.publishableKey || undefined;
+const enabled = webPreviewEnvironment.enabled;
 
 type PublicShareRow = {
     published_title: string;

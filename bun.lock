@@ -115,6 +115,7 @@
       "name": "@quillium/landing",
       "version": "0.0.1",
       "dependencies": {
+        "@fontsource/inter": "^5.2.8",
         "@lucide/svelte": "^1.8.0",
         "@quillium/share": "workspace:*",
         "@supabase/ssr": "^0.12.0",
