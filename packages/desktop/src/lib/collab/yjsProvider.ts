@@ -25,6 +25,7 @@
 import { PUBLIC_RELAY_URL } from "$env/static/public";
 import { logAppEvent } from "$lib/appLog";
 import { getSession } from "$lib/auth/auth.svelte";
+import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 import type { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
@@ -62,6 +63,7 @@ export interface YjsProviderResult {
     ydoc: Y.Doc;
     ytext: Y.Text;
     ymap: Y.Map<YjsAnnotationNode>;
+    yVersionGroups: Y.Map<VersionGroup>;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -96,6 +98,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
     const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const yVersionGroups = ydoc.getMap<VersionGroup>("versionGroups");
 
     // Create WebsocketProvider with JWT auth in params (per D-71)
     const provider = new WebsocketProvider(relayUrl, docId, ydoc, {
@@ -189,6 +192,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         ydoc,
         ytext,
         ymap,
+        yVersionGroups,
     };
 }
 
