@@ -46,6 +46,9 @@ factor must be fixed by the visual harness. Mask a region only when its value is
 nondeterministic and irrelevant to the behavior under test. Do not mask content, layout, scroll
 positions, annotation anchors, or modal geometry.
 
+Web Preview loads the self-hosted Inter files from `@fontsource/inter`, and its visual harness pins
+the document font to that family. A system-font fallback is not a valid baseline environment.
+
 Screenshots supplement semantic assertions. Every visual scenario must retain assertions for the
 state or interaction it represents; an image comparison is not a replacement for accessible names,
 content, selection, scrolling, or editor-state checks.

@@ -19,14 +19,14 @@ permissions:
   contents: read
 
 env:
-  # Browser checks use Tauri mocks/local Supabase. These values create the named static env exports
-  # without exposing or contacting production services.
+  # Empty Supabase values create the named static exports while keeping desktop auth disabled.
+  # The Web Preview job replaces them with its ephemeral local-stack credentials.
   QUILLIUM_ALLOW_MISSING_SUPABASE_ENV: "1"
   PUBLIC_POSTHOG_HOST: http://127.0.0.1:9999
   PUBLIC_POSTHOG_KEY: ci-test-posthog-key
   PUBLIC_RELAY_URL: ws://127.0.0.1:9998
-  PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-test-publishable-key
-  PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+  PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+  PUBLIC_SUPABASE_URL: ""
 
 jobs:
   changes:

@@ -28,7 +28,10 @@ const VISUAL_SCREENSHOT_OPTIONS = {
     threshold: 0.2,
 };
 const VISUAL_STABILITY_CSS = `
-    html { scroll-behavior: auto !important; }
+    html {
+        --doc-font-family: "Inter", sans-serif;
+        scroll-behavior: auto !important;
+    }
     *, *::before, *::after {
         animation: none !important;
         caret-color: transparent !important;
@@ -258,6 +261,28 @@ test.describe("Omni Web Preview", () => {
             '.annotation-card:has([data-annotation-card-view="suggestion"])',
         );
         await expect(suggestionCard).toHaveCount(1);
+        const expectedSuggestionTop = await editor.evaluate((content, docOffset) => {
+            const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+            let remaining = docOffset;
+            let node = walker.nextNode();
+            while (node) {
+                const length = node.textContent?.length ?? 0;
+                if (remaining <= length) {
+                    const range = document.createRange();
+                    range.setStart(node, remaining);
+                    range.setEnd(node, remaining);
+                    return range.getBoundingClientRect().top - 10;
+                }
+                remaining -= length;
+                node = walker.nextNode();
+            }
+            throw new Error(`Could not resolve document offset ${docOffset}`);
+        }, 10);
+
+        // Opening the suggestion modal activates that card. Establish a different active card
+        // before measuring so the following activation exercises a real layout transition.
+        await commentView.getByRole("heading", { name: "Comment" }).click();
+        await expect(commentView).toHaveAttribute("data-active", "true");
         await expect
             .poll(() =>
                 suggestionCard.evaluate((element) =>
@@ -265,6 +290,12 @@ test.describe("Omni Web Preview", () => {
                 ),
             )
             .toBe(true);
+        await expect
+            .poll(async () => {
+                const box = await suggestionCard.boundingBox();
+                return box ? Math.abs(box.y - expectedSuggestionTop) : 0;
+            })
+            .toBeGreaterThan(2);
         const initialSuggestionTop = (await suggestionCard.boundingBox())?.y;
         expect(initialSuggestionTop).toBeDefined();
         const transition = await suggestionCard.evaluate((element) => {
@@ -286,24 +317,6 @@ test.describe("Omni Web Preview", () => {
         await expect(
             suggestionCard.locator('[data-annotation-card-view="suggestion"]'),
         ).toHaveAttribute("data-active", "true");
-
-        const expectedSuggestionTop = await editor.evaluate((content, docOffset) => {
-            const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-            let remaining = docOffset;
-            let node = walker.nextNode();
-            while (node) {
-                const length = node.textContent?.length ?? 0;
-                if (remaining <= length) {
-                    const range = document.createRange();
-                    range.setStart(node, remaining);
-                    range.setEnd(node, remaining);
-                    return range.getBoundingClientRect().top - 10;
-                }
-                remaining -= length;
-                node = walker.nextNode();
-            }
-            throw new Error(`Could not resolve document offset ${docOffset}`);
-        }, 10);
 
         await expect
             .poll(async () => {

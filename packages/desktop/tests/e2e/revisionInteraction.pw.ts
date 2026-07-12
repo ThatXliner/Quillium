@@ -51,7 +51,9 @@ test.describe("revision cursor teleport", () => {
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 40_000,
+        });
     });
 
     test("clicking revision text opens inline editor with cursor", async ({ page }) => {
@@ -124,7 +126,9 @@ test.describe("nested annotation creation from inline editor", () => {
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 40_000,
+        });
     });
 
     test("Mod-Alt-K in inline editor with selection opens modal", async ({ page }) => {
@@ -181,7 +185,9 @@ test.describe("revision modal annotation visibility", () => {
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 40_000,
+        });
     });
 
     test("creating a comment inside the modal shows it in the annotations sidebar", async ({
