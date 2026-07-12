@@ -31,7 +31,7 @@
     "changelog:shot": "bun scripts/changelog-shot.ts",
     "icons": "bun scripts/icons.ts"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",
     "@ai-sdk/deepseek": "^2.0.35",

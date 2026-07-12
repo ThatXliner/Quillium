@@ -160,4 +160,4 @@ A: The "ium" ending makes it sound like an element. The element of creativity, t
 
 ## License
 
-MIT © [ThatXliner](https://github.com/ThatXliner)
+Proprietary. Copyright © 2024–2026 [ThatXliner](https://github.com/ThatXliner). All rights reserved.
