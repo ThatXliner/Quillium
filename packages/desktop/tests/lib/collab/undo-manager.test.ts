@@ -13,6 +13,22 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
 describe("yjs undo manager", () => {
+    it("tracks version-group changes in the joiner undo scope", () => {
+        const ydoc = new Y.Doc();
+        const ytext = ydoc.getText("content");
+        const annotations = ydoc.getMap("annotations");
+        const versionGroups = ydoc.getMap("versionGroups");
+        const { undoManager } = createYjsUndoExtension(ytext, annotations, [versionGroups]);
+
+        ydoc.transact(() => {
+            versionGroups.set("group-1", { id: "group-1", label: "Linked", members: [] });
+        }, "local");
+
+        expect(undoManager.canUndo()).toBe(true);
+        undoManager.undo();
+        expect(versionGroups.has("group-1")).toBe(false);
+    });
+
     it("chronological across scopes", () => {
         // Setup: main ytext + ymap, then a subtree Y.Text
         const ydoc = new Y.Doc();

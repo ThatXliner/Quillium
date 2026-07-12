@@ -10,11 +10,11 @@ import {
     makePeerWithAnnotationSync,
     teardown,
 } from "$lib/collab/test-helpers/twoPeerHarness";
-import type { YjsAnnotationNode } from "$lib/collab/types";
+import type { YjsAnnotationNode, YjsVersionGroup } from "$lib/collab/types";
 import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
-import { createVersionGroupSyncPlugin } from "$lib/collab/yjsVersionGroups";
 import { createYjsBinding } from "$lib/collab/yjsBinding";
 import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
+import { createVersionGroupSyncPlugin } from "$lib/collab/yjsVersionGroups";
 import { historyCompartment } from "$lib/editor/extensions";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
@@ -25,11 +25,14 @@ import {
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     type GenericAnnotation,
-    type VersionGroup,
     activeVersionIndex,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
+import {
+    _restoreVersionGroups,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
 import { currentDraftId } from "$lib/stores";
 // joiner-view.test.ts - End-to-end Phase 02 verification: JOINER-01/-03/-05
 // + criteria #6 (own-edits-only undo), #7 (owner history excludes remote text),
@@ -76,19 +79,19 @@ describe("joiner view hardening", () => {
         const ydoc = new Y.Doc();
         const ytext = ydoc.getText("document");
         const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
-        const yVersionGroups = ydoc.getMap<VersionGroup>("versionGroups");
+        const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
         const idMap = new AnnotationIdMap();
         if (initialText) {
             ydoc.transact(() => ytext.insert(0, initialText), "init");
         }
-        const undo = joiner ? createYjsUndoExtension(ytext, ymap) : undefined;
+        const undo = joiner ? createYjsUndoExtension(ytext, ymap, [yVersionGroups]) : undefined;
         const state = EditorState.create({
             doc: initialText,
             extensions: [
                 annotationExtensions(),
                 createYjsBinding(ytext),
                 createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
-                createVersionGroupSyncPlugin(yVersionGroups),
+                createVersionGroupSyncPlugin(yVersionGroups, { idMap, annotationsMap: ymap }),
                 ...(undo ? [undo.extension] : []),
             ],
         });
@@ -256,16 +259,19 @@ describe("joiner view hardening", () => {
         Y.applyUpdate(joinerYdoc, Y.encodeStateAsUpdate(owner.ydoc), "remote");
         const joinerYtext = joinerYdoc.getText("document");
         const joinerYmap = joinerYdoc.getMap<YjsAnnotationNode>("annotations");
-        const joinerYVersionGroups = joinerYdoc.getMap<VersionGroup>("versionGroups");
+        const joinerYVersionGroups = joinerYdoc.getMap<YjsVersionGroup>("versionGroups");
         const idMap = new AnnotationIdMap();
-        const undo = createYjsUndoExtension(joinerYtext, joinerYmap);
+        const undo = createYjsUndoExtension(joinerYtext, joinerYmap, [joinerYVersionGroups]);
         const joinerState = EditorState.create({
             doc: joinerYtext.toString(),
             extensions: [
                 annotationExtensions(),
                 createYjsBinding(joinerYtext),
                 createAnnotationSyncPlugin(joinerYtext, joinerYmap, "joiner", idMap),
-                createVersionGroupSyncPlugin(joinerYVersionGroups),
+                createVersionGroupSyncPlugin(joinerYVersionGroups, {
+                    idMap,
+                    annotationsMap: joinerYmap,
+                }),
                 undo.extension,
             ],
         });
@@ -330,6 +336,7 @@ describe("joiner view hardening", () => {
             doc: "local draft",
             extensions: [
                 annotationField,
+                versionGroupField,
                 historyCompartment.of(history({ newGroupDelay: 250 })),
                 collabCompartment.of([]),
             ],
@@ -340,11 +347,33 @@ describe("joiner view hardening", () => {
             view.dispatch({
                 effects: addAnnotation.of(comment(0, 0, 5)),
             });
-            const snapshot = view.state.toJSON({ annotationField });
+            view.dispatch({
+                effects: _restoreVersionGroups.of({
+                    groups: {
+                        local: {
+                            id: "local",
+                            label: "Local group",
+                            members: [],
+                        },
+                    },
+                }),
+            });
+            const snapshot = view.state.toJSON({ annotationField, versionGroupField });
             const localAnnotation = view.state.field(annotationField)[0];
             view.dispatch({
                 changes: { from: 0, to: view.state.doc.length, insert: "remote live" },
                 effects: removeAnnotation.of(localAnnotation),
+            });
+            view.dispatch({
+                effects: _restoreVersionGroups.of({
+                    groups: {
+                        remote: {
+                            id: "remote",
+                            label: "Remote group",
+                            members: [],
+                        },
+                    },
+                }),
             });
 
             currentDraftId.set(null);
@@ -361,6 +390,13 @@ describe("joiner view hardening", () => {
             expect(Object.values(view.state.field(annotationField))).toHaveLength(1);
             expect(Object.values(view.state.field(annotationField))[0].selection.main.from).toBe(0);
             expect(Object.values(view.state.field(annotationField))[0].selection.main.to).toBe(5);
+            expect(view.state.field(versionGroupField)).toEqual({
+                local: {
+                    id: "local",
+                    label: "Local group",
+                    members: [],
+                },
+            });
             expect(get(currentDraftId)).toBe("draft-local");
             expect(get(isCollabJoiner)).toBe(false);
             expect(get(joinerPriorView)).toBeNull();

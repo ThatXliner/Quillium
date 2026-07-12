@@ -2,21 +2,19 @@
  * yjsVersionGroups.ts -- Yjs <-> CodeMirror version-group sync plugin.
  *
  * Version groups are document-level metadata, sibling to annotations. The Yjs
- * representation is a top-level Y.Map keyed by group id whose values are plain
- * VersionGroup JSON objects. Updating a group replaces the whole map entry,
- * which gives the intended Yjs last-writer-wins conflict behavior per group.
+ * representation is a top-level Y.Map keyed by group id whose values reference
+ * revisions by stable Yjs annotation key. Each peer translates those keys to
+ * its own numeric CodeMirror ids. Updating a group replaces the whole map entry,
+ * giving the intended Yjs last-writer-wins conflict behavior per group.
  *
  * Origin discipline mirrors yjsAnnotations.ts:
  *   - ydoc.transact(..., "local") marks writes this plugin originated.
  *   - yjsVersionGroupSync marks CM transactions this plugin dispatched from Yjs.
  */
-import { Annotation, Transaction } from "@codemirror/state";
-import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
-import {
-    type VersionGroup,
-    type VersionGroupMember,
-    type VersionGroups,
-    VersionGroupSchema,
+import type {
+    VersionGroup,
+    VersionGroupMember,
+    VersionGroups,
 } from "$lib/editor/plugins/annotations/models";
 import {
     _addMemberToGroup,
@@ -27,11 +25,25 @@ import {
     _restoreVersionGroups,
     versionGroupField,
 } from "$lib/editor/plugins/annotations/versionGroupField";
+import { Annotation, Transaction } from "@codemirror/state";
+import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type * as Y from "yjs";
+import { z } from "zod";
+import type { AnnotationIdMap } from "./annotationSchema";
+import type { YjsAnnotationNode, YjsVersionGroup } from "./types";
 
 export const yjsVersionGroupSync = Annotation.define<boolean>();
 
-export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGroup>) {
+type VersionGroupSyncOptions = {
+    idMap: AnnotationIdMap;
+    annotationsMap?: Y.Map<YjsAnnotationNode>;
+    seedFromLocal?: boolean;
+};
+
+export function createVersionGroupSyncPlugin(
+    versionGroupsMap: Y.Map<YjsVersionGroup>,
+    { idMap, annotationsMap, seedFromLocal = false }: VersionGroupSyncOptions,
+) {
     return ViewPlugin.fromClass(
         class {
             private deepObserver: (
@@ -41,6 +53,7 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
             private destroyed = false;
             private initialSyncDone = false;
             private deepObserverAttached = false;
+            private annotationObserverAttached = false;
 
             constructor(private view: EditorView) {
                 this._syncInitialToYjs();
@@ -59,6 +72,8 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
                     if (this.destroyed) return;
                     versionGroupsMap.observeDeep(this.deepObserver);
                     this.deepObserverAttached = true;
+                    annotationsMap?.observeDeep(this.deepObserver);
+                    this.annotationObserverAttached = annotationsMap !== undefined;
                     this._syncInitialFromYjs();
                 });
             }
@@ -67,8 +82,8 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
                 if (this.initialSyncDone) return;
                 this.initialSyncDone = true;
 
+                if (!seedFromLocal) return;
                 const groups = this.view.state.field(versionGroupField, false) ?? {};
-                if (Object.keys(groups).length === 0) return;
 
                 const ydoc = versionGroupsMap.doc;
                 if (!ydoc) return;
@@ -76,12 +91,7 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
                 queueMicrotask(() => {
                     if (this.destroyed) return;
 
-                    ydoc.transact(() => {
-                        for (const [groupId, group] of Object.entries(groups)) {
-                            if (versionGroupsMap.has(groupId)) continue;
-                            versionGroupsMap.set(groupId, cloneVersionGroup(group));
-                        }
-                    }, "local");
+                    this._diffAndReconcile(groups);
                 });
             }
 
@@ -121,10 +131,14 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
                     versionGroupsMap.unobserveDeep(this.deepObserver);
                     this.deepObserverAttached = false;
                 }
+                if (this.annotationObserverAttached) {
+                    annotationsMap?.unobserveDeep(this.deepObserver);
+                    this.annotationObserverAttached = false;
+                }
             }
 
             private _dispatchYjsProjection(): void {
-                const groups = yjsToVersionGroups(versionGroupsMap);
+                const groups = yjsToVersionGroups(versionGroupsMap, idMap);
                 const current = this.view.state.field(versionGroupField, false) ?? {};
                 if (versionGroupsEqual(current, groups)) return;
 
@@ -149,9 +163,14 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
                     }
 
                     for (const [groupId, group] of Object.entries(groups)) {
-                        const existing = yjsVersionGroup(versionGroupsMap.get(groupId), groupId);
-                        if (!existing || !versionGroupEqual(existing, group)) {
-                            versionGroupsMap.set(groupId, cloneVersionGroup(group));
+                        const desired = codeMirrorToYjsVersionGroup(group, idMap);
+                        if (!desired) continue;
+                        const existing = parseYjsVersionGroup(
+                            versionGroupsMap.get(groupId),
+                            groupId,
+                        );
+                        if (!existing || !yjsVersionGroupEqual(existing, desired)) {
+                            versionGroupsMap.set(groupId, desired);
                         }
                     }
                 }, "local");
@@ -160,36 +179,68 @@ export function createVersionGroupSyncPlugin(versionGroupsMap: Y.Map<VersionGrou
     );
 }
 
-function yjsToVersionGroups(versionGroupsMap: Y.Map<VersionGroup>): VersionGroups {
+function yjsToVersionGroups(
+    versionGroupsMap: Y.Map<YjsVersionGroup>,
+    idMap: AnnotationIdMap,
+): VersionGroups {
     const groups: VersionGroups = {};
     versionGroupsMap.forEach((value, groupId) => {
-        const group = yjsVersionGroup(value, groupId);
+        const group = yjsToCodeMirrorVersionGroup(value, groupId, idMap);
         if (group) groups[groupId] = group;
     });
     return groups;
 }
 
-function yjsVersionGroup(value: unknown, groupId: string): VersionGroup | undefined {
-    const parsed = VersionGroupSchema.safeParse(value);
+const YjsVersionGroupSchema = z.object({
+    id: z.string(),
+    label: z.string(),
+    members: z.array(z.object({ revisionId: z.string(), versionId: z.string() })),
+});
+
+function parseYjsVersionGroup(value: unknown, groupId: string): YjsVersionGroup | undefined {
+    const parsed = YjsVersionGroupSchema.safeParse(value);
     if (!parsed.success) {
         console.warn("[yjsVersionGroups] Ignoring malformed version group", groupId);
         return undefined;
     }
-    return cloneVersionGroup({ ...parsed.data, id: groupId });
+    return cloneYjsVersionGroup({ ...parsed.data, id: groupId });
 }
 
-function cloneVersionGroup(group: VersionGroup): VersionGroup {
+function yjsToCodeMirrorVersionGroup(
+    value: unknown,
+    groupId: string,
+    idMap: AnnotationIdMap,
+): VersionGroup | undefined {
+    const group = parseYjsVersionGroup(value, groupId);
+    if (!group) return undefined;
+
+    const members: VersionGroupMember[] = [];
+    for (const member of group.members) {
+        const revisionId = idMap.getCmId(member.revisionId);
+        if (revisionId === undefined) return undefined;
+        members.push({ revisionId, versionId: member.versionId });
+    }
+    return { id: group.id, label: group.label, members };
+}
+
+function codeMirrorToYjsVersionGroup(
+    group: VersionGroup,
+    idMap: AnnotationIdMap,
+): YjsVersionGroup | undefined {
+    const members: YjsVersionGroup["members"] = [];
+    for (const member of group.members) {
+        const revisionId = idMap.getYjsId(member.revisionId);
+        if (!revisionId) return undefined;
+        members.push({ revisionId, versionId: member.versionId });
+    }
+    return { id: group.id, label: group.label, members };
+}
+
+function cloneYjsVersionGroup(group: YjsVersionGroup): YjsVersionGroup {
     return {
         id: group.id,
         label: group.label,
-        members: group.members.map((member) => cloneMember(member)),
-    };
-}
-
-function cloneMember(member: VersionGroupMember): VersionGroupMember {
-    return {
-        revisionId: member.revisionId,
-        versionId: member.versionId,
+        members: group.members.map((member) => ({ ...member })),
     };
 }
 
@@ -202,6 +253,17 @@ function versionGroupsEqual(a: VersionGroups, b: VersionGroups): boolean {
         const bGroup = b[key];
         return !!aGroup && !!bGroup && versionGroupEqual(aGroup, bGroup);
     });
+}
+
+function yjsVersionGroupEqual(a: YjsVersionGroup, b: YjsVersionGroup): boolean {
+    if (a.id !== b.id || a.label !== b.label || a.members.length !== b.members.length) {
+        return false;
+    }
+    return a.members.every(
+        (member, index) =>
+            member.revisionId === b.members[index]?.revisionId &&
+            member.versionId === b.members[index]?.versionId,
+    );
 }
 
 function versionGroupEqual(a: VersionGroup, b: VersionGroup): boolean {

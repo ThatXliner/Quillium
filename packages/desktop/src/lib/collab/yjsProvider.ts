@@ -25,12 +25,12 @@
 import { PUBLIC_RELAY_URL } from "$env/static/public";
 import { logAppEvent } from "$lib/appLog";
 import { getSession } from "$lib/auth/auth.svelte";
-import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 import type { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
 import type { YjsAnnotationNode } from "./types";
+import type { YjsVersionGroup } from "./types";
 
 function getRelayUrl(): string | undefined {
     // $env/static/public, NOT import.meta.env — see supabase.ts for why.
@@ -63,7 +63,7 @@ export interface YjsProviderResult {
     ydoc: Y.Doc;
     ytext: Y.Text;
     ymap: Y.Map<YjsAnnotationNode>;
-    yVersionGroups: Y.Map<VersionGroup>;
+    yVersionGroups: Y.Map<YjsVersionGroup>;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
     const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
-    const yVersionGroups = ydoc.getMap<VersionGroup>("versionGroups");
+    const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
 
     // Create WebsocketProvider with JWT auth in params (per D-71)
     const provider = new WebsocketProvider(relayUrl, docId, ydoc, {

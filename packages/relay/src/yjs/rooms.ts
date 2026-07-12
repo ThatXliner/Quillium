@@ -141,6 +141,7 @@ export function clearRoomState(room: YjsRoom): void {
         }
         const ymap = ydoc.getMap("annotations");
         ymap.clear();
+        ydoc.getMap("versionGroups").clear();
     }, "owner-disconnect");
 
     logger.info(`Cleared state for room ${room.documentId.slice(0, 8)}...`);

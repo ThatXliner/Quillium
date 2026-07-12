@@ -30,7 +30,6 @@ import {
 import { AnnotationIdMap } from "./annotationSchema";
 import { colorForClient, createAwarenessExtension } from "./awareness";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
-import { createVersionGroupSyncPlugin } from "./yjsVersionGroups";
 // Yjs modules
 import { createYjsBinding } from "./yjsBinding";
 import {
@@ -42,6 +41,7 @@ import {
     relayConfigured,
 } from "./yjsProvider";
 import { createYjsUndoExtension } from "./yjsUndo";
+import { createVersionGroupSyncPlugin } from "./yjsVersionGroups";
 
 // Stores
 import {
@@ -244,13 +244,19 @@ export async function enableCollab(
 
     const binding = createYjsBinding(ytext);
     // Per D-83: Pass ymap to UndoManager for unified undo stack
-    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap, [
+        yVersionGroups,
+    ]);
     const awarenessExt = createAwarenessExtension(awareness, ytext, displayName, cursorColor);
 
     // Plan 8.5c-02: Caller-owned idMap so subtree controllers can resolve CM ids
     const mainIdMap = new AnnotationIdMap();
     const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
-    const versionGroupSync = createVersionGroupSyncPlugin(yVersionGroups);
+    const versionGroupSync = createVersionGroupSyncPlugin(yVersionGroups, {
+        idMap: mainIdMap,
+        annotationsMap: ymap,
+        seedFromLocal: asOwner,
+    });
 
     currentUndoManager = undoManager;
 
@@ -332,8 +338,8 @@ function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | 
     try {
         restoredState = EditorState.fromJSON(
             prior.editorStateJson,
-            { extensions: [annotationField] },
-            { annotationField },
+            { extensions: [annotationField, versionGroupField] },
+            { annotationField, versionGroupField },
         );
     } catch (err) {
         console.warn("[collab] Failed to restore joiner editor snapshot:", err);
@@ -342,6 +348,7 @@ function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | 
 
     const currentAnnotations = Object.values(view.state.field(annotationField, false) ?? {});
     const restoredAnnotations = Object.values(restoredState.field(annotationField, false) ?? {});
+    const restoredVersionGroups = restoredState.field(versionGroupField, false) ?? {};
     const restoredDoc = restoredState.doc.toString();
 
     view.dispatch({
@@ -359,12 +366,13 @@ function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | 
         annotations: [Transaction.addToHistory.of(false)],
     });
 
-    if (restoredAnnotations.length > 0) {
-        view.dispatch({
-            effects: restoredAnnotations.map((annotation) => addAnnotation.of(annotation)),
-            annotations: [Transaction.addToHistory.of(false)],
-        });
-    }
+    view.dispatch({
+        effects: [
+            ...restoredAnnotations.map((annotation) => addAnnotation.of(annotation)),
+            _restoreVersionGroups.of({ groups: restoredVersionGroups }),
+        ],
+        annotations: [Transaction.addToHistory.of(false)],
+    });
 }
 
 /**

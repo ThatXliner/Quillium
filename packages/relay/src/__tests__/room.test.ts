@@ -163,16 +163,18 @@ describe("Yjs room manager", () => {
         expect(getYjsRoom("doc-active")).toBe(room);
     });
 
-    it("clears document text, annotations, and awareness state", async () => {
+    it("clears document text, annotations, version groups, and awareness state", async () => {
         const room = await getOrCreateYjsRoom("doc-clear");
         room.ydoc.getText("document").insert(0, "hello");
         room.ydoc.getMap("annotations").set("a1", { text: "note" });
+        room.ydoc.getMap("versionGroups").set("g1", { label: "Linked" });
         room.awareness.setLocalState({ user: "owner" });
 
         clearRoomState(room);
 
         expect(room.ydoc.getText("document").toString()).toBe("");
         expect(room.ydoc.getMap("annotations").size).toBe(0);
+        expect(room.ydoc.getMap("versionGroups").size).toBe(0);
         expect(room.awareness.getStates().size).toBe(0);
     });
 });

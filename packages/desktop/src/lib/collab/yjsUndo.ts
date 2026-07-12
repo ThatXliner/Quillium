@@ -21,6 +21,9 @@ import { EditorSelection, type Extension, Prec } from "@codemirror/state";
 import { type EditorView, type KeyBinding, ViewPlugin, keymap } from "@codemirror/view";
 import * as Y from "yjs";
 
+type ArrayElement<T> = T extends Array<infer Element> ? Element : never;
+type UndoScopeType = ArrayElement<ConstructorParameters<typeof Y.UndoManager>[0]>;
+
 /**
  * Create UndoManager extension for per-user undo.
  *
@@ -30,17 +33,19 @@ import * as Y from "yjs";
  *
  * @param ytext - Y.Text shared type (same instance as yjsBinding)
  * @param ymap - Optional Y.Map for annotation sync (D-83 unified undo)
+ * @param extraTypes - Other shared types, such as document-level version groups
  * @returns Object containing the CodeMirror extension and UndoManager instance
  */
 export function createYjsUndoExtension<T = unknown>(
     ytext: Y.Text,
     ymap?: Y.Map<T>,
+    extraTypes: UndoScopeType[] = [],
 ): {
     extension: Extension;
     undoManager: Y.UndoManager;
 } {
     // Per D-83: Track both text and annotations in unified stack when ymap provided
-    const trackedTypes: (Y.Text | Y.Map<T>)[] = ymap ? [ytext, ymap] : [ytext];
+    const trackedTypes: UndoScopeType[] = [ytext, ...(ymap ? [ymap] : []), ...extraTypes];
 
     const undoManager = new Y.UndoManager(trackedTypes, {
         trackedOrigins: new Set(["local"]), // Only undo local changes (per D-74)
