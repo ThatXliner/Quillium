@@ -11,7 +11,9 @@
       viewedTabId           — tab whose content is shown (controlled)
       highlightDraftId      — the coordinate's target draft
       currentStateJson      — serialized EditorState of the viewed version
+      previousStateJson     — serialized EditorState of the comparison version
       previousText          — plain text of the previous version (diff baseline)
+      hasPrevious           — distinguishes no baseline from an empty baseline
       loading               — true while content loads
       hasContent            — false when the viewed tab has no content here
       bannerText            — optional note (structural coordinate)
@@ -30,7 +32,9 @@ const {
     viewedTabId = null,
     highlightDraftId = null,
     currentStateJson,
+    previousStateJson,
     previousText,
+    hasPrevious,
     loading,
     hasContent,
     bannerText = null,
@@ -42,7 +46,9 @@ const {
     viewedTabId?: string | null;
     highlightDraftId?: string | null;
     currentStateJson: string | null;
+    previousStateJson: string | null;
     previousText: string;
+    hasPrevious: boolean;
     loading: boolean;
     hasContent: boolean;
     bannerText?: string | null;
@@ -57,18 +63,54 @@ const {
         <p class="text-sm text-black/40">Select a version to preview it</p>
     </div>
 {:else}
-    <div class="flex w-full gap-6 max-w-[1480px]">
-        <!-- Structure map (clickable tabs) -->
-        <aside class="w-64 flex-shrink-0">
-            <h3 class="text-[11px] font-semibold text-black/35 uppercase tracking-wide mb-2 px-1">
-                Structure
-            </h3>
-            <PreviewStructureMap {tabs} {drafts} {viewedTabId} {highlightDraftId} {ontabselect} />
-        </aside>
+    <div class="history-preview-shell w-full max-w-[1680px]">
+        <div class="history-preview-layout flex w-full gap-6">
+            <!-- Structure map (clickable tabs) -->
+            <aside class="history-structure-map w-64 flex-shrink-0">
+                <h3
+                    class="text-xs font-semibold text-black/55 uppercase tracking-wide mb-2 px-1"
+                >
+                    Structure
+                </h3>
+                <PreviewStructureMap
+                    {tabs}
+                    {drafts}
+                    {viewedTabId}
+                    {highlightDraftId}
+                    {ontabselect}
+                />
+            </aside>
 
-        <!-- Content (real read-only editor + track-changes diff) -->
-        <div class="flex-1 flex justify-center min-w-0">
-            <PreviewContent {currentStateJson} {previousText} {loading} {hasContent} {bannerText} />
+            <!-- Content (real read-only editor + selectable diff layout) -->
+            <div class="flex-1 flex justify-center min-w-0">
+                <PreviewContent
+                    {currentStateJson}
+                    {previousStateJson}
+                    {previousText}
+                    {hasPrevious}
+                    {loading}
+                    {hasContent}
+                    {bannerText}
+                />
+            </div>
         </div>
     </div>
 {/if}
+
+<style>
+    .history-preview-shell {
+        container-type: inline-size;
+    }
+
+    /* The structure rail is useful context, but it should move above the
+       comparison before it forces two readable prose panes to collapse. */
+    @container (max-width: 1100px) {
+        .history-preview-layout {
+            flex-direction: column;
+        }
+
+        .history-structure-map {
+            width: min(100%, 32rem);
+        }
+    }
+</style>

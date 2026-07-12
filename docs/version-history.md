@@ -26,7 +26,19 @@ activity row while they are still deleted.
 Selecting a snapshot:
 1. Calls `loadSnapshotState(snapshot.id)` to fetch state JSON
 2. Reconstructs read-only CodeMirror instance via `EditorState.fromJSON`
-3. Preview rebuilt via Svelte `$effect` when target element or state changes
+3. Resolves the immediately previous snapshot of the same draft as its baseline
+4. Preview rebuilt via Svelte `$effect` when target element or state changes
+
+The preview toolbar offers two persisted layouts:
+
+| Layout | Presentation |
+|--------|--------------|
+| Inline | Selected text with additions highlighted and removed text injected in place |
+| Side by side | Previous and selected snapshots in separate read-only editor panes |
+
+Side-by-side diffing reuses the shared word-level algorithm. The previous pane
+marks removals; the selected pane marks additions. At narrow content widths the
+panes stack without shrinking the configured document typography.
 
 ## Restore
 

@@ -22,6 +22,7 @@ import {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const BASE_TIME = Date.now();
+const START_OF_TODAY = new Date().setHours(0, 0, 0, 0);
 
 function makeAnnotatedStateJson(): string {
     let state = EditorState.create({
@@ -100,7 +101,7 @@ function makeSnapshots(): MockSnapshot[] {
             id: 1,
             draftId: "draft-test-1",
             upToEventId: 10,
-            createdAt: BASE_TIME - 1000 * 60 * 60 * 25, // 25 h ago — "Yesterday"
+            createdAt: START_OF_TODAY - 1000 * 60 * 60 * 12, // Midday yesterday
             label: "Initial draft",
             doc: "First version of the document.",
         },
@@ -232,6 +233,65 @@ test("selecting a snapshot loads its document text in the preview", async ({ pag
         .toContain("Second version");
 });
 
+test("history diff switches between inline and side-by-side layouts", async ({ page }) => {
+    const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
+    await qp.initHistory();
+
+    const layout = page.getByRole("group", { name: "Diff layout" });
+    const inline = layout.getByRole("button", { name: "Inline" });
+    const sideBySide = layout.getByRole("button", { name: "Side by side" });
+    await expect(inline).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
+
+    await sideBySide.click();
+    await expect(sideBySide).toHaveAttribute("aria-pressed", "true");
+
+    const previous = page.locator('[data-diff-pane="previous"]');
+    const selected = page.locator('[data-diff-pane="selected"]');
+    await expect(previous.getByRole("heading", { name: "Previous version" })).toBeVisible();
+    await expect(selected.getByRole("heading", { name: "Selected version" })).toBeVisible();
+    await expect(previous.locator(".cm-content")).toHaveText("Second version of the document.");
+    await expect(selected.locator(".cm-content")).toHaveText("Third version of the document.");
+    await expect(previous.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+    await expect(selected.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+    await expect(previous.locator(".cm-history-diff-del")).not.toHaveCount(0);
+    await expect(previous.locator(".cm-history-diff-add")).toHaveCount(0);
+    await expect(selected.locator(".cm-history-diff-add")).not.toHaveCount(0);
+    await expect(selected.locator(".cm-history-diff-del")).toHaveCount(0);
+
+    // Keep split mode mounted while changing coordinates. Both pane payloads
+    // and their decorations must advance together rather than retaining the
+    // selected text from the previous EditorView.
+    await page.locator("#versions-panel [aria-selected='false']").first().click();
+    await expect(previous.locator(".cm-content")).toHaveText("First version of the document.");
+    await expect(selected.locator(".cm-content")).toHaveText("Second version of the document.");
+    await expect(previous.locator(".cm-history-diff-del")).not.toHaveCount(0);
+    await expect(selected.locator(".cm-history-diff-add")).not.toHaveCount(0);
+
+    await inline.click();
+    await expect(page.locator('[data-diff-layout="inline"]')).toHaveCount(1);
+    await expect(page.locator('[data-diff-pane="previous"]')).toHaveCount(0);
+    await expect(page.locator(".version-preview .cm-history-diff-add")).not.toHaveCount(0);
+    await expect(page.locator(".version-preview .cm-history-diff-del")).not.toHaveCount(0);
+});
+
+test("side-by-side mode explains when no earlier version exists", async ({ page }) => {
+    const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
+    await qp.initHistory();
+
+    await page.getByRole("button", { name: "Side by side" }).click();
+    await page.locator("#versions-panel [role='option']").last().click();
+
+    await expect(page.getByRole("button", { name: "Side by side" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+    );
+    const previous = page.locator('[data-diff-pane="previous"]');
+    await expect(previous.getByText("No earlier version to compare.")).toBeVisible();
+    await expect(page.getByText("No earlier version to compare", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-diff-pane="selected"] .cm-history-diff-add')).toHaveCount(0);
+});
+
 test("history preview uses the configured document typography", async ({ page }) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
@@ -313,7 +373,7 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(suggestionCard.locator('[data-suggestion-diff="delete"]')).toHaveText("brown");
     await expect(suggestionCard.locator('[data-suggestion-diff="insert"]')).toHaveText("russet");
 
-    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
 
@@ -331,7 +391,7 @@ test("history preview renders linked annotations read-only and explores grouped 
         .toBe("The swift brown hound");
     await expect(cards.getByRole("button", { name: /^swift, linked in / })).toBeDisabled();
     await expect(cards.getByRole("button", { name: /^hound, linked in / })).toBeDisabled();
-    await expect(page.getByText("vs. previous version")).toBeVisible();
+    await expect(page.getByText("Compared with the previous version")).toBeVisible();
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(2);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(2);
 
@@ -348,7 +408,7 @@ test("history preview renders linked annotations read-only and explores grouped 
     await expect(preview.locator(".cm-content")).toHaveText("The quick brown fox");
     await expect(preview.locator(".cm-history-diff-add")).toHaveCount(0);
     await expect(preview.locator(".cm-history-diff-del")).toHaveCount(0);
-    await expect(page.getByText("vs. previous version")).toHaveCount(0);
+    await expect(page.getByText("Compared with the previous version")).toHaveCount(0);
 });
 
 test("history annotation layout responds to the remaining preview pane width", async ({ page }) => {

@@ -74,7 +74,9 @@ let confirmingRestore = $state(false);
 let viewedTabId = $state<string | null>(null);
 let previewLoading = $state(false);
 let previewCurrentJson = $state<string | null>(null);
+let previewPreviousJson = $state<string | null>(null);
 let previewPreviousText = $state("");
+let previewHasPrevious = $state(false);
 let previewHasContent = $state(false);
 // Monotonic token so a slow content load can't overwrite a newer selection.
 let previewToken = 0;
@@ -127,8 +129,9 @@ async function bootstrapDraftId() {
     if (get(currentDraftId)) return;
     const docs = await listDocuments();
     if (docs.length === 0) return;
-    if (!get(currentDocumentId)) currentDocumentId.set(docs[0].id);
-    const active = await resolveActiveDraftId(docs[0].id);
+    const docId = get(currentDocumentId) ?? docs[0].id;
+    if (!get(currentDocumentId)) currentDocumentId.set(docId);
+    const active = await resolveActiveDraftId(docId);
     if (active) currentDraftId.set(active);
 }
 
@@ -208,15 +211,21 @@ async function viewTab(tabId: string) {
  * redundant replay.
  */
 async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] }) {
+    // Invalidate any older request even when the new selection has no tab. If
+    // this happened after the early return, a slow old request could repopulate
+    // an intentionally-empty preview.
+    const token = ++previewToken;
     const item = selectedItem;
     const tabId = viewedTabId;
     if (!item || !tabId) {
         previewCurrentJson = null;
+        previewPreviousJson = null;
         previewPreviousText = "";
+        previewHasPrevious = false;
         previewHasContent = false;
+        previewLoading = false;
         return;
     }
-    const token = ++previewToken;
     previewLoading = true;
     try {
         const resolved =
@@ -226,7 +235,9 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         if (!ref.current) {
             if (token === previewToken) {
                 previewCurrentJson = null;
+                previewPreviousJson = null;
                 previewPreviousText = "";
+                previewHasPrevious = false;
                 previewHasContent = false;
             }
             return;
@@ -237,7 +248,9 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         ]);
         if (token !== previewToken) return; // a newer selection superseded us
         previewCurrentJson = currentJson;
+        previewPreviousJson = previousJson;
         previewPreviousText = docTextFromStateJson(previousJson);
+        previewHasPrevious = previousJson !== null;
         previewHasContent = true;
     } catch (e) {
         // Called from event handlers — swallow instead of leaking an
@@ -245,7 +258,9 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         console.error("[VersionHistory] preview load failed:", e);
         if (token === previewToken) {
             previewCurrentJson = null;
+            previewPreviousJson = null;
             previewPreviousText = "";
+            previewHasPrevious = false;
             previewHasContent = false;
         }
     } finally {
@@ -492,7 +507,9 @@ function handleKeydown(e: KeyboardEvent) {
                 {viewedTabId}
                 highlightDraftId={selectedTarget.draftId}
                 currentStateJson={previewCurrentJson}
+                previousStateJson={previewPreviousJson}
                 previousText={previewPreviousText}
+                hasPrevious={previewHasPrevious}
                 loading={previewLoading}
                 hasContent={previewHasContent}
                 {bannerText}
