@@ -8,6 +8,7 @@ type MockDoc = {
     wordCount: number;
     previewText: string;
     tags: string;
+    persistHistory?: boolean;
 };
 
 /**
@@ -73,8 +74,14 @@ async function installLibraryMock(
             localStorage.setItem("quillium_tutorial_seen", "1");
 
             // Mutable state the mock tracks
-            const docs = [...payload.documents];
-            const trashed = [...payload.trashedDocuments];
+            const docs = payload.documents.map((document) => ({
+                ...document,
+                persistHistory: document.persistHistory ?? true,
+            }));
+            const trashed = payload.trashedDocuments.map((document) => ({
+                ...document,
+                persistHistory: document.persistHistory ?? true,
+            }));
 
             let nextCallbackId = 1;
             const callbacks = new Map<number, (...args: unknown[]) => unknown>();
@@ -93,6 +100,7 @@ async function installLibraryMock(
                     if (cmd === "cmd_list_documents") return [...docs];
                     if (cmd === "cmd_list_trashed_documents") return [...trashed];
                     if (cmd === "cmd_create_document") {
+                        const a = args as { persistHistory?: boolean };
                         const id = `doc-new-${Date.now()}`;
                         docs.push({
                             id,
@@ -102,6 +110,7 @@ async function installLibraryMock(
                             wordCount: 0,
                             previewText: "",
                             tags: "[]",
+                            persistHistory: a.persistHistory ?? false,
                         });
                         return id;
                     }

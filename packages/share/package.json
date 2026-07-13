@@ -66,9 +66,9 @@
     "svelte": "^5.55.0"
   },
   "dependencies": {
-    "@codemirror/commands": "^6.10.3",
+    "@codemirror/commands": "6.10.3",
     "@codemirror/search": "^6.7.0",
-    "@codemirror/state": "^6.6.0",
+    "@codemirror/state": "6.6.0",
     "@codemirror/view": "^6.41.1",
     "lodash-es": "^4.18.1",
     "zod": "^4.4.1"

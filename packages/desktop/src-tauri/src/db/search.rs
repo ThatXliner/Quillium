@@ -84,7 +84,7 @@ fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta,
     // have a single source of truth (snippet.ts mirrors them on the JS side).
     let sql = format!(
         "SELECT d.id, d.title, d.created_at, d.updated_at, d.word_count,
-                d.preview_text, d.tags, d.deleted_at,
+                d.preview_text, d.tags, d.deleted_at, d.persist_history,
                 snippet(documents_fts, 1, '{HIGHLIGHT_START}', '{HIGHLIGHT_END}', '…', 12)
          FROM documents_fts
          JOIN documents d ON d.rowid = documents_fts.rowid
@@ -104,8 +104,9 @@ fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta,
                 preview_text: row.get(5)?,
                 tags: row.get(6)?,
                 deleted_at: row.get(7)?,
+                persist_history: row.get(8)?,
             },
-            row.get(8)?,
+            row.get(9)?,
         ))
     })?;
     rows.collect()

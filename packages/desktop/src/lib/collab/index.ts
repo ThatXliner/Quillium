@@ -1,6 +1,7 @@
 import { getCurrentUserName, getUser } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
 import { historyCompartment } from "$lib/editor/extensions";
+import { persistentHistoryRuntimeExtension } from "$lib/editor/persistentHistory";
 import { history } from "@codemirror/commands";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
 /**
@@ -277,16 +278,14 @@ export async function enableCollab(
         mainIdMap,
     });
 
-    // Install Yjs collab extension - includes annotation sync.
-    // Joiners use Y.UndoManager only; owners keep their existing CM history.
-    const collabExts = asOwner
-        ? [binding, awarenessExt, annotationSync, versionGroupSync]
-        : [binding, undoExt, awarenessExt, annotationSync, versionGroupSync];
+    // Install one Yjs-backed undo stack for every live participant. CodeMirror
+    // history cannot rebase custom annotation/version-group effects through a
+    // later remote projection, so retaining it for owners can make Cmd-z replay
+    // stale semantic state. Y.UndoManager tracks only this client's "local"
+    // Yjs transactions and rebases them over remote changes.
+    const collabExts = [binding, undoExt, awarenessExt, annotationSync, versionGroupSync];
     view.dispatch({
-        effects: [
-            collabCompartment.reconfigure(collabExts),
-            ...(asOwner ? [] : [historyCompartment.reconfigure([])]),
-        ],
+        effects: [collabCompartment.reconfigure(collabExts), historyCompartment.reconfigure([])],
     });
 
     // Listen for owner left (custom message from server)
@@ -394,7 +393,10 @@ export function disableCollab(view: EditorView): void {
     view.dispatch({
         effects: [
             collabCompartment.reconfigure([]),
-            historyCompartment.reconfigure(history({ newGroupDelay: 250 })),
+            historyCompartment.reconfigure([
+                persistentHistoryRuntimeExtension,
+                history({ newGroupDelay: 250 }),
+            ]),
         ],
     });
 

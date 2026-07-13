@@ -3,6 +3,7 @@ import { collabCompartment, disableCollab } from "$lib/collab/index";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import {
     type Peer,
+    type UndoPeer,
     connect,
     flushAll,
     makeJoinerPeer,
@@ -13,7 +14,7 @@ import {
 import type { YjsAnnotationNode, YjsVersionGroup } from "$lib/collab/types";
 import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
 import { createYjsBinding } from "$lib/collab/yjsBinding";
-import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
+import { breakUndoCapture, createYjsUndoExtension } from "$lib/collab/yjsUndo";
 import { createVersionGroupSyncPlugin } from "$lib/collab/yjsVersionGroups";
 import { historyCompartment } from "$lib/editor/extensions";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
@@ -22,6 +23,7 @@ import {
     annotationField,
     removeAnnotation,
     setActiveRevisionVersion,
+    updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     type GenericAnnotation,
@@ -31,14 +33,16 @@ import {
 } from "$lib/editor/plugins/annotations/models";
 import {
     _restoreVersionGroups,
+    createVersionGroup,
+    renameVersionGroup,
     versionGroupField,
 } from "$lib/editor/plugins/annotations/versionGroupField";
 import { currentDraftId } from "$lib/stores";
 // joiner-view.test.ts - End-to-end Phase 02 verification: JOINER-01/-03/-05
-// + criteria #6 (own-edits-only undo), #7 (owner history excludes remote text),
+// + criteria #6 (own-edits-only undo), #7 (all peers exclude remote changes),
 // and #8 (selection restored on undo/redo). Uses Phase 1 flushAll primitive
 // and Plan 02-01 makeJoinerPeer factory.
-import { history, historyField, undo } from "@codemirror/commands";
+import { history, historyField } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
@@ -47,7 +51,7 @@ import * as Y from "yjs";
 
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 
-type JoinerPeer = Peer & { undoManager: Y.UndoManager };
+type JoinerPeer = UndoPeer;
 
 describe("joiner view hardening", () => {
     const peers: Peer[] = [];
@@ -132,6 +136,51 @@ describe("joiner view hardening", () => {
         expect(joiner.view.state.field(historyField, false)).toBeUndefined();
     });
 
+    it("owner bootstrap text, annotations, and version groups do not create an undo item", async () => {
+        const firstVersion = makeVersion({ doc: "ab" });
+        const secondVersion = makeVersion({ doc: "cd" });
+        const owner = track(
+            makeOwnerPeer("owner", "abcd", {
+                annotations: [
+                    {
+                        id: 0,
+                        _type: "revision",
+                        selection: EditorSelection.single(0, 2),
+                        thread: [],
+                        versions: [firstVersion],
+                        activeVersionId: firstVersion.id,
+                    },
+                    {
+                        id: 1,
+                        _type: "revision",
+                        selection: EditorSelection.single(2, 4),
+                        thread: [],
+                        versions: [secondVersion],
+                        activeVersionId: secondVersion.id,
+                    },
+                ],
+                versionGroups: {
+                    seeded: {
+                        id: "seeded",
+                        label: "Seeded",
+                        members: [
+                            { revisionId: 0, versionId: firstVersion.id },
+                            { revisionId: 1, versionId: secondVersion.id },
+                        ],
+                    },
+                },
+            }),
+        );
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(owner.ytext.toString()).toBe("abcd");
+        expect(owner.ymap.size).toBe(2);
+        expect(owner.yVersionGroups.get("seeded")?.label).toBe("Seeded");
+        expect(owner.undoManager.canUndo()).toBe(false);
+    });
+
     it("cmd-z post-connect - undo on freshly-connected joiner is a no-op", async () => {
         const owner = track(makePeerWithAnnotationSync("owner", "shared text"));
         const joiner = track(makeJoinerPeer("joiner"));
@@ -194,7 +243,7 @@ describe("joiner view hardening", () => {
         expect(doc.endsWith(" JOINER")).toBe(false);
     });
 
-    it("owner history excludes remote text - owner Cmd-z does not undo joiner's incoming text", async () => {
+    it("owner uses Yjs undo so remote text survives undoing the owner's edit", async () => {
         const owner = track(makeOwnerPeer("owner", "text"));
         const joiner = track(makeJoinerPeer("joiner"));
         await Promise.resolve();
@@ -202,17 +251,104 @@ describe("joiner view hardening", () => {
         await flushAll(owner, joiner);
 
         owner.view.dispatch({ changes: { from: 0, insert: "OWNER " } });
+        await flushAll(owner, joiner);
+        breakUndoCapture(owner.undoManager);
+
         joiner.view.dispatch({
             changes: { from: joiner.view.state.doc.length, insert: " JOINER" },
         });
         await flushAll(owner, joiner);
 
-        expect(undo(owner.view)).toBe(true);
+        expect(owner.view.state.field(historyField, false)).toBeUndefined();
+        expect(owner.undoManager.canUndo()).toBe(true);
+        owner.undoManager.undo();
         await flushAll(owner, joiner);
 
         const doc = owner.view.state.doc.toString();
         expect(doc.includes("OWNER ")).toBe(false);
         expect(doc.endsWith(" JOINER")).toBe(true);
+    });
+
+    it("owner Yjs undo preserves a remote thread append", async () => {
+        const owner = track(makeOwnerPeer("owner", "text"));
+        const joiner = track(makeJoinerPeer("joiner"));
+        await Promise.resolve();
+        trackDisconnect(connect(owner, joiner));
+        await flushAll(owner, joiner);
+
+        owner.view.dispatch({ effects: addAnnotation.of(comment(0, 0, 4)) });
+        await flushAll(owner, joiner);
+        owner.undoManager.clear();
+        joiner.undoManager.clear();
+
+        const ownerMessage = { message: "Owner note", author: "Owner", time: 1 };
+        owner.view.dispatch({
+            effects: updateThread.of({ annotationId: 0, newThread: [ownerMessage] }),
+        });
+        await flushAll(owner, joiner);
+        breakUndoCapture(owner.undoManager);
+
+        const joinerAnnotation = Object.values(joiner.view.state.field(annotationField))[0];
+        const remoteMessage = { message: "Remote note", author: "Joiner", time: 2 };
+        joiner.view.dispatch({
+            effects: updateThread.of({
+                annotationId: joinerAnnotation.id,
+                newThread: [...joinerAnnotation.thread, remoteMessage],
+            }),
+        });
+        await flushAll(owner, joiner);
+
+        owner.undoManager.undo();
+        await flushAll(owner, joiner);
+
+        const ownerAnnotation = Object.values(owner.view.state.field(annotationField))[0];
+        expect(ownerAnnotation.thread).toEqual([remoteMessage]);
+        expect(Object.values(joiner.view.state.field(annotationField))[0].thread).toEqual([
+            remoteMessage,
+        ]);
+    });
+
+    it("owner Yjs undo preserves a remotely-created version group", async () => {
+        const owner = track(makeOwnerPeer("owner", "text"));
+        const joiner = track(makeJoinerPeer("joiner"));
+        owner.idMap?.register("revision-a", 1);
+        owner.idMap?.register("revision-b", 2);
+        joiner.idMap?.register("revision-a", 101);
+        joiner.idMap?.register("revision-b", 102);
+        await Promise.resolve();
+        trackDisconnect(connect(owner, joiner));
+        await flushAll(owner, joiner);
+
+        const ownerMembers = [
+            { revisionId: 1, versionId: "a" },
+            { revisionId: 2, versionId: "b" },
+        ] as const;
+        const initial = createVersionGroup("Initial", [...ownerMembers]);
+        owner.view.dispatch(initial.spec);
+        await flushAll(owner, joiner);
+        owner.undoManager.clear();
+        joiner.undoManager.clear();
+
+        owner.view.dispatch(renameVersionGroup(owner.view.state, initial.groupId, "Local rename"));
+        await flushAll(owner, joiner);
+        breakUndoCapture(owner.undoManager);
+
+        const remote = createVersionGroup("Remote group", [
+            { revisionId: 101, versionId: "remote-a" },
+            { revisionId: 102, versionId: "remote-b" },
+        ]);
+        joiner.view.dispatch(remote.spec);
+        await flushAll(owner, joiner);
+
+        owner.undoManager.undo();
+        await flushAll(owner, joiner);
+
+        const ownerGroups = owner.view.state.field(versionGroupField);
+        expect(ownerGroups[initial.groupId]?.label).toBe("Initial");
+        expect(ownerGroups[remote.groupId]?.label).toBe("Remote group");
+        expect(joiner.view.state.field(versionGroupField)[remote.groupId]?.label).toBe(
+            "Remote group",
+        );
     });
 
     it("selection restored - undo restores caret to where it was at edit time", async () => {

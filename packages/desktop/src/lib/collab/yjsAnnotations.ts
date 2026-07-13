@@ -27,8 +27,9 @@ import { Annotation, Transaction } from "@codemirror/state";
  * ─────────────────────────────────────────────────────────────────────────
  *  Yjs is canonical. The CodeMirror `annotationField` is a DERIVED PROJECTION
  *  of the Yjs `annotations` Y.Map. Reads of annotation state for sync purposes
- *  go through `yjsAnnotationToCodeMirror(yMap)`; writes go through Yjs first
+ *  go through `yjsAnnotationToCodeMirror(yMap)`; user writes go through Yjs first
  *  inside `ydoc.transact(fn, "local")` and the CM dispatch is the projection.
+ *  Owner bootstrap data uses the untracked `"init"` origin.
  *
  *  This file does NOT enforce that contract for the entire codebase yet (Phases
  *  3–5 do that). It is the SOLE writer of `annotationField` on the read path
@@ -81,7 +82,8 @@ import { Annotation, Transaction } from "@codemirror/state";
  *  the active pointer. The read path still tolerates older index-keyed rooms.
  *
  *  Origin tagging:
- *    - ydoc.transact(..., "local")  : writes this plugin originated
+ *    - ydoc.transact(..., "local")  : user writes this plugin originated
+ *    - ydoc.transact(..., "init")   : owner bootstrap writes (not undoable)
  *    - Transactions tagged with yjsAnnotationSync(true) : dispatches this plugin
  *      originated on the CM side (skip to avoid loops)
  *
@@ -306,7 +308,7 @@ export function createAnnotationSyncPlugin(
                             scopeAnnotations.set(yjsId, node);
                             this.syncAnnotationFields(ann, node, ydoc);
                         }
-                    }, "local");
+                    }, "init");
                 });
             }
 

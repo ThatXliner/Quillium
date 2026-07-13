@@ -36,6 +36,7 @@ import { getExtensions, savedFields } from "$lib/editor/extensions";
 import { buildEventPayload } from "$lib/editor/listeners";
 import { saveEmergencyBackup } from "$lib/errorGuard";
 import { appEventBus } from "$lib/events/appEventBus";
+import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
 import {
     currentDocumentId,
     currentDocumentTitle,
@@ -118,11 +119,13 @@ async function runScenario(scenario: Scenario) {
     try {
         // 1. Collect EventPayloads from the scenario's transactions.
         const collectedPayloads: EventPayload[] = [];
+        const persistHistory = getPersistUndoHistoryForNewDocuments();
 
         const tempState = EditorState.create({
             doc: scenario.doc,
             extensions: getExtensions({
                 persist: false,
+                persistHistory,
                 updateListener(update) {
                     const payload = buildEventPayload(update);
                     if (payload) collectedPayloads.push(payload);
@@ -141,7 +144,7 @@ async function runScenario(scenario: Scenario) {
 
         // 3. Fresh DB: new document + draft.
         await resetDb();
-        const docId = await createDocument(scenario.label);
+        const docId = await createDocument(scenario.label, persistHistory);
         const draftId = await createDraft(docId, "Draft");
 
         // 4. Replay events into the event log — this is the "real history".
