@@ -10,6 +10,7 @@
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
+import fc from "fast-check";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import { describe, expect, it } from "vitest";
@@ -21,6 +22,24 @@ import { resolveWebPreviewEnvironment } from "./webPreviewEnv";
 const environment = resolveWebPreviewEnvironment(process.env);
 const RELAY_ORIGIN = Symbol("relay");
 const MESSAGE_SYNC = 0;
+const RELAY_FUZZ_SEED = 325_2026;
+const RELAY_FUZZ_RUNS = 12;
+
+type FuzzOperation = {
+    peer: "A" | "B";
+    positionBias: number;
+    text: string;
+};
+
+const fuzzCharacterArbitrary = fc.constantFrom(...Array.from("abcdef XYZ\n"));
+const fuzzOperationsArbitrary: fc.Arbitrary<FuzzOperation[]> = fc.array(
+    fc.record({
+        peer: fc.constantFrom("A" as const, "B" as const),
+        positionBias: fc.integer({ min: 0, max: 100 }),
+        text: fc.string({ unit: fuzzCharacterArbitrary, minLength: 1, maxLength: 8 }),
+    }),
+    { minLength: 1, maxLength: 16 },
+);
 
 type TestIdentity = {
     client: SupabaseClient;
@@ -297,4 +316,136 @@ describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
             }
         }
     }, 30_000);
+
+    it(`preserves relay invariants across ${RELAY_FUZZ_RUNS} seeded operation sequences`, async () => {
+        process.env.SUPABASE_URL = environment.url;
+        process.env.SUPABASE_SERVICE_ROLE_KEY = environment.serviceRoleKey;
+
+        const [
+            { createRelayServer },
+            { flushAllDocumentUpdates },
+            { _clearAllRooms },
+            { loadYjsState },
+        ] = await Promise.all([
+            import("../../relay/src/server"),
+            import("../../relay/src/persistence/debouncedUpdates"),
+            import("../../relay/src/yjs/rooms"),
+            import("../../relay/src/persistence/yjsUpdates"),
+        ]);
+        const admin = createTestClient(environment.serviceRoleKey);
+        const { wss, httpServer } = createRelayServer();
+        let owner: TestIdentity | undefined;
+        let collaborator: TestIdentity | undefined;
+
+        try {
+            owner = await createIdentity(admin, environment.publishableKey, "fuzz-owner");
+            collaborator = await createIdentity(
+                admin,
+                environment.publishableKey,
+                "fuzz-collaborator",
+            );
+            const fuzzOwner = owner;
+            const fuzzCollaborator = collaborator;
+            await new Promise<void>((resolve, reject) => {
+                httpServer.once("error", reject);
+                httpServer.listen(0, "127.0.0.1", () => resolve());
+            });
+            const { port } = httpServer.address() as AddressInfo;
+
+            await fc.assert(
+                fc.asyncProperty(fuzzOperationsArbitrary, async (operations) => {
+                    const documentId = randomUUID();
+                    let clientA: HeadlessYjsClient | undefined;
+                    let clientB: HeadlessYjsClient | undefined;
+
+                    try {
+                        const { error: documentError } = await fuzzOwner.client
+                            .from("sync_documents")
+                            .insert({
+                                id: documentId,
+                                owner_id: fuzzOwner.userId,
+                                title: "Real relay fuzz E2E",
+                            });
+                        expect(documentError).toBeNull();
+
+                        const relayUrl = `ws://127.0.0.1:${port}/${documentId}`;
+                        clientA = new HeadlessYjsClient(
+                            `${relayUrl}?auth=${encodeURIComponent(fuzzOwner.accessToken)}`,
+                        );
+                        await clientA.connect();
+                        clientB = new HeadlessYjsClient(
+                            `${relayUrl}?auth=${encodeURIComponent(fuzzCollaborator.accessToken)}`,
+                        );
+                        await clientB.connect();
+
+                        for (const [index, operation] of operations.entries()) {
+                            const sender = operation.peer === "A" ? clientA : clientB;
+                            const receiver = operation.peer === "A" ? clientB : clientA;
+                            const senderRemoteBefore = sender.remoteUpdateCount;
+                            const receiverRemoteBefore = receiver.remoteUpdateCount;
+                            const position = Math.floor(
+                                (operation.positionBias * (sender.text.length + 1)) / 101,
+                            );
+                            const annotationId = `fuzz-${index}`;
+
+                            sender.doc.transact(() => {
+                                sender.text.insert(position, operation.text);
+                                sender.annotations.set(
+                                    annotationId,
+                                    createComment({
+                                        id: annotationId,
+                                        from: position,
+                                        to: position + operation.text.length,
+                                        selectedText: operation.text,
+                                    }),
+                                );
+                            }, `fuzz-client-${operation.peer}`);
+
+                            await waitFor(`fuzz operation ${index} to converge`, () =>
+                                receiver.annotations.has(annotationId),
+                            );
+                            expect(receiver.text.toString()).toBe(sender.text.toString());
+                            expect(receiver.remoteUpdateCount - receiverRemoteBefore).toBe(1);
+                            expect(sender.remoteUpdateCount - senderRemoteBefore).toBe(0);
+                        }
+
+                        expect(Y.encodeStateVector(clientA.doc)).toEqual(
+                            Y.encodeStateVector(clientB.doc),
+                        );
+                        await flushAllDocumentUpdates();
+                        const { data: persistedRows, error: persistenceError } = await admin
+                            .from("yjs_updates")
+                            .select("update_data")
+                            .eq("document_id", documentId)
+                            .order("created_at", { ascending: true });
+                        expect(persistenceError).toBeNull();
+                        expect(persistedRows).toHaveLength(operations.length);
+
+                        const { ydoc: restored } = await loadYjsState(documentId);
+                        expect(Y.encodeStateVector(restored)).toEqual(
+                            Y.encodeStateVector(clientA.doc),
+                        );
+                        expect(restored.getMap("annotations").size).toBe(operations.length);
+                        restored.destroy();
+                    } finally {
+                        await flushAllDocumentUpdates();
+                        if (clientB) await clientB.close().catch(() => undefined);
+                        if (clientA) await clientA.close().catch(() => undefined);
+                        _clearAllRooms();
+                        await admin.from("sync_documents").delete().eq("id", documentId);
+                    }
+                }),
+                { seed: RELAY_FUZZ_SEED, numRuns: RELAY_FUZZ_RUNS },
+            );
+        } finally {
+            _clearAllRooms();
+            await new Promise<void>((resolve) => wss.close(() => resolve()));
+            await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+            for (const identity of [owner, collaborator]) {
+                if (!identity) continue;
+                await identity.client.auth.signOut({ scope: "global" }).catch(() => undefined);
+                await admin.auth.admin.deleteUser(identity.userId, false).catch(() => undefined);
+            }
+        }
+    }, 60_000);
 });

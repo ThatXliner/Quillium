@@ -26,8 +26,9 @@ access-token JWTs, and covers:
 - owner and collaborator edits in both directions, including document text and
   annotation maps;
 - exactly-once delivery to the other client without sender echo; and
-- relay debounce persistence by replaying the stored `yjs_updates` rows into a
-  fresh Y.Doc.
+- relay debounce persistence through snapshot-plus-update recovery; and
+- 12 seeded, shrinking fast-check runs of generated peer, insertion, and
+  annotation sequences over the same production wire path.
 
 The suite uses the same opt-in Supabase environment as Track B, so the default
 `e2e:test:run` remains infrastructure-free. `e2e:test:full` supplies those
