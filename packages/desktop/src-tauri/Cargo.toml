@@ -57,6 +57,7 @@ textwrap = "0.16.2"
 # (issue #311), so we embed a Unicode system font instead. Already present as a
 # transitive dep (via printpdf → svg2pdf), so this adds no new crates.
 fontdb = "0.23"
+tauri-plugin-http = "2.5.9"
 
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
 # fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt

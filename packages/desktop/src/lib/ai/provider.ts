@@ -21,7 +21,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAIOAuth } from "@openai-oauth/ai-sdk";
 import type { LanguageModel } from "ai";
-import { getFreshOpenAISession } from "./openaiOAuth";
+import { getFreshOpenAISession, openAIOAuthFetch } from "./openaiOAuth";
 
 export type Provider =
     | "openai"
@@ -55,6 +55,7 @@ export function createModel(
             return createOpenAIOAuth({
                 kind: "openai-oauth",
                 getSession: getFreshOpenAISession,
+                fetch: openAIOAuthFetch,
             })(modelId) as unknown as LanguageModel;
         case "openai-compatible": {
             if (!baseURL?.trim()) {

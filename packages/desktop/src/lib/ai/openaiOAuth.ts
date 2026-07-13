@@ -12,6 +12,7 @@ import {
  * Svelte/Tauri: PKCE login, callback validation, refresh, and keychain storage.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { setOpenAIOAuthConnected } from "./settings.svelte";
 
 const PROVIDER = "openai-oauth";
@@ -19,6 +20,11 @@ const REDIRECT_URI = "http://localhost:1455/auth/callback";
 const EXPIRY_MARGIN_MS = 5 * 60 * 1000;
 
 type Callback = { code: string; state: string };
+
+// ChatGPT's Codex endpoints do not allow browser/WebView origins. Tauri's HTTP
+// plugin performs these requests natively while preserving the Fetch API shape
+// expected by openai-oauth (including streamed response bodies).
+export const openAIOAuthFetch: typeof fetch = (input, init) => tauriFetch(input, init);
 
 function toSession(
     tokens: Awaited<ReturnType<typeof exchangeOpenAIOAuthCode>>,
@@ -60,7 +66,10 @@ export async function getStoredOpenAISession(): Promise<OpenAIOAuthSession | nul
 }
 
 export async function listOpenAIModels(): Promise<string[]> {
-    const transport = createOpenAIOAuthTransport({ auth: getFreshOpenAISession });
+    const transport = createOpenAIOAuthTransport({
+        auth: getFreshOpenAISession,
+        fetch: openAIOAuthFetch,
+    });
     const response = await transport.request("/models");
     const payload = (await response.json()) as {
         data?: Array<{ id?: unknown }>;
@@ -90,7 +99,10 @@ export async function getFreshOpenAISession(): Promise<OpenAIOAuthSession | null
     if (!Number.isFinite(expiresAt) || expiresAt - Date.now() > EXPIRY_MARGIN_MS) return session;
     if (!session.refreshToken) return session;
 
-    const tokens = await refreshOpenAIOAuthTokens({ refreshToken: session.refreshToken });
+    const tokens = await refreshOpenAIOAuthTokens({
+        refreshToken: session.refreshToken,
+        fetch: openAIOAuthFetch,
+    });
     const refreshed = toSession(tokens, session);
     await saveSession(refreshed);
     return refreshed;
@@ -108,6 +120,7 @@ export async function signInWithChatGPT(): Promise<OpenAIOAuthSession> {
         code: callback.code,
         codeVerifier: request.codeVerifier,
         redirectUri: REDIRECT_URI,
+        fetch: openAIOAuthFetch,
     });
     const session = toSession(tokens);
     if (!session.accountId) throw new Error("OpenAI sign-in did not return an account ID.");
