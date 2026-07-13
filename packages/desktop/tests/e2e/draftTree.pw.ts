@@ -14,6 +14,47 @@ import { QuilliumPage } from "./QuilliumPage";
 test.use({ viewport: { width: 1440, height: 900 } });
 
 test.describe("Draft panel", () => {
+    test("resizes with pointer and keyboard controls and persists the preferred width", async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        const panel = page.locator('[aria-label="Draft tree"]');
+        const handle = page.getByRole("slider", { name: "Resize drafts panel" });
+        await expect(handle).toHaveAttribute("aria-valuemin", "192");
+        await expect(handle).toHaveAttribute("aria-valuemax", "280");
+        await expect(panel).toHaveCSS("width", "192px");
+
+        // The panel is anchored beside the editor, so dragging its outer
+        // (left) edge left makes it wider.
+        const handleBox = await handle.boundingBox();
+        expect(handleBox).not.toBeNull();
+        await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 24);
+        await page.mouse.down();
+        await page.mouse.move(handleBox!.x - 40, handleBox!.y + 24);
+        await page.mouse.up();
+        await expect(panel).toHaveCSS("width", "238px");
+
+        // End chooses the largest width that still preserves editor space.
+        await handle.press("End");
+        await expect(panel).toHaveCSS("width", "280px");
+        expect(
+            await page.evaluate(
+                () =>
+                    JSON.parse(localStorage.getItem("quillium-app-settings") ?? "{}")
+                        .draftPanelWidth,
+            ),
+        ).toBe(280);
+
+        // Narrowing the window clamps only the rendered width. Expanding it
+        // restores the persisted preference instead of overwriting it.
+        await page.setViewportSize({ width: 1320, height: 900 });
+        await expect(panel).toHaveCSS("width", "220px");
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await expect(panel).toHaveCSS("width", "280px");
+    });
+
     test("panel renders the root draft on load", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();

@@ -93,7 +93,7 @@ function commitRename(draftId: string) {
      + box-shadow squares the shadow at the corners; splitting avoids it while still
      clipping the blur. -->
 <div
-    class="w-48 rounded-lg shadow-md"
+    class="w-full rounded-lg shadow-md"
     aria-label="Draft tree"
     data-component="draft-tree-panel"
     data-read-only={readOnly}
