@@ -49,6 +49,31 @@ fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\
 # src-tauri/Cargo.toml — sed replace the version line
 sed -i '' "s/^version = \"${CURRENT}\"/version = \"${NEXT}\"/" src-tauri/Cargo.toml
 
+# Generated iOS metadata. Keep both the xcodegen source and checked-in plist
+# aligned with the desktop manifests so TestFlight/App Store builds report the
+# same marketing and bundle version.
+NEXT_VERSION="$NEXT" node <<'NODE'
+const fs = require("fs");
+const version = process.env.NEXT_VERSION;
+
+const projectPath = "src-tauri/gen/apple/project.yml";
+const project = fs
+    .readFileSync(projectPath, "utf8")
+    .replace(/(CFBundleShortVersionString:\s*)[^\n]+/, `$1${version}`)
+    .replace(/(CFBundleVersion:\s*)[^\n]+/, `$1"${version}"`);
+fs.writeFileSync(projectPath, project);
+
+const plistPath = "src-tauri/gen/apple/quillium_iOS/Info.plist";
+const plist = fs
+    .readFileSync(plistPath, "utf8")
+    .replace(
+        /(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]+/,
+        `$1${version}`,
+    )
+    .replace(/(<key>CFBundleVersion<\/key>\s*<string>)[^<]+/, `$1${version}`);
+fs.writeFileSync(plistPath, plist);
+NODE
+
 # Update Cargo.lock to reflect the new version
 (cd src-tauri && cargo generate-lockfile 2>/dev/null || true)
 

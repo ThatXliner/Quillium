@@ -12,6 +12,26 @@ import {
 
 const STORAGE_KEY = "quillium-app-settings";
 
+/**
+ * Reads the new-document undo policy at the moment a document is created.
+ *
+ * Each Tauri window owns its own in-memory `appSettings` rune. Reading the
+ * shared localStorage value here prevents an already-open window from using a
+ * stale copy after another window saves Settings. Invalid or unavailable
+ * storage must choose the safer session-only default.
+ */
+export function getPersistUndoHistoryForNewDocuments(): boolean {
+    try {
+        if (typeof localStorage === "undefined") return false;
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return parsed.persistUndoHistoryForNewDocuments === true;
+    } catch {
+        return false;
+    }
+}
+
 // Clamp bounds + default for the floating annotation panel width. Exported so
 // Annotations.svelte's resize handle, reset button, and "is custom" check use
 // the same numbers as the persisted default below — a hardcoded copy in the
@@ -58,6 +78,8 @@ export type AppSettings = {
     annotationPanelWidth: number;
     readonlyShareAutoUpdate: boolean;
     readonlyShareAutoUpdateDebounceMs: number;
+    /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
+    persistUndoHistoryForNewDocuments: boolean;
     // Where annotation cards are placed when the AI sidebar is hidden (AI off):
     //   "visual-split" — balance cards across a left and right column
     //   "by-type"      — comments on the left, revisions/suggestions on the right
@@ -96,6 +118,7 @@ const DEFAULTS: AppSettings = {
     annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    persistUndoHistoryForNewDocuments: false,
     annotationLayout: "visual-split",
 };
 
@@ -120,6 +143,8 @@ function loadSettings(): AppSettings {
         merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
             merged.readonlyShareAutoUpdateDebounceMs,
         );
+        merged.persistUndoHistoryForNewDocuments =
+            merged.persistUndoHistoryForNewDocuments === true;
         return merged;
     } catch {
         return { ...DEFAULTS };

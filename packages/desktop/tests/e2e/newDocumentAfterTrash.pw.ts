@@ -8,11 +8,13 @@ type MockDoc = {
     wordCount: number;
     previewText: string;
     tags: string;
+    persistHistory: boolean;
     deletedAt?: number | null;
 };
 
 type MockOptions = {
     appendDelayMs?: number;
+    persistUndoHistoryForNewDocuments?: boolean;
 };
 
 async function installMock(page: Page, options: MockOptions = {}) {
@@ -24,6 +26,8 @@ async function installMock(page: Page, options: MockOptions = {}) {
             "quillium-app-settings",
             JSON.stringify({
                 autoVersionOnRevisionCreate: false,
+                persistUndoHistoryForNewDocuments:
+                    payload.persistUndoHistoryForNewDocuments === true,
             }),
         );
 
@@ -101,6 +105,7 @@ async function installMock(page: Page, options: MockOptions = {}) {
                         wordCount: 0,
                         previewText: "",
                         tags: "[]",
+                        persistHistory: args?.persistHistory ?? false,
                         deletedAt: null,
                     });
                     return id;
@@ -322,6 +327,42 @@ async function installMock(page: Page, options: MockOptions = {}) {
             unregisterListener: () => {},
         };
     }, options);
+}
+
+for (const persistHistory of [false, true]) {
+    test(`new-document IPC uses persistHistory=${persistHistory}`, async ({ page }) => {
+        await installMock(page, {
+            persistUndoHistoryForNewDocuments: persistHistory,
+        });
+
+        await page.goto("/library");
+        await expect(page.getByText("Your Library")).toBeVisible({ timeout: 15_000 });
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    (
+                        window as unknown as {
+                            __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> };
+                        }
+                    ).__TAURI_MOCK__.invokeCalls.some((call) => call.cmd === "cmd_list_documents"),
+                ),
+            )
+            .toBe(true);
+        await page.keyboard.press("n");
+        await page.locator(".cm-content").first().waitFor({ state: "visible", timeout: 15_000 });
+
+        const createArgs = await page.evaluate(() => {
+            const calls = (
+                window as unknown as {
+                    __TAURI_MOCK__: {
+                        invokeCalls: Array<{ cmd: string; args: { persistHistory?: boolean } }>;
+                    };
+                }
+            ).__TAURI_MOCK__.invokeCalls;
+            return calls.find((call) => call.cmd === "cmd_create_document")?.args;
+        });
+        expect(createArgs?.persistHistory).toBe(persistHistory);
+    });
 }
 
 test("new document after trashing previous does not inherit preview/title", async ({ page }) => {

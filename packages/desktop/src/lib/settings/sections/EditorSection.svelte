@@ -62,6 +62,18 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
     }}
 />
 
+<SettingToggle
+    title="Undo after restart for new documents"
+    description="Store undo history when Quillium closes. Documents created before July 14, 2026 keep their current behavior."
+    checked={draft.persistUndoHistoryForNewDocuments}
+    defaultChecked={false}
+    ariaLabel="Keep undo history after restart for new documents"
+    onchange={(checked) => {
+        draft.persistUndoHistoryForNewDocuments = checked;
+        onchange();
+    }}
+/>
+
 <!-- Annotation layout (only takes effect when AI is off) -->
 <SettingSegmented
     title="Annotation layout"

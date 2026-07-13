@@ -256,6 +256,7 @@ function save() {
         // TODO(#191): restore share_document_analytics prop when re-enabled
         // share_document_analytics: draft.shareDocumentAnalytics,
         check_for_updates: draft.checkForUpdates,
+        persist_undo_history_for_new_documents: draft.persistUndoHistoryForNewDocuments,
     });
     onclose();
 }

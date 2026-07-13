@@ -43,32 +43,39 @@
  *   - Svelte stores sync with this field via updateListener.
  */
 
-import { invertedEffects } from "@codemirror/commands";
+import { invertedEffects, isolateHistory } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
     Annotation,
+    ChangeSet,
     EditorSelection,
-    type EditorState,
+    EditorState,
     SelectionRange,
     StateEffect,
     StateField,
     Transaction,
     type TransactionSpec,
 } from "@codemirror/state";
-import { mapValues } from "lodash-es";
+import { isEqual, mapValues } from "lodash-es";
 import {
     type Annotations,
     type GenericAnnotation,
+    RawAnnotationSchema,
     type RawAnnotations,
     RawAnnotationsSchema,
     type SuggestionReplacement,
+    SuggestionReplacementSchema,
     type Thread,
+    ThreadMessageSchema,
     type VersionState,
+    VersionStateSchema,
     activeVersionIndex,
     createNewAnnotation,
+    ensureAnnotationHistoryId,
     getNewId,
     groupPartnersOf,
     isAnnotationOfType,
+    isRawAnnotationOfType,
     makeVersion,
     normalizeRevision,
     versionById,
@@ -97,32 +104,73 @@ import { versionGroupField } from "./versionGroupField";
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
 });
-// Used exclusively by the undo system when restoring an annotation that was
-// implicitly dropped or collapsed by a text deletion. Carries the original
-// annotation with its pre-deletion selection. The map function remaps
-// positions through intervening transactions without filtering collapsed
-// ranges (unlike mapRange), so the annotation survives further edits
-// before undo is applied.
-const _restoreAnnotation = StateEffect.define<GenericAnnotation>({
-    map(annotation, change) {
-        // Remap each range's from and to independently without filtering
-        // collapsed ranges (unlike mapRange). If any position is out of range
-        // for this change (e.g. an addToHistory:false resolver dispatch on an
-        // empty doc), drop the effect so it doesn't cause a RangeError.
-        try {
-            const newRanges = annotation.selection.ranges.map((r) =>
-                EditorSelection.range(change.mapPos(r.from, -1), change.mapPos(r.to, 1)),
-            );
+type RestoreAnnotation = {
+    annotation: GenericAnnotation;
+    /** The history event's document change, from the event's current doc to its result. */
+    undoChanges: ChangeSet;
+    /** Legacy effects default to true. Survivor snapshots must not undo a later removal. */
+    restoreIfMissing?: boolean;
+    /**
+     * Annotation expected at the start of the undo/redo transaction. `null`
+     * means the original operation removed it; `undefined` identifies a legacy
+     * persisted effect whose historical full-replacement behavior is retained.
+     */
+    expected?: GenericAnnotation | null;
+};
+
+function mapHistoryAnnotation(
+    annotation: GenericAnnotation,
+    mapping: Parameters<EditorSelection["map"]>[0],
+): GenericAnnotation {
+    const assoc = isAnnotationOfType(annotation, "revision") ? 1 : 0;
+    return {
+        ...annotation,
+        selection: annotation.selection.map(mapping, assoc),
+    };
+}
+
+// Used exclusively by the undo system to restore an exact annotation snapshot.
+// The desired snapshot is expressed in the history event's RESULT document,
+// whereas CodeMirror maps stored effects in the event's START document when an
+// addToHistory:false edit intervenes. Keeping the event's undo ChangeSet lets
+// the effect derive CodeMirror's equivalent `before` mapping and rebase the
+// snapshot in the correct coordinate space. This also preserves reversed
+// selections and collapsed revisions rather than reconstructing only from/to.
+const _restoreAnnotation = StateEffect.define<RestoreAnnotation>({
+    map(value, mapping) {
+        // When CodeMirror joins adjacent history events, it maps the newer
+        // event's effects through the older event's inverse ChangeSet. That
+        // mapping starts in this restore's result document, so compose the two
+        // undo changes and map the desired snapshot directly. The expected
+        // snapshot is in the joined event's unchanged start document.
+        if (mapping instanceof ChangeSet) {
             return {
-                ...annotation,
-                selection: EditorSelection.create(newRanges, annotation.selection.mainIndex),
+                ...value,
+                annotation: mapHistoryAnnotation(value.annotation, mapping),
+                undoChanges: value.undoChanges.compose(mapping),
             };
-        } catch {
-            // Position out of range — preserve with original positions.
-            return annotation;
         }
+
+        // addToHistory:false mappings instead start in the history event's
+        // current document. Translate the desired snapshot across the event
+        // change first, while the expected snapshot maps directly with the
+        // external change because it lives in that current document.
+        const before = mapping.mapDesc(value.undoChanges, true);
+        return {
+            ...value,
+            annotation: mapHistoryAnnotation(value.annotation, before),
+            expected:
+                value.expected === undefined || value.expected === null
+                    ? value.expected
+                    : mapHistoryAnnotation(value.expected, mapping),
+            undoChanges: value.undoChanges.map(mapping),
+        };
     },
 });
+
+// History-only removal that cannot be mapped away when an intervening document
+// change consumes the annotation's old range.
+const _removeAnnotationById = StateEffect.define<number>();
 // Carries the full annotation object (not just an ID) so that undo inversion
 // can restore exact prior state without a startState lookup.
 export const removeAnnotation = StateEffect.define<GenericAnnotation>({
@@ -221,6 +269,16 @@ export const _updateRevisionVersionState = StateEffect.define<{
     versionId: string;
     versionState: VersionState;
 }>();
+// History-only semantic version-state merge. `from` is the state produced by
+// the operation being undone and `to` is the state that operation replaced.
+// Applying only their delta preserves later addToHistory:false bookkeeping
+// (notably parent text and remapped nested annotation ranges).
+export const _mergeRevisionVersionState = StateEffect.define<{
+    annotationId: number;
+    versionId: string;
+    from: VersionState;
+    to: VersionState;
+}>();
 /**
  * Collab-mode effect: updates ONLY the matching version's doc without triggering
  * parent doc changes. Used by NestedEditorController when collab owns the subtree
@@ -237,6 +295,269 @@ export const _updateRevisionVersionLabel = StateEffect.define<{
     versionId: string;
     label: string | undefined;
 }>();
+
+export type SerializedAnnotationHistoryEffect = {
+    type: string;
+    value: unknown;
+};
+
+function historyAnnotationToJSON(annotation: GenericAnnotation): unknown {
+    return { ...annotation, selection: annotation.selection.toJSON() };
+}
+
+function historyAnnotationFromJSON(value: unknown): GenericAnnotation {
+    const parsed = RawAnnotationSchema.safeParse(value);
+    if (!parsed.success) throw new Error("Invalid annotation in persisted history");
+    if (typeof parsed.data._historyId !== "string" || parsed.data._historyId.length === 0) {
+        throw new Error("Invalid annotation identity in persisted history");
+    }
+    if (isRawAnnotationOfType(parsed.data, "revision")) {
+        const versionIds = parsed.data.versions.map((version) => version.id);
+        const hasInvalidVersionId = versionIds.some(
+            (versionId) => typeof versionId !== "string" || versionId.length === 0,
+        );
+        const uniqueVersionIds = new Set(versionIds);
+        const activeVersionId = parsed.data.activeVersionId;
+        if (
+            hasInvalidVersionId ||
+            uniqueVersionIds.size !== versionIds.length ||
+            typeof activeVersionId !== "string" ||
+            !uniqueVersionIds.has(activeVersionId)
+        ) {
+            throw new Error("Invalid revision identity in persisted history");
+        }
+    }
+    const annotation = {
+        ...parsed.data,
+        selection: EditorSelection.fromJSON(parsed.data.selection),
+    } as GenericAnnotation;
+    return isAnnotationOfType(annotation, "revision") ? normalizeRevision(annotation) : annotation;
+}
+
+function historyRecord(value: unknown, type: string): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`Invalid ${type} effect in persisted history`);
+    }
+    return value as Record<string, unknown>;
+}
+
+function historyNumber(value: unknown, type: string): number {
+    if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+        throw new Error(`Invalid ${type} effect in persisted history`);
+    }
+    return value;
+}
+
+function historyString(value: unknown, type: string): string {
+    if (typeof value !== "string") throw new Error(`Invalid ${type} effect in persisted history`);
+    return value;
+}
+
+function historyVersionId(value: unknown, type: string): string {
+    const id = historyString(value, type);
+    if (id.length === 0) throw new Error(`Invalid ${type} effect in persisted history`);
+    return id;
+}
+
+function historyVersion(value: unknown, type: string): VersionState {
+    const parsed = VersionStateSchema.safeParse(value);
+    if (!parsed.success || typeof parsed.data.id !== "string" || parsed.data.id.length === 0) {
+        throw new Error(`Invalid ${type} effect in persisted history`);
+    }
+    return parsed.data as VersionState;
+}
+
+/** Serialize one annotation-owned history effect. Unknown effect types return undefined. */
+export function serializeAnnotationHistoryEffect(
+    effect: StateEffect<unknown>,
+): SerializedAnnotationHistoryEffect | undefined {
+    if (effect.is(addAnnotation)) {
+        return { type: "annotation.add", value: historyAnnotationToJSON(effect.value) };
+    }
+    if (effect.is(removeAnnotation)) {
+        return { type: "annotation.remove", value: historyAnnotationToJSON(effect.value) };
+    }
+    if (effect.is(_restoreAnnotation)) {
+        return {
+            type: "annotation.restore",
+            value: {
+                annotation: historyAnnotationToJSON(effect.value.annotation),
+                undoChanges: effect.value.undoChanges.toJSON(),
+                restoreIfMissing: effect.value.restoreIfMissing,
+                expected:
+                    effect.value.expected === undefined || effect.value.expected === null
+                        ? effect.value.expected
+                        : historyAnnotationToJSON(effect.value.expected),
+            },
+        };
+    }
+    if (effect.is(_removeAnnotationById)) {
+        return { type: "annotation.removeById", value: effect.value };
+    }
+    if (effect.is(updateThread)) return { type: "annotation.thread", value: effect.value };
+    if (effect.is(_nestedEditRevision)) {
+        return { type: "revision.nestedEdit", value: effect.value };
+    }
+    if (effect.is(_addVersionToRevision)) {
+        return { type: "revision.addVersion", value: effect.value };
+    }
+    if (effect.is(_deleteVersionFromRevision)) {
+        return { type: "revision.deleteVersion", value: effect.value };
+    }
+    if (effect.is(_updateActiveRevisionVersion)) {
+        return { type: "revision.activeVersion", value: effect.value };
+    }
+    if (effect.is(_updateRevisionVersionState)) {
+        return { type: "revision.versionState", value: effect.value };
+    }
+    if (effect.is(_mergeRevisionVersionState)) {
+        return { type: "revision.mergeVersionState", value: effect.value };
+    }
+    if (effect.is(_updateRevisionVersionDoc)) {
+        return { type: "revision.versionDoc", value: effect.value };
+    }
+    if (effect.is(_updateRevisionVersionLabel)) {
+        return { type: "revision.versionLabel", value: effect.value };
+    }
+    if (effect.is(addSuggestion)) {
+        return { type: "suggestion.add", value: effect.value };
+    }
+    if (effect.is(_applySuggestion)) {
+        return { type: "suggestion.apply", value: effect.value };
+    }
+    return undefined;
+}
+
+/** Rebuild one annotation-owned history effect. Unknown tags return undefined. */
+export function deserializeAnnotationHistoryEffect(
+    serialized: SerializedAnnotationHistoryEffect,
+): StateEffect<unknown> | undefined {
+    const { type, value } = serialized;
+    if (type === "annotation.add") return addAnnotation.of(historyAnnotationFromJSON(value));
+    if (type === "annotation.remove") return removeAnnotation.of(historyAnnotationFromJSON(value));
+    if (type === "annotation.restore") {
+        const record = historyRecord(value, type);
+        if (record.restoreIfMissing !== undefined && typeof record.restoreIfMissing !== "boolean") {
+            throw new Error(`Invalid ${type} effect in persisted history`);
+        }
+        return _restoreAnnotation.of({
+            annotation: historyAnnotationFromJSON(record.annotation),
+            undoChanges: ChangeSet.fromJSON(record.undoChanges),
+            restoreIfMissing: record.restoreIfMissing as boolean | undefined,
+            expected:
+                record.expected === undefined || record.expected === null
+                    ? (record.expected as undefined | null)
+                    : historyAnnotationFromJSON(record.expected),
+        });
+    }
+    if (type === "annotation.removeById") {
+        return _removeAnnotationById.of(historyNumber(value, type));
+    }
+    if (type === "annotation.thread") {
+        const record = historyRecord(value, type);
+        const annotationId = historyNumber(record.annotationId, type);
+        if (!Array.isArray(record.newThread)) throw new Error(`Invalid ${type} effect in history`);
+        const newThread = record.newThread.map((message) => {
+            const parsed = ThreadMessageSchema.safeParse(message);
+            if (!parsed.success) throw new Error(`Invalid ${type} effect in persisted history`);
+            return parsed.data;
+        });
+        return updateThread.of({ annotationId, newThread });
+    }
+    if (type === "revision.nestedEdit") {
+        return _nestedEditRevision.of(historyNumber(value, type));
+    }
+    if (type === "revision.addVersion") {
+        const record = historyRecord(value, type);
+        const at = record.at;
+        const makeActive = record.makeActive;
+        if (at !== undefined && (typeof at !== "number" || !Number.isSafeInteger(at))) {
+            throw new Error(`Invalid ${type} effect in persisted history`);
+        }
+        if (makeActive !== undefined && typeof makeActive !== "boolean") {
+            throw new Error(`Invalid ${type} effect in persisted history`);
+        }
+        return _addVersionToRevision.of({
+            annotationId: historyNumber(record.annotationId, type),
+            newVersion: historyVersion(record.newVersion, type),
+            at: at as number | undefined,
+            makeActive: makeActive as boolean | undefined,
+        });
+    }
+    if (type === "revision.deleteVersion") {
+        const record = historyRecord(value, type);
+        return _deleteVersionFromRevision.of({
+            annotationId: historyNumber(record.annotationId, type),
+            versionId: historyVersionId(record.versionId, type),
+        });
+    }
+    if (type === "revision.activeVersion") {
+        const record = historyRecord(value, type);
+        return _updateActiveRevisionVersion.of({
+            annotationId: historyNumber(record.annotationId, type),
+            to: historyVersionId(record.to, type),
+        });
+    }
+    if (type === "revision.versionState") {
+        const record = historyRecord(value, type);
+        return _updateRevisionVersionState.of({
+            annotationId: historyNumber(record.annotationId, type),
+            versionId: historyVersionId(record.versionId, type),
+            versionState: historyVersion(record.versionState, type),
+        });
+    }
+    if (type === "revision.mergeVersionState") {
+        const record = historyRecord(value, type);
+        return _mergeRevisionVersionState.of({
+            annotationId: historyNumber(record.annotationId, type),
+            versionId: historyVersionId(record.versionId, type),
+            from: historyVersion(record.from, type),
+            to: historyVersion(record.to, type),
+        });
+    }
+    if (type === "revision.versionDoc") {
+        const record = historyRecord(value, type);
+        return _updateRevisionVersionDoc.of({
+            annotationId: historyNumber(record.annotationId, type),
+            versionId: historyVersionId(record.versionId, type),
+            doc: historyString(record.doc, type),
+        });
+    }
+    if (type === "revision.versionLabel") {
+        const record = historyRecord(value, type);
+        if (record.label !== undefined && typeof record.label !== "string") {
+            throw new Error(`Invalid ${type} effect in persisted history`);
+        }
+        return _updateRevisionVersionLabel.of({
+            annotationId: historyNumber(record.annotationId, type),
+            versionId: historyVersionId(record.versionId, type),
+            label: record.label as string | undefined,
+        });
+    }
+    if (type === "suggestion.add") {
+        const record = historyRecord(value, type);
+        if (!Array.isArray(record.replacements)) {
+            throw new Error(`Invalid ${type} effect in persisted history`);
+        }
+        const replacements = record.replacements.map((replacement) => {
+            const parsed = SuggestionReplacementSchema.safeParse(replacement);
+            if (!parsed.success) throw new Error(`Invalid ${type} effect in persisted history`);
+            return parsed.data;
+        });
+        return addSuggestion.of({
+            targetText: historyString(record.targetText, type),
+            replacements,
+        });
+    }
+    if (type === "suggestion.apply") {
+        const record = historyRecord(value, type);
+        return _applySuggestion.of({
+            annotationId: historyNumber(record.annotationId, type),
+            replacementIndex: historyNumber(record.replacementIndex, type),
+        });
+    }
+    return undefined;
+}
 export function setActiveRevisionVersion(
     state: EditorState,
     annotationId: number,
@@ -285,7 +606,11 @@ export function setActiveRevisionVersion(
     // switches (AI, the group cascade's partners) don't yank the cursor around.
     const spec: TransactionSpec = {
         effects,
-        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+        annotations: [
+            revisionInternalEdit.of(true),
+            Transaction.addToHistory.of(true),
+            isolateHistory.of("full"),
+        ],
         changes,
     };
     if (options.moveCursor) {
@@ -405,7 +730,11 @@ export function createNewRevision(state: EditorState, annotationId: number) {
         }),
         // Place cursor at start of the new version so isActive becomes true.
         selection: EditorSelection.cursor(from),
-        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+        annotations: [
+            revisionInternalEdit.of(true),
+            Transaction.addToHistory.of(true),
+            isolateHistory.of("full"),
+        ],
     });
 }
 export function deleteRevisionVersion(state: EditorState, annotationId: number, versionId: string) {
@@ -422,7 +751,11 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
     if (original.versions.length === 1) {
         return state.update({
             effects: [removeAnnotation.of(original)],
-            annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+            annotations: [
+                revisionInternalEdit.of(true),
+                Transaction.addToHistory.of(true),
+                isolateHistory.of("full"),
+            ],
             changes: state.changes({
                 from: original.selection.main.from,
                 to: original.selection.main.to,
@@ -455,7 +788,11 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
         );
     }
 
-    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
+    const annotations = [
+        revisionInternalEdit.of(true),
+        Transaction.addToHistory.of(true),
+        isolateHistory.of("full"),
+    ];
     if (deletingActive) {
         const nextActive = nextVersions.find((v) => v.id === nextActiveId);
         return state.update({
@@ -496,10 +833,8 @@ export function updateRevisionVersionState(
             versionState: newVersionState,
         }),
     ];
-    const annotations = [
-        revisionInternalEdit.of(true),
-        Transaction.addToHistory.of(options.addToHistory ?? true),
-    ];
+    const addToHistory = options.addToHistory ?? true;
+    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(addToHistory)];
     if (original.activeVersionId !== versionId) {
         return state.update({
             effects,
@@ -519,7 +854,7 @@ export function updateRevisionVersionState(
     }
     return state.update({
         effects,
-        annotations,
+        annotations: addToHistory ? [...annotations, isolateHistory.of("full")] : annotations,
         changes: state.changes({
             from: original.selection.main.from,
             to: original.selection.main.to,
@@ -573,7 +908,11 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
     return state.update({
         effects: [removeAnnotation.of(annotation), addAnnotation.of(newRevision)],
         changes: state.changes({ from, to, insert: firstReplacement }),
-        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+        annotations: [
+            revisionInternalEdit.of(true),
+            Transaction.addToHistory.of(true),
+            isolateHistory.of("full"),
+        ],
     });
 }
 // === For suggestions ===
@@ -620,6 +959,7 @@ export function applySuggestion(
             to: annotation.selection.main.to,
             insert: annotation.replacements[replacementIndex].text,
         }),
+        annotations: [Transaction.addToHistory.of(true), isolateHistory.of("full")],
     });
 }
 // -------------------------------------------------------
@@ -659,15 +999,55 @@ function remapAnnotationSelections(annotations: Annotations, tr: Transaction): A
     const result: Annotations = {};
     for (const [id, x] of Object.entries(annotations)) {
         const isRevision = isAnnotationOfType(x, "revision");
-        const newSelection = cleanRangesOf(
-            x.selection.map(tr.changes, isRevision ? 1 : 0),
-            isRevision,
-        );
+        const assoc = annotationMappingAssociation(x, annotations, tr);
+        const newSelection = cleanRangesOf(x.selection.map(tr.changes, assoc), isRevision);
         if (newSelection) {
             result[id as unknown as number] = { ...x, selection: newSelection };
         }
     }
     return result;
+}
+
+/**
+ * Pick mapping affinity for an annotation in Phase 1.
+ *
+ * Empty revisions at a nested target's old start/end represent collapsed
+ * siblings that used to sit immediately before/after that target. Preserve
+ * that side when the nested editor prepends/appends. A single global affinity
+ * cannot handle both directions: right affinity moves an empty predecessor
+ * inside a prepend, while left affinity moves an empty follower inside an
+ * append.
+ */
+function annotationMappingAssociation(
+    annotation: GenericAnnotation,
+    annotations: Annotations,
+    tr: Transaction,
+): number {
+    if (!isAnnotationOfType(annotation, "revision")) return 0;
+    if (!annotation.selection.main.empty) return 1;
+
+    const nestedTargetIds = nestedRevisionTargetIds(tr);
+    if (nestedTargetIds.has(annotation.id)) return 1;
+
+    const position = annotation.selection.main.from;
+    for (const targetId of nestedTargetIds) {
+        const target = annotations[targetId];
+        if (!target || !isAnnotationOfType(target, "revision")) continue;
+        if (target.selection.main.empty) continue;
+        if (position === target.selection.main.from) return -1;
+        if (position === target.selection.main.to) return 1;
+    }
+    return 1;
+}
+
+function nestedRevisionTargetIds(tr: Transaction): Set<number> {
+    const targetIds = new Set<number>();
+    const annotatedTarget = tr.annotation(nestedEditorEdit);
+    if (annotatedTarget !== undefined) targetIds.add(annotatedTarget);
+    for (const effect of tr.effects) {
+        if (effect.is(_nestedEditRevision)) targetIds.add(effect.value);
+    }
+    return targetIds;
 }
 
 /**
@@ -736,6 +1116,73 @@ function applyRevisionVersionEffect(
     return annotation;
 }
 
+function isMergeRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Apply the semantic delta from `from` to `to` onto a possibly newer value.
+ *
+ * History-bearing nested annotation updates serialize a whole VersionState,
+ * but subsequent collaboration/bookkeeping writes may legitimately change
+ * disjoint paths such as `doc` and nested selections without entering history.
+ * Replacing the whole old blob during undo loses those newer paths. This
+ * three-way merge restores only values the historical operation changed.
+ */
+function applyVersionStateDelta(from: unknown, to: unknown, current: unknown): unknown {
+    if (isEqual(from, to)) return current;
+
+    if (Array.isArray(from) && Array.isArray(to) && Array.isArray(current)) {
+        if (from.length === to.length && current.length === from.length) {
+            return from.map((value, index) =>
+                applyVersionStateDelta(value, to[index], current[index]),
+            );
+        }
+
+        // Arrays with a length change are treated as a single splice. This
+        // preserves later elements appended after the historical operation
+        // (for example a newer thread message) while removing/reinserting only
+        // the segment owned by this undo step.
+        let prefix = 0;
+        while (prefix < from.length && prefix < to.length && isEqual(from[prefix], to[prefix])) {
+            prefix++;
+        }
+        let suffix = 0;
+        while (
+            suffix < from.length - prefix &&
+            suffix < to.length - prefix &&
+            isEqual(from[from.length - 1 - suffix], to[to.length - 1 - suffix])
+        ) {
+            suffix++;
+        }
+        return [
+            ...current.slice(0, prefix),
+            ...to.slice(prefix, to.length - suffix),
+            ...current.slice(prefix + (from.length - prefix - suffix)),
+        ];
+    }
+
+    if (isMergeRecord(from) && isMergeRecord(to)) {
+        const currentRecord = isMergeRecord(current) ? current : {};
+        const result: Record<string, unknown> = { ...currentRecord };
+        const keys = new Set([...Object.keys(from), ...Object.keys(to)]);
+        for (const key of keys) {
+            const fromHasKey = Object.hasOwn(from, key);
+            const toHasKey = Object.hasOwn(to, key);
+            if (!toHasKey) {
+                delete result[key];
+            } else if (!fromHasKey) {
+                result[key] = to[key];
+            } else {
+                result[key] = applyVersionStateDelta(from[key], to[key], currentRecord[key]);
+            }
+        }
+        return result;
+    }
+
+    return to;
+}
+
 /**
  * Phase 3: For revisions not touched by an explicit effect,
  * pull the active version's doc text from the actual document
@@ -753,7 +1200,14 @@ function pushDocToVersionState(
     // pull version.doc to "" — otherwise the stale doc gets pushed back
     // into the nested editor by the external-sync effect. Non-nested
     // deletions skip pulling so undo can restore from _restoreAnnotation.
-    const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
+    // The Transaction annotation exists only on the forward nested edit. Undo
+    // and redo retain the serializable StateEffect instead, so both markers
+    // must count as nested edits. In particular, an undo/redo that collapses a
+    // revision to empty must persist version.doc = "" or switching away and
+    // back can resurrect text that history already removed.
+    const isNestedEdit =
+        tr.annotation(nestedEditorEdit) !== undefined ||
+        tr.effects.some((effect) => effect.is(_nestedEditRevision));
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
             if (x.selection.main.empty && !isNestedEdit) return x;
@@ -773,6 +1227,87 @@ function pushDocToVersionState(
     });
 }
 
+/**
+ * A mapped survivor restore may update only the annotation lineage that existed
+ * when the history event was recorded. New annotations carry a persisted private
+ * lineage token; selection/version identity remains the legacy fallback.
+ */
+function matchesRestoreExpectation(
+    current: GenericAnnotation,
+    expected: GenericAnnotation,
+): boolean {
+    if (current.id !== expected.id) return false;
+    if (isAnnotationOfType(current, "revision")) {
+        if (!isAnnotationOfType(expected, "revision")) return false;
+        if (current._historyId !== undefined || expected._historyId !== undefined) {
+            return (
+                typeof current._historyId === "string" &&
+                current._historyId.length > 0 &&
+                current._historyId === expected._historyId
+            );
+        }
+        // Stable version IDs identify the revision even when a legacy joined
+        // history event changed its range without mapping the older effects.
+        const expectedVersionIds = new Set(expected.versions.map((version) => version.id));
+        return current.versions.some((version) => expectedVersionIds.has(version.id));
+    }
+    if (isAnnotationOfType(current, "comment")) {
+        if (!isAnnotationOfType(expected, "comment")) return false;
+    } else if (!isAnnotationOfType(expected, "suggestion")) {
+        return false;
+    }
+    if (current._historyId !== undefined || expected._historyId !== undefined) {
+        return (
+            typeof current._historyId === "string" &&
+            current._historyId.length > 0 &&
+            current._historyId === expected._historyId
+        );
+    }
+    return current.selection.eq(expected.selection);
+}
+
+/**
+ * Survivor snapshots own only positional state and the active revision text
+ * changed implicitly by the parent edit. Preserve all later untracked metadata.
+ */
+function mergeRestoreOwnedFields(
+    current: GenericAnnotation,
+    desired: GenericAnnotation,
+): GenericAnnotation {
+    if (isAnnotationOfType(current, "revision")) {
+        if (!isAnnotationOfType(desired, "revision")) return current;
+        const desiredVersion = versionById(desired, desired.activeVersionId);
+        const currentIndex = versionIndexById(current, desired.activeVersionId);
+        if (!desiredVersion || currentIndex < 0) {
+            return { ...current, selection: desired.selection };
+        }
+        const versions = current.versions.slice();
+        versions[currentIndex] = {
+            ...versions[currentIndex],
+            doc: versionText(desiredVersion),
+        };
+        return { ...current, selection: desired.selection, versions };
+    }
+    if (isAnnotationOfType(current, "comment")) {
+        if (!isAnnotationOfType(desired, "comment")) return current;
+    } else if (!isAnnotationOfType(desired, "suggestion")) {
+        return current;
+    }
+    return { ...current, selection: desired.selection };
+}
+
+function restoreEffectApplies(value: RestoreAnnotation, oldAnnotations: Annotations): boolean {
+    const current = oldAnnotations[value.annotation.id];
+    if (value.expected === undefined) {
+        // Persisted effects from before lineage-aware restores retain their
+        // historical behavior.
+        return value.restoreIfMissing !== false || !!current;
+    }
+    if (value.expected === null) return !current;
+    if (!current) return value.restoreIfMissing === true;
+    return matchesRestoreExpectation(current, value.expected);
+}
+
 export const annotationField = StateField.define<Annotations>({
     create(): Annotations {
         return {};
@@ -785,23 +1320,59 @@ export const annotationField = StateField.define<Annotations>({
         // Track which revision IDs had an explicit effect so Phase 3
         // can skip pulling only those revisions (not all of them).
         const revisionsWithExplicitEffect = new Set<number>();
+        // Some explicit effects also reconstruct the revision selection
+        // exactly. Boundary expansion must not overwrite that reconstruction
+        // with a range derived from a larger, joined history ChangeSet.
+        const revisionsWithExplicitSelection = new Set<number>();
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
-                annotations[e.value.id] = e.value;
+                const added = ensureAnnotationHistoryId(e.value);
+                annotations[added.id] = added;
                 // Skip Phase 3 for revisions added via addAnnotation (e.g., from
                 // remote sync). The annotation already has correct versions[].doc
                 // from the source; pulling from the main doc would overwrite it
                 // with stale content. (#12-01 fix for version switch corruption)
-                if (isAnnotationOfType(e.value, "revision")) {
-                    revisionsWithExplicitEffect.add(e.value.id);
+                if (isAnnotationOfType(added, "revision")) {
+                    revisionsWithExplicitEffect.add(added.id);
+                    revisionsWithExplicitSelection.add(added.id);
                 }
             } else if (e.is(_restoreAnnotation)) {
-                annotations[e.value.id] = e.value;
+                if (!restoreEffectApplies(e.value, oldAnnotations)) continue;
+                let restored = e.value.annotation;
+                if (isAnnotationOfType(restored, "revision") && tr.docChanged) {
+                    // The exact snapshot owns revision metadata and range, but
+                    // addToHistory:false edits may have changed the live text
+                    // since it was captured. The active version is always a
+                    // viewport onto the parent slice, so keep that slice
+                    // authoritative instead of resurrecting stale snapshot doc.
+                    const activeIndex = activeVersionIndex(restored);
+                    const versions = restored.versions.slice();
+                    versions[activeIndex] = {
+                        ...versions[activeIndex],
+                        doc: tr.state.doc.sliceString(
+                            restored.selection.main.from,
+                            restored.selection.main.to,
+                        ),
+                    };
+                    restored = { ...restored, versions };
+                }
+                const current = annotations[restored.id] ?? oldAnnotations[restored.id];
+                if (e.value.expected !== undefined && e.value.expected !== null && current) {
+                    restored = mergeRestoreOwnedFields(current, restored);
+                } else if (e.value.expected === null && current) {
+                    // A same-ID annotation created by another effect in this
+                    // transaction is not the annotation this history item owns.
+                    continue;
+                }
+                annotations[restored.id] = restored;
                 // Same logic for restore — the restored annotation has the correct
                 // version doc from the undo history.
-                if (isAnnotationOfType(e.value, "revision")) {
-                    revisionsWithExplicitEffect.add(e.value.id);
+                if (isAnnotationOfType(restored, "revision")) {
+                    revisionsWithExplicitEffect.add(restored.id);
+                    revisionsWithExplicitSelection.add(restored.id);
                 }
+            } else if (e.is(_removeAnnotationById)) {
+                delete annotations[e.value];
             } else if (e.is(removeAnnotation)) {
                 delete annotations[e.value.id];
             } else if (e.is(updateThread)) {
@@ -816,6 +1387,9 @@ export const annotationField = StateField.define<Annotations>({
                 const annotation = annotations[e.value.annotationId];
                 if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
+                if (e.is(_updateActiveRevisionVersion)) {
+                    revisionsWithExplicitSelection.add(e.value.annotationId);
+                }
                 annotations[e.value.annotationId] = applyRevisionVersionEffect(
                     e,
                     annotation,
@@ -846,14 +1420,61 @@ export const annotationField = StateField.define<Annotations>({
                 newVersions[vIdx] = { ...e.value.versionState, id: e.value.versionId };
                 let selection = annotation.selection;
                 if (annotation.activeVersionId === e.value.versionId && tr.docChanged) {
-                    // Use the already-remapped selection from Phase 1 (not
-                    // oldAnnotations) to avoid double-mapping when both Phase 1
-                    // and this effect fire on the same transaction.
-                    const from = annotation.selection.main.from;
+                    // Map the pre-change start with a left bias. A collapsed
+                    // selection maps to the RIGHT edge of inserted text by
+                    // default; growing it from that point produces an invalid
+                    // range such as [2, 4] in a two-character document.
+                    const oldAnnotation = oldAnnotations[e.value.annotationId];
+                    const mappedFrom = oldAnnotation
+                        ? tr.changes.mapPos(oldAnnotation.selection.main.from, -1)
+                        : annotation.selection.main.from;
+                    const from = Math.min(mappedFrom, tr.state.doc.length);
                     const text = versionText(e.value.versionState);
-                    const to = from + text.length;
+                    const to = Math.min(from + text.length, tr.state.doc.length);
                     selection = EditorSelection.single(from, to);
+                    revisionsWithExplicitSelection.add(e.value.annotationId);
                 }
+                annotations[e.value.annotationId] = {
+                    ...annotation,
+                    versions: newVersions,
+                    selection,
+                };
+            } else if (e.is(_mergeRevisionVersionState)) {
+                const annotation = annotations[e.value.annotationId];
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
+                revisionsWithExplicitEffect.add(e.value.annotationId);
+                const vIdx = versionIndexById(annotation, e.value.versionId);
+                if (vIdx < 0) continue;
+                const currentVersion = annotation.versions[vIdx];
+                const merged = applyVersionStateDelta(
+                    e.value.from,
+                    e.value.to,
+                    currentVersion,
+                ) as VersionState;
+                const newVersions = annotation.versions.slice();
+                let selection = annotation.selection;
+                let nextVersion = { ...merged, id: e.value.versionId };
+                if (annotation.activeVersionId === e.value.versionId && tr.docChanged) {
+                    const oldAnnotation = oldAnnotations[e.value.annotationId];
+                    const mappedFrom = oldAnnotation
+                        ? tr.changes.mapPos(oldAnnotation.selection.main.from, -1)
+                        : annotation.selection.main.from;
+                    const from = Math.min(mappedFrom, tr.state.doc.length);
+                    const to = Math.min(
+                        Math.max(
+                            annotation.selection.main.to,
+                            from + versionText(nextVersion).length,
+                        ),
+                        tr.state.doc.length,
+                    );
+                    selection = EditorSelection.single(from, to);
+                    nextVersion = {
+                        ...nextVersion,
+                        doc: tr.state.doc.sliceString(from, to),
+                    };
+                    revisionsWithExplicitSelection.add(e.value.annotationId);
+                }
+                newVersions[vIdx] = nextVersion;
                 annotations[e.value.annotationId] = {
                     ...annotation,
                     versions: newVersions,
@@ -929,6 +1550,7 @@ export const annotationField = StateField.define<Annotations>({
                 });
             }
             for (const revId of isUndo && !undoInsertsText ? [] : nestedEditRevIds) {
+                if (revisionsWithExplicitSelection.has(revId)) continue;
                 const ann = annotations[revId];
                 if (ann && isAnnotationOfType(ann, "revision")) {
                     const oldAnn = oldAnnotations[revId];
@@ -970,10 +1592,10 @@ export const annotationField = StateField.define<Annotations>({
             return {} as Annotations;
         }
         return mapValues(result.data, (x) => {
-            const withSelection = {
+            const withSelection = ensureAnnotationHistoryId({
                 ...x,
                 selection: EditorSelection.fromJSON(x.selection),
-            };
+            } as GenericAnnotation);
             // Heal legacy revisions (no version ids / activeVersionIndex) into the
             // stable-id shape. Idempotent for already-migrated data.
             if (isAnnotationOfType(withSelection as GenericAnnotation, "revision")) {
@@ -983,9 +1605,95 @@ export const annotationField = StateField.define<Annotations>({
         }) as Annotations;
     },
 });
-export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
+function needsRestoreHistoryIsolation(transaction: Transaction): boolean {
+    if (!transaction.docChanged) return false;
+    if (transaction.annotation(Transaction.addToHistory) === false) return false;
+    if (transaction.annotation(isolateHistory) !== undefined) return false;
+    if (transaction.isUserEvent("undo") || transaction.isUserEvent("redo")) return false;
+
+    // These effects always store an exact annotation snapshot in their inverse.
+    // Prevent a later adjacent edit from joining and leaving that snapshot's
+    // coordinate transform shorter than the now-combined history event.
+    if (
+        transaction.effects.some(
+            (effect) =>
+                effect.is(removeAnnotation) ||
+                effect.is(_applySuggestion) ||
+                effect.is(_addVersionToRevision) ||
+                effect.is(_deleteVersionFromRevision) ||
+                effect.is(_updateActiveRevisionVersion) ||
+                effect.is(_updateRevisionVersionState),
+        )
+    ) {
+        return true;
+    }
+
+    const oldAnnotations = transaction.startState.field(annotationField);
+    const newAnnotations = transaction.state.field(annotationField);
+    const nestedTargetIds = nestedRevisionTargetIds(transaction);
+    const explicitlyManagedAnnotationIds = new Set(nestedTargetIds);
+    for (const effect of transaction.effects) {
+        if (effect.is(addAnnotation)) explicitlyManagedAnnotationIds.add(effect.value.id);
+    }
+
+    for (const annotation of Object.values(oldAnnotations)) {
+        if (explicitlyManagedAnnotationIds.has(annotation.id)) continue;
+        const updated = newAnnotations[annotation.id];
+        if (!updated) return true;
+        const assoc = annotationMappingAssociation(annotation, oldAnnotations, transaction);
+        const mapped = annotation.selection.map(transaction.changes, assoc);
+        if (!mapped.map(transaction.changes.invertedDesc, assoc).eq(annotation.selection)) {
+            return true;
+        }
+        if (
+            isAnnotationOfType(annotation, "revision") &&
+            isAnnotationOfType(updated, "revision") &&
+            versionText(updated.versions[activeVersionIndex(updated)]) !==
+                versionText(annotation.versions[activeVersionIndex(annotation)])
+        ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function collapsesNestedHistoryTarget(transaction: Transaction): boolean {
+    if (!transaction.docChanged) return false;
+    if (transaction.annotation(Transaction.addToHistory) === false) return false;
+    if (transaction.annotation(isolateHistory) !== undefined) return false;
+    if (transaction.isUserEvent("undo") || transaction.isUserEvent("redo")) return false;
+
+    const oldAnnotations = transaction.startState.field(annotationField);
+    const newAnnotations = transaction.state.field(annotationField);
+    return [...nestedRevisionTargetIds(transaction)].some((id) => {
+        const oldTarget = oldAnnotations[id];
+        const newTarget = newAnnotations[id];
+        return (
+            !!oldTarget &&
+            !!newTarget &&
+            isAnnotationOfType(oldTarget, "revision") &&
+            isAnnotationOfType(newTarget, "revision") &&
+            !oldTarget.selection.main.empty &&
+            newTarget.selection.main.empty
+        );
+    });
+}
+
+const isolateRestoreHistory = EditorState.transactionExtender.of((transaction) => {
+    if (collapsesNestedHistoryTarget(transaction)) {
+        // Once the nested target is empty, a joined neighboring parent edit
+        // erases the only anchor from which its original range can be rebuilt.
+        return { annotations: isolateHistory.of("full") };
+    }
+    return needsRestoreHistoryIsolation(transaction)
+        ? { annotations: isolateHistory.of("after") }
+        : null;
+});
+
+const invertAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
     const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
+    const exactRevisionRestores = new Map<number, GenericAnnotation>();
 
     // Skip transactions that opted out of history (addToHistory.of(false)).
     // These don't create a new undo entry, so any inverted effects we
@@ -997,70 +1705,169 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     if (transaction.annotation(Transaction.addToHistory) === false) return [];
     if (transaction.annotation(_revisionCleanup)) return [];
 
+    const undoChanges = transaction.changes.invert(transaction.startState.doc);
+    const restoreAnnotation = (
+        annotation: GenericAnnotation,
+        expected: GenericAnnotation | null,
+        restoreIfMissing = expected === null,
+    ) => _restoreAnnotation.of({ annotation, undoChanges, restoreIfMissing, expected });
+
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
-    // when text they were anchored to was deleted. These have no explicit effect,
-    // so invertedEffects would never see them.
+    // or pushDocToVersionState (phase 3). These have no explicit effect, so
+    // invertedEffects would never see them.
     //
-    // Effects stored by invertedEffects carry post-transaction positions —
-    // CodeMirror remaps them through the undo's inverse change on replay.
-    // We use _restoreAnnotation (which does not filter collapsed ranges) so
-    // the collapsed post-deletion point gets mapped back to the full span
-    // by the undo re-insertion, regardless of what other text was deleted
-    // around the annotation.
-    // Only generate implicit restore effects for plain user text edits.
-    // Skip undo/redo replays (they already carry stored effects) and
-    // revision-internal edits (revisionInternalEdit), which handle their
-    // own annotation state via explicit effects.
+    // Default selection mapping is not invertible when a deletion consumes an
+    // annotation boundary. For example, [1,5] -> delete [0,3] produces [0,2],
+    // but undo maps that to [3,5] instead of [1,5]. Store an exact annotation
+    // snapshot only when that round trip is lossy, the annotation disappears,
+    // its active revision text changes, or a nested boundary loses its side.
+    // Snapshots of annotations that survived this transaction are conditional:
+    // they overwrite a mapped survivor but do not recreate one intentionally
+    // removed by an intervening addToHistory:false edit. Inversion of a restore
+    // captures the post-edit snapshot for redo.
+    // Revision and nested-edit builders manage their target IDs explicitly, but
+    // unrelated annotations still need snapshots when the replacement remaps
+    // them. Undo/redo changes are included: an addToHistory:false edit inside a
+    // replacement can make the undo mapping appear lossless while its inverse
+    // redo mapping is not. Capturing the undo result gives redo an exact range.
     const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
-    const isRevisionEdit = transaction.annotation(revisionInternalEdit);
-    // nestedEditorEdit transactions are plain doc changes originated by a nested
-    // editor viewport — they manage positions via the normal doc-change path, so
-    // implicit annotation restoration is not needed (and would double-restore).
-    const isNestedEdit = transaction.annotation(nestedEditorEdit) !== undefined;
-    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit && !isNestedEdit) {
+    if (transaction.docChanged) {
+        const newAnnotations = transaction.state.field(annotationField);
+        const nestedTargetIds = nestedRevisionTargetIds(transaction);
+        const explicitlyManagedAnnotationIds = new Set(nestedTargetIds);
+        for (const effect of transaction.effects) {
+            if (effect.is(addAnnotation) || effect.is(removeAnnotation)) {
+                explicitlyManagedAnnotationIds.add(effect.value.id);
+            } else if (effect.is(_restoreAnnotation)) {
+                explicitlyManagedAnnotationIds.add(effect.value.annotation.id);
+            } else if (effect.is(_removeAnnotationById)) {
+                explicitlyManagedAnnotationIds.add(effect.value);
+            } else if (effect.is(_applySuggestion)) {
+                explicitlyManagedAnnotationIds.add(effect.value.annotationId);
+            } else if (
+                effect.is(_addVersionToRevision) ||
+                effect.is(_deleteVersionFromRevision) ||
+                effect.is(_updateActiveRevisionVersion) ||
+                effect.is(_updateRevisionVersionState) ||
+                effect.is(_mergeRevisionVersionState) ||
+                effect.is(_updateRevisionVersionDoc)
+            ) {
+                explicitlyManagedAnnotationIds.add(effect.value.annotationId);
+            }
+        }
         for (const annotation of Object.values(oldAnnotations)) {
-            const isRevision = isAnnotationOfType(annotation, "revision");
-            const remapped = cleanRangesOf(
-                annotation.selection.map(transaction.changes, isRevision ? 1 : 0),
-                isRevision,
-            );
-            if (!isRevision && remapped === null) {
-                // Annotation was silently dropped. Store it with its original
-                // pre-deletion selection so undo re-adds it at the right position.
-                effects.push(_restoreAnnotation.of(annotation));
-            } else if (isRevision && remapped !== null && remapped.main.empty) {
-                // Revision survived remapping but collapsed to a point. Two
-                // effects are needed on undo:
-                //   1. removeAnnotation(collapsed) — the collapsed revision
-                //      still exists in the field at undo time (collapsedRevisionResolver
-                //      fires asynchronously in a microtask); undo must remove it
-                //      first, otherwise the field ends up with two entries for
-                //      the same annotation ID.
-                //   2. _restoreAnnotation(original) — re-adds the annotation
-                //      with its full pre-deletion selection. Using _restoreAnnotation
-                //      instead of addAnnotation means the map function does not
-                //      filter collapsed ranges, so positions remap correctly
-                //      through the undo's inverse change.
-                effects.push(removeAnnotation.of({ ...annotation, selection: remapped }));
-                effects.push(_restoreAnnotation.of(annotation));
+            // Revision builders carry exact inverses for their own target. We
+            // still snapshot every OTHER annotation remapped by their doc
+            // replacement (adjacent collapsed revisions are especially lossy).
+            if (explicitlyManagedAnnotationIds.has(annotation.id)) continue;
+            const updated = newAnnotations[annotation.id];
+            let mappingLosesInformation = false;
+            if (updated) {
+                try {
+                    const assoc = annotationMappingAssociation(
+                        annotation,
+                        oldAnnotations,
+                        transaction,
+                    );
+                    const mapped = annotation.selection.map(transaction.changes, assoc);
+                    const roundTrip = mapped.map(transaction.changes.invertedDesc, assoc);
+                    mappingLosesInformation = !roundTrip.eq(annotation.selection);
+                } catch {
+                    mappingLosesInformation = true;
+                }
+            }
+            const activeRevisionTextChanged =
+                updated &&
+                isAnnotationOfType(annotation, "revision") &&
+                isAnnotationOfType(updated, "revision") &&
+                versionText(updated.versions[activeVersionIndex(updated)]) !==
+                    versionText(annotation.versions[activeVersionIndex(annotation)]);
+            // A collapsed sibling touching a nested target's boundary may map
+            // correctly on the forward edit but lose its predecessor/follower
+            // side when undo sees the now-collapsed target. Preserve it exactly.
+            const touchesNestedTargetBoundary =
+                isAnnotationOfType(annotation, "revision") &&
+                annotation.selection.main.empty &&
+                [...nestedTargetIds].some((targetId) => {
+                    const target = oldAnnotations[targetId];
+                    if (!target || !isAnnotationOfType(target, "revision")) return false;
+                    const position = annotation.selection.main.from;
+                    return (
+                        !target.selection.main.empty &&
+                        (position === target.selection.main.from ||
+                            position === target.selection.main.to)
+                    );
+                });
+            if (
+                !updated ||
+                mappingLosesInformation ||
+                activeRevisionTextChanged ||
+                touchesNestedTargetBoundary
+            ) {
+                const mayBeRemovedByCollapsedRevisionCleanup =
+                    !!updated &&
+                    isAnnotationOfType(annotation, "revision") &&
+                    isAnnotationOfType(updated, "revision") &&
+                    !annotation.selection.main.empty &&
+                    updated.selection.main.empty;
+                effects.push(
+                    restoreAnnotation(
+                        annotation,
+                        updated ?? null,
+                        !updated || mayBeRemovedByCollapsedRevisionCleanup,
+                    ),
+                );
             }
         }
     }
 
     for (const effect of transaction.effects) {
         if (effect.is(addAnnotation)) {
-            effects.push(removeAnnotation.of(effect.value));
+            effects.push(
+                transaction.docChanged
+                    ? _removeAnnotationById.of(effect.value.id)
+                    : removeAnnotation.of(effect.value),
+            );
         } else if (effect.is(_restoreAnnotation)) {
-            // Redo: drop the restored annotation again.
-            effects.push(removeAnnotation.of(effect.value));
+            if (!restoreEffectApplies(effect.value, oldAnnotations)) continue;
+            const replacedAnnotation = oldAnnotations[effect.value.annotation.id];
+            if (replacedAnnotation) {
+                // The restore overwrote an annotation that survived the edit.
+                // Put that exact post-edit snapshot back on redo.
+                const restoredAnnotation =
+                    transaction.state.field(annotationField)[effect.value.annotation.id];
+                if (restoredAnnotation) {
+                    effects.push(restoreAnnotation(replacedAnnotation, restoredAnnotation, false));
+                }
+            } else {
+                // The original edit dropped the annotation entirely.
+                effects.push(_removeAnnotationById.of(effect.value.annotation.id));
+            }
+        } else if (effect.is(_removeAnnotationById)) {
+            const removedAnnotation = oldAnnotations[effect.value];
+            if (removedAnnotation) effects.push(restoreAnnotation(removedAnnotation, null));
         } else if (effect.is(removeAnnotation)) {
-            effects.push(addAnnotation.of(effect.value));
+            const removedAnnotation = oldAnnotations[effect.value.id] ?? effect.value;
+            effects.push(
+                transaction.docChanged
+                    ? restoreAnnotation(removedAnnotation, null)
+                    : addAnnotation.of(removedAnnotation),
+            );
         } else if (effect.is(updateThread)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!oldAnnotation) continue;
-            // Was a comment in the "pending" state
-            if (oldAnnotation.thread.length === 0) {
-                effects.push(removeAnnotation.of(oldAnnotation));
+            // A first message closes a pending COMMENT. Undo intentionally
+            // removes that draft comment instead of restoring an empty card.
+            // Revisions and suggestions may also start with empty threads, but
+            // their first message must never delete the entire annotation.
+            if (isAnnotationOfType(oldAnnotation, "comment") && oldAnnotation.thread.length === 0) {
+                const updatedAnnotation =
+                    transaction.state.field(annotationField)[oldAnnotation.id];
+                if (updatedAnnotation) {
+                    // Carry the post-update annotation so redo restores the
+                    // message, not the old empty pending comment.
+                    effects.push(removeAnnotation.of(updatedAnnotation));
+                }
             } else {
                 effects.push(
                     updateThread.of({
@@ -1084,6 +1891,9 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
         ) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
+            if (transaction.docChanged && !isUndoRedo) {
+                exactRevisionRestores.set(oldAnnotation.id, oldAnnotation);
+            }
             if (effect.is(_addVersionToRevision)) {
                 // Inverse of add = delete the just-added version, identified by its
                 // stable id (so position shifts can't target the wrong slot).
@@ -1093,6 +1903,19 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                         versionId: effect.value.newVersion.id,
                     }),
                 );
+                if (effect.value.makeActive ?? true) {
+                    // Adding a version normally activates it and replaces the
+                    // parent range. On undo, Phase 1 maps an empty version's
+                    // collapsed range to the right edge of the restored text.
+                    // Re-applying the old active id rebuilds the selection from
+                    // the left edge and the restored version's exact length.
+                    effects.push(
+                        _updateActiveRevisionVersion.of({
+                            annotationId: oldAnnotation.id,
+                            to: oldAnnotation.activeVersionId,
+                        }),
+                    );
+                }
             } else if (effect.is(_deleteVersionFromRevision)) {
                 // Inverse of delete = re-add the deleted version at its old slot.
                 const oldIndex = versionIndexById(oldAnnotation, effect.value.versionId);
@@ -1128,10 +1951,34 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             const oldVersion = versionById(oldAnnotation, effect.value.versionId);
             if (!oldVersion) continue;
             effects.push(
-                _updateRevisionVersionState.of({
+                _mergeRevisionVersionState.of({
                     annotationId: oldAnnotation.id,
                     versionId: effect.value.versionId,
-                    versionState: oldVersion,
+                    from: { ...effect.value.versionState, id: effect.value.versionId },
+                    to: oldVersion,
+                }),
+            );
+        } else if (effect.is(_mergeRevisionVersionState)) {
+            const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            const newAnnotation =
+                transaction.state.field(annotationField)[effect.value.annotationId];
+            if (
+                !oldAnnotation ||
+                !newAnnotation ||
+                !isAnnotationOfType(oldAnnotation, "revision") ||
+                !isAnnotationOfType(newAnnotation, "revision")
+            ) {
+                continue;
+            }
+            const oldVersion = versionById(oldAnnotation, effect.value.versionId);
+            const newVersion = versionById(newAnnotation, effect.value.versionId);
+            if (!oldVersion || !newVersion) continue;
+            effects.push(
+                _mergeRevisionVersionState.of({
+                    annotationId: oldAnnotation.id,
+                    versionId: effect.value.versionId,
+                    from: newVersion,
+                    to: oldVersion,
                 }),
             );
         } else if (effect.is(_updateRevisionVersionLabel)) {
@@ -1148,14 +1995,67 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             const annotations = transaction.startState.field(annotationField);
             const ann = annotations[effect.value.annotationId];
             if (!ann) continue;
-            effects.push(addAnnotation.of(ann));
+            // The snapshot lives in the transaction's result document, while
+            // CodeMirror maps stored effects in the pre-undo document when an
+            // addToHistory:false change intervenes. Use the same coordinate-
+            // aware restore effect as annotation removals so the suggestion is
+            // rebased across those external edits before undo restores it.
+            effects.push(restoreAnnotation(ann, null));
         } else if (effect.is(_nestedEditRevision)) {
             // _nestedEditRevision is its own inverse: on undo the stored effect
-            // would be the forward one, but undo doesn't need range expansion
-            // (Phase 1 shrinks correctly). We still emit the inverse so that
-            // if the undo itself is redone, redo sees the effect and expands.
+            // would be the forward one. Keep the marker so redo retains nested
+            // semantics, and store the active version state when no explicit
+            // version-state effect already does so. This reconstructs the
+            // target's exact range from its own text length when CodeMirror
+            // joins the nested edit with an adjacent parent-document change.
             effects.push(_nestedEditRevision.of(effect.value));
+            const oldAnnotation = oldAnnotations[effect.value];
+            if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
+            const alreadyRestoresAnnotation = transaction.effects.some(
+                (candidate) =>
+                    candidate.is(_restoreAnnotation) &&
+                    candidate.value.annotation.id === oldAnnotation.id,
+            );
+            const alreadyRestoresActiveVersion = transaction.effects.some(
+                (candidate) =>
+                    (candidate.is(_updateRevisionVersionState) ||
+                        candidate.is(_mergeRevisionVersionState)) &&
+                    candidate.value.annotationId === oldAnnotation.id &&
+                    candidate.value.versionId === oldAnnotation.activeVersionId,
+            );
+            const oldVersion = versionById(oldAnnotation, oldAnnotation.activeVersionId);
+            if (!alreadyRestoresActiveVersion && oldVersion) {
+                effects.push(
+                    _updateRevisionVersionState.of({
+                        annotationId: oldAnnotation.id,
+                        versionId: oldVersion.id,
+                        versionState: oldVersion,
+                    }),
+                );
+            }
+            if (!alreadyRestoresAnnotation) {
+                const updatedAnnotation = transaction.state.field(annotationField)[effect.value];
+                if (updatedAnnotation && isAnnotationOfType(updatedAnnotation, "revision")) {
+                    // A following parent edit may join this nested edit into the
+                    // same CodeMirror event. The marker can rebuild the nested
+                    // text boundary, but it cannot distinguish that boundary
+                    // from a parent insertion/deletion on the same side. Carry
+                    // the exact pre/post range so the joined undo remains lossless.
+                    effects.push(restoreAnnotation(oldAnnotation, updatedAnnotation, false));
+                }
+            }
         }
+    }
+    // Granular version effects preserve semantic redo behavior, while this
+    // final exact snapshot protects legacy history items where CodeMirror joined
+    // a revision-system replacement to an adjacent parent edit.
+    // Appending it last makes the pre-operation range authoritative on undo;
+    // inversion of the restore captures the exact post-operation range for redo.
+    for (const annotation of exactRevisionRestores.values()) {
+        const expected = transaction.state.field(annotationField)[annotation.id];
+        if (expected) effects.push(restoreAnnotation(annotation, expected, false));
     }
     return effects;
 });
+
+export const invertedAnnotationFieldEffects = [isolateRestoreHistory, invertAnnotationFieldEffects];

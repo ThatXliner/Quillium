@@ -52,6 +52,8 @@ type BaseAnnotation = {
     selection: EditorSelection;
     id: number;
     thread: Thread;
+    /** Stable lineage token used to distinguish a removed annotation from ID reuse. */
+    _historyId?: string;
 };
 
 export function getNewId(annotations: Annotations) {
@@ -74,6 +76,7 @@ export function createNewAnnotation<T extends AnnotationType>(
         id: newId,
         _type: type,
         thread: [],
+        _historyId: newAnnotationHistoryId(),
         // um this ain't getting serialized baby
         // sameTypeAs: (annotation: GenericAnnotation) => annotation._type === type,
     };
@@ -120,6 +123,10 @@ let _localIdCounter = 0;
 function newLocalId(prefix: string): string {
     _localIdCounter += 1;
     return `${prefix}${_localIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function newAnnotationHistoryId(): string {
+    return newLocalId("a");
 }
 
 export function newVersionId(): string {
@@ -229,6 +236,14 @@ type RawRevisionLike = {
 } & Record<string, unknown>;
 export type GenericAnnotation = CommentAnnotation | SuggestionAnnotation | RevisionAnnotation;
 
+/** Backfill a stable lineage token on annotations loaded from pre-0.22 data. */
+export function ensureAnnotationHistoryId<T extends GenericAnnotation>(annotation: T): T {
+    if (typeof annotation._historyId === "string" && annotation._historyId.length > 0) {
+        return annotation;
+    }
+    return { ...annotation, _historyId: newAnnotationHistoryId() };
+}
+
 export type Annotation<T extends GenericAnnotation["_type"]> = Extract<
     GenericAnnotation,
     { _type: T }
@@ -269,6 +284,9 @@ const RawBaseSchema = z.object({
     id: z.number(),
     thread: z.array(ThreadMessageSchema),
     selection: EditorSelectionSchema,
+    // Optional on disk for back-compat. annotationField normalizes legacy data
+    // before it enters live state.
+    _historyId: z.string().optional(),
 });
 export const RawAnnotationSchema = z.discriminatedUnion("_type", [
     RawBaseSchema.extend({ _type: z.literal("comment") }),
@@ -375,10 +393,11 @@ export const VersionGroupsSchema = z.record(z.string(), VersionGroupSchema);
 // ── Clipboard-serialized shape ──────────────────────────────────
 // An annotation rebased into copy-relative coordinates: its id and selection are
 // stripped (id is regenerated on paste; the selection is replaced by integer
-// relAnchor/relHead offsets relative to the start of the copied text). Every
-// other field rides along verbatim, reusing the canonical per-type extras from
-// RawAnnotationSchema's members so this stays a single source of truth — a new
-// field on any annotation type flows through copy and paste with no change here.
+// relAnchor/relHead offsets relative to the start of the copied text). User
+// content rides along verbatim, while the private `_historyId` is deliberately
+// regenerated because a paste begins a distinct annotation lineage. Per-type
+// extras reuse RawAnnotationSchema's members so they stay a single source of
+// truth.
 //
 // Clipboard payloads come from an untrusted source (a foreign or hand-crafted
 // clipboard), so the position offsets and active index are tightened to integers

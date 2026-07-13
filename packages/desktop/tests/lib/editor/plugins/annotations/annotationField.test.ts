@@ -6,17 +6,23 @@ import {
     updateRevisionVersionState as _updateRevisionVersionState,
     addAnnotation,
     annotationField,
+    applySuggestion,
     createNewRevision,
+    deserializeAnnotationHistoryEffect,
     invertedAnnotationFieldEffects,
     nestedEditorEdit,
+    removeAnnotation,
+    revisionInternalEdit,
+    updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     type Annotations,
+    type GenericAnnotation,
     activeVersionIndex as activeVersionIndexOf,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { history, redo, undo } from "@codemirror/commands";
+import { history, isolateHistory, redo, undo, undoDepth } from "@codemirror/commands";
 /**
  * annotationField.test.ts — Integration tests for the annotationField StateField.
  *
@@ -311,6 +317,79 @@ describe("createNewRevision", () => {
         expect(rev.versions[1].doc).toBe("BB");
         expect(rev.versions[2].doc).toBe("");
     });
+
+    it("does not join version creation with an adjacent parent deletion", () => {
+        let state = makeState("aa");
+        state = addRevision(state, 1, 2, ["a", ""]);
+
+        state = state.update(createNewRevision(state, 0)).state;
+        const depthAfterVersionCreation = undoDepth(state);
+
+        state = state.update({ changes: { from: 0, to: 1 } }).state;
+        expect(undoDepth(state)).toBe(depthAfterVersionCreation + 1);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("a");
+        expect(getRevision(state, 0).selection.main.from).toBe(1);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+        expect(getRevision(state, 0).versions).toHaveLength(3);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("aa");
+        expect(getRevision(state, 0).selection.main.from).toBe(1);
+        expect(getRevision(state, 0).selection.main.to).toBe(2);
+        expect(getRevision(state, 0).versions).toHaveLength(2);
+    });
+
+    it("restores legacy joined version creation from its exact revision snapshot", () => {
+        let state = makeState("aa");
+        state = addRevision(state, 1, 2, ["a", ""]);
+
+        // Persisted histories created before revision operations were isolated
+        // may contain this exact joined event. Rebuild the old transaction shape
+        // without isolateHistory so its inverse remains backward-compatible.
+        const versionCreation = createNewRevision(state, 0);
+        state = state.update({
+            changes: versionCreation.changes,
+            effects: versionCreation.effects,
+            selection: EditorSelection.cursor(1),
+            annotations: [
+                revisionInternalEdit.of(true),
+                Transaction.addToHistory.of(true),
+                // Suppress the prospective extender's `after` boundary while
+                // retaining the legacy ability to join with the next edit.
+                isolateHistory.of("before"),
+            ],
+        }).state;
+        const joinedDepth = undoDepth(state);
+
+        state = state.update({ changes: { from: 0, to: 1 } }).state;
+        expect(undoDepth(state)).toBe(joinedDepth);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        const restored = getRevision(state, 0);
+        expect(state.doc.toString()).toBe("aa");
+        expect(restored.selection.main.from).toBe(1);
+        expect(restored.selection.main.to).toBe(2);
+        expect(restored.versions).toHaveLength(2);
+        expect(restored.versions[0].doc).toBe("a");
+        expect(restored.versions[1].doc).toBe("");
+    });
 });
 
 // ── deleteRevisionVersion ────────────────────────────────────────────────────
@@ -381,6 +460,21 @@ describe("updateRevisionVersionState", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions[0].doc).toBe("new text");
         expect(state.doc.toString()).toBe("new text");
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(8);
+    });
+
+    it("keeps an active version range valid when growing from empty", () => {
+        let state = makeState("");
+        state = addRevision(state, 0, 0, [""]);
+
+        state = state.update(updateRevisionVersionState(state, 0, 0, { doc: "hi" })).state;
+
+        const rev = getRevision(state, 0);
+        expect(state.doc.toString()).toBe("hi");
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(2);
+        expect(state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("hi");
     });
 
     it("skips redundant doc change when text already matches", () => {
@@ -496,6 +590,418 @@ describe("multiple revisions", () => {
 // ── Undo/redo of version operations ──────────────────────────────────────────
 
 describe("undo/redo", () => {
+    it("restores a lossy range without reverting later non-history metadata", () => {
+        let state = makeState("abcdef");
+        const annotation = {
+            id: 0,
+            _type: "comment",
+            selection: EditorSelection.single(1, 5),
+            thread: [{ message: "old", author: "User", time: 1 }],
+        } satisfies GenericAnnotation;
+        state = state.update({
+            effects: addAnnotation.of(annotation),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+        state = state.update({ changes: { from: 0, to: 3 } }).state;
+        state = state.update({
+            effects: updateThread.of({
+                annotationId: 0,
+                newThread: [{ message: "new", author: "User", time: 2 }],
+            }),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("abcdef");
+        expect(getAnnotations(state)[0].selection.main.from).toBe(1);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(5);
+        expect(getAnnotations(state)[0].thread[0].message).toBe("new");
+
+        redo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("def");
+        expect(getAnnotations(state)[0].selection.main.from).toBe(0);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(2);
+        expect(getAnnotations(state)[0].thread[0].message).toBe("new");
+    });
+
+    it("does not leave a latent redo deletion when a conditional restore is skipped", () => {
+        let state = makeState("abcdef");
+        const annotation = {
+            id: 0,
+            _type: "comment",
+            selection: EditorSelection.single(1, 5),
+            thread: [{ message: "old", author: "User", time: 1 }],
+        } satisfies GenericAnnotation;
+        state = state.update({
+            effects: addAnnotation.of(annotation),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+        state = state.update({ changes: { from: 0, to: 3 } }).state;
+        state = state.update({
+            effects: removeAnnotation.of(state.field(annotationField)[0]),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(getAnnotations(state)[0]).toBeUndefined();
+
+        const fresh = {
+            id: 0,
+            _type: "comment",
+            selection: EditorSelection.single(4, 6),
+            thread: [{ message: "fresh", author: "User", time: 2 }],
+        } satisfies GenericAnnotation;
+        state = state.update({
+            effects: addAnnotation.of(fresh),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+        redo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("def");
+        expect(getAnnotations(state)[0].thread[0].message).toBe("fresh");
+        expect(getAnnotations(state)[0].selection.main.from).toBe(1);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(3);
+    });
+
+    it("does not overwrite a fresh annotation that reused a restored annotation ID", () => {
+        let state = makeState("abcdef");
+        const annotation = {
+            id: 0,
+            _type: "comment",
+            selection: EditorSelection.single(1, 5),
+            thread: [{ message: "old", author: "User", time: 1 }],
+        } satisfies GenericAnnotation;
+        state = state.update({
+            effects: addAnnotation.of(annotation),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+        state = state.update({ changes: { from: 0, to: 3 } }).state;
+        state = state.update({
+            effects: removeAnnotation.of(state.field(annotationField)[0]),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+        state = state.update({
+            effects: addAnnotation.of({
+                id: 0,
+                _type: "comment",
+                // Exactly matches the removed annotation's post-delete range.
+                // Numeric ID, type, and coordinates alone cannot distinguish it.
+                selection: EditorSelection.single(0, 2),
+                thread: [{ message: "fresh", author: "User", time: 2 }],
+            }),
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("abcdef");
+        expect(getAnnotations(state)[0].thread[0].message).toBe("fresh");
+        expect(getAnnotations(state)[0]._historyId).toBeTruthy();
+        expect(getAnnotations(state)[0].selection.main.from).toBe(3);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(5);
+    });
+
+    it.each([
+        {
+            label: "comment",
+            annotation: {
+                id: 0,
+                _type: "comment",
+                selection: EditorSelection.single(0, 2),
+                thread: [{ message: "note", author: "User", time: 1 }],
+            } satisfies GenericAnnotation,
+        },
+        {
+            label: "suggestion",
+            annotation: {
+                id: 0,
+                _type: "suggestion",
+                selection: EditorSelection.single(0, 2),
+                thread: [{ message: "replace", author: "User", time: 1 }],
+                replacements: [{ text: "YZ" }],
+            } satisfies GenericAnnotation,
+        },
+    ])("preserves a $label range through non-history text on undo and redo", ({ annotation }) => {
+        let state = makeState("abcd");
+        state = state.update({ effects: [addAnnotation.of(annotation)] }).state;
+        state = state.update({ changes: { from: 0, to: 2, insert: "YZ" } }).state;
+        state = state.update({
+            changes: { from: 1, insert: "Q" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        expect(state.doc.toString()).toBe("YQZcd");
+        expect(getAnnotations(state)[0].selection.main.from).toBe(0);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(3);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("abQcd");
+        expect(getAnnotations(state)[0].selection.main.from).toBe(0);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(3);
+
+        redo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("YQZcd");
+        expect(getAnnotations(state)[0].selection.main.from).toBe(0);
+        expect(getAnnotations(state)[0].selection.main.to).toBe(3);
+    });
+
+    it.each([
+        {
+            label: "comment",
+            annotation: {
+                id: 0,
+                _type: "comment",
+                selection: EditorSelection.single(2, 3),
+                thread: [{ message: "note", author: "User", time: 1 }],
+            } satisfies GenericAnnotation,
+        },
+        {
+            label: "suggestion",
+            annotation: {
+                id: 0,
+                _type: "suggestion",
+                selection: EditorSelection.single(2, 3),
+                thread: [{ message: "replace", author: "User", time: 1 }],
+                replacements: [{ text: "x" }],
+            } satisfies GenericAnnotation,
+        },
+    ])(
+        "does not resurrect a $label removed by a later non-history replacement",
+        ({ annotation }) => {
+            let state = makeState("aaaa");
+            state = state.update({
+                effects: [addAnnotation.of(annotation)],
+                annotations: Transaction.addToHistory.of(false),
+            }).state;
+            state = state.update({ changes: { from: 0, to: 1 } }).state;
+            state = state.update({
+                changes: { from: 0, to: 3, insert: "a" },
+                annotations: Transaction.addToHistory.of(false),
+            }).state;
+
+            expect(state.doc.toString()).toBe("a");
+            expect(getAnnotations(state)[0]).toBeUndefined();
+
+            undo({
+                state,
+                dispatch: (transaction) => {
+                    state = transaction.state;
+                },
+            });
+            expect(getAnnotations(state)[0]).toBeUndefined();
+
+            redo({
+                state,
+                dispatch: (transaction) => {
+                    state = transaction.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("a");
+            expect(getAnnotations(state)[0]).toBeUndefined();
+        },
+    );
+
+    it("isolates suggestion application from following typing before non-history edits", () => {
+        let state = makeState("a");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "suggestion",
+                    selection: EditorSelection.single(0, 1),
+                    thread: [{ message: "remove", author: "User", time: 1 }],
+                    replacements: [{ text: "" }],
+                }),
+            ],
+        }).state;
+        state = state.update(applySuggestion(state, 0, 0)).state;
+        const depthAfterSuggestion = undoDepth(state);
+
+        state = state.update({ changes: { from: 0, insert: "a" } }).state;
+        expect(undoDepth(state)).toBe(depthAfterSuggestion + 1);
+        state = state.update({
+            changes: { from: 0, insert: "a" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("a");
+        expect(getAnnotations(state)[0]).toBeUndefined();
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        const restored = getAnnotations(state)[0];
+        expect(state.doc.toString()).toBe("aa");
+        expect(isAnnotationOfType(restored, "suggestion")).toBe(true);
+        expect(restored.selection.main.from).toBe(1);
+        expect(restored.selection.main.to).toBe(2);
+    });
+
+    it("undoes nested metadata without reverting later non-history text bookkeeping", () => {
+        const oldNestedComment = {
+            id: 7,
+            _type: "comment",
+            selection: {
+                ranges: [{ anchor: 0, head: 2 }],
+                main: 0,
+            },
+            thread: [{ message: "old", author: "User", time: 1 }],
+        };
+        const newNestedComment = {
+            ...oldNestedComment,
+            thread: [{ message: "new", author: "User", time: 2 }],
+        };
+        let state = makeState("abcd");
+        state = addRevision(state, 0, 4, [
+            { doc: "abcd", annotationField: { 7: oldNestedComment } },
+        ]);
+
+        state = state.update(
+            updateRevisionVersionState(state, 0, 0, {
+                doc: "abcd",
+                annotationField: { 7: newNestedComment },
+            }),
+        ).state;
+        state = state.update({
+            changes: { from: 1, insert: "Q" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+        state = state.update(
+            updateRevisionVersionState(
+                state,
+                0,
+                0,
+                {
+                    doc: "aQbcd",
+                    annotationField: {
+                        7: {
+                            ...newNestedComment,
+                            selection: {
+                                ranges: [{ anchor: 0, head: 3 }],
+                                main: 0,
+                            },
+                        },
+                    },
+                },
+                { addToHistory: false },
+            ),
+        ).state;
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+
+        const revisionAfterUndo = getRevision(state, 0);
+        const versionAfterUndo = revisionAfterUndo.versions[0] as Record<string, unknown>;
+        const annotationsAfterUndo = versionAfterUndo.annotationField as Record<
+            string,
+            typeof oldNestedComment
+        >;
+        expect(state.doc.toString()).toBe("aQbcd");
+        expect(revisionAfterUndo.selection.main.to).toBe(5);
+        expect(versionAfterUndo.doc).toBe("aQbcd");
+        expect(annotationsAfterUndo[7].selection.ranges[0]).toEqual({ anchor: 0, head: 3 });
+        expect(annotationsAfterUndo[7].thread[0].message).toBe("old");
+
+        redo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        const versionAfterRedo = getRevision(state, 0).versions[0] as Record<string, unknown>;
+        const annotationsAfterRedo = versionAfterRedo.annotationField as Record<
+            string,
+            typeof oldNestedComment
+        >;
+        expect(versionAfterRedo.doc).toBe("aQbcd");
+        expect(annotationsAfterRedo[7].selection.ranges[0]).toEqual({ anchor: 0, head: 3 });
+        expect(annotationsAfterRedo[7].thread[0].message).toBe("new");
+    });
+
+    it("preserves a later non-history insert through an active version update undo and redo", () => {
+        let state = makeState("abcd");
+        state = addRevision(state, 0, 4, ["abcd"]);
+        state = state.update(updateRevisionVersionState(state, 0, 0, { doc: "WXYZ" })).state;
+        state = state.update({
+            changes: { from: 2, insert: "Q" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        expect(state.doc.toString()).toBe("WXQYZ");
+        expect(getRevision(state, 0).versions[0].doc).toBe("WXQYZ");
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        // CodeMirror rebases an insertion inside a fully-replaced span to the
+        // trailing boundary. The important invariant is that the external Q is
+        // preserved and remains part of the active revision.
+        expect(state.doc.toString()).toBe("abcdQ");
+        expect(getRevision(state, 0).selection.main.to).toBe(5);
+        expect(getRevision(state, 0).versions[0].doc).toBe("abcdQ");
+
+        redo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("WXQYZ");
+        expect(getRevision(state, 0).selection.main.to).toBe(5);
+        expect(getRevision(state, 0).versions[0].doc).toBe("WXQYZ");
+    });
+
     it("undo restores version switch", () => {
         let state = makeState("hello");
         state = addRevision(state, 0, 5, ["hello", "world"]);
@@ -519,7 +1025,7 @@ describe("undo/redo", () => {
         expect(state.doc.toString()).toBe("hello");
     });
 
-    it("undo restores version creation", () => {
+    it("undo and redo restore the exact version-creation range", () => {
         let state = makeState("hello");
         state = addRevision(state, 0, 5, ["hello"]);
 
@@ -538,6 +1044,200 @@ describe("undo/redo", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions).toHaveLength(1);
         expect(rev.versions[0].doc).toBe("hello");
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(5);
+        expect(state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("hello");
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("");
+        expect(getRevision(state, 0).selection.main.empty).toBe(true);
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(5);
+    });
+
+    it("repeatedly traverses an active version-state update to empty", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, ["hello"]);
+        state = state.update(updateRevisionVersionState(state, 0, 0, { doc: "" })).state;
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("hello");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+            expect(getRevision(state, 0).selection.main.to).toBe(5);
+
+            redo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+            expect(getRevision(state, 0).selection.main.to).toBe(0);
+        }
+    });
+
+    it("keeps an intentional collapsed revision anchored across a neighboring edit", () => {
+        let state = makeState("a");
+        state = addRevision(state, 0, 0, [""]);
+        state = state.update({ changes: { from: 0, to: 1 } }).state;
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("a");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+            expect(getRevision(state, 0).selection.main.to).toBe(0);
+
+            redo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+        }
+    });
+
+    it("preserves a collapsed predecessor when undoing a nested delete to empty", () => {
+        let state = makeState("A");
+        state = addRevision(state, 0, 0, [""]);
+        state = addRevision(state, 0, 1, ["A"]);
+
+        state = state.update({
+            changes: { from: 0, to: 1 },
+            effects: [_nestedEditRevision.of(1)],
+            annotations: [nestedEditorEdit.of(1)],
+        }).state;
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 1).selection.main.empty).toBe(true);
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("A");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(0);
+        expect(getRevision(state, 1).selection.main.from).toBe(0);
+        expect(getRevision(state, 1).selection.main.to).toBe(1);
+    });
+
+    it("rebases an exact restore through a non-history document edit", () => {
+        let state = makeState("abcdef");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.create([EditorSelection.range(5, 1)]),
+                    thread: [{ message: "note", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+        state = state.update({ changes: { from: 0, to: 3 } }).state;
+        state = state.update({
+            changes: { from: 0, insert: "!" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+
+        const restored = getAnnotations(state)[0];
+        expect(state.doc.toString()).toBe("!abcdef");
+        expect(restored.selection.main.anchor).toBe(6);
+        expect(restored.selection.main.head).toBe(2);
+    });
+
+    it("rebases a restored suggestion through a non-history prefix edit", () => {
+        let state = makeState("a");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "suggestion",
+                    selection: EditorSelection.single(0, 1),
+                    thread: [{ message: "replace", author: "User", time: 1 }],
+                    replacements: [{ text: "" }],
+                }),
+            ],
+        }).state;
+        state = state.update(applySuggestion(state, 0, 0)).state;
+        state = state.update({
+            changes: { from: 0, insert: "a" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+
+        const restored = getAnnotations(state)[0];
+        expect(state.doc.toString()).toBe("aa");
+        expect(isAnnotationOfType(restored, "suggestion")).toBe(true);
+        if (!restored || !isAnnotationOfType(restored, "suggestion")) return;
+        expect(restored.selection.main.from).toBe(1);
+        expect(restored.selection.main.to).toBe(2);
+    });
+
+    it("does not move a collapsed neighbor while undoing adjacent version creation", () => {
+        let state = makeState("Aa");
+        state = addRevision(state, 0, 1, ["A"]);
+        state = addRevision(state, 1, 2, ["a"]);
+
+        state = state.update(createNewRevision(state, 0)).state;
+        state = state.update(createNewRevision(state, 1)).state;
+
+        // CodeMirror may group the two rapid version creations. Traverse until
+        // both are restored, whether that takes one history item or two.
+        for (let step = 0; step < 2 && state.doc.toString() !== "Aa"; step++) {
+            undo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+        }
+
+        expect(state.doc.toString()).toBe("Aa");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+        expect(getRevision(state, 1).selection.main.from).toBe(1);
+        expect(getRevision(state, 1).selection.main.to).toBe(2);
     });
 
     it("undo restores version deletion", () => {
@@ -560,6 +1260,79 @@ describe("undo/redo", () => {
         expect(rev.versions).toHaveLength(2);
         expect(rev.versions[0].doc).toBe("alpha");
         expect(rev.versions[1].doc).toBe("beta");
+    });
+});
+
+describe("thread undo/redo", () => {
+    it("undoes the first revision message without deleting the revision", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, ["hello"]);
+        state = state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: 0,
+                    newThread: [{ message: "Review", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getRevision(state, 0).thread).toEqual([]);
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getRevision(state, 0).thread).toEqual([
+            { message: "Review", author: "User", time: 1 },
+        ]);
+    });
+
+    it("redo restores the first pending-comment message", () => {
+        let state = makeState("hello");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.single(0, 5),
+                    thread: [],
+                }),
+            ],
+        }).state;
+        state = state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: 0,
+                    newThread: [{ message: "Note", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getAnnotations(state)[0]).toBeUndefined();
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getAnnotations(state)[0]?.thread).toEqual([
+            { message: "Note", author: "User", time: 1 },
+        ]);
     });
 });
 
@@ -645,6 +1418,84 @@ describe("rapid sequential operations", () => {
 // Zod schema (used by fromJSON) correctly parses/preserves our data.
 
 describe("toJSON/fromJSON round-trip", () => {
+    it("rejects a known persisted-history annotation without a lineage identity", () => {
+        expect(() =>
+            deserializeAnnotationHistoryEffect({
+                type: "annotation.add",
+                value: {
+                    id: 0,
+                    _type: "comment",
+                    selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
+                    thread: [],
+                },
+            }),
+        ).toThrow("Invalid annotation identity in persisted history");
+    });
+
+    it.each([
+        {
+            label: "missing version id",
+            versions: [{ doc: "a" }],
+            activeVersionId: "v1",
+        },
+        {
+            label: "empty version id",
+            versions: [{ id: "", doc: "a" }],
+            activeVersionId: "",
+        },
+        {
+            label: "duplicate version ids",
+            versions: [
+                { id: "v1", doc: "a" },
+                { id: "v1", doc: "b" },
+            ],
+            activeVersionId: "v1",
+        },
+        {
+            label: "unresolved active version id",
+            versions: [{ id: "v1", doc: "a" }],
+            activeVersionId: "missing",
+        },
+    ])("rejects $label in a known persisted-history effect", ({ versions, activeVersionId }) => {
+        expect(() =>
+            deserializeAnnotationHistoryEffect({
+                type: "annotation.add",
+                value: {
+                    id: 0,
+                    _type: "revision",
+                    _historyId: "history-test",
+                    selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
+                    thread: [],
+                    versions,
+                    activeVersionId,
+                },
+            }),
+        ).toThrow("Invalid revision identity in persisted history");
+    });
+
+    it.each([
+        {
+            type: "revision.addVersion",
+            value: { annotationId: 0, newVersion: { id: "", doc: "a" } },
+        },
+        {
+            type: "revision.deleteVersion",
+            value: { annotationId: 0, versionId: "" },
+        },
+        {
+            type: "revision.activeVersion",
+            value: { annotationId: 0, to: "" },
+        },
+        {
+            type: "revision.versionState",
+            value: { annotationId: 0, versionId: "v1", versionState: { id: "", doc: "a" } },
+        },
+    ])("rejects empty version identity in $type history", (serialized) => {
+        expect(() => deserializeAnnotationHistoryEffect(serialized)).toThrow(
+            `Invalid ${serialized.type} effect in persisted history`,
+        );
+    });
+
     it("preserves revision version contents in JSON form", () => {
         let state = makeState("hello");
         state = addRevision(state, 0, 5, ["hello", "world"]);
@@ -683,6 +1534,168 @@ describe("toJSON/fromJSON round-trip", () => {
 // ── Nested editor edits (boundary expansion) ─────────────────────────────────
 
 describe("nested editor boundary expansion", () => {
+    it("isolates a nested collapse from a following adjacent parent delete", () => {
+        let state = makeState("aa");
+        state = addRevision(state, 1, 2, ["a", ""]);
+
+        state = state.update({
+            changes: { from: 1, to: 2 },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+        const depthAfterNestedDelete = undoDepth(state);
+        state = state.update({ changes: { from: 0, to: 1 } }).state;
+
+        expect(state.doc.toString()).toBe("");
+        expect(getRevision(state, 0).selection.main.empty).toBe(true);
+        expect(undoDepth(state)).toBe(depthAfterNestedDelete + 1);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("a");
+        expect(getRevision(state, 0).selection.main.empty).toBe(true);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("aa");
+        expect(getRevision(state, 0).selection.main.from).toBe(1);
+        expect(getRevision(state, 0).selection.main.to).toBe(2);
+        expect(getRevision(state, 0).versions[0].doc).toBe("a");
+    });
+
+    it("isolates a nested collapse from a preceding adjacent parent delete", () => {
+        let state = makeState("aa");
+        state = addRevision(
+            state,
+            0,
+            1,
+            [
+                { doc: "a", label: "Original" },
+                { doc: "", label: "Alternative" },
+            ],
+            0,
+        );
+
+        // Delete the unannotated second character, then delete the revision's
+        // only character through its nested editor. The collapse must form a
+        // separate history event so neither range loses its anchor.
+        state = state.update({
+            changes: { from: 1, to: 2 },
+            annotations: [Transaction.time.of(1_000), Transaction.userEvent.of("delete")],
+        }).state;
+        const depthAfterParentDelete = undoDepth(state);
+        state = state.update({
+            changes: { from: 0, to: 1 },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [
+                nestedEditorEdit.of(0),
+                Transaction.addToHistory.of(true),
+                Transaction.time.of(1_100),
+            ],
+        }).state;
+
+        expect(state.doc.toString()).toBe("");
+        expect(getRevision(state, 0).selection.main.empty).toBe(true);
+        expect(getRevision(state, 0).versions[0].doc).toBe("");
+        expect(undoDepth(state)).toBe(depthAfterParentDelete + 1);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("a");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("aa");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+        expect(getRevision(state, 0).versions[0].doc).toBe("a");
+        expect(getRevision(state, 0).versions[1].doc).toBe("");
+    });
+
+    it("keeps an empty previous sibling outside a prepended revision", () => {
+        let state = makeState("AZ");
+        state = addRevision(state, 0, 1, ["A"]);
+        state = addRevision(state, 1, 2, ["Z"]);
+
+        // Empty the first revision, prepend to the second, then refill the first.
+        state = state.update({
+            changes: { from: 0, to: 1 },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+        state = state.update({
+            changes: { from: 0, insert: "Y" },
+            effects: [_nestedEditRevision.of(1)],
+            annotations: [nestedEditorEdit.of(1), Transaction.addToHistory.of(true)],
+        }).state;
+
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(0);
+        expect(getRevision(state, 1).selection.main.from).toBe(0);
+        expect(getRevision(state, 1).selection.main.to).toBe(2);
+
+        state = state.update({
+            changes: { from: 0, insert: "X" },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+        expect(state.doc.toString()).toBe("XYZ");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+        expect(getRevision(state, 1).selection.main.from).toBe(1);
+        expect(getRevision(state, 1).selection.main.to).toBe(3);
+
+        state = state.update(createNewRevision(state, 1)).state;
+        expect(state.doc.toString()).toBe("X");
+        expect(getRevision(state, 0).versions[0].doc).toBe("X");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+    });
+
+    it("keeps an empty following sibling outside an appended revision", () => {
+        let state = makeState("ZA");
+        state = addRevision(state, 0, 1, ["Z"]);
+        state = addRevision(state, 1, 2, ["A"]);
+
+        state = state.update({
+            changes: { from: 1, to: 2 },
+            effects: [_nestedEditRevision.of(1)],
+            annotations: [nestedEditorEdit.of(1), Transaction.addToHistory.of(true)],
+        }).state;
+        state = state.update({
+            changes: { from: 1, insert: "Y" },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+
+        expect(state.doc.toString()).toBe("ZY");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(2);
+        expect(getRevision(state, 1).selection.main.from).toBe(2);
+        expect(getRevision(state, 1).selection.main.to).toBe(2);
+    });
+
     it("expands revision range when nested editor appends at boundary", () => {
         let state = makeState("hello");
         state = addRevision(state, 0, 5, ["hello"]);

@@ -16,6 +16,8 @@ export type DocumentMeta = {
     /** JSON-encoded string array, e.g. '["fiction","novel"]' */
     tags: string;
     deletedAt: number | null;
+    /** Whether snapshots retain undo/redo across app restarts. */
+    persistHistory: boolean;
 };
 
 export type TabMeta = {

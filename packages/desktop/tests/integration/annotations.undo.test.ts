@@ -9,29 +9,31 @@
 
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
+    _nestedEditRevision,
     addAnnotation,
     annotationField,
     deleteRevisionVersion,
+    nestedEditorEdit,
+    updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { history, undo } from "@codemirror/commands";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { history, redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function createView(doc: string) {
+function createView(doc: string, newGroupDelay = 0) {
     const state = EditorState.create({
         doc,
-        // newGroupDelay:0 so adjacent transactions are never merged into one
-        // undo group — matches real-app conditions where the user and the
-        // collapsedRevisionResolver microtask produce separate history entries.
-        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
+        // Most tests use delay 0 so adjacent transactions stay separate. A
+        // regression can opt into the app's 250ms grouping window explicitly.
+        extensions: [history({ newGroupDelay }), annotationExtensions()],
     });
     const parent = document.createElement("div");
     document.body.appendChild(parent);
@@ -81,6 +83,30 @@ let view: EditorView | undefined;
 afterEach(() => {
     view?.destroy();
     view = undefined;
+});
+
+describe("joined nested and parent edits", () => {
+    it("restores the exact revision range when a parent-boundary delete joins a nested insert", () => {
+        view = createView("aa", 250);
+        const revisionId = addRevision(view, 1, 2, [{ doc: "a" }]);
+
+        view.dispatch({
+            changes: { from: 1, insert: "a" },
+            effects: [_nestedEditRevision.of(revisionId)],
+            annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
+        });
+        view.dispatch({ changes: { from: 0, to: 1 } });
+        expect(view.state.doc.toString()).toBe("aa");
+
+        expect(undo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe("aa");
+        const revision = view.state.field(annotationField)[revisionId];
+        expect(revision && isAnnotationOfType(revision, "revision")).toBe(true);
+        if (!revision || !isAnnotationOfType(revision, "revision")) return;
+        expect(revision.selection.main.from).toBe(1);
+        expect(revision.selection.main.to).toBe(2);
+        expect(revision.versions[0].doc).toBe("a");
+    });
 });
 
 // ── Comment undo tests ───────────────────────────────────────────────────────
@@ -316,6 +342,59 @@ describe("undo restores revision whose selection collapsed after text deletion",
         expect(anns).toHaveLength(1);
         expect(anns[0].selection.main.from).toBe(6);
         expect(anns[0].selection.main.to).toBe(11);
+    });
+});
+
+describe("undo restores annotation boundaries consumed by text edits", () => {
+    it("restores a partially consumed comment at its original range", () => {
+        view = createView("abcdef");
+        const commentId = addComment(view, 1, 5);
+
+        view.dispatch({ changes: { from: 0, to: 3 } });
+        expect(view.state.field(annotationField)[commentId]?.selection.main.from).toBe(0);
+        expect(view.state.field(annotationField)[commentId]?.selection.main.to).toBe(2);
+
+        undo(view);
+        const restored = view.state.field(annotationField)[commentId];
+        expect(view.state.doc.toString()).toBe("abcdef");
+        expect(restored?.selection.main.from).toBe(1);
+        expect(restored?.selection.main.to).toBe(5);
+    });
+
+    it("restores a partially consumed revision and its active text", () => {
+        view = createView("abcdef");
+        const revisionId = addRevision(view, 1, 5, [{ doc: "bcde" }]);
+
+        view.dispatch({ changes: { from: 0, to: 3 } });
+        undo(view);
+
+        const restored = view.state.field(annotationField)[revisionId];
+        expect(restored?.selection.main.from).toBe(1);
+        expect(restored?.selection.main.to).toBe(5);
+        expect(view.state.sliceDoc(1, 5)).toBe("bcde");
+        if (restored && isAnnotationOfType(restored, "revision")) {
+            expect(restored.versions[0].doc).toBe("bcde");
+        }
+    });
+
+    it("restores a revision fully consumed by a non-empty replacement", () => {
+        view = createView("abcdef");
+        const revisionId = addRevision(view, 1, 5, [{ doc: "bcde" }]);
+
+        view.dispatch({ changes: { from: 0, to: 6, insert: "X" } });
+        expect(view.state.field(annotationField)[revisionId]).toBeUndefined();
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo(view);
+            const restored = view.state.field(annotationField)[revisionId];
+            expect(view.state.doc.toString()).toBe("abcdef");
+            expect(restored?.selection.main.from).toBe(1);
+            expect(restored?.selection.main.to).toBe(5);
+
+            redo(view);
+            expect(view.state.doc.toString()).toBe("X");
+            expect(view.state.field(annotationField)[revisionId]).toBeUndefined();
+        }
     });
 });
 
@@ -566,5 +645,43 @@ describe("undo of a revision version delete preserves the active pointer", () =>
         expect(restored.versions).toHaveLength(3);
         expect(restored.activeVersionId).toBe(v1);
         expect(restored.versions[0].id).toBe(v0);
+    });
+});
+
+describe("undo of an active version update keeps intentionally empty revisions", () => {
+    it("does not let collapsed cleanup remove the revision on redo", async () => {
+        view = createView("a");
+        const revId = addRevision(view, 0, 1, [{ doc: "a" }]);
+        const before = view.state.field(annotationField)[revId];
+        if (!before || !isAnnotationOfType(before, "revision")) throw new Error();
+
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                before.activeVersionId,
+                makeVersion({ doc: "" }),
+            ),
+        );
+        view.dispatch({
+            changes: { from: 0, insert: "a" },
+            annotations: Transaction.addToHistory.of(false),
+        });
+        expect(view.state.field(annotationField)[revId]).toBeDefined();
+
+        undo(view);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(view.state.field(annotationField)[revId]).toBeDefined();
+
+        redo(view);
+        await Promise.resolve();
+        await Promise.resolve();
+        const redone = view.state.field(annotationField)[revId];
+        expect(redone).toBeDefined();
+        expect(isAnnotationOfType(redone, "revision")).toBe(true);
+        if (!redone || !isAnnotationOfType(redone, "revision")) return;
+        expect(redone.selection.main.empty).toBe(true);
+        expect(redone.versions[0].doc).toBe("");
     });
 });

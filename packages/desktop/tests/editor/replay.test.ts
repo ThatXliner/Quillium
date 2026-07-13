@@ -219,6 +219,30 @@ describe("replayEvents", () => {
         expect(result.doc.toString()).toBe("Hello world!");
     });
 
+    it("applies an exact state fallback before invalid legacy aggregate changes", () => {
+        const state = createBaseState("abc");
+        const result = replayEvents(state, [
+            makeRecord(0, {
+                type: "doc_change",
+                // A failed trace can leave aggregate coordinates that are not
+                // valid as one transaction. The full-state fallback is the
+                // authoritative post-event state and must run first.
+                changes: [{ from: 999, to: 999, insert: "unreachable" }],
+                selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                stateFallback: {
+                    doc: "recovered",
+                    annotations: {},
+                    versionGroups: {},
+                    selection: { ranges: [{ anchor: 2, head: 7 }], main: 0 },
+                },
+            }),
+        ]);
+
+        expect(result.doc.toString()).toBe("recovered");
+        expect(result.selection.main.anchor).toBe(2);
+        expect(result.selection.main.head).toBe(7);
+    });
+
     it("handles annotation_remove for missing annotation id gracefully", () => {
         const state = createBaseState("Hello");
         // Should not throw even when annotationId doesn't exist

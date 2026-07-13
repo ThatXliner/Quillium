@@ -1,5 +1,6 @@
 <script lang="ts">
-import { aiSettings } from "$lib/ai/settings.svelte";
+import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import { modalStack } from "$lib/stores";
@@ -114,6 +115,8 @@ function selectCommentText() {
             annotationId={comment.id}
             previewOnly={!isActive}
             onAiSuggest={isActive && appSettings.aiEnabled ? aiSuggestion : undefined}
+            aiSuggestDisabled={!hasApiKey()}
+            onDisabledAiSuggest={() => appEventBus.emit({ type: "ai-open-settings" })}
             accentClass="text-blue-600/80 hover:text-blue-700"
         />
 {/snippet}

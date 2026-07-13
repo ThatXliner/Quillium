@@ -31,7 +31,7 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { normalizeSerializedSelection } from "$lib/editor/plugins/annotations/nestedEditor";
-import { history, redo, undo } from "@codemirror/commands";
+import { history, redo, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -604,6 +604,31 @@ describe("nested annotation creation enters parent undo history via version stat
 // ── NestedEditorController sync gap regressions ─────────────────────────────
 
 describe("NestedEditorController annotation flush regressions", () => {
+    it("keeps nested annotation remaps atomic across repeated undo and redo", () => {
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: {
+                0: nestedComment(0, 1, 2),
+            },
+        });
+        const mounted = mountNestedController(view, revId);
+
+        mounted.editor.dispatch({ changes: { from: 0, insert: "X" } });
+        expect(view.state.doc.toString()).toBe("Xhello world");
+        expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([2, 3]);
+        mounted.destroy();
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo(view);
+            expect(view.state.doc.toString()).toBe("hello world");
+            expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([1, 2]);
+
+            redo(view);
+            expect(view.state.doc.toString()).toBe("Xhello world");
+            expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([2, 3]);
+        }
+    });
+
     it("flushes when a doc change removes the last nested annotation", () => {
         const revId = addRevision(view, 0, 11, {
             doc: "hello world",
@@ -635,12 +660,20 @@ describe("NestedEditorController annotation flush regressions", () => {
         try {
             const transaction = applySuggestion(mounted.editor.state, 0, 0);
             expect(transactionsHaveAnnotationMutationEffect([transaction])).toBe(true);
+            const depthBefore = undoDepth(view.state);
 
             mounted.editor.dispatch(transaction);
+            expect(undoDepth(view.state)).toBe(depthBefore + 1);
+            expect(view.state.doc.toString()).toBe("hi world");
             expect(getVersionAnnotation(view, revId, 0)).toBeUndefined();
 
             undo(view);
+            expect(view.state.doc.toString()).toBe("hello world");
             expect(getVersionAnnotation(view, revId, 0)).toBeDefined();
+
+            redo(view);
+            expect(view.state.doc.toString()).toBe("hi world");
+            expect(getVersionAnnotation(view, revId, 0)).toBeUndefined();
         } finally {
             mounted.destroy();
         }

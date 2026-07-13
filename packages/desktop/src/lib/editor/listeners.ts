@@ -1,12 +1,16 @@
 import { isCollabJoiner } from "$lib/collab/store";
 import { appendEvent, createNamedSnapshot, createSnapshot, updateDocumentMeta } from "$lib/db";
+import { replayHistoryIsolationOf } from "$lib/db/events";
 import type {
     AnnotationEvent,
     ChangeOrigin,
     ChangeSpec,
     EventPayload,
+    PersistedStateFallback,
     Provenance,
     SelectionJSON,
+    TransactionReplayEntry,
+    TransactionReplayTrace,
 } from "$lib/db/events";
 import {
     isDeepAnnotationLoss,
@@ -25,8 +29,10 @@ import {
     lastSavedAt,
     saveStatus,
 } from "$lib/stores";
-import { Transaction } from "@codemirror/state";
+import { historyField, isolateHistory } from "@codemirror/commands";
+import { type Annotation, ChangeSet, EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { isEqual } from "lodash-es";
 import { get } from "svelte/store";
 /**
  * listeners.ts — CodeMirror update listeners for event-log persistence.
@@ -47,9 +53,16 @@ import { get } from "svelte/store";
  */
 import { savedFields } from "./extensions";
 import {
+    deserializeHistoryEffect,
+    historyDoneBranchIsSelectionSentinel,
+    historyDoneTopInfo,
+    serializeHistoryEffect,
+    transactionStartsNewHistoryGroup,
+} from "./persistentHistory";
+import {
     type GenericAnnotation,
+    _revisionCleanup,
     addAnnotation,
-    annotationsChanged,
     isRawAnnotationOfType,
     nestedEditorEdit,
     removeAnnotation,
@@ -61,6 +74,8 @@ export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
     persist?: boolean;
     history?: boolean;
+    /** Whether this document stores undo history in snapshots and event replay. */
+    persistHistory?: boolean;
 }
 
 // ── Debounce timers ───────────────────────────────────────────────
@@ -81,12 +96,15 @@ let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
 
-function extractSelection(update: ViewUpdate): SelectionJSON {
-    const sel = update.state.selection;
+function serializeSelection(sel: EditorSelection): SelectionJSON {
     return {
         ranges: sel.ranges.map((r) => ({ anchor: r.anchor, head: r.head })),
         main: sel.mainIndex,
     };
+}
+
+function extractSelection(update: ViewUpdate): SelectionJSON {
+    return serializeSelection(update.state.selection);
 }
 
 /**
@@ -179,13 +197,17 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     // replaces doc text AND updates activeVersionIndex). Without the
     // revisionInternalEdit check, version switches and similar operations would
     // not be persisted to the event log.
-    if (!tr.docChanged || tr.annotation(revisionInternalEdit)) {
+    if (
+        !tr.docChanged ||
+        tr.annotation(revisionInternalEdit) ||
+        tr.annotation(nestedEditorEdit) !== undefined
+    ) {
         const before = tr.startState.field(annotationField);
         const after = tr.state.field(annotationField);
         for (const [idStr, ann] of Object.entries(after)) {
             const id = Number(idStr);
             if (explicitlyHandled.has(id)) continue;
-            if (before[id] !== ann) {
+            if (!isEqual(before[id], ann)) {
                 events.push({
                     type: "annotation_update",
                     annotation: serializeAnnotation(ann),
@@ -195,6 +217,167 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     }
 
     return events;
+}
+
+function persistedFieldParts(state: Transaction["state"]): {
+    annotations: unknown;
+    versionGroups: unknown;
+} {
+    const json = state.toJSON({
+        annotationField: savedFields.annotationField,
+        versionGroupField: savedFields.versionGroupField,
+    });
+    return {
+        annotations: json.annotationField,
+        versionGroups: json.versionGroupField,
+    };
+}
+
+function changesPersistedState(tr: Transaction): boolean {
+    if (tr.docChanged) return true;
+    const before = persistedFieldParts(tr.startState);
+    const after = persistedFieldParts(tr.state);
+    return !isEqual(before, after);
+}
+
+function replayAnnotationsOf(tr: Transaction): TransactionReplayEntry & { kind: "transaction" } {
+    const historyRuntimeDisabled =
+        tr.startState.field(historyField, false) === undefined ||
+        tr.state.field(historyField, false) === undefined;
+    const doneTopSelectionsAfter = historyDoneTopInfo(tr.startState)?.selectionsAfter;
+    const annotations = {
+        // A missing historyField means the live transaction could not have
+        // entered CodeMirror history, regardless of its annotation default.
+        addToHistory: !historyRuntimeDisabled && tr.annotation(Transaction.addToHistory) !== false,
+        historyRuntimeDisabled: historyRuntimeDisabled ? (true as const) : undefined,
+        time: tr.annotation(Transaction.time),
+        userEvent: tr.annotation(Transaction.userEvent),
+        isolateHistory: tr.annotation(isolateHistory),
+        startsNewHistoryGroup: transactionStartsNewHistoryGroup(tr),
+        startsWithSelectionSentinel:
+            historyDoneBranchIsSelectionSentinel(tr.startState) || undefined,
+        doneTopSelectionsAfter:
+            doneTopSelectionsAfter && doneTopSelectionsAfter.length > 0
+                ? doneTopSelectionsAfter.map(serializeSelection)
+                : undefined,
+        revisionInternalEdit: tr.annotation(revisionInternalEdit),
+        nestedEditorEdit: tr.annotation(nestedEditorEdit),
+        revisionCleanup: tr.annotation(_revisionCleanup),
+    };
+    return {
+        kind: "transaction",
+        changeSet: tr.changes.toJSON(),
+        effects: tr.effects.flatMap((effect) => {
+            const serialized = serializeHistoryEffect(effect);
+            return serialized ? [serialized] : [];
+        }),
+        startSelection: serializeSelection(tr.startState.selection),
+        selection: serializeSelection(tr.state.selection),
+        annotations,
+    };
+}
+
+function codeMirrorAnnotationsOf(
+    entry: TransactionReplayEntry & { kind: "transaction" },
+): Annotation<unknown>[] {
+    const annotations: Annotation<unknown>[] = [
+        Transaction.addToHistory.of(entry.annotations.addToHistory),
+    ];
+    if (entry.annotations.time !== undefined) {
+        annotations.push(Transaction.time.of(entry.annotations.time));
+    }
+    if (entry.annotations.userEvent !== undefined) {
+        annotations.push(Transaction.userEvent.of(entry.annotations.userEvent));
+    }
+    const historyIsolation = replayHistoryIsolationOf(entry.annotations);
+    if (historyIsolation !== undefined) {
+        annotations.push(isolateHistory.of(historyIsolation));
+    }
+    if (entry.annotations.revisionInternalEdit !== undefined) {
+        annotations.push(revisionInternalEdit.of(entry.annotations.revisionInternalEdit));
+    }
+    if (entry.annotations.nestedEditorEdit !== undefined) {
+        annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));
+    }
+    if (entry.annotations.revisionCleanup !== undefined) {
+        annotations.push(_revisionCleanup.of(entry.annotations.revisionCleanup));
+    }
+    return annotations;
+}
+
+/**
+ * Guard the trace codec against newly-added persistent effects. Re-applying the
+ * encoded transaction must reproduce the exact document, annotation map, and
+ * version-group map before it is allowed into the event log.
+ */
+function verifyTransactionReplay(
+    tr: Transaction,
+    entry: TransactionReplayEntry & { kind: "transaction" },
+): void {
+    const effects = entry.effects.map((serialized) => {
+        const effect = deserializeHistoryEffect(serialized);
+        if (!effect) throw new Error(`Unsupported persistent effect: ${serialized.type}`);
+        return effect;
+    });
+    const replayed = tr.startState.update({
+        changes: ChangeSet.fromJSON(entry.changeSet),
+        effects,
+        selection: entry.selection ? EditorSelection.fromJSON(entry.selection) : undefined,
+        annotations: codeMirrorAnnotationsOf(entry),
+        filter: false,
+    }).state;
+    if (!replayed.doc.eq(tr.state.doc)) {
+        throw new Error("Transaction replay codec produced a different document");
+    }
+    if (!replayed.selection.eq(tr.state.selection)) {
+        throw new Error("Transaction replay codec produced a different selection");
+    }
+    const expectedFields = persistedFieldParts(tr.state);
+    const replayedFields = persistedFieldParts(replayed);
+    if (!isEqual(expectedFields.annotations, replayedFields.annotations)) {
+        throw new Error("Transaction replay codec produced different annotations");
+    }
+    if (!isEqual(expectedFields.versionGroups, replayedFields.versionGroups)) {
+        throw new Error("Transaction replay codec produced different version groups");
+    }
+}
+
+function buildTransactionReplay(update: ViewUpdate): TransactionReplayTrace | undefined {
+    const transactions: TransactionReplayEntry[] = [];
+    for (const tr of update.transactions) {
+        if (!changesPersistedState(tr)) continue;
+        if (tr.isUserEvent("undo")) {
+            const fallback = replayAnnotationsOf(tr);
+            verifyTransactionReplay(tr, fallback);
+            transactions.push({ kind: "undo", fallback });
+        } else if (tr.isUserEvent("redo")) {
+            const fallback = replayAnnotationsOf(tr);
+            verifyTransactionReplay(tr, fallback);
+            transactions.push({ kind: "redo", fallback });
+        } else {
+            const entry = replayAnnotationsOf(tr);
+            verifyTransactionReplay(tr, entry);
+            transactions.push(entry);
+        }
+    }
+    return transactions.length > 0 ? { version: 1, transactions } : undefined;
+}
+
+function buildStateFallback(update: ViewUpdate): PersistedStateFallback {
+    const json = update.state.toJSON({
+        annotationField: savedFields.annotationField,
+        versionGroupField: savedFields.versionGroupField,
+    });
+    const annotations =
+        json.annotationField && typeof json.annotationField === "object"
+            ? (json.annotationField as PersistedStateFallback["annotations"])
+            : {};
+    return {
+        doc: update.state.doc.toString(),
+        annotations,
+        versionGroups: json.versionGroupField ?? {},
+        selection: extractSelection(update),
+    };
 }
 
 /**
@@ -232,10 +415,24 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
         allAnnotationEvents = allAnnotationEvents.concat(extractAnnotationEvents(tr));
     }
 
+    const hasPersistedStateChange = update.transactions.some(changesPersistedState);
+    let transactionReplay: TransactionReplayTrace | undefined;
+    let stateFallback: PersistedStateFallback | undefined;
+    try {
+        transactionReplay = buildTransactionReplay(update);
+    } catch (error) {
+        console.error("[listeners] Could not encode exact transaction replay", error);
+        if (hasPersistedStateChange) stateFallback = buildStateFallback(update);
+    }
+
     const hasDocChange = allDocChanges.length > 0;
     const hasAnnotationChange = allAnnotationEvents.length > 0;
 
-    if (!hasDocChange && !hasAnnotationChange) return null;
+    if (!hasDocChange && !hasAnnotationChange) {
+        return transactionReplay || stateFallback
+            ? { type: "state_transaction", transactionReplay, stateFallback }
+            : null;
+    }
 
     const selection = extractSelection(update);
 
@@ -259,6 +456,8 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
             annotationEvents: allAnnotationEvents,
             selection,
             provenance,
+            transactionReplay,
+            stateFallback,
         };
     }
 
@@ -268,13 +467,15 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
             changes: allDocChanges,
             selection,
             provenance,
+            transactionReplay,
+            stateFallback,
         };
     }
 
     // Annotation-only: return the first annotation event directly
     // (multiple annotation events are wrapped as compound if alongside doc changes)
     if (allAnnotationEvents.length === 1) {
-        return allAnnotationEvents[0] as EventPayload;
+        return { ...allAnnotationEvents[0], transactionReplay, stateFallback } as EventPayload;
     }
 
     // Multiple annotation-only events: wrap as compound with no doc changes
@@ -283,6 +484,8 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
         docChanges: [],
         annotationEvents: allAnnotationEvents,
         selection,
+        transactionReplay,
+        stateFallback,
     };
 }
 
@@ -609,7 +812,7 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
 
 // ── Auto-save listener ────────────────────────────────────────────
 const save = EditorView.updateListener.of((update: ViewUpdate) => {
-    if (update.docChanged || annotationsChanged(update)) {
+    if (update.transactions.some(changesPersistedState)) {
         persistTransaction(update);
     }
 });

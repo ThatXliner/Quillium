@@ -34,9 +34,6 @@ Current gaps and technical debt.
 
 | Limitation | Impact |
 |------------|--------|
-| **Non-active revision version text is snapshot-only** | If crash occurs between snapshots, non-active versions may be stale. |
-| **`activeVersionId` is snapshot-only** | Same crash window concern. |
-| **Version labels are snapshot-only** | Same crash window concern. |
 | **Version-history rewind does not restore parent/branch links** | Rewinding across an orphan-delete restores the deleted draft, but children re-attached by that delete keep their current links (`draft_reparented` is not replayed), so the restored tree can differ from the true shape at T. Nothing is lost — links live on the rows and Undo can reverse them. |
 | **History storage/prune tools are draft-scoped** | The version-history timeline is document-wide, but storage size and pruning act on the active draft's snapshots only (labeled as such in the panel). |
 

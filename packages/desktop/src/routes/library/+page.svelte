@@ -19,6 +19,10 @@ import {
     trashDocument,
     updateDocumentMeta,
 } from "$lib/db";
+import {
+    getNewDocumentUndoHistoryAnalytics,
+    getUndoHistoryPolicyAnalytics,
+} from "$lib/db/historyPolicy";
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import ContinuePill from "$lib/library/ContinuePill.svelte";
 import DocumentGrid from "$lib/library/DocumentGrid.svelte";
@@ -28,6 +32,7 @@ import PreviewPanel from "$lib/library/PreviewPanel.svelte";
 import { parseTags } from "$lib/library/tags";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
+import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -182,8 +187,9 @@ async function handleTrashRetentionChange(days: number | null) {
 }
 
 async function handleNew() {
-    const id = await createDocument();
-    posthog.capture("document_created");
+    const persistHistory = getPersistUndoHistoryForNewDocuments();
+    const id = await createDocument("Untitled", persistHistory);
+    posthog.capture("document_created", getNewDocumentUndoHistoryAnalytics(persistHistory));
     $currentDocumentId = id;
     $currentDocumentTitle = "Untitled";
     goToEditor();
@@ -197,15 +203,19 @@ async function handleOpen(id: string) {
         toast.info("This document is already open in another window.");
         return;
     }
-    posthog.capture("document_opened");
-    $currentDocumentId = id;
     const doc = documents.find((d) => d.id === id);
+    posthog.capture("document_opened", doc ? getUndoHistoryPolicyAnalytics(doc) : undefined);
+    $currentDocumentId = id;
     if (doc) $currentDocumentTitle = doc.title;
     goToEditor();
 }
 
 function handleOpenInNewWindow(id: string) {
-    posthog.capture("document_opened_new_window");
+    const doc = documents.find((candidate) => candidate.id === id);
+    posthog.capture(
+        "document_opened_new_window",
+        doc ? getUndoHistoryPolicyAnalytics(doc) : undefined,
+    );
     openInNewWindow(id);
 }
 

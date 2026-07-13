@@ -8,7 +8,8 @@
  * giving the intended Yjs last-writer-wins conflict behavior per group.
  *
  * Origin discipline mirrors yjsAnnotations.ts:
- *   - ydoc.transact(..., "local") marks writes this plugin originated.
+ *   - ydoc.transact(..., "local") marks user writes this plugin originated.
+ *   - ydoc.transact(..., "init") marks untracked owner bootstrap writes.
  *   - yjsVersionGroupSync marks CM transactions this plugin dispatched from Yjs.
  */
 import type {
@@ -91,7 +92,7 @@ export function createVersionGroupSyncPlugin(
                 queueMicrotask(() => {
                     if (this.destroyed) return;
 
-                    this._diffAndReconcile(groups);
+                    this._diffAndReconcile(groups, "init");
                 });
             }
 
@@ -148,7 +149,10 @@ export function createVersionGroupSyncPlugin(
                 });
             }
 
-            private _diffAndReconcile(groups: VersionGroups): void {
+            private _diffAndReconcile(
+                groups: VersionGroups,
+                origin: "init" | "local" = "local",
+            ): void {
                 const ydoc = versionGroupsMap.doc;
                 if (!ydoc) return;
 
@@ -173,7 +177,7 @@ export function createVersionGroupSyncPlugin(
                             versionGroupsMap.set(groupId, desired);
                         }
                     }
-                }, "local");
+                }, origin);
             }
         },
     );

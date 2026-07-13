@@ -37,6 +37,7 @@ export async function installTauriMock(page: Page) {
                             wordCount: 0,
                             previewText: "",
                             tags: "[]",
+                            persistHistory: true,
                         },
                     ];
                 if (cmd === "cmd_create_document") return "doc-1";

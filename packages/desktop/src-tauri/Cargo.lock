@@ -4126,7 +4126,7 @@ dependencies = [
 
 [[package]]
 name = "quillium"
-version = "0.21.9"
+version = "0.22.0"
 dependencies = [
  "fastembed",
  "fontdb",

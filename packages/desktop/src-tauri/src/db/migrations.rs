@@ -17,6 +17,10 @@
 
 use rusqlite::{params, Connection, OptionalExtension, Result};
 
+/// 0.22 release boundary. Documents created before 2026-07-14T00:00:00Z
+/// retain Quillium's historical cross-restart undo behavior.
+const LEGACY_PERSIST_HISTORY_CUTOFF_MS: i64 = 1_783_987_200_000;
+
 pub enum MigrationKind {
     Sql(&'static str),
     Rust(fn(&Connection) -> Result<()>),
@@ -123,6 +127,16 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 7,
         name: "draft_branch_relation",
         kind: MigrationKind::Rust(draft_branch_relation),
+    },
+    Migration {
+        version: 8,
+        name: "document_history_policy",
+        kind: MigrationKind::Rust(document_history_policy),
+    },
+    Migration {
+        version: 9,
+        name: "grandfather_document_history_policy",
+        kind: MigrationKind::Rust(grandfather_document_history_policy),
     },
 ];
 
@@ -294,6 +308,33 @@ fn draft_branch_relation(conn: &Connection) -> Result<()> {
             [],
         )?;
     }
+    Ok(())
+}
+
+/// Documents predating the 0.22 release keep cross-restart undo. Newer
+/// documents explicitly set their policy at creation time, defaulting to the
+/// safer session-only mode.
+fn document_history_policy(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "documents", "persist_history")? {
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN persist_history INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+/// Migration 9 is separate from the column addition so databases that already
+/// ran migration 8 while dogfooding pre-release 0.22 still grandfather every
+/// document created before the release boundary.
+fn grandfather_document_history_policy(conn: &Connection) -> Result<()> {
+    // Creation time is the temporary release-version proxy because legacy
+    // documents do not record the app version that created them. The fixed UTC
+    // boundary is deterministic across locales and migration dates.
+    conn.execute(
+        "UPDATE documents SET persist_history = 1 WHERE created_at < ?1",
+        params![LEGACY_PERSIST_HISTORY_CUTOFF_MS],
+    )?;
     Ok(())
 }
 
@@ -482,6 +523,14 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(version, MIGRATIONS.last().unwrap().version);
+        let persist_history: i64 = conn
+            .query_row(
+                "SELECT persist_history FROM documents WHERE id = 'doc1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(persist_history, 1);
         // FTS index was rebuilt from the existing row.
         let hits: i64 = conn
             .query_row(
@@ -491,6 +540,68 @@ mod tests {
             )
             .unwrap();
         assert_eq!(hits, 1);
+    }
+
+    #[test]
+    fn document_history_policy_uses_release_cutoff() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        if let MigrationKind::Sql(sql) = &MIGRATIONS[0].kind {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('before', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('at', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('after', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS + 1],
+        )
+        .unwrap();
+
+        document_history_policy(&conn).unwrap();
+        grandfather_document_history_policy(&conn).unwrap();
+
+        for (id, expected) in [("before", 1), ("at", 0), ("after", 0)] {
+            let actual: i64 = conn
+                .query_row(
+                    "SELECT persist_history FROM documents WHERE id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(actual, expected, "unexpected policy for {id}");
+        }
+    }
+
+    #[test]
+    fn grandfathering_catches_documents_created_after_policy_column() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        if let MigrationKind::Sql(sql) = &MIGRATIONS[0].kind {
+            conn.execute_batch(sql).unwrap();
+        }
+        document_history_policy(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('late-legacy', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1],
+        )
+        .unwrap();
+
+        grandfather_document_history_policy(&conn).unwrap();
+
+        let actual: i64 = conn
+            .query_row(
+                "SELECT persist_history FROM documents WHERE id = 'late-legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(actual, 1);
     }
 
     #[test]

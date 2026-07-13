@@ -11,10 +11,10 @@ use tauri_plugin_dialog::DialogExt;
 
 use db::{
     documents::{
-        create_document, create_draft, delete_document, get_document, get_semantic_search_enabled,
-        get_trash_retention, list_documents, list_drafts, list_trashed_documents,
-        purge_expired_trash, restore_document, set_semantic_search_enabled, set_trash_retention,
-        trash_document, update_document_meta,
+        create_document_with_history, create_draft, delete_document, get_document,
+        get_semantic_search_enabled, get_trash_retention, list_documents, list_drafts,
+        list_trashed_documents, purge_expired_trash, restore_document, set_semantic_search_enabled,
+        set_trash_retention, trash_document, update_document_meta,
     },
     events::{
         append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
@@ -64,9 +64,14 @@ fn cmd_get_document(
 }
 
 #[tauri::command]
-fn cmd_create_document(state: tauri::State<DbState>, title: String) -> Result<String, String> {
+fn cmd_create_document(
+    state: tauri::State<DbState>,
+    title: String,
+    persist_history: Option<bool>,
+) -> Result<String, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    create_document(&conn, &title).map_err(|e| e.to_string())
+    create_document_with_history(&conn, &title, persist_history.unwrap_or(false))
+        .map_err(|e| e.to_string())
 }
 
 /// `body_text` (the full plain text) is optional: rename/tag updates omit it

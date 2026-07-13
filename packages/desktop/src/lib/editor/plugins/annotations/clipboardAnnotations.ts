@@ -58,6 +58,7 @@ import {
     SerializedAnnotationsSchema,
     getNewId,
     isAnnotationOfType,
+    newAnnotationHistoryId,
     newVersionId,
     normalizeRevision,
 } from "./models";
@@ -65,8 +66,8 @@ import { cleanRangesOf } from "./utils";
 
 // The clipboard-serialized annotation shape (SerializedAnnotation) is derived
 // from the canonical RawAnnotationSchema in models.ts — see the "Clipboard-
-// serialized shape" section there — so a new field on any annotation type rides
-// across copy/paste automatically with no change in this file.
+// serialized shape" section there. User-facing per-type fields ride across
+// automatically; the private history-lineage ID is intentionally regenerated.
 
 // ── Side-table ──────────────────────────────────────────────────────────────
 // Fallback for when text/html is stripped from the clipboard. Keyed by a hash
@@ -236,10 +237,9 @@ export function serializeAnnotationsForCopy(
             // The selection stores anchor/head (direction matters for nothing
             // here, but we preserve it). Rebase relative to the joined-text start.
             const { anchor, head } = annotation.selection.main;
-            // Carry every field except id/selection verbatim — type-specific data
-            // (replacements, versions, …) rides along without enumerating it, so a
-            // new annotation field needs no change here.
-            const { id: _id, selection: _selection, ...rest } = annotation;
+            // Carry user content except id/selection verbatim. The private history
+            // lineage is also stripped because paste mints a new annotation.
+            const { id: _id, selection: _selection, _historyId, ...rest } = annotation;
             result.push({
                 ...rest,
                 relAnchor: rangeStart + (anchor - from),
@@ -342,7 +342,13 @@ function rebuildAnnotation(
     // Inverse of serialization: drop the rebased offsets, restore id/selection,
     // and carry every other field (thread, replacements, versions, …) verbatim.
     const { relAnchor: _relAnchor, relHead: _relHead, ...rest } = serialized;
-    const rebuilt = { ...rest, id, selection } as GenericAnnotation;
+    const rebuilt = {
+        ...rest,
+        id,
+        selection,
+        // A paste is a new annotation lineage even when its numeric ID is reused.
+        _historyId: newAnnotationHistoryId(),
+    } as GenericAnnotation;
     if (isAnnotationOfType(rebuilt, "revision")) {
         // Heal both legacy (activeVersionIndex / no version ids) and new-shape
         // payloads into a consistent revision, then regenerate fresh version ids

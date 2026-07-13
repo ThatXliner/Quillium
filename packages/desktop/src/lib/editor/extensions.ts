@@ -19,8 +19,7 @@ import { appSettings } from "$lib/settings.svelte";
  *   - Editor.svelte calls `getExtensions(options)` and feeds the
  *     result into an EditorState.
  *   - `savedFields` is used by both serialisation (save) and
- *     deserialisation (load) to persist history and annotations
- *     across sessions.
+ *     deserialisation (load) to persist annotations across sessions.
  */
 import {
     autocompletion,
@@ -31,7 +30,6 @@ import {
 import {
     defaultKeymap,
     history,
-    historyField,
     historyKeymap,
     indentWithTab,
     redo,
@@ -52,14 +50,25 @@ import { dictionaryExtension } from "./dictionaryPlugin";
 import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
 import { markdownFormattingKeymap } from "./markdownFormatting";
+import {
+    persistHistoryFacet,
+    persistentHistoryField,
+    persistentHistoryRuntimeExtension,
+    persistentHistoryStateExtension,
+} from "./persistentHistory";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
 import { versionGroupField } from "./plugins/annotations";
 import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
-// Adding a field here means it survives across application restarts.
-export const savedFields = { historyField, annotationField, versionGroupField };
+// persistentHistoryField wraps CodeMirror's history JSON with tagged Quillium
+// StateEffects, keeping cross-restart undo lossless for annotations and versions.
+export const savedFields = {
+    historyField: persistentHistoryField,
+    annotationField,
+    versionGroupField,
+};
 // Nested editors delegate undo/redo to the parent, so they don't own
 // a history stack. Only annotationField is persisted in version blobs
 // (for nested annotations created inside a modal).
@@ -111,8 +120,9 @@ const nestedEditorKeymap: KeyBinding[] = [
 
 export const harperCompartment = new Compartment();
 export const languageCompartment = new Compartment();
-// Wraps history() so enableCollab(asOwner=false) can reconfigure it to []
-// (joiner peer has no CM history; undo via Y.UndoManager instead). See JOINER-01.
+// Wraps history() so live collaboration can reconfigure it to []. Every peer
+// uses the scoped Y.UndoManager while live; CodeMirror history is rebuilt empty
+// when collaboration ends.
 export const historyCompartment = new Compartment();
 
 export function getEditorLanguageExtension(mode = appSettings.editorMode) {
@@ -121,11 +131,24 @@ export function getEditorLanguageExtension(mode = appSettings.editorMode) {
 
 export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
+    const persistHistory = options?.persistHistory ?? true;
     return [
         highlightSpecialChars(),
+        // Read-only previews and nested editors omit history entirely. Mark
+        // them non-persistent too so event replay never attempts an undo/redo
+        // command against a state that has no history field installed.
+        persistHistoryFacet.of(withHistory && persistHistory),
         // Default is 500 milliseconds
         // but I find that too long
-        ...(withHistory ? [historyCompartment.of(history({ newGroupDelay: 250 }))] : []),
+        ...(withHistory
+            ? [
+                  persistentHistoryStateExtension,
+                  historyCompartment.of([
+                      persistentHistoryRuntimeExtension,
+                      history({ newGroupDelay: 250 }),
+                  ]),
+              ]
+            : []),
         // Will re-enable for multi-selection support
         // drawSelection(),
         dropCursor(),

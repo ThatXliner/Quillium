@@ -15,8 +15,8 @@ mirrored through Yjs CRDTs.
 flowchart LR
     Owner["Owner<br/>CodeMirror EditorView"]
     Joiner["Joiner<br/>CodeMirror EditorView"]
-    OwnerExt["Owner Extensions<br/>binding + annotations + awareness<br/>keeps CM history"]
-    JoinerExt["Joiner Extensions<br/>binding + annotations + awareness<br/>+ Y.UndoManager"]
+    OwnerExt["Owner Live Extensions<br/>binding + annotations + awareness<br/>+ Y.UndoManager; no CM history"]
+    JoinerExt["Joiner Live Extensions<br/>binding + annotations + awareness<br/>+ Y.UndoManager; no CM history"]
     OwnerDoc["Owner Y.Doc<br/>Y.Text + Y.Map"]
     JoinerDoc["Joiner Y.Doc<br/>Y.Text + Y.Map"]
     Relay["Relay Server<br/>packages/relay"]
@@ -234,7 +234,7 @@ and linked revision switching identical between Web Preview and desktop history.
 3. `registerDocumentForCollab()` upserts `sync_documents`
 4. `createYjsProvider()` opens WebsocketProvider with JWT
 5. After sync, owner replaces relay Y.Text with local doc
-6. `enableCollab()` installs Yjs extensions
+6. `enableCollab()` removes CodeMirror history and installs Yjs extensions + Y.UndoManager
 7. UI shows "You're live!"
 
 ### Joiner Joins
@@ -245,22 +245,23 @@ and linked revision switching identical between Web Preview and desktop history.
 4. `createYjsProvider()` opens WebsocketProvider
 5. After sync, replace local editor with relay Y.Text
 6. Clear local annotations, project shared annotations
-7. `enableCollab()` installs Yjs extensions + Y.UndoManager
+7. `enableCollab()` removes CodeMirror history and installs Yjs extensions + Y.UndoManager
 8. UI shows "Joined shared document"
 
 ### Disconnect
 
 1. `disableCollab()` calls `disconnectYjsProvider()`
 2. `collabCompartment` reconfigured to `[]`
-3. `historyCompartment` restores standard CM history
+3. `historyCompartment` installs a fresh, empty CodeMirror history stack
 4. Joiners restore captured snapshot and navigate back
 
 ## Unified Undo (Y.UndoManager)
 
-Tracks both Y.Text and Y.Map in a single stack:
+Owners and joiners both remove CodeMirror history while live and use one scoped Yjs stack for
+document text, annotations, and version groups:
 
 ```typescript
-const undoManager = new Y.UndoManager([ytext, ymap], {
+const undoManager = new Y.UndoManager([ytext, ymap, yVersionGroups], {
     trackedOrigins: new Set(["local"]),
     captureTimeout: 500,
 });
@@ -270,6 +271,11 @@ const undoManager = new Y.UndoManager([ytext, ymap], {
 - `Mod-Shift-z` / `Mod-y` → `undoManager.redo()`
 - `breakUndoCapture()` — force new step at modal boundaries
 - `addSubtreeToUndoScope()` — register nested editor Y.Text
+
+Only `"local"` user transactions are tracked. Owner bootstrap writes use `"init"`, so seeding the
+room from existing text, annotations, or version groups does not create a first undo item. Ending
+the live session discards the Yjs stack and starts a fresh CodeMirror stack; a pre-collaboration CM
+branch is never replayed across collaborative changes.
 
 ## Connection States
 

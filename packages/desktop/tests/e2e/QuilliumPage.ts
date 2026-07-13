@@ -270,6 +270,7 @@ export class QuilliumPage {
                                     wordCount: 0,
                                     previewText: "",
                                     tags: "[]",
+                                    persistHistory: true,
                                 },
                             ];
                         if (cmd === "cmd_create_document") return "doc-test-1";

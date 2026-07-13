@@ -11,8 +11,14 @@ import {
     setActiveDraft,
     updateDocumentMeta,
 } from "$lib/db";
+import {
+    getNewDocumentUndoHistoryAnalytics,
+    getUndoHistoryPolicyAnalytics,
+} from "$lib/db/historyPolicy";
+import type { DocumentMeta } from "$lib/db/types";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
+import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
@@ -188,14 +194,20 @@ function buildStateFromLoad(
     snapshotJson: string | null,
     eventsSince: EventRecord[],
     readOnly = false,
+    persistHistory = true,
 ): EditorState {
+    const extensionOptions = { ...getExtensionOptions, persistHistory };
     const extensions = readOnly
-        ? [getExtensions(getExtensionOptions), EditorState.readOnly.of(true)]
-        : getExtensions(getExtensionOptions);
+        ? [getExtensions(extensionOptions), EditorState.readOnly.of(true)]
+        : getExtensions(extensionOptions);
     if (eventsSince.length > 0) {
         console.log(`[Editor] Replaying ${eventsSince.length} event(s) since last snapshot.`);
     }
     return reconstructState(snapshotJson, eventsSince, extensions);
+}
+
+function captureUndoHistoryPolicyLoaded(document: DocumentMeta): void {
+    posthog.capture("undo_history_policy_loaded", getUndoHistoryPolicyAnalytics(document));
 }
 
 // ── State restoration ───────────────────────────────────────────
@@ -207,13 +219,19 @@ const fromSave = (async () => {
         const doc = await getDocumentMeta(docId);
         if (doc) {
             currentDocumentTitle.set(doc.title);
+            captureUndoHistoryPolicyLoaded(doc);
         }
         const resolved = await drafts.refreshTabState(docId);
         currentDraftId.set(resolved?.draftId ?? null);
         if (resolved) {
             const loaded = await loadDocumentState(docId, resolved.draftId);
             const locked = drafts.lockedOf(resolved.draftId);
-            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
+            return buildStateFromLoad(
+                loaded.snapshotStateJson,
+                loaded.eventsSince,
+                locked,
+                doc?.persistHistory ?? true,
+            );
         }
     } else {
         // No document set — load the most-recently-updated document
@@ -222,13 +240,19 @@ const fromSave = (async () => {
             const doc = docs[0];
             currentDocumentId.set(doc.id);
             currentDocumentTitle.set(doc.title);
+            captureUndoHistoryPolicyLoaded(doc);
 
             const resolved = await drafts.refreshTabState(doc.id);
             currentDraftId.set(resolved?.draftId ?? null);
             if (resolved) {
                 const loaded = await loadDocumentState(doc.id, resolved.draftId);
                 const locked = drafts.lockedOf(resolved.draftId);
-                return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
+                return buildStateFromLoad(
+                    loaded.snapshotStateJson,
+                    loaded.eventsSince,
+                    locked,
+                    doc.persistHistory ?? true,
+                );
             }
         }
     }
@@ -241,13 +265,21 @@ const fromSave = (async () => {
     const isFirstTime = !localStorage.getItem("quillium_tutorial_seen");
     const title = isFirstTime ? SAMPLE_DOCUMENT_TITLE : "Untitled";
     const content = isFirstTime ? SAMPLE_DOCUMENT_CONTENT : "";
-    const newDocId = await createDocument(title);
+    const persistHistory = getPersistUndoHistoryForNewDocuments();
+    const newDocId = await createDocument(title, persistHistory);
+    posthog.capture(
+        "undo_history_policy_loaded",
+        getNewDocumentUndoHistoryAnalytics(persistHistory),
+    );
     // createDraft also creates the document's "Main" tab when none exists.
     const newDraftId = await createDraft(newDocId, "main");
     await drafts.refreshTabState(newDocId);
     const state = EditorState.create({
         doc: content,
-        extensions: getExtensions(getExtensionOptions),
+        extensions: getExtensions({
+            ...getExtensionOptions,
+            persistHistory,
+        }),
     });
     if (isFirstTime) {
         // Persist the initial content immediately so it survives app restarts
@@ -304,23 +336,29 @@ export async function loadDocument(id: string) {
     // can't be consumed by a new document whose annotations share the same IDs.
     annotationEventBus.clearPendingSelections();
 
-    const resolved = await drafts.refreshTabState(id);
+    const [resolved, docMeta] = await Promise.all([
+        drafts.refreshTabState(id),
+        getDocumentMeta(id),
+    ]);
     if (gen !== loadGeneration) return;
+    if (docMeta) captureUndoHistoryPolicyLoaded(docMeta);
     currentDraftId.set(resolved?.draftId ?? null);
     lastPersistedEventId.set(-1);
     lastSavedAt.set(null);
 
     if (!resolved) {
         currentDocumentTitle.set("Untitled");
-        const state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+        const state = EditorState.create({
+            extensions: getExtensions({
+                ...getExtensionOptions,
+                persistHistory: docMeta?.persistHistory ?? true,
+            }),
+        });
         $editorView.setState(state);
         return;
     }
 
-    const [loaded, docMeta] = await Promise.all([
-        loadDocumentState(id, resolved.draftId),
-        getDocumentMeta(id),
-    ]);
+    const loaded = await loadDocumentState(id, resolved.draftId);
     if (gen !== loadGeneration) return;
     currentDocumentTitle.set(docMeta?.title ?? "Untitled");
 
@@ -335,7 +373,12 @@ export async function loadDocument(id: string) {
     lastPersistedEventId.set(latestEventId);
 
     const locked = drafts.lockedOf(resolved.draftId);
-    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
+    const state = buildStateFromLoad(
+        loaded.snapshotStateJson,
+        loaded.eventsSince,
+        locked,
+        docMeta?.persistHistory ?? true,
+    );
     $editorView.setState(state);
     syncStoresToEditorState(state);
 }
@@ -356,7 +399,10 @@ async function switchToDraft(tabId: string, draftId: string): Promise<void> {
         return;
     }
 
-    const loaded = await loadDocumentState(docId, draftId);
+    const [loaded, docMeta] = await Promise.all([
+        loadDocumentState(docId, draftId),
+        getDocumentMeta(docId),
+    ]);
     if (gen !== loadGeneration || get(currentDocumentId) !== docId || get(currentTabId) !== tabId) {
         return;
     }
@@ -367,7 +413,12 @@ async function switchToDraft(tabId: string, draftId: string): Promise<void> {
               ? loaded.snapshotEventId
               : -1;
     const locked = drafts.lockedOf(draftId);
-    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
+    const state = buildStateFromLoad(
+        loaded.snapshotStateJson,
+        loaded.eventsSince,
+        locked,
+        docMeta?.persistHistory ?? true,
+    );
 
     // Commit the tab/draft pointer only after its state is ready and this is
     // still the newest request. That keeps an older, slower load from changing
@@ -403,8 +454,16 @@ async function seedStateJson(sourceDraftId: string): Promise<string> {
         return JSON.stringify(view.state.toJSON(savedFields));
     }
     const docId = get(currentDocumentId);
-    const loaded = await loadDocumentState(docId ?? "", sourceDraftId);
-    const sourceState = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+    const [loaded, docMeta] = await Promise.all([
+        loadDocumentState(docId ?? "", sourceDraftId),
+        docId ? getDocumentMeta(docId) : Promise.resolve(null),
+    ]);
+    const sourceState = buildStateFromLoad(
+        loaded.snapshotStateJson,
+        loaded.eventsSince,
+        false,
+        docMeta?.persistHistory ?? true,
+    );
     return JSON.stringify(sourceState.toJSON(savedFields));
 }
 

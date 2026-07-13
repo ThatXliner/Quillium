@@ -1,6 +1,6 @@
 {
   "name": "@quillium/desktop",
-  "version": "0.21.9",
+  "version": "0.22.0",
   "description": "",
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "tauri:mas": "VITE_MAS=true tauri build --config src-tauri/tauri.mas.conf.json --bundles app --target aarch64-apple-darwin",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:collab-fuzz": "COLLAB_FUZZ=1 vitest run src/lib/collab/fuzz/convergence.fuzz.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:coverage": "vitest run --coverage",
@@ -31,7 +32,7 @@
     "changelog:shot": "bun scripts/changelog-shot.ts",
     "icons": "bun scripts/icons.ts"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",
     "@ai-sdk/deepseek": "^2.0.35",
@@ -40,11 +41,11 @@
     "@ai-sdk/svelte": "^4.0.194",
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/collab": "^6.1.1",
-    "@codemirror/commands": "^6.10.3",
+    "@codemirror/commands": "6.10.3",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/language": "^6.12.2",
     "@codemirror/search": "^6.7.0",
-    "@codemirror/state": "^6.6.0",
+    "@codemirror/state": "6.6.0",
     "@codemirror/view": "^6.41.1",
     "@fontsource/caveat": "^5.2.8",
     "@fontsource/courier-prime": "^5.2.8",

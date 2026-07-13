@@ -27,8 +27,9 @@ import { Annotation, Transaction } from "@codemirror/state";
  * ─────────────────────────────────────────────────────────────────────────
  *  Yjs is canonical. The CodeMirror `annotationField` is a DERIVED PROJECTION
  *  of the Yjs `annotations` Y.Map. Reads of annotation state for sync purposes
- *  go through `yjsAnnotationToCodeMirror(yMap)`; writes go through Yjs first
+ *  go through `yjsAnnotationToCodeMirror(yMap)`; user writes go through Yjs first
  *  inside `ydoc.transact(fn, "local")` and the CM dispatch is the projection.
+ *  Owner bootstrap data uses the untracked `"init"` origin.
  *
  *  This file does NOT enforce that contract for the entire codebase yet (Phases
  *  3–5 do that). It is the SOLE writer of `annotationField` on the read path
@@ -81,7 +82,8 @@ import { Annotation, Transaction } from "@codemirror/state";
  *  the active pointer. The read path still tolerates older index-keyed rooms.
  *
  *  Origin tagging:
- *    - ydoc.transact(..., "local")  : writes this plugin originated
+ *    - ydoc.transact(..., "local")  : user writes this plugin originated
+ *    - ydoc.transact(..., "init")   : owner bootstrap writes (not undoable)
  *    - Transactions tagged with yjsAnnotationSync(true) : dispatches this plugin
  *      originated on the CM side (skip to avoid loops)
  *
@@ -101,6 +103,7 @@ import {
 } from "./annotationSchema";
 import { absoluteToRelative } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
+import { yjsAnnotation } from "./yjsBinding";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
@@ -306,7 +309,7 @@ export function createAnnotationSyncPlugin(
                             scopeAnnotations.set(yjsId, node);
                             this.syncAnnotationFields(ann, node, ydoc);
                         }
-                    }, "local");
+                    }, "init");
                 });
             }
 
@@ -371,7 +374,23 @@ export function createAnnotationSyncPlugin(
                             e.is(_updateRevisionVersionState),
                     ),
                 );
-                if (!hasAnnotationEffect && !hasNestedEditorEdit) return;
+                // A pure text edit can still remove annotations when their
+                // mapped ranges collapse. Reconcile those membership changes
+                // so Yjs does not retain annotations that CodeMirror dropped.
+                const beforeAnnotations = update.startState.field(annotationField);
+                const afterAnnotations = update.state.field(annotationField);
+                const beforeIds = Object.keys(beforeAnnotations);
+                const isRemoteTextProjection = update.transactions.some((tr) =>
+                    tr.annotation(yjsAnnotation),
+                );
+                const annotationMembershipChanged =
+                    !isRemoteTextProjection &&
+                    (beforeIds.length !== Object.keys(afterAnnotations).length ||
+                        beforeIds.some((id) => afterAnnotations[Number(id)] === undefined));
+
+                if (!hasAnnotationEffect && !hasNestedEditorEdit && !annotationMembershipChanged) {
+                    return;
+                }
 
                 this.diffAndReconcile(update);
             }

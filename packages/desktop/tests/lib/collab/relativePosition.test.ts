@@ -103,17 +103,43 @@ describe("relativePosition", () => {
             expect(decoded === null || decoded.main.from === decoded.main.to).toBe(true);
         });
 
-        it("handles insertion at anchor boundary", () => {
+        it("includes insertion at the start boundary", () => {
             ytext.insert(0, "hello world");
             const selection = EditorSelection.single(5, 6); // " " (space)
             const encoded = absoluteToRelative(ytext, selection);
 
-            // Insert at the exact anchor start
             ytext.insert(5, "XXX");
 
             const decoded = relativeToAbsolute(ydoc, ytext, encoded.startPos, encoded.endPos);
             expect(decoded).not.toBeNull();
-            // Position should track correctly
+            expect(decoded!.main.from).toBe(8);
+            expect(decoded!.main.to).toBe(9);
+        });
+
+        it("excludes insertion at the end boundary", () => {
+            ytext.insert(0, "hello world");
+            const selection = EditorSelection.single(0, 5); // "hello"
+            const encoded = absoluteToRelative(ytext, selection);
+
+            ytext.insert(5, "XXX");
+
+            const decoded = relativeToAbsolute(ydoc, ytext, encoded.startPos, encoded.endPos);
+            expect(decoded).not.toBeNull();
+            expect(decoded!.main.from).toBe(0);
+            expect(decoded!.main.to).toBe(5);
+        });
+
+        it("keeps a cursor collapsed after insertion at its position", () => {
+            ytext.insert(0, "hello world");
+            const selection = EditorSelection.create([EditorSelection.cursor(5)]);
+            const encoded = absoluteToRelative(ytext, selection);
+
+            ytext.insert(5, "XXX");
+
+            const decoded = relativeToAbsolute(ydoc, ytext, encoded.startPos, encoded.endPos);
+            expect(decoded).not.toBeNull();
+            expect(decoded!.main.empty).toBe(true);
+            expect(decoded!.main.from).toBe(8);
         });
     });
 
