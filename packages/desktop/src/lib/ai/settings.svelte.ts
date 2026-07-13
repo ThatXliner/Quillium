@@ -219,6 +219,10 @@ export function hasApiKey(): boolean {
 }
 
 export async function loadApiKeyForProvider(provider: Provider) {
+    if (provider === "openai-oauth") {
+        aiSettings.apiKey = "";
+        return;
+    }
     try {
         const key = await invoke<string | null>("get_api_key", { provider });
         aiSettings.apiKey = key ?? "";
@@ -234,6 +238,10 @@ export async function loadApiKeyForProvider(provider: Provider) {
 let _apiKeyLoadPromise: Promise<void> | null = null;
 
 export function ensureApiKeyLoaded(): Promise<void> {
+    if (aiSettings.provider === "openai-oauth") {
+        aiSettings.apiKey = "";
+        return Promise.resolve();
+    }
     if (_apiKeyLoadPromise) return _apiKeyLoadPromise;
     if (typeof window === "undefined" || !localStorage.getItem(HAS_API_KEY_KEY)) {
         return Promise.resolve();
