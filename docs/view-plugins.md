@@ -142,10 +142,10 @@ the stock representation could produce a text-only undo and corrupt the semantic
 `persistentHistoryField` stores tagged Quillium effects beside CodeMirror's native history branches
 and restores both together. The adapter is deliberately fail-closed: a pre-0.22 legacy stack,
 malformed payload, unknown effect, or incompatible runtime shape starts with a fresh stack rather
-than a partial one. Existing documents retain persistent history, with that one-time legacy reset;
-new documents default to session-only unless **Undo after restart for new documents** was enabled
-before they were created. The setting is captured per document and never retroactively changes an
-existing document.
+than a partial one. Documents created before July 14, 2026 retain persistent history, with that
+one-time legacy reset; newer documents default to session-only unless **Undo after restart for new
+documents** was enabled before they were created. The setting is captured per document and never
+retroactively changes an existing document.
 
 The same fail-closed rule covers event tails: a legacy or fallback event can restore content, but it
 cannot prove that a previously saved undo branch remains semantically complete. Persistent loads

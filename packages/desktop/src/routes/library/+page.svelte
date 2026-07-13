@@ -19,6 +19,10 @@ import {
     trashDocument,
     updateDocumentMeta,
 } from "$lib/db";
+import {
+    getNewDocumentUndoHistoryAnalytics,
+    getUndoHistoryPolicyAnalytics,
+} from "$lib/db/historyPolicy";
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import ContinuePill from "$lib/library/ContinuePill.svelte";
 import DocumentGrid from "$lib/library/DocumentGrid.svelte";
@@ -183,8 +187,9 @@ async function handleTrashRetentionChange(days: number | null) {
 }
 
 async function handleNew() {
-    const id = await createDocument("Untitled", getPersistUndoHistoryForNewDocuments());
-    posthog.capture("document_created");
+    const persistHistory = getPersistUndoHistoryForNewDocuments();
+    const id = await createDocument("Untitled", persistHistory);
+    posthog.capture("document_created", getNewDocumentUndoHistoryAnalytics(persistHistory));
     $currentDocumentId = id;
     $currentDocumentTitle = "Untitled";
     goToEditor();
@@ -198,15 +203,19 @@ async function handleOpen(id: string) {
         toast.info("This document is already open in another window.");
         return;
     }
-    posthog.capture("document_opened");
-    $currentDocumentId = id;
     const doc = documents.find((d) => d.id === id);
+    posthog.capture("document_opened", doc ? getUndoHistoryPolicyAnalytics(doc) : undefined);
+    $currentDocumentId = id;
     if (doc) $currentDocumentTitle = doc.title;
     goToEditor();
 }
 
 function handleOpenInNewWindow(id: string) {
-    posthog.capture("document_opened_new_window");
+    const doc = documents.find((candidate) => candidate.id === id);
+    posthog.capture(
+        "document_opened_new_window",
+        doc ? getUndoHistoryPolicyAnalytics(doc) : undefined,
+    );
     openInNewWindow(id);
 }
 

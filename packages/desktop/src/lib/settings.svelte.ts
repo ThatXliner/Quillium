@@ -78,7 +78,7 @@ export type AppSettings = {
     annotationPanelWidth: number;
     readonlyShareAutoUpdate: boolean;
     readonlyShareAutoUpdateDebounceMs: number;
-    /** Captured per document at creation; existing documents are grandfathered on. */
+    /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
     persistUndoHistoryForNewDocuments: boolean;
     // Where annotation cards are placed when the AI sidebar is hidden (AI off):
     //   "visual-split" — balance cards across a left and right column

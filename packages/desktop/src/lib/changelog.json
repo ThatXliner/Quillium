@@ -1,7 +1,7 @@
 {
   "0.22": {
     "date": "2026-07-13",
-    "content": "Your **undo history now keeps the whole edit together** — text, comments, revisions, and linked versions move in sync through undo and redo, including while Quillium recovers edits after a restart. If an older saved undo stack cannot represent all of those pieces safely, Quillium clears that stack once instead of risking a partial undo.\n\nNew documents now begin each session with a **fresh undo stack** by default. If you prefer undo to survive app restarts, enable **Settings → Editor → Undo after restart for new documents**; the choice applies to documents you create afterward. Existing documents keep their cross-restart undo behavior.\n\nUndo is safer in a **live collaboration**, too: every participant now gets a personal collaborative undo stack, so undoing your work preserves later text, comments, and linked-version changes made by someone else."
+    "content": "Your **undo history** just got a whole lot more robust.\n\nA consequence of this is that documents now begin each session with a **fresh undo stack** by default. If you prefer undo to survive app restarts, enable **Settings → Editor → Undo after restart for new documents**; the choice applies to documents you create afterward. Documents created before July 14, 2026 keep their cross-restart undo behavior.\n\nUndo is safer in a **live collaboration**, too: every participant now gets a personal collaborative undo stack, so undoing your work preserves later text, comments, and linked-version changes made by someone else."
   },
   "0.21": {
     "date": "2026-07-01",

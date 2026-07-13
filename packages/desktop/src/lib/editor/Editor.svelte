@@ -11,6 +11,11 @@ import {
     setActiveDraft,
     updateDocumentMeta,
 } from "$lib/db";
+import {
+    getNewDocumentUndoHistoryAnalytics,
+    getUndoHistoryPolicyAnalytics,
+} from "$lib/db/historyPolicy";
+import type { DocumentMeta } from "$lib/db/types";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
 import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
@@ -201,6 +206,10 @@ function buildStateFromLoad(
     return reconstructState(snapshotJson, eventsSince, extensions);
 }
 
+function captureUndoHistoryPolicyLoaded(document: DocumentMeta): void {
+    posthog.capture("undo_history_policy_loaded", getUndoHistoryPolicyAnalytics(document));
+}
+
 // ── State restoration ───────────────────────────────────────────
 const fromSave = (async () => {
     const docId = get(currentDocumentId);
@@ -210,6 +219,7 @@ const fromSave = (async () => {
         const doc = await getDocumentMeta(docId);
         if (doc) {
             currentDocumentTitle.set(doc.title);
+            captureUndoHistoryPolicyLoaded(doc);
         }
         const resolved = await drafts.refreshTabState(docId);
         currentDraftId.set(resolved?.draftId ?? null);
@@ -230,6 +240,7 @@ const fromSave = (async () => {
             const doc = docs[0];
             currentDocumentId.set(doc.id);
             currentDocumentTitle.set(doc.title);
+            captureUndoHistoryPolicyLoaded(doc);
 
             const resolved = await drafts.refreshTabState(doc.id);
             currentDraftId.set(resolved?.draftId ?? null);
@@ -256,6 +267,10 @@ const fromSave = (async () => {
     const content = isFirstTime ? SAMPLE_DOCUMENT_CONTENT : "";
     const persistHistory = getPersistUndoHistoryForNewDocuments();
     const newDocId = await createDocument(title, persistHistory);
+    posthog.capture(
+        "undo_history_policy_loaded",
+        getNewDocumentUndoHistoryAnalytics(persistHistory),
+    );
     // createDraft also creates the document's "Main" tab when none exists.
     const newDraftId = await createDraft(newDocId, "main");
     await drafts.refreshTabState(newDocId);
@@ -326,6 +341,7 @@ export async function loadDocument(id: string) {
         getDocumentMeta(id),
     ]);
     if (gen !== loadGeneration) return;
+    if (docMeta) captureUndoHistoryPolicyLoaded(docMeta);
     currentDraftId.set(resolved?.draftId ?? null);
     lastPersistedEventId.set(-1);
     lastSavedAt.set(null);

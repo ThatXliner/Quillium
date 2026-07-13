@@ -153,15 +153,17 @@ Manual pruning via Version History:
 | Version labels | Per-action — exact effect replay records label updates |
 | Version groups | Per-action — effect-only updates use `state_transaction` |
 | Thread messages | Per-action — captured as `annotation_update` events |
-| Undo/redo stack | Per-document policy — session-only by default for new documents; losslessly persisted for existing documents and opt-in new documents |
+| Undo/redo stack | Per-document policy — session-only by default for new documents; losslessly persisted for pre-July 14, 2026 documents and opt-in new documents |
 
 ## Undo History Policy (0.22+)
 
-`documents.persist_history` captures the undo policy when a document is created. Migration 8 marks
-every existing document as persistent, then leaves a session-only database default for new rows. New
-documents explicitly use the current **Settings → Editor → Undo after restart for new documents**
-preference, whose default is off. Changing the preference affects future documents only; it does not
-silently rewrite the policy of existing documents.
+`documents.persist_history` captures the undo policy when a document is created. Migrations 8–9 use
+`2026-07-14T00:00:00Z` as a temporary release-version proxy: documents created before that boundary
+become persistent, while documents at or after it keep the session-only database default. The
+separate migration 9 also covers documents created while pre-release builds already had the policy
+column. New documents explicitly use the current **Settings → Editor → Undo after restart for new
+documents** preference, whose default is off. Changing the preference affects future documents only;
+it does not silently rewrite an existing document's policy.
 
 Session-only documents still use normal undo and redo while they are open. Their snapshots serialize
 `historyField` as `null`, and exact event-tail replay applies changes without adding them to a new

@@ -7,6 +7,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | Event | When | File |
 |-------|------|------|
 | `app_session_started` | Editor mounts with document | `Editor.svelte` |
+| `undo_history_policy_loaded` | Document policy loaded; includes effective persistence and legacy/setting source | `Editor.svelte` |
 | `editor_undo` | Undo from native menu | `Editor.svelte` |
 | `editor_redo` | Redo from native menu | `Editor.svelte` |
 | `editor_select_all` | Select all from native menu | `Editor.svelte` |
@@ -63,7 +64,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | Event | When | File |
 |-------|------|------|
 | `settings_opened` | Settings dialog opened | `SettingsModal.svelte` |
-| `settings_saved` | Settings saved | `SettingsModal.svelte` |
+| `settings_saved` | Settings saved; includes `persist_undo_history_for_new_documents` | `SettingsModal.svelte` |
 | `ai_settings_provider_changed` | Provider changed | `AISettings.svelte` |
 | `ai_settings_model_changed` | Model changed | `AISettings.svelte` |
 | `semantic_search_toggled` | Search-by-meaning toggled | `SettingsModal.svelte` |
@@ -105,15 +106,21 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | Event | When | File |
 |-------|------|------|
 | `library_viewed` | Library page opened | `library/+page.svelte` |
-| `document_created` | Document created | `library/+page.svelte` |
-| `document_opened` | Document opened | `library/+page.svelte` |
-| `document_opened_new_window` | Document opened in a new window | `library/+page.svelte` |
+| `document_created` | Document created; includes effective undo policy and `new_document_setting` source | `library/+page.svelte` |
+| `document_opened` | Document opened; includes effective undo policy and legacy/setting source | `library/+page.svelte` |
+| `document_opened_new_window` | Document opened in a new window; includes effective undo policy and legacy/setting source | `library/+page.svelte` |
 | `document_renamed` | Document renamed | `library/+page.svelte` |
 | `document_tags_updated` | Tags updated | `library/+page.svelte` |
 | `document_trashed` | Document trashed | `library/+page.svelte` |
 | `document_restored` | Document restored | `library/+page.svelte` |
 | `document_deleted_permanently` | Permanent delete | `library/+page.svelte` |
 | `document_exported` | Document exported | `export.ts` |
+
+Undo-policy events use `persist_undo_history` (boolean) and
+`undo_history_policy_source` (`legacy_date_cutoff` or `new_document_setting`). Track unique users
+with `undo_history_policy_loaded` and `legacy_date_cutoff` to measure active reliance on the
+temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_documents` and
+`document_created.persist_undo_history` measure adoption of the explicit setting.
 
 ## Tabs & Drafts
 

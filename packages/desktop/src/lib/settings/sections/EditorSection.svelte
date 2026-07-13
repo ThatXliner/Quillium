@@ -64,7 +64,7 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
 
 <SettingToggle
     title="Undo after restart for new documents"
-    description="Store undo history when Quillium closes. Existing documents keep their current behavior."
+    description="Store undo history when Quillium closes. Documents created before July 14, 2026 keep their current behavior."
     checked={draft.persistUndoHistoryForNewDocuments}
     defaultChecked={false}
     ariaLabel="Keep undo history after restart for new documents"
