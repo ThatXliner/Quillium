@@ -4,6 +4,7 @@ import {
     coordinateForItem,
     describeDocEvent,
     headingForDate,
+    reconstructPreviewStructure,
     reconstructStructureAsOf,
     resolveDraftContentAt,
     resolveTabContentAt,
@@ -296,6 +297,45 @@ describe("reconstructStructureAsOf", () => {
         // (just after T) stays excluded.
         const { tabs: t } = reconstructStructureAsOf(tabs, drafts, events, coord(100, 1));
         expect(t.map((x) => x.id)).not.toContain("tab2");
+    });
+});
+
+describe("reconstructPreviewStructure", () => {
+    const tabs = [tab("tab1", 0, "Main"), tab("tab2", 0, "Notes")];
+    const drafts = [
+        { ...draft("d1", 0, "main"), tabId: "tab1" },
+        { ...draft("d2", 0, "main"), tabId: "tab2" },
+    ];
+    const deletion = docEvent(3, "tab_deleted", { tabId: "tab2", label: "Notes" }, 300);
+    const events = [
+        docEvent(1, "tab_created", { tabId: "tab1", label: "Main", rootDraftId: "d1" }, 100),
+        docEvent(2, "tab_created", { tabId: "tab2", label: "Notes", rootDraftId: "d2" }, 200),
+        deletion,
+        docEvent(4, "tab_renamed", { tabId: "tab1", label: "Main after" }, 400),
+    ];
+
+    it("shows a deleted tab as a tombstone only on its deletion coordinate", () => {
+        const deletionItem = {
+            id: "activity:3",
+            kind: "activity" as const,
+            createdAt: deletion.createdAt,
+            event: deletion,
+        };
+        const atDeletion = reconstructPreviewStructure(tabs, drafts, events, deletionItem);
+
+        expect(atDeletion.tabs.map((candidate) => candidate.id)).toEqual(["tab1", "tab2"]);
+        expect(atDeletion.drafts.map((candidate) => candidate.id)).toContain("d2");
+        expect(atDeletion.deletedTabId).toBe("tab2");
+
+        const afterDeletion = events[3];
+        const later = reconstructPreviewStructure(tabs, drafts, events, {
+            id: "activity:4",
+            kind: "activity",
+            createdAt: afterDeletion.createdAt,
+            event: afterDeletion,
+        });
+        expect(later.tabs.map((candidate) => candidate.id)).toEqual(["tab1"]);
+        expect(later.deletedTabId).toBeNull();
     });
 });
 

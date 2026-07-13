@@ -49,6 +49,12 @@ are unavailable. Diff decorations compare snapshots only within the selected
 draft. When no earlier snapshot exists for that draft, the document renders
 normally without an all-added diff.
 
+Selecting a tab-deletion activity renders that tab as a read-only tombstone
+instead of falling through to another live tab. The shell identifies it as
+deleted and shows its last available snapshot; later coordinates exclude it
+again. Browsing either state never changes the document's live active tab or
+draft pointers.
+
 ## Restore
 
 Two-click confirmation:

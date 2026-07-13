@@ -394,6 +394,51 @@ export function reconstructStructureAsOf(
     return { tabs, drafts };
 }
 
+export type HistoricalPreviewStructure = {
+    tabs: TabMeta[];
+    drafts: DraftMeta[];
+    /** The selected coordinate is the deletion of this tab, rendered as a tombstone. */
+    deletedTabId: string | null;
+};
+
+/**
+ * Builds the structure shown in the history document shell for one timeline
+ * item. A tab-deletion coordinate is special: the normal as-of reconstruction
+ * correctly removes the tab, but that would make the preview fall through to
+ * another tab and show unrelated content. Reconstruct the instant immediately
+ * before that one event instead, then mark the target as deleted so the shell
+ * can present its last valid state without treating it as live.
+ *
+ * Coordinates after the deletion still use the normal reconstruction, so the
+ * tombstone cannot leak into later history entries.
+ */
+export function reconstructPreviewStructure(
+    allTabs: TabMeta[],
+    allDrafts: DraftMeta[],
+    docEvents: DocEventRecord[],
+    item: TimelineItem,
+): HistoricalPreviewStructure {
+    const coordinate = coordinateForItem(item);
+    const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinate);
+    if (item.kind !== "activity" || item.event.eventType !== "tab_deleted") {
+        return { ...structure, deletedTabId: null };
+    }
+
+    const payload = parsePayload(item.event.payload);
+    const deletedTabId = typeof payload.tabId === "string" ? payload.tabId : null;
+    if (!deletedTabId) return { ...structure, deletedTabId: null };
+
+    const beforeDeletion = reconstructStructureAsOf(allTabs, allDrafts, docEvents, {
+        ...coordinate,
+        docEventId: item.event.id - 1,
+    });
+    if (!beforeDeletion.tabs.some((tab) => tab.id === deletedTabId)) {
+        return { ...structure, deletedTabId: null };
+    }
+
+    return { ...beforeDeletion, deletedTabId };
+}
+
 // ── Date grouping ───────────────────────────────────────────────────
 
 export type TimelineGroup = { heading: string; items: TimelineItem[] };
