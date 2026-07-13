@@ -11,9 +11,9 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://chatgpt.com/backend-api/codex/**" },
-        { "url": "https://auth.openai.com/**" },
-        { "url": "https://registry.npmjs.org/**" }
+        { "url": "https://chatgpt.com/backend-api/codex/*" },
+        { "url": "https://auth.openai.com/oauth/token" },
+        { "url": "https://registry.npmjs.org" }
       ]
     }
   ]
