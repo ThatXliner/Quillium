@@ -35,7 +35,13 @@ import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { redo, undo } from "@codemirror/commands";
-import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
+import {
+    EditorSelection,
+    EditorState,
+    Prec,
+    type StateEffect,
+    Transaction,
+} from "@codemirror/state";
 import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
 import {
     VERSION_PREVIEW_MAX_LENGTH,
@@ -44,6 +50,7 @@ import {
 import { get } from "svelte/store";
 import {
     _nestedEditRevision,
+    _updateRevisionVersionState,
     annotationField,
     nestedEditorEdit,
     setActiveRevisionVersion,
@@ -545,6 +552,7 @@ export function translateAndDispatch(
     update: ViewUpdate,
     parentView: EditorView,
     revisionId: number,
+    versionUpdate?: { versionId: string; versionState: VersionState },
 ): boolean {
     if (!update.docChanged) return false;
 
@@ -577,10 +585,21 @@ export function translateAndDispatch(
     // ensures the cursor is restored inside the revision, which triggers
     // reactivation of the inline nested editor. The nested editor has focus
     // during these dispatches, so the parent cursor move is invisible.
+    const effects: StateEffect<unknown>[] = [_nestedEditRevision.of(revisionId)];
+    if (versionUpdate) {
+        effects.push(
+            _updateRevisionVersionState.of({
+                annotationId: revisionId,
+                versionId: versionUpdate.versionId,
+                versionState: versionUpdate.versionState,
+            }),
+        );
+    }
+
     parentView.dispatch({
         changes: parentChanges,
         selection: EditorSelection.cursor(offset),
-        effects: [_nestedEditRevision.of(revisionId)],
+        effects,
         annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
     return true;

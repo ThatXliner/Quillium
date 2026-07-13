@@ -9,6 +9,7 @@ import {
     createNewRevision,
     invertedAnnotationFieldEffects,
     nestedEditorEdit,
+    updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     type Annotations,
@@ -381,6 +382,21 @@ describe("updateRevisionVersionState", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions[0].doc).toBe("new text");
         expect(state.doc.toString()).toBe("new text");
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(8);
+    });
+
+    it("keeps an active version range valid when growing from empty", () => {
+        let state = makeState("");
+        state = addRevision(state, 0, 0, [""]);
+
+        state = state.update(updateRevisionVersionState(state, 0, 0, { doc: "hi" })).state;
+
+        const rev = getRevision(state, 0);
+        expect(state.doc.toString()).toBe("hi");
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(2);
+        expect(state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("hi");
     });
 
     it("skips redundant doc change when text already matches", () => {
@@ -519,7 +535,7 @@ describe("undo/redo", () => {
         expect(state.doc.toString()).toBe("hello");
     });
 
-    it("undo restores version creation", () => {
+    it("undo and redo restore the exact version-creation range", () => {
         let state = makeState("hello");
         state = addRevision(state, 0, 5, ["hello"]);
 
@@ -538,6 +554,166 @@ describe("undo/redo", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions).toHaveLength(1);
         expect(rev.versions[0].doc).toBe("hello");
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(5);
+        expect(state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("hello");
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("");
+        expect(getRevision(state, 0).selection.main.empty).toBe(true);
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(5);
+    });
+
+    it("repeatedly traverses an active version-state update to empty", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, ["hello"]);
+        state = state.update(updateRevisionVersionState(state, 0, 0, { doc: "" })).state;
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("hello");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+            expect(getRevision(state, 0).selection.main.to).toBe(5);
+
+            redo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+            expect(getRevision(state, 0).selection.main.to).toBe(0);
+        }
+    });
+
+    it("keeps an intentional collapsed revision anchored across a neighboring edit", () => {
+        let state = makeState("a");
+        state = addRevision(state, 0, 0, [""]);
+        state = state.update({ changes: { from: 0, to: 1 } }).state;
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("a");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+            expect(getRevision(state, 0).selection.main.to).toBe(0);
+
+            redo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+            expect(state.doc.toString()).toBe("");
+            expect(getRevision(state, 0).selection.main.from).toBe(0);
+        }
+    });
+
+    it("preserves a collapsed predecessor when undoing a nested delete to empty", () => {
+        let state = makeState("A");
+        state = addRevision(state, 0, 0, [""]);
+        state = addRevision(state, 0, 1, ["A"]);
+
+        state = state.update({
+            changes: { from: 0, to: 1 },
+            effects: [_nestedEditRevision.of(1)],
+            annotations: [nestedEditorEdit.of(1)],
+        }).state;
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 1).selection.main.empty).toBe(true);
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+
+        expect(state.doc.toString()).toBe("A");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(0);
+        expect(getRevision(state, 1).selection.main.from).toBe(0);
+        expect(getRevision(state, 1).selection.main.to).toBe(1);
+    });
+
+    it("rebases an exact restore through a non-history document edit", () => {
+        let state = makeState("abcdef");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.create([EditorSelection.range(5, 1)]),
+                    thread: [{ message: "note", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+        state = state.update({ changes: { from: 0, to: 3 } }).state;
+        state = state.update({
+            changes: { from: 0, insert: "!" },
+            annotations: Transaction.addToHistory.of(false),
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+
+        const restored = getAnnotations(state)[0];
+        expect(state.doc.toString()).toBe("!abcdef");
+        expect(restored.selection.main.anchor).toBe(6);
+        expect(restored.selection.main.head).toBe(2);
+    });
+
+    it("does not move a collapsed neighbor while undoing adjacent version creation", () => {
+        let state = makeState("Aa");
+        state = addRevision(state, 0, 1, ["A"]);
+        state = addRevision(state, 1, 2, ["a"]);
+
+        state = state.update(createNewRevision(state, 0)).state;
+        state = state.update(createNewRevision(state, 1)).state;
+
+        // CodeMirror may group the two rapid version creations. Traverse until
+        // both are restored, whether that takes one history item or two.
+        for (let step = 0; step < 2 && state.doc.toString() !== "Aa"; step++) {
+            undo({
+                state,
+                dispatch: (tr) => {
+                    state = tr.state;
+                },
+            });
+        }
+
+        expect(state.doc.toString()).toBe("Aa");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+        expect(getRevision(state, 1).selection.main.from).toBe(1);
+        expect(getRevision(state, 1).selection.main.to).toBe(2);
     });
 
     it("undo restores version deletion", () => {
@@ -560,6 +736,79 @@ describe("undo/redo", () => {
         expect(rev.versions).toHaveLength(2);
         expect(rev.versions[0].doc).toBe("alpha");
         expect(rev.versions[1].doc).toBe("beta");
+    });
+});
+
+describe("thread undo/redo", () => {
+    it("undoes the first revision message without deleting the revision", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, ["hello"]);
+        state = state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: 0,
+                    newThread: [{ message: "Review", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getRevision(state, 0).thread).toEqual([]);
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getRevision(state, 0).thread).toEqual([
+            { message: "Review", author: "User", time: 1 },
+        ]);
+    });
+
+    it("redo restores the first pending-comment message", () => {
+        let state = makeState("hello");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.single(0, 5),
+                    thread: [],
+                }),
+            ],
+        }).state;
+        state = state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: 0,
+                    newThread: [{ message: "Note", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getAnnotations(state)[0]).toBeUndefined();
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getAnnotations(state)[0]?.thread).toEqual([
+            { message: "Note", author: "User", time: 1 },
+        ]);
     });
 });
 
@@ -683,6 +932,69 @@ describe("toJSON/fromJSON round-trip", () => {
 // ── Nested editor edits (boundary expansion) ─────────────────────────────────
 
 describe("nested editor boundary expansion", () => {
+    it("keeps an empty previous sibling outside a prepended revision", () => {
+        let state = makeState("AZ");
+        state = addRevision(state, 0, 1, ["A"]);
+        state = addRevision(state, 1, 2, ["Z"]);
+
+        // Empty the first revision, prepend to the second, then refill the first.
+        state = state.update({
+            changes: { from: 0, to: 1 },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+        state = state.update({
+            changes: { from: 0, insert: "Y" },
+            effects: [_nestedEditRevision.of(1)],
+            annotations: [nestedEditorEdit.of(1), Transaction.addToHistory.of(true)],
+        }).state;
+
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(0);
+        expect(getRevision(state, 1).selection.main.from).toBe(0);
+        expect(getRevision(state, 1).selection.main.to).toBe(2);
+
+        state = state.update({
+            changes: { from: 0, insert: "X" },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+        expect(state.doc.toString()).toBe("XYZ");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+        expect(getRevision(state, 1).selection.main.from).toBe(1);
+        expect(getRevision(state, 1).selection.main.to).toBe(3);
+
+        state = state.update(createNewRevision(state, 1)).state;
+        expect(state.doc.toString()).toBe("X");
+        expect(getRevision(state, 0).versions[0].doc).toBe("X");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(1);
+    });
+
+    it("keeps an empty following sibling outside an appended revision", () => {
+        let state = makeState("ZA");
+        state = addRevision(state, 0, 1, ["Z"]);
+        state = addRevision(state, 1, 2, ["A"]);
+
+        state = state.update({
+            changes: { from: 1, to: 2 },
+            effects: [_nestedEditRevision.of(1)],
+            annotations: [nestedEditorEdit.of(1), Transaction.addToHistory.of(true)],
+        }).state;
+        state = state.update({
+            changes: { from: 1, insert: "Y" },
+            effects: [_nestedEditRevision.of(0)],
+            annotations: [nestedEditorEdit.of(0), Transaction.addToHistory.of(true)],
+        }).state;
+
+        expect(state.doc.toString()).toBe("ZY");
+        expect(getRevision(state, 0).selection.main.from).toBe(0);
+        expect(getRevision(state, 0).selection.main.to).toBe(2);
+        expect(getRevision(state, 1).selection.main.from).toBe(2);
+        expect(getRevision(state, 1).selection.main.to).toBe(2);
+    });
+
     it("expands revision range when nested editor appends at boundary", () => {
         let state = makeState("hello");
         state = addRevision(state, 0, 5, ["hello"]);

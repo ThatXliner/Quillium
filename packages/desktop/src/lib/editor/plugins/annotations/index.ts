@@ -88,7 +88,12 @@ import type { NestedEditorCommand } from "$lib/stores";
 import { settingsOpen } from "$lib/stores";
 import { filter, flatMap, isEqual } from "lodash-es";
 import {
+    _addVersionToRevision,
+    _deleteVersionFromRevision,
+    _nestedEditRevision,
     _revisionCleanup,
+    _updateActiveRevisionVersion,
+    _updateRevisionVersionState,
     addAnnotation,
     annotationField,
     invertedAnnotationFieldEffects,
@@ -294,6 +299,23 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             // in both modes.
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
+            // Transaction annotations are absent on undo/redo. The stored nested
+            // and version effects are the durable markers that this is still a
+            // revision-system replacement; removing its intentionally collapsed
+            // target would corrupt the history step.
+            if (
+                update.transactions.some((tr) =>
+                    tr.effects.some(
+                        (effect) =>
+                            effect.is(_nestedEditRevision) ||
+                            effect.is(_addVersionToRevision) ||
+                            effect.is(_deleteVersionFromRevision) ||
+                            effect.is(_updateActiveRevisionVersion) ||
+                            effect.is(_updateRevisionVersionState),
+                    ),
+                )
+            )
+                return;
             // Don't remove revisions whose text was cleared by the nested editor —
             // empty content is a valid state when the nested editor is active.
             if (update.transactions.some((tr) => tr.annotation(nestedEditorEdit) !== undefined))

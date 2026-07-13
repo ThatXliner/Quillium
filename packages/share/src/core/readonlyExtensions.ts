@@ -49,8 +49,8 @@ export const personaColorsFacet = Facet.define<PersonaColor[], PersonaColor[]>({
 
 // Fields serialized into the wire payload and restored via
 // EditorState.fromJSON(json, { extensions }, readonlySavedFields).
-// Mirrors the desktop editor's savedFields MINUS historyField (the public
-// snapshot carries no undo history).
+// Mirrors the desktop editor's persisted fields (public snapshots also carry
+// no undo history).
 export const readonlySavedFields = { annotationField, versionGroupField };
 
 // ── Annotation highlight decorations (copied from desktop index.ts) ──

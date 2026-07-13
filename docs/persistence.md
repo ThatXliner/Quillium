@@ -60,7 +60,9 @@ sequenceDiagram
 
 ```typescript
 // extensions.ts
-export const savedFields = { historyField, annotationField };
+// CodeMirror history omits custom annotation effects when serialized, so
+// snapshots deliberately start a fresh undo stack on load.
+export const savedFields = { annotationField, versionGroupField };
 
 // listeners.ts
 const result = await appendEvent(draftId, JSON.stringify(payload));
@@ -113,6 +115,7 @@ Manual pruning via Version History:
 | `activeVersionId` | **Snapshot-only** |
 | Version labels | **Snapshot-only** |
 | Thread messages | Per-action — captured as `annotation_update` events |
+| Undo/redo stack | **Session-only** — snapshotting CodeMirror history would drop custom annotation effects and restore an unsafe partial stack |
 
 ## Revision Version Persistence
 

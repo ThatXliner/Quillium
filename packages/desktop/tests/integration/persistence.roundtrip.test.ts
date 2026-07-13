@@ -1,3 +1,4 @@
+import { savedFields } from "$lib/editor/extensions";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -6,7 +7,7 @@ import {
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { history, historyField, redo, undo } from "@codemirror/commands";
+import { history, historyField, redo, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,7 +35,33 @@ afterEach(() => {
 });
 
 describe("persistence round-trip integration", () => {
-    it("restores document text, annotations, and undo/redo history", () => {
+    it("starts with safe empty history because custom effects are not serializable", () => {
+        view = createView("hello");
+        const builtVersions = [makeVersion({ doc: "hello" })];
+        const revision = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "revision",
+            ),
+            activeVersionId: builtVersions[0].id,
+            versions: builtVersions,
+        };
+        view.dispatch({ effects: [addAnnotation.of(revision)] });
+
+        const saved = view.state.toJSON(savedFields);
+        expect(saved).not.toHaveProperty("historyField");
+        const restored = EditorState.fromJSON(
+            saved,
+            { extensions: [history(), annotationExtensions()] },
+            savedFields,
+        );
+
+        expect(undoDepth(restored)).toBe(0);
+        expect(restored.field(annotationField)[revision.id]).toBeDefined();
+    });
+
+    it("round-trips document-only CodeMirror history when explicitly requested", () => {
         view = createView("Hello world");
 
         const builtVersions = [makeVersion({ doc: "world", label: "Original" })];

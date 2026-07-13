@@ -7,15 +7,13 @@
 import type { LoadResult } from "$lib/db/types";
 import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
 import { replayEvents } from "$lib/editor/replay";
-import { history, historyField } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
 import { serializeShareState } from "./shareState";
 
-const persistedFields = { historyField, annotationField, versionGroupField };
+const persistedFields = { annotationField, versionGroupField };
 
 export function serializeLoadedShareState(loaded: LoadResult): Record<string, unknown> {
     const extensions = [
-        history(),
         EditorState.allowMultipleSelections.of(true),
         annotationField,
         versionGroupField,

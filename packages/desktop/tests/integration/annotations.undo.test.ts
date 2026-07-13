@@ -18,7 +18,7 @@ import {
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { history, undo } from "@codemirror/commands";
+import { history, redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
@@ -316,6 +316,59 @@ describe("undo restores revision whose selection collapsed after text deletion",
         expect(anns).toHaveLength(1);
         expect(anns[0].selection.main.from).toBe(6);
         expect(anns[0].selection.main.to).toBe(11);
+    });
+});
+
+describe("undo restores annotation boundaries consumed by text edits", () => {
+    it("restores a partially consumed comment at its original range", () => {
+        view = createView("abcdef");
+        const commentId = addComment(view, 1, 5);
+
+        view.dispatch({ changes: { from: 0, to: 3 } });
+        expect(view.state.field(annotationField)[commentId]?.selection.main.from).toBe(0);
+        expect(view.state.field(annotationField)[commentId]?.selection.main.to).toBe(2);
+
+        undo(view);
+        const restored = view.state.field(annotationField)[commentId];
+        expect(view.state.doc.toString()).toBe("abcdef");
+        expect(restored?.selection.main.from).toBe(1);
+        expect(restored?.selection.main.to).toBe(5);
+    });
+
+    it("restores a partially consumed revision and its active text", () => {
+        view = createView("abcdef");
+        const revisionId = addRevision(view, 1, 5, [{ doc: "bcde" }]);
+
+        view.dispatch({ changes: { from: 0, to: 3 } });
+        undo(view);
+
+        const restored = view.state.field(annotationField)[revisionId];
+        expect(restored?.selection.main.from).toBe(1);
+        expect(restored?.selection.main.to).toBe(5);
+        expect(view.state.sliceDoc(1, 5)).toBe("bcde");
+        if (restored && isAnnotationOfType(restored, "revision")) {
+            expect(restored.versions[0].doc).toBe("bcde");
+        }
+    });
+
+    it("restores a revision fully consumed by a non-empty replacement", () => {
+        view = createView("abcdef");
+        const revisionId = addRevision(view, 1, 5, [{ doc: "bcde" }]);
+
+        view.dispatch({ changes: { from: 0, to: 6, insert: "X" } });
+        expect(view.state.field(annotationField)[revisionId]).toBeUndefined();
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo(view);
+            const restored = view.state.field(annotationField)[revisionId];
+            expect(view.state.doc.toString()).toBe("abcdef");
+            expect(restored?.selection.main.from).toBe(1);
+            expect(restored?.selection.main.to).toBe(5);
+
+            redo(view);
+            expect(view.state.doc.toString()).toBe("X");
+            expect(view.state.field(annotationField)[revisionId]).toBeUndefined();
+        }
     });
 });
 

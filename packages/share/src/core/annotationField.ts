@@ -47,6 +47,7 @@ import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
     Annotation,
+    ChangeSet,
     EditorSelection,
     type EditorState,
     SelectionRange,
@@ -97,32 +98,54 @@ import { versionGroupField } from "./versionGroupField";
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
 });
-// Used exclusively by the undo system when restoring an annotation that was
-// implicitly dropped or collapsed by a text deletion. Carries the original
-// annotation with its pre-deletion selection. The map function remaps
-// positions through intervening transactions without filtering collapsed
-// ranges (unlike mapRange), so the annotation survives further edits
-// before undo is applied.
-const _restoreAnnotation = StateEffect.define<GenericAnnotation>({
-    map(annotation, change) {
-        // Remap each range's from and to independently without filtering
-        // collapsed ranges (unlike mapRange). If any position is out of range
-        // for this change (e.g. an addToHistory:false resolver dispatch on an
-        // empty doc), drop the effect so it doesn't cause a RangeError.
-        try {
-            const newRanges = annotation.selection.ranges.map((r) =>
-                EditorSelection.range(change.mapPos(r.from, -1), change.mapPos(r.to, 1)),
-            );
+type RestoreAnnotation = {
+    annotation: GenericAnnotation;
+    /** The history event's document change, from the event's current doc to its result. */
+    undoChanges: ChangeSet;
+};
+
+// Used exclusively by the undo system to restore an exact annotation snapshot.
+// The desired snapshot is expressed in the history event's RESULT document,
+// whereas CodeMirror maps stored effects in the event's START document when an
+// addToHistory:false edit intervenes. Keeping the event's undo ChangeSet lets
+// the effect derive CodeMirror's equivalent `before` mapping and rebase the
+// snapshot in the correct coordinate space. This also preserves reversed
+// selections and collapsed revisions rather than reconstructing only from/to.
+const _restoreAnnotation = StateEffect.define<RestoreAnnotation>({
+    map(value, mapping) {
+        const assoc = isAnnotationOfType(value.annotation, "revision") ? 1 : 0;
+
+        // When CodeMirror joins adjacent history events, it maps the newer
+        // event's effects through the older event's inverse ChangeSet. That
+        // mapping starts in this restore's result document, so compose the two
+        // undo changes and map the exact snapshot directly.
+        if (mapping instanceof ChangeSet) {
             return {
-                ...annotation,
-                selection: EditorSelection.create(newRanges, annotation.selection.mainIndex),
+                annotation: {
+                    ...value.annotation,
+                    selection: value.annotation.selection.map(mapping, assoc),
+                },
+                undoChanges: value.undoChanges.compose(mapping),
             };
-        } catch {
-            // Position out of range — preserve with original positions.
-            return annotation;
         }
+
+        // addToHistory:false mappings instead start in the history event's
+        // current document. Translate them across the event change first.
+        const before = mapping.mapDesc(value.undoChanges, true);
+        const annotation = {
+            ...value.annotation,
+            selection: value.annotation.selection.map(before, assoc),
+        };
+        return {
+            annotation,
+            undoChanges: value.undoChanges.map(mapping),
+        };
     },
 });
+
+// History-only removal that cannot be mapped away when an intervening document
+// change consumes the annotation's old range.
+const _removeAnnotationById = StateEffect.define<number>();
 // Carries the full annotation object (not just an ID) so that undo inversion
 // can restore exact prior state without a startState lookup.
 export const removeAnnotation = StateEffect.define<GenericAnnotation>({
@@ -659,15 +682,55 @@ function remapAnnotationSelections(annotations: Annotations, tr: Transaction): A
     const result: Annotations = {};
     for (const [id, x] of Object.entries(annotations)) {
         const isRevision = isAnnotationOfType(x, "revision");
-        const newSelection = cleanRangesOf(
-            x.selection.map(tr.changes, isRevision ? 1 : 0),
-            isRevision,
-        );
+        const assoc = annotationMappingAssociation(x, annotations, tr);
+        const newSelection = cleanRangesOf(x.selection.map(tr.changes, assoc), isRevision);
         if (newSelection) {
             result[id as unknown as number] = { ...x, selection: newSelection };
         }
     }
     return result;
+}
+
+/**
+ * Pick mapping affinity for an annotation in Phase 1.
+ *
+ * Empty revisions at a nested target's old start/end represent collapsed
+ * siblings that used to sit immediately before/after that target. Preserve
+ * that side when the nested editor prepends/appends. A single global affinity
+ * cannot handle both directions: right affinity moves an empty predecessor
+ * inside a prepend, while left affinity moves an empty follower inside an
+ * append.
+ */
+function annotationMappingAssociation(
+    annotation: GenericAnnotation,
+    annotations: Annotations,
+    tr: Transaction,
+): number {
+    if (!isAnnotationOfType(annotation, "revision")) return 0;
+    if (!annotation.selection.main.empty) return 1;
+
+    const nestedTargetIds = nestedRevisionTargetIds(tr);
+    if (nestedTargetIds.has(annotation.id)) return 1;
+
+    const position = annotation.selection.main.from;
+    for (const targetId of nestedTargetIds) {
+        const target = annotations[targetId];
+        if (!target || !isAnnotationOfType(target, "revision")) continue;
+        if (target.selection.main.empty) continue;
+        if (position === target.selection.main.from) return -1;
+        if (position === target.selection.main.to) return 1;
+    }
+    return 1;
+}
+
+function nestedRevisionTargetIds(tr: Transaction): Set<number> {
+    const targetIds = new Set<number>();
+    const annotatedTarget = tr.annotation(nestedEditorEdit);
+    if (annotatedTarget !== undefined) targetIds.add(annotatedTarget);
+    for (const effect of tr.effects) {
+        if (effect.is(_nestedEditRevision)) targetIds.add(effect.value);
+    }
+    return targetIds;
 }
 
 /**
@@ -753,7 +816,14 @@ function pushDocToVersionState(
     // pull version.doc to "" — otherwise the stale doc gets pushed back
     // into the nested editor by the external-sync effect. Non-nested
     // deletions skip pulling so undo can restore from _restoreAnnotation.
-    const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
+    // The Transaction annotation exists only on the forward nested edit. Undo
+    // and redo retain the serializable StateEffect instead, so both markers
+    // must count as nested edits. In particular, an undo/redo that collapses a
+    // revision to empty must persist version.doc = "" or switching away and
+    // back can resurrect text that history already removed.
+    const isNestedEdit =
+        tr.annotation(nestedEditorEdit) !== undefined ||
+        tr.effects.some((effect) => effect.is(_nestedEditRevision));
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
             if (x.selection.main.empty && !isNestedEdit) return x;
@@ -796,12 +866,15 @@ export const annotationField = StateField.define<Annotations>({
                     revisionsWithExplicitEffect.add(e.value.id);
                 }
             } else if (e.is(_restoreAnnotation)) {
-                annotations[e.value.id] = e.value;
+                const restored = e.value.annotation;
+                annotations[restored.id] = restored;
                 // Same logic for restore — the restored annotation has the correct
                 // version doc from the undo history.
-                if (isAnnotationOfType(e.value, "revision")) {
-                    revisionsWithExplicitEffect.add(e.value.id);
+                if (isAnnotationOfType(restored, "revision")) {
+                    revisionsWithExplicitEffect.add(restored.id);
                 }
+            } else if (e.is(_removeAnnotationById)) {
+                delete annotations[e.value];
             } else if (e.is(removeAnnotation)) {
                 delete annotations[e.value.id];
             } else if (e.is(updateThread)) {
@@ -846,12 +919,17 @@ export const annotationField = StateField.define<Annotations>({
                 newVersions[vIdx] = { ...e.value.versionState, id: e.value.versionId };
                 let selection = annotation.selection;
                 if (annotation.activeVersionId === e.value.versionId && tr.docChanged) {
-                    // Use the already-remapped selection from Phase 1 (not
-                    // oldAnnotations) to avoid double-mapping when both Phase 1
-                    // and this effect fire on the same transaction.
-                    const from = annotation.selection.main.from;
+                    // Map the pre-change start with a left bias. A collapsed
+                    // selection maps to the RIGHT edge of inserted text by
+                    // default; growing it from that point produces an invalid
+                    // range such as [2, 4] in a two-character document.
+                    const oldAnnotation = oldAnnotations[e.value.annotationId];
+                    const mappedFrom = oldAnnotation
+                        ? tr.changes.mapPos(oldAnnotation.selection.main.from, -1)
+                        : annotation.selection.main.from;
+                    const from = Math.min(mappedFrom, tr.state.doc.length);
                     const text = versionText(e.value.versionState);
-                    const to = from + text.length;
+                    const to = Math.min(from + text.length, tr.state.doc.length);
                     selection = EditorSelection.single(from, to);
                 }
                 annotations[e.value.annotationId] = {
@@ -997,70 +1075,138 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     if (transaction.annotation(Transaction.addToHistory) === false) return [];
     if (transaction.annotation(_revisionCleanup)) return [];
 
+    const undoChanges = transaction.changes.invert(transaction.startState.doc);
+    const restoreAnnotation = (annotation: GenericAnnotation) =>
+        _restoreAnnotation.of({ annotation, undoChanges });
+
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
-    // when text they were anchored to was deleted. These have no explicit effect,
-    // so invertedEffects would never see them.
+    // or pushDocToVersionState (phase 3). These have no explicit effect, so
+    // invertedEffects would never see them.
     //
-    // Effects stored by invertedEffects carry post-transaction positions —
-    // CodeMirror remaps them through the undo's inverse change on replay.
-    // We use _restoreAnnotation (which does not filter collapsed ranges) so
-    // the collapsed post-deletion point gets mapped back to the full span
-    // by the undo re-insertion, regardless of what other text was deleted
-    // around the annotation.
-    // Only generate implicit restore effects for plain user text edits.
-    // Skip undo/redo replays (they already carry stored effects) and
-    // revision-internal edits (revisionInternalEdit), which handle their
-    // own annotation state via explicit effects.
+    // Default selection mapping is not invertible when a deletion consumes an
+    // annotation boundary. For example, [1,5] -> delete [0,3] produces [0,2],
+    // but undo maps that to [3,5] instead of [1,5]. Store the exact annotation
+    // snapshot whenever its range or active revision text changed. On undo the
+    // restore effect overwrites the mapped annotation; inversion of that restore
+    // captures the post-edit snapshot for redo.
+    // Skip undo/redo replays (they already carry stored effects). Revision and
+    // nested-edit builders manage their target IDs explicitly, but unrelated
+    // annotations still need snapshots when the replacement remaps them.
     const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
-    const isRevisionEdit = transaction.annotation(revisionInternalEdit);
-    // nestedEditorEdit transactions are plain doc changes originated by a nested
-    // editor viewport — they manage positions via the normal doc-change path, so
-    // implicit annotation restoration is not needed (and would double-restore).
-    const isNestedEdit = transaction.annotation(nestedEditorEdit) !== undefined;
-    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit && !isNestedEdit) {
+    if (transaction.docChanged && !isUndoRedo) {
+        const newAnnotations = transaction.state.field(annotationField);
+        const nestedTargetIds = nestedRevisionTargetIds(transaction);
+        const explicitlyManagedAnnotationIds = new Set(nestedTargetIds);
+        for (const effect of transaction.effects) {
+            if (effect.is(addAnnotation) || effect.is(removeAnnotation)) {
+                explicitlyManagedAnnotationIds.add(effect.value.id);
+            } else if (
+                effect.is(_addVersionToRevision) ||
+                effect.is(_deleteVersionFromRevision) ||
+                effect.is(_updateActiveRevisionVersion) ||
+                effect.is(_updateRevisionVersionState) ||
+                effect.is(_updateRevisionVersionDoc)
+            ) {
+                explicitlyManagedAnnotationIds.add(effect.value.annotationId);
+            }
+        }
         for (const annotation of Object.values(oldAnnotations)) {
-            const isRevision = isAnnotationOfType(annotation, "revision");
-            const remapped = cleanRangesOf(
-                annotation.selection.map(transaction.changes, isRevision ? 1 : 0),
-                isRevision,
-            );
-            if (!isRevision && remapped === null) {
-                // Annotation was silently dropped. Store it with its original
-                // pre-deletion selection so undo re-adds it at the right position.
-                effects.push(_restoreAnnotation.of(annotation));
-            } else if (isRevision && remapped !== null && remapped.main.empty) {
-                // Revision survived remapping but collapsed to a point. Two
-                // effects are needed on undo:
-                //   1. removeAnnotation(collapsed) — the collapsed revision
-                //      still exists in the field at undo time (collapsedRevisionResolver
-                //      fires asynchronously in a microtask); undo must remove it
-                //      first, otherwise the field ends up with two entries for
-                //      the same annotation ID.
-                //   2. _restoreAnnotation(original) — re-adds the annotation
-                //      with its full pre-deletion selection. Using _restoreAnnotation
-                //      instead of addAnnotation means the map function does not
-                //      filter collapsed ranges, so positions remap correctly
-                //      through the undo's inverse change.
-                effects.push(removeAnnotation.of({ ...annotation, selection: remapped }));
-                effects.push(_restoreAnnotation.of(annotation));
+            // Revision builders carry exact inverses for their own target. We
+            // still snapshot every OTHER annotation remapped by their doc
+            // replacement (adjacent collapsed revisions are especially lossy).
+            if (explicitlyManagedAnnotationIds.has(annotation.id)) continue;
+            const updated = newAnnotations[annotation.id];
+            const selectionChanged = !updated || !updated.selection.eq(annotation.selection);
+            let mappingLosesInformation = false;
+            if (updated) {
+                try {
+                    const assoc = annotationMappingAssociation(
+                        annotation,
+                        oldAnnotations,
+                        transaction,
+                    );
+                    const mapped = annotation.selection.map(transaction.changes, assoc);
+                    const roundTrip = mapped.map(transaction.changes.invertedDesc, assoc);
+                    mappingLosesInformation = !roundTrip.eq(annotation.selection);
+                } catch {
+                    mappingLosesInformation = true;
+                }
+            }
+            const activeRevisionTextChanged =
+                updated &&
+                isAnnotationOfType(annotation, "revision") &&
+                isAnnotationOfType(updated, "revision") &&
+                versionText(updated.versions[activeVersionIndex(updated)]) !==
+                    versionText(annotation.versions[activeVersionIndex(annotation)]);
+            // A collapsed sibling touching a nested target's boundary may map
+            // correctly on the forward edit but lose its predecessor/follower
+            // side when undo sees the now-collapsed target. Preserve it exactly.
+            const touchesNestedTargetBoundary =
+                isAnnotationOfType(annotation, "revision") &&
+                annotation.selection.main.empty &&
+                [...nestedTargetIds].some((targetId) => {
+                    const target = oldAnnotations[targetId];
+                    if (!target || !isAnnotationOfType(target, "revision")) return false;
+                    const position = annotation.selection.main.from;
+                    return (
+                        !target.selection.main.empty &&
+                        (position === target.selection.main.from ||
+                            position === target.selection.main.to)
+                    );
+                });
+            if (
+                selectionChanged ||
+                mappingLosesInformation ||
+                activeRevisionTextChanged ||
+                touchesNestedTargetBoundary
+            ) {
+                effects.push(restoreAnnotation(annotation));
             }
         }
     }
 
     for (const effect of transaction.effects) {
         if (effect.is(addAnnotation)) {
-            effects.push(removeAnnotation.of(effect.value));
+            effects.push(
+                transaction.docChanged
+                    ? _removeAnnotationById.of(effect.value.id)
+                    : removeAnnotation.of(effect.value),
+            );
         } else if (effect.is(_restoreAnnotation)) {
-            // Redo: drop the restored annotation again.
-            effects.push(removeAnnotation.of(effect.value));
+            const replacedAnnotation = oldAnnotations[effect.value.annotation.id];
+            if (replacedAnnotation) {
+                // The restore overwrote an annotation that survived the edit.
+                // Put that exact post-edit snapshot back on redo.
+                effects.push(restoreAnnotation(replacedAnnotation));
+            } else {
+                // The original edit dropped the annotation entirely.
+                effects.push(_removeAnnotationById.of(effect.value.annotation.id));
+            }
+        } else if (effect.is(_removeAnnotationById)) {
+            const removedAnnotation = oldAnnotations[effect.value];
+            if (removedAnnotation) effects.push(restoreAnnotation(removedAnnotation));
         } else if (effect.is(removeAnnotation)) {
-            effects.push(addAnnotation.of(effect.value));
+            const removedAnnotation = oldAnnotations[effect.value.id] ?? effect.value;
+            effects.push(
+                transaction.docChanged
+                    ? restoreAnnotation(removedAnnotation)
+                    : addAnnotation.of(removedAnnotation),
+            );
         } else if (effect.is(updateThread)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!oldAnnotation) continue;
-            // Was a comment in the "pending" state
-            if (oldAnnotation.thread.length === 0) {
-                effects.push(removeAnnotation.of(oldAnnotation));
+            // A first message closes a pending COMMENT. Undo intentionally
+            // removes that draft comment instead of restoring an empty card.
+            // Revisions and suggestions may also start with empty threads, but
+            // their first message must never delete the entire annotation.
+            if (isAnnotationOfType(oldAnnotation, "comment") && oldAnnotation.thread.length === 0) {
+                const updatedAnnotation =
+                    transaction.state.field(annotationField)[oldAnnotation.id];
+                if (updatedAnnotation) {
+                    // Carry the post-update annotation so redo restores the
+                    // message, not the old empty pending comment.
+                    effects.push(removeAnnotation.of(updatedAnnotation));
+                }
             } else {
                 effects.push(
                     updateThread.of({
@@ -1093,6 +1239,19 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                         versionId: effect.value.newVersion.id,
                     }),
                 );
+                if (effect.value.makeActive ?? true) {
+                    // Adding a version normally activates it and replaces the
+                    // parent range. On undo, Phase 1 maps an empty version's
+                    // collapsed range to the right edge of the restored text.
+                    // Re-applying the old active id rebuilds the selection from
+                    // the left edge and the restored version's exact length.
+                    effects.push(
+                        _updateActiveRevisionVersion.of({
+                            annotationId: oldAnnotation.id,
+                            to: oldAnnotation.activeVersionId,
+                        }),
+                    );
+                }
             } else if (effect.is(_deleteVersionFromRevision)) {
                 // Inverse of delete = re-add the deleted version at its old slot.
                 const oldIndex = versionIndexById(oldAnnotation, effect.value.versionId);
