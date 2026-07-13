@@ -21,6 +21,7 @@ type BaseAnnotation = {
     selection: EditorSelection; // what text is annotated (document positions)
     id: number;                 // unique within the annotation map
     thread: Thread;             // array of { message, author, time }
+    _historyId?: string;        // private stable lineage; backfilled for legacy data
 };
 
 type CommentAnnotation    = BaseAnnotation & { _type: "comment" };
@@ -57,8 +58,9 @@ stop you at most of these, but not all:
    it to the clipboard, so paste silently loses it. Two compile-time tripwires
    guard this — the `RawAnnotationSchema.options satisfies […]` length check and
    the `_AssertSerializedCoversAllTypes` equality — so forgetting step 2 fails the
-   build. (The serialize/rebuild functions in `clipboardAnnotations.ts` spread all
-   fields generically, so they need no change once the schema covers the type.)
+   build. (The serialize/rebuild functions in `clipboardAnnotations.ts` spread
+   user-facing fields generically; the private `_historyId` is the intentional
+   exception because paste starts a new annotation lineage.)
 3. **`annotationField.ts` — Phase 3 / `pushDocToVersionState`** if the new type
    mirrors document text the way revisions do. Most types won't.
 4. **Decorations and UI** — `annotationDecorations` in `index.ts`, plus whatever
@@ -140,8 +142,11 @@ Reducer invariants:
 - **Referential integrity** — when a revision is removed or a version deleted
   (observed via `removeAnnotation` / `_deleteVersionFromRevision` effects in the
   same transaction), matching members are pruned; a group that drops below two
-  members dissolves. Undo restores the dissolved group (snapshot-restore
-  inversion via `_restoreVersionGroups`).
+  members dissolves. Undo emits granular create/delete/rename/member effects,
+  including each removed member's original index, so it restores a dissolved
+  group without replacing unrelated groups added by a later untracked update.
+  `_restoreVersionGroups` remains the authoritative whole-map projection for
+  collaboration, recovery fallbacks, and backward decoding of older history.
 
 **Cascade.** `setActiveRevisionVersion` resolves the target version's group
 partners (`groupSwitchTargets` → `groupPartnersOf`) and bundles every partner's
@@ -153,9 +158,8 @@ cross-references are inside function bodies).
 
 Public builders: `createVersionGroup(label, members)` → `{ spec, groupId }`,
 `addVersionToGroup`, `removeVersionFromGroup`, `deleteVersionGroup`,
-`renameVersionGroup`. Group switches sync over collab today (they ride the normal
-annotation sync as one transaction); syncing the group *structure* map is tracked
-in #273.
+`renameVersionGroup`. Both group switches and the document-level group structure
+sync through Yjs collaboration.
 
 ## The annotationField StateField
 
@@ -219,15 +223,26 @@ Registered via `invertedEffects.of(...)`. When CodeMirror undoes/redoes a transa
 
 | Original effect | Inverted effect |
 |-----------------|-----------------|
-| `addAnnotation` | `removeAnnotation` (same object) |
-| `removeAnnotation` | `addAnnotation` (same object) |
+| `addAnnotation` | ID-based removal, or `removeAnnotation` for effect-only adds |
+| `removeAnnotation` | exact `_restoreAnnotation` snapshot when text also changed |
 | `updateThread` | `updateThread` with old thread |
 | `_addVersionToRevision` | `_deleteVersionFromRevision` by the added version's id |
 | `_deleteVersionFromRevision` | `_addVersionToRevision` with old version, at its old slot |
 | `_updateActiveRevisionVersion` | `_updateActiveRevisionVersion` with old `activeVersionId` |
-| `_updateRevisionVersionState` | `_updateRevisionVersionState` with old blob (by id) |
-| `_applySuggestion` | `addAnnotation` (restores suggestion) |
-| *(implicit)* collapsed revision | `removeAnnotation(collapsed)` + `_restoreAnnotation(original)` |
+| `_updateRevisionVersionState` | three-way semantic version-state delta, preserving later bookkeeping |
+| `_applySuggestion` | exact `_restoreAnnotation` snapshot |
+| *(implicit)* lossy range/version remap | exact `_restoreAnnotation` snapshot |
+
+`_restoreAnnotation` carries both the original semantic snapshot and the history
+event's inverse `ChangeSet`. Its `map` function rebases that snapshot through
+later `addToHistory: false` document changes, while a transaction extender places
+an `isolateHistory("after")` boundary on edits whose positional inverse must not
+be joined to the next change. Revision-system builders use full isolation at
+their public action boundary. Every live annotation also has a private persisted
+`_historyId` lineage token. Numeric display IDs may be reused after removal, so
+the token prevents an older undo entry from modifying a different annotation
+that later received the same ID, type, and range. Legacy annotations receive a
+token when their saved field is loaded.
 
 ### `_revisionCleanup` Guard
 

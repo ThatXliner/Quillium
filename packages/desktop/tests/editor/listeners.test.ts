@@ -12,6 +12,10 @@ import {
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
+import {
+    createVersionGroup,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
 import { currentDocumentId, currentDraftId, lastPersistedEventId, lastSavedAt } from "$lib/stores";
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
@@ -23,7 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 function makeView(options: Parameters<typeof listeners>[0] = {}) {
     const state = EditorState.create({
         doc: "Hello world",
-        extensions: [annotationField, listeners(options)],
+        extensions: [annotationField, versionGroupField, listeners(options)],
     });
     const parent = document.createElement("div");
     document.body.appendChild(parent);
@@ -94,6 +98,30 @@ describe("listeners integration", () => {
         await flushMicrotasks();
 
         expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(true);
+    });
+
+    it("persists version-group-only changes through the production save listener", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
+            return null;
+        });
+
+        view = makeView();
+        const { spec } = createVersionGroup("Linked", [
+            { revisionId: 1, versionId: "one" },
+            { revisionId: 2, versionId: "two" },
+        ]);
+        view.dispatch(spec);
+        await flushMicrotasks();
+
+        const appendCall = invoked.find((call) => call.cmd === "cmd_append_event");
+        expect(appendCall).toBeDefined();
+        const args = appendCall?.args as { payloadJson?: string };
+        const payload = JSON.parse(args.payloadJson ?? "{}") as Record<string, unknown>;
+        expect(payload.type).toBe("state_transaction");
+        expect(payload.transactionReplay).toBeDefined();
     });
 
     it("sends a doc_change payload containing the inserted text", async () => {

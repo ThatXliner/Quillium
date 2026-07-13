@@ -19,6 +19,7 @@ pub struct DocumentMeta {
     pub preview_text: String,
     pub tags: String,
     pub deleted_at: Option<i64>,
+    pub persist_history: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

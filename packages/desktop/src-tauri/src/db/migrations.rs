@@ -124,6 +124,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "draft_branch_relation",
         kind: MigrationKind::Rust(draft_branch_relation),
     },
+    Migration {
+        version: 8,
+        name: "document_history_policy",
+        kind: MigrationKind::Rust(document_history_policy),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -293,6 +298,22 @@ fn draft_branch_relation(conn: &Connection) -> Result<()> {
              WHERE parent_draft_id IS NOT NULL",
             [],
         )?;
+    }
+    Ok(())
+}
+
+/// Existing documents keep cross-restart undo. New documents explicitly set
+/// their policy at creation time, defaulting to the safer session-only mode.
+fn document_history_policy(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "documents", "persist_history")? {
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN persist_history INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        // Every row present while this migration runs predates the setting and
+        // keeps Quillium's historical cross-restart behavior. Rows inserted
+        // afterward inherit the safer session-only database default.
+        conn.execute("UPDATE documents SET persist_history = 1", [])?;
     }
     Ok(())
 }
@@ -482,6 +503,14 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(version, MIGRATIONS.last().unwrap().version);
+        let persist_history: i64 = conn
+            .query_row(
+                "SELECT persist_history FROM documents WHERE id = 'doc1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(persist_history, 1);
         // FTS index was rebuilt from the existing row.
         let hits: i64 = conn
             .query_row(

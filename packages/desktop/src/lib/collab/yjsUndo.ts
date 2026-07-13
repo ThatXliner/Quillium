@@ -119,8 +119,8 @@ export function createYjsUndoExtension<T = unknown>(
 
     return {
         // Prec.highest so Yjs undo wins over CodeMirror's historyKeymap Mod-z —
-        // otherwise CM history (which still accumulated pre-collab events) would
-        // run first and revert to the joiner's pre-connect local doc.
+        // otherwise CM history (which may contain pre-collab events) could run
+        // first and replay stale text or semantic effects into the live document.
         extension: [Prec.highest(keymap.of(undoKeymap)), selectionRestorePlugin],
         undoManager,
     };
@@ -129,6 +129,9 @@ export function createYjsUndoExtension<T = unknown>(
 /**
  * Register a subtree Y.Text with an existing UndoManager's tracked scope (D-97).
  * Idempotent — Yjs's addToScope is a no-op if the type is already tracked.
+ * Registration is not retroactive: an already-populated type starts with no
+ * undo item. Bootstrap writes must happen before registration or use an
+ * untracked origin such as `"init"`; `"local"` after registration is a user edit.
  * Caller is responsible for calling this at nested-editor mount time; Plan 8.5c-01
  * (NestedEditorController) owns those call-sites.
  *
@@ -139,11 +142,9 @@ export function createYjsUndoExtension<T = unknown>(
 export function addSubtreeToUndoScope(
     undoManager: Y.UndoManager,
     subtreeYtext: Y.Text,
-    extraTypes?: Y.AbstractType<unknown>[],
+    extraTypes?: UndoScopeType[],
 ): void {
-    // Cast required because Y.Text's internal event handler type is more specific
-    // than AbstractType<unknown>, but addToScope accepts any AbstractType.
-    const toAdd = [subtreeYtext as Y.AbstractType<unknown>, ...(extraTypes ?? [])];
+    const toAdd: UndoScopeType[] = [subtreeYtext, ...(extraTypes ?? [])];
     undoManager.addToScope(toAdd);
 }
 

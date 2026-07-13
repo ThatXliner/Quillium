@@ -49,6 +49,7 @@
  */
 
 import { dev } from "$app/environment";
+import { isolateHistory } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
     EditorSelection,
@@ -90,6 +91,7 @@ import { filter, flatMap, isEqual } from "lodash-es";
 import {
     _addVersionToRevision,
     _deleteVersionFromRevision,
+    _mergeRevisionVersionState,
     _nestedEditRevision,
     _revisionCleanup,
     _updateActiveRevisionVersion,
@@ -163,7 +165,11 @@ function deleteAdjacentRevision(direction: "backward" | "forward"): StateCommand
                     insert: "",
                 }),
                 effects: [removeAnnotation.of(target)],
-                annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+                annotations: [
+                    revisionInternalEdit.of(true),
+                    Transaction.addToHistory.of(true),
+                    isolateHistory.of("full"),
+                ],
             }),
         );
         return true;
@@ -311,7 +317,8 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
                             effect.is(_addVersionToRevision) ||
                             effect.is(_deleteVersionFromRevision) ||
                             effect.is(_updateActiveRevisionVersion) ||
-                            effect.is(_updateRevisionVersionState),
+                            effect.is(_updateRevisionVersionState) ||
+                            effect.is(_mergeRevisionVersionState),
                     ),
                 )
             )
@@ -835,7 +842,11 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
                   }
                 : {}),
             annotations: autoVersion
-                ? [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)]
+                ? [
+                      revisionInternalEdit.of(true),
+                      Transaction.addToHistory.of(true),
+                      isolateHistory.of("full"),
+                  ]
                 : Transaction.addToHistory.of(true),
         }),
     );

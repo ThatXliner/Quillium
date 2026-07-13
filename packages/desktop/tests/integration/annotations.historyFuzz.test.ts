@@ -6,7 +6,9 @@
  * history stacks; undo and redo must then reproduce that complete prior value,
  * including annotation ranges, revision versions, and version groups. Editor
  * cursor selection is intentionally excluded because CodeMirror does not
- * guarantee that command-provided cursor moves replay on redo.
+ * guarantee that command-provided cursor moves replay on redo. Restart commands
+ * cover both direct saved-field round trips and reconstruction from a prior
+ * snapshot plus the exact serialized event tail accumulated by EditorHarness.
  *
  * Replay/stress controls:
  *   ANNOTATION_HISTORY_FUZZ_RUNS=1000
@@ -54,7 +56,7 @@ import { redo as codeMirrorRedo, undo as codeMirrorUndo } from "@codemirror/comm
 import { EditorSelection, Transaction, type TransactionSpec } from "@codemirror/state";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { EditorHarness } from "../helpers/EditorHarness";
+import { EditorHarness, type EditorRestartMode } from "../helpers/EditorHarness";
 
 type HistorySnapshot = {
     doc: string;
@@ -66,9 +68,16 @@ type HistoryModel = {
     present: HistorySnapshot;
     undo: HistorySnapshot[];
     redo: HistorySnapshot[];
+    persistHistory: boolean;
 };
 
 type InsertOperation = { type: "insert"; position: number; text: string };
+type SelectionBoundaryOperation = {
+    type: "selectionBoundary";
+    from: number;
+    length: number;
+    returnToStart: boolean;
+};
 type NonHistoryPrefixOperation = { type: "nonHistoryPrefix"; text: string };
 type DeleteOperation = { type: "delete"; from: number; length: number };
 type ReplaceOperation = {
@@ -121,10 +130,12 @@ type GroupOperation = {
     version: number;
     text: string;
 };
-type HistoryOperation = { type: "undo" } | { type: "redo" };
+type RestartOperation = { type: "restart"; mode: EditorRestartMode };
+type HistoryOperation = { type: "undo" } | { type: "redo" } | RestartOperation;
 
 type Operation =
     | InsertOperation
+    | SelectionBoundaryOperation
     | NonHistoryPrefixOperation
     | DeleteOperation
     | ReplaceOperation
@@ -155,6 +166,7 @@ const REPLAY_SEED = process.env.ANNOTATION_HISTORY_FUZZ_SEED
     ? envInteger("ANNOTATION_HISTORY_FUZZ_SEED", 0, Number.MIN_SAFE_INTEGER)
     : undefined;
 const REPLAY_PATH = process.env.ANNOTATION_HISTORY_FUZZ_PATH || undefined;
+const FUZZ_TIMEOUT_MS = NUM_RUNS > 500 || MAX_COMMANDS > 100 ? 10 * 60 * 1_000 : 30_000;
 
 function captureSnapshot(harness: EditorHarness): HistorySnapshot {
     const serialized = harness.view.state.toJSON({ annotationField, versionGroupField });
@@ -306,6 +318,8 @@ function canRunForward(operation: Exclude<Operation, HistoryOperation>, snapshot
     switch (operation.type) {
         case "insert":
             return operation.text.length > 0;
+        case "selectionBoundary":
+            return snapshot.doc.length > 0;
         case "nonHistoryPrefix":
             return operation.text.length > 0;
         case "delete":
@@ -451,6 +465,22 @@ function executeForward(
         case "insert":
             harness.insert(insertPosition(harness.doc.length, operation.position), operation.text);
             return;
+        case "selectionBoundary": {
+            const range = resolvedRange(harness.doc.length, operation.from, operation.length);
+            if (!range) throw new Error("selection command lost its valid range");
+            const original = harness.view.state.selection;
+            harness.view.dispatch({
+                selection: EditorSelection.single(range[0], range[1]),
+                annotations: Transaction.userEvent.of("select"),
+            });
+            if (operation.returnToStart) {
+                harness.view.dispatch({
+                    selection: original,
+                    annotations: Transaction.userEvent.of("select"),
+                });
+            }
+            return;
+        }
         case "nonHistoryPrefix":
             harness.view.dispatch({
                 changes: { from: 0, insert: operation.text },
@@ -884,9 +914,17 @@ async function runForwardCommand(
 
     const undoDepthBefore = harness.undoDepth;
     const redoDepthBefore = harness.redoDepth;
+    const payloadCountBefore = harness.pendingEventPayloadCount;
     executeForward(operation, harness);
     await settleDeferredAnnotationWork();
     assertInvariants(harness, operation.type);
+
+    if (operation.type === "selectionBoundary") {
+        expect(
+            harness.pendingEventPayloadCount,
+            "selection-only commands must not append persistence events",
+        ).toBe(payloadCountBefore);
+    }
 
     const after = captureSnapshot(harness);
     if (snapshotKey(after) === snapshotKey(before)) {
@@ -923,11 +961,22 @@ async function runUndoCommand(model: HistoryModel, harness: EditorHarness): Prom
     expect(before, "undo: model and editor diverged before command").toEqual(model.present);
     const expected = model.undo.at(-1);
     if (!expected) throw new Error("undo command ran without a modeled history item");
+    const isNetZeroGroup = snapshotKey(before) === snapshotKey(expected);
+    const redoDepthBefore = harness.redoDepth;
     expect(codeMirrorUndo(harness.view), "CodeMirror refused a modeled undo").toBe(true);
     await settleDeferredAnnotationWork();
 
     model.undo.pop();
-    model.redo.push(before);
+    // Adjacent transactions may join into a history group whose net state is
+    // identical to its starting snapshot (for example insert, then delete the
+    // inserted text). CodeMirror may consume that empty group without creating
+    // a redo item. Effect-bearing groups can still produce redo when their
+    // observable snapshot is net-zero, so use its reported depth for this
+    // otherwise invisible detail.
+    const redoDelta = harness.redoDepth - redoDepthBefore;
+    expect([0, 1], "undo may add at most one redo item").toContain(redoDelta);
+    if (!isNetZeroGroup) expect(redoDelta, "a state-changing undo must be redoable").toBe(1);
+    if (redoDelta === 1) model.redo.push(before);
     model.present = expected;
     assertInvariants(harness, "undo");
     expect(captureSnapshot(harness), "undo must restore the exact previous snapshot").toEqual(
@@ -954,12 +1003,47 @@ async function runRedoCommand(model: HistoryModel, harness: EditorHarness): Prom
     expect(harness.redoDepth).toBe(model.redo.length);
 }
 
+function runRestartCommand(
+    model: HistoryModel,
+    harness: EditorHarness,
+    operation: RestartOperation,
+): void {
+    const before = captureSnapshot(harness);
+    const selectionBefore = JSON.parse(
+        JSON.stringify(harness.view.state.selection.toJSON()),
+    ) as unknown;
+    const label = `restart.${operation.mode}`;
+    expect(before, `${label}: model and editor diverged before round-trip`).toEqual(model.present);
+    harness.restart(operation.mode);
+    expect(captureSnapshot(harness), `${label}: must preserve semantic editor state`).toEqual(
+        model.present,
+    );
+    // Cursor-only traffic deliberately does not enter the event log. A direct
+    // snapshot must preserve it exactly; an event tail may legitimately fall
+    // back to the checkpoint selection when no semantic event followed it.
+    if (operation.mode === "snapshot") {
+        expect(
+            harness.view.state.selection.toJSON(),
+            `${label}: must preserve the exact current selection`,
+        ).toEqual(selectionBefore);
+    }
+    if (!model.persistHistory) {
+        model.undo = [];
+        model.redo = [];
+    }
+    expect(harness.undoDepth).toBe(model.undo.length);
+    expect(harness.redoDepth).toBe(model.redo.length);
+    expect(harness.pendingEventPayloadCount).toBe(0);
+    assertInvariants(harness, label);
+}
+
 class AnnotationHistoryCommand implements fc.AsyncCommand<HistoryModel, EditorHarness> {
     constructor(readonly operation: Operation) {}
 
     check(model: Readonly<HistoryModel>): boolean {
         if (this.operation.type === "undo") return model.undo.length > 0;
         if (this.operation.type === "redo") return model.redo.length > 0;
+        if (this.operation.type === "restart") return true;
         return canRunForward(this.operation, model.present);
     }
 
@@ -968,6 +1052,8 @@ class AnnotationHistoryCommand implements fc.AsyncCommand<HistoryModel, EditorHa
             await runUndoCommand(model, harness);
         } else if (this.operation.type === "redo") {
             await runRedoCommand(model, harness);
+        } else if (this.operation.type === "restart") {
+            runRestartCommand(model, harness, this.operation);
         } else {
             await runForwardCommand(model, harness, this.operation);
         }
@@ -993,6 +1079,15 @@ const arbOperation: fc.Arbitrary<Operation> = fc.oneof(
             type: fc.constant("insert" as const),
             position: arbSeed,
             text: arbSmallText,
+        }),
+    },
+    {
+        weight: 2,
+        arbitrary: fc.record({
+            type: fc.constant("selectionBoundary" as const),
+            from: arbSeed,
+            length: arbSeed,
+            returnToStart: fc.boolean(),
         }),
     },
     {
@@ -1094,6 +1189,13 @@ const arbOperation: fc.Arbitrary<Operation> = fc.oneof(
     })),
     { weight: 5, arbitrary: fc.constant({ type: "undo" as const }) },
     { weight: 3, arbitrary: fc.constant({ type: "redo" as const }) },
+    {
+        weight: 2,
+        arbitrary: fc.record({
+            type: fc.constant("restart" as const),
+            mode: fc.constantFrom<EditorRestartMode>("snapshot", "eventTail"),
+        }),
+    },
 );
 
 const arbInitialDocument = fc
@@ -1102,8 +1204,8 @@ const arbInitialDocument = fc
 
 describe("annotation history state machine", () => {
     it(
-        `restores exact snapshots (${NUM_RUNS} runs, up to ${MAX_COMMANDS} commands)`,
-        { timeout: 30_000 },
+        `restores exact snapshots and event tails (${NUM_RUNS} runs, up to ${MAX_COMMANDS} commands)`,
+        { timeout: FUZZ_TIMEOUT_MS },
         async () => {
             const commands = fc.commands<HistoryModel, EditorHarness, false>(
                 [arbOperation.map((operation) => new AnnotationHistoryCommand(operation))],
@@ -1113,15 +1215,26 @@ describe("annotation history state machine", () => {
             await fc.assert(
                 fc.asyncProperty(
                     arbInitialDocument,
+                    fc.boolean(),
                     commands,
-                    async (initialDocument, sequence) => {
-                        const harness = EditorHarness.create(initialDocument);
+                    async (initialDocument, persistHistory, sequence) => {
+                        const harness = EditorHarness.create(
+                            initialDocument,
+                            persistHistory,
+                            250,
+                            true,
+                        );
                         try {
                             const initial = captureSnapshot(harness);
                             assertInvariants(harness, "initial");
                             await fc.asyncModelRun(
                                 () => ({
-                                    model: { present: initial, undo: [], redo: [] },
+                                    model: {
+                                        present: initial,
+                                        undo: [],
+                                        redo: [],
+                                        persistHistory,
+                                    },
                                     real: harness,
                                 }),
                                 sequence,
@@ -1136,6 +1249,154 @@ describe("annotation history state machine", () => {
                     verbose: 2,
                     ...(REPLAY_SEED === undefined ? {} : { seed: REPLAY_SEED }),
                     ...(REPLAY_PATH === undefined ? {} : { path: REPLAY_PATH }),
+                },
+            );
+        },
+    );
+
+    it(
+        `round-trips arbitrary non-history edits (${NUM_RUNS} runs)`,
+        { timeout: FUZZ_TIMEOUT_MS },
+        async () => {
+            await fc.assert(
+                fc.asyncProperty(
+                    arbInitialDocument,
+                    fc.constantFrom("annotationReplace" as const, "activeVersionUpdate" as const),
+                    fc.constantFrom("comment" as const, "suggestion" as const),
+                    fc.constantFrom("insert" as const, "delete" as const, "replace" as const),
+                    arbSeed,
+                    arbSeed,
+                    arbSeed,
+                    arbSeed,
+                    arbMaybeEmptyText,
+                    arbSmallText,
+                    async (
+                        initialDocument,
+                        scenario,
+                        annotationType,
+                        nonHistoryKind,
+                        annotationFrom,
+                        annotationLength,
+                        historyFrom,
+                        historyLength,
+                        historyText,
+                        nonHistoryText,
+                    ) => {
+                        const harness = EditorHarness.create(initialDocument, false, 250, true);
+                        try {
+                            const annotationRange = resolvedRange(
+                                harness.doc.length,
+                                annotationFrom,
+                                annotationLength,
+                            );
+                            fc.pre(annotationRange !== null);
+
+                            let nonHistoryTarget: [number, number];
+                            if (scenario === "activeVersionUpdate") {
+                                const revisionId = harness.addRevision(
+                                    annotationRange[0],
+                                    annotationRange[1],
+                                );
+                                const revision = harness.annotation(revisionId);
+                                if (!isAnnotationOfType(revision, "revision")) {
+                                    throw new Error("fuzz revision setup failed");
+                                }
+                                const currentVersion = activeVersion(revision);
+                                fc.pre(versionText(currentVersion) !== historyText);
+                                harness.view.dispatch(
+                                    updateRevisionVersionState(
+                                        harness.view.state,
+                                        revisionId,
+                                        currentVersion.id,
+                                        { ...currentVersion, doc: historyText },
+                                    ),
+                                );
+                                const updated = harness.annotation(revisionId);
+                                if (!isAnnotationOfType(updated, "revision")) {
+                                    throw new Error("fuzz revision update failed");
+                                }
+                                nonHistoryTarget = [
+                                    updated.selection.main.from,
+                                    updated.selection.main.to,
+                                ];
+                            } else {
+                                if (annotationType === "comment") {
+                                    harness.addComment(annotationRange[0], annotationRange[1]);
+                                } else {
+                                    harness.addSuggestion(annotationRange[0], annotationRange[1], [
+                                        { text: historyText },
+                                    ]);
+                                }
+                                const historyRange = resolvedRange(
+                                    harness.doc.length,
+                                    historyFrom,
+                                    historyLength,
+                                );
+                                fc.pre(historyRange !== null);
+                                fc.pre(
+                                    harness.doc.slice(historyRange[0], historyRange[1]) !==
+                                        historyText,
+                                );
+                                harness.replace(historyRange[0], historyRange[1], historyText);
+                                nonHistoryTarget = [0, harness.doc.length];
+                            }
+
+                            const depthBeforeNonHistory = harness.undoDepth;
+                            const targetLength = nonHistoryTarget[1] - nonHistoryTarget[0];
+                            if (nonHistoryKind === "insert") {
+                                const relative = historyFrom % (targetLength + 1);
+                                harness.view.dispatch({
+                                    changes: {
+                                        from: nonHistoryTarget[0] + relative,
+                                        insert: nonHistoryText,
+                                    },
+                                    annotations: Transaction.addToHistory.of(false),
+                                });
+                            } else {
+                                const relativeRange = resolvedRange(
+                                    targetLength,
+                                    historyFrom,
+                                    historyLength,
+                                );
+                                fc.pre(relativeRange !== null);
+                                const from = nonHistoryTarget[0] + relativeRange[0];
+                                const to = nonHistoryTarget[0] + relativeRange[1];
+                                const insert = nonHistoryKind === "delete" ? "" : nonHistoryText;
+                                fc.pre(harness.doc.slice(from, to) !== insert);
+                                harness.view.dispatch({
+                                    changes: { from, to, insert },
+                                    annotations: Transaction.addToHistory.of(false),
+                                });
+                            }
+                            await settleDeferredAnnotationWork();
+
+                            expect(harness.undoDepth).toBe(depthBeforeNonHistory);
+                            assertInvariants(harness, `nonHistory.${scenario}.${nonHistoryKind}`);
+                            const beforeUndo = captureSnapshot(harness);
+
+                            expect(codeMirrorUndo(harness.view)).toBe(true);
+                            await settleDeferredAnnotationWork();
+                            assertInvariants(
+                                harness,
+                                `nonHistory.${scenario}.${nonHistoryKind}.undo`,
+                            );
+
+                            expect(codeMirrorRedo(harness.view)).toBe(true);
+                            await settleDeferredAnnotationWork();
+                            assertInvariants(
+                                harness,
+                                `nonHistory.${scenario}.${nonHistoryKind}.redo`,
+                            );
+                            expect(captureSnapshot(harness)).toEqual(beforeUndo);
+                        } finally {
+                            harness.destroy();
+                        }
+                    },
+                ),
+                {
+                    numRuns: NUM_RUNS,
+                    verbose: 2,
+                    ...(REPLAY_SEED === undefined ? {} : { seed: REPLAY_SEED }),
                 },
             );
         },

@@ -13,7 +13,8 @@ fn now_ms() -> i64 {
 
 pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                persist_history
          FROM documents WHERE deleted_at IS NULL ORDER BY updated_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -26,6 +27,7 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
             preview_text: row.get(5)?,
             tags: row.get(6)?,
             deleted_at: row.get(7)?,
+            persist_history: row.get(8)?,
         })
     })?;
     rows.collect()
@@ -33,7 +35,8 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
 
 pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                persist_history
          FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -46,6 +49,7 @@ pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
             preview_text: row.get(5)?,
             tags: row.get(6)?,
             deleted_at: row.get(7)?,
+            persist_history: row.get(8)?,
         })
     })?;
     rows.collect()
@@ -53,7 +57,8 @@ pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
 
 pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                persist_history
          FROM documents WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| {
@@ -66,6 +71,7 @@ pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>>
             preview_text: row.get(5)?,
             tags: row.get(6)?,
             deleted_at: row.get(7)?,
+            persist_history: row.get(8)?,
         })
     })?;
     match rows.next() {
@@ -75,12 +81,21 @@ pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>>
 }
 
 pub fn create_document(conn: &Connection, title: &str) -> Result<String> {
+    create_document_with_history(conn, title, false)
+}
+
+pub fn create_document_with_history(
+    conn: &Connection,
+    title: &str,
+    persist_history: bool,
+) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
     conn.execute(
-        "INSERT INTO documents (id, title, created_at, updated_at, word_count, preview_text, tags)
-         VALUES (?1, ?2, ?3, ?4, 0, '', '[]')",
-        params![id, title, now, now],
+        "INSERT INTO documents
+             (id, title, created_at, updated_at, word_count, preview_text, tags, persist_history)
+         VALUES (?1, ?2, ?3, ?4, 0, '', '[]', ?5)",
+        params![id, title, now, now, persist_history],
     )?;
     Ok(id)
 }
@@ -273,4 +288,45 @@ pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<Stri
         params![id, doc_id, tab_id, label, now],
     )?;
     Ok(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::schema::open_db;
+
+    #[test]
+    fn new_document_history_policy_is_explicit() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+
+        let session_only_id = create_document(&conn, "Session only").unwrap();
+        let persistent_id = create_document_with_history(&conn, "Persistent", true).unwrap();
+        conn.execute(
+            "INSERT INTO documents
+             (id, title, created_at, updated_at, word_count, preview_text, tags)
+             VALUES ('database-default', 'Database default', 1, 1, 0, '', '[]')",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            !get_document(&conn, &session_only_id)
+                .unwrap()
+                .unwrap()
+                .persist_history
+        );
+        assert!(
+            get_document(&conn, &persistent_id)
+                .unwrap()
+                .unwrap()
+                .persist_history
+        );
+        assert!(
+            !get_document(&conn, "database-default")
+                .unwrap()
+                .unwrap()
+                .persist_history
+        );
+    }
 }

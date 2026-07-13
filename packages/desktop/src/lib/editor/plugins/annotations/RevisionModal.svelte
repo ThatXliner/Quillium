@@ -1,4 +1,5 @@
 <script lang="ts">
+import { isolateHistory } from "@codemirror/commands";
 /**
  * RevisionModal.svelte — Full-screen modal that hosts a nested
  * CodeMirror editor for a single revision version.
@@ -485,7 +486,11 @@ function executePendingNestedCommand(
                           }
                         : {}),
                     annotations: autoVersion
-                        ? [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)]
+                        ? [
+                              revisionInternalEdit.of(true),
+                              Transaction.addToHistory.of(true),
+                              isolateHistory.of("full"),
+                          ]
                         : Transaction.addToHistory.of(true),
                 }),
             );

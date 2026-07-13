@@ -28,6 +28,7 @@ import PreviewPanel from "$lib/library/PreviewPanel.svelte";
 import { parseTags } from "$lib/library/tags";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
+import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -182,7 +183,7 @@ async function handleTrashRetentionChange(days: number | null) {
 }
 
 async function handleNew() {
-    const id = await createDocument();
+    const id = await createDocument("Untitled", getPersistUndoHistoryForNewDocuments());
     posthog.capture("document_created");
     $currentDocumentId = id;
     $currentDocumentTitle = "Untitled";

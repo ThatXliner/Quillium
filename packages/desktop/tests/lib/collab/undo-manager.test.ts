@@ -140,6 +140,29 @@ describe("yjs undo manager", () => {
         expect(undoManager.canUndo()).toBe(false);
     });
 
+    it("registering pre-populated subtree text and annotations is not undoable", () => {
+        const ydoc = new Y.Doc();
+        const ytext = ydoc.getText("content");
+        const ymap = ydoc.getMap<unknown>("annotations");
+        const { undoManager } = createYjsUndoExtension(ytext, ymap);
+
+        const subtree = new Y.Text();
+        const subtreeAnnotations = new Y.Map<unknown>();
+        ydoc.getMap("subtrees").set("rev-1", subtree);
+        ydoc.getMap("subtreeAnnotations").set("rev-1", subtreeAnnotations);
+        ydoc.transact(() => {
+            subtree.insert(0, "seeded text");
+            subtreeAnnotations.set("comment-1", { message: "seeded annotation" });
+        }, "local");
+
+        expect(undoManager.canUndo()).toBe(false);
+        addSubtreeToUndoScope(undoManager, subtree, [subtreeAnnotations]);
+
+        expect(undoManager.canUndo()).toBe(false);
+        expect(subtree.toString()).toBe("seeded text");
+        expect(subtreeAnnotations.has("comment-1")).toBe(true);
+    });
+
     it("addToScope is idempotent", () => {
         const ydoc = new Y.Doc();
         const ytext = ydoc.getText("content");

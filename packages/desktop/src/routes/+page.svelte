@@ -53,7 +53,12 @@ import {
 } from "$lib/feedback/autoSurvey";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
-import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
+import {
+    appSettings,
+    applySettings,
+    getPersistUndoHistoryForNewDocuments,
+    persistSettings,
+} from "$lib/settings.svelte";
 import {
     currentDocumentId,
     editorView,
@@ -495,11 +500,13 @@ if (import.meta.env.DEV) {
             }
             try {
                 const collectedPayloads: EventPayload[] = [];
+                const persistHistory = getPersistUndoHistoryForNewDocuments();
 
                 const tempState = EditorState.create({
                     doc: scenario.doc,
                     extensions: getExtensions({
                         persist: false,
+                        persistHistory,
                         updateListener(update) {
                             const payload = buildEventPayload(update);
                             if (payload) collectedPayloads.push(payload);
@@ -513,7 +520,7 @@ if (import.meta.env.DEV) {
                 tempView.destroy();
 
                 await resetDb();
-                const docId = await createDocument(scenario.label);
+                const docId = await createDocument(scenario.label, persistHistory);
                 const draftId = await createDraft(docId, "Draft");
 
                 let lastEventId = -1;

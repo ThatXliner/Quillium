@@ -43,8 +43,8 @@ export async function getDocumentMeta(id: string): Promise<DocumentMeta | null> 
     return invoke<DocumentMeta | null>("cmd_get_document", { id });
 }
 
-export async function createDocument(title = "Untitled"): Promise<string> {
-    return invoke<string>("cmd_create_document", { title });
+export async function createDocument(title = "Untitled", persistHistory = false): Promise<string> {
+    return invoke<string>("cmd_create_document", { title, persistHistory });
 }
 
 /**

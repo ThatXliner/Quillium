@@ -50,6 +50,7 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
                                 wordCount: 0,
                                 previewText: "",
                                 tags: "[]",
+                                persistHistory: true,
                             },
                         ];
 

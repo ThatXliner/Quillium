@@ -32,10 +32,12 @@ const mockAppSettings = {
     autoVersionOnRevisionCreate: true,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: 5000,
+    persistUndoHistoryForNewDocuments: false,
 };
 
 vi.mock("$lib/settings.svelte", () => ({
     appSettings: mockAppSettings,
     applySettings: vi.fn(),
+    getPersistUndoHistoryForNewDocuments: () => false,
     persistSettings: vi.fn(),
 }));
