@@ -10,11 +10,29 @@ bun run e2e:test:full # start/reuse local Supabase, then run every layer
 bun run e2e:test       # Vitest watch mode
 ```
 
-`e2e:test:full` is the release-confidence command for Omni Web Preview. It reads
+`e2e:test:full` is the release-confidence command for Omni. It reads
 credentials from `supabase status -o json`, starts the local stack when needed,
 generates required SvelteKit state for a clean checkout, and does not allow the
-database or browser layers to be silently skipped. CI runs this command for
-changes that can affect the hosted preview path.
+database, relay, or browser layers to be silently skipped. CI runs this command
+for changes that can affect the collaboration or hosted preview paths.
+
+## Track A — Relay real-time collaboration (implemented)
+
+`relayConvergence.test.ts` boots the production `createRelayServer()` on an
+ephemeral port and connects two headless Yjs clients over real `ws` sockets. It
+creates two local Supabase users, authenticates both clients with their real
+access-token JWTs, and covers:
+
+- owner and collaborator edits in both directions, including document text and
+  annotation maps;
+- exactly-once delivery to the other client without sender echo; and
+- relay debounce persistence by replaying the stored `yjs_updates` rows into a
+  fresh Y.Doc.
+
+The suite uses the same opt-in Supabase environment as Track B, so the default
+`e2e:test:run` remains infrastructure-free. `e2e:test:full` supplies those
+variables from the local Supabase CLI and therefore requires the relay contract
+to run.
 
 ## Track B — Share / web preview (implemented)
 
@@ -69,9 +87,3 @@ CI=1 bun run e2e:test:full -- --update-snapshots
 `runLocal.ts` forwards arguments after `--` only to Playwright, while still
 running the required migrations and Vitest contract layer first. Do not commit
 macOS- or Windows-generated baselines.
-
-## Track A — Relay real-time collaboration (planned)
-
-Booting the real relay over a live WebSocket and asserting two clients converge
-(+ persistence) is tracked in [#325](https://github.com/ThatXliner/Quillium/issues/325),
-not yet implemented here.
