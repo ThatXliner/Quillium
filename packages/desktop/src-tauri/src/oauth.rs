@@ -15,7 +15,7 @@ use tauri_plugin_opener::OpenerExt;
 const CALLBACK_ADDRESS: &str = "127.0.0.1:1455";
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 
-const SUCCESS_PAGE: &str = r#"<!doctype html>
+const SUCCESS_PAGE: &str = r##"<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -47,7 +47,7 @@ const SUCCESS_PAGE: &str = r#"<!doctype html>
         <p>You can close this tab and return to Quillium.</p>
     </main>
 </body>
-</html>"#;
+</html>"##;
 
 const ERROR_PAGE: &str = r#"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign-in incomplete · Quillium</title>
