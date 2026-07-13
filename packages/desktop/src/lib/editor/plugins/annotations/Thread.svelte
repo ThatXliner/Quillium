@@ -29,8 +29,8 @@ import { SparklesIcon } from "lucide-svelte";
 import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
-import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 import ThreadMessage from "./ThreadMessage.svelte";
+import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 
 let {
     thread,
@@ -41,6 +41,8 @@ let {
     previewOnly = false,
     // When provided, renders the AI suggest button in the reply footer
     onAiSuggest = undefined,
+    aiSuggestDisabled = false,
+    onDisabledAiSuggest = undefined,
     // Accent colour class for the Send button; defaults to blue
     accentClass = "text-blue-600/80 hover:text-blue-700",
     // Pill bg/text classes for the send pill (active state)
@@ -57,6 +59,8 @@ let {
     view?: EditorView | undefined;
     previewOnly?: boolean;
     onAiSuggest?: (() => void) | undefined;
+    aiSuggestDisabled?: boolean;
+    onDisabledAiSuggest?: (() => void) | undefined;
     accentClass?: string;
     sendPillClass?: string;
     focusRingClass?: string;
@@ -133,11 +137,18 @@ function send() {
             <div class="flex items-center gap-1">
                 {#if onAiSuggest}
                     <button
-                        aria-label="Get AI suggestion"
-                        title="Get AI suggestion"
+                        aria-label={aiSuggestDisabled
+                            ? "Get AI suggestion — add an API key in AI settings"
+                            : "Get AI suggestion"}
+                        aria-disabled={aiSuggestDisabled}
+                        title={aiSuggestDisabled
+                            ? "Add an API key in AI settings to get a suggestion"
+                            : "Get AI suggestion"}
                         class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium
-                            text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
-                        onclick={onAiSuggest}
+                            transition-colors {aiSuggestDisabled
+                                ? 'text-black/20 cursor-pointer'
+                                : 'text-black/35 hover:text-black/60 hover:bg-white/50'}"
+                        onclick={aiSuggestDisabled ? onDisabledAiSuggest : onAiSuggest}
                     >
                         <SparklesIcon size={11} />
                         <span>Suggest</span>
