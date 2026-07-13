@@ -53,6 +53,7 @@ import {
     nestedEditorEdit,
     removeAnnotation,
     revisionInternalEdit,
+    revisionProvenance,
 } from "./plugins/annotations";
 import {
     RawAnnotationSchema,
@@ -129,6 +130,9 @@ function replayAnnotationsOf(
     }
     if (entry.annotations.revisionInternalEdit !== undefined) {
         annotations.push(revisionInternalEdit.of(entry.annotations.revisionInternalEdit));
+    }
+    if (entry.annotations.revisionProvenance !== undefined) {
+        annotations.push(revisionProvenance.of(entry.annotations.revisionProvenance));
     }
     if (entry.annotations.nestedEditorEdit !== undefined) {
         annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));

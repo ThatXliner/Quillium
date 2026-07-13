@@ -46,12 +46,17 @@ classification can be audited or reinterpreted later.
 | `delete` | other `delete*` | Non-cut deletion |
 | `restore` | `input.restore` | Crash/backup restore, not authored text |
 | `format` | bare `input` | Markdown formatting command |
-| `ai-revision` | `revisionInternalEdit` | Accepted/switched revision text |
+| `human-revision` | explicit human version provenance | Human-created revision text |
+| `ai-revision` | explicit AI version provenance | AI-created revision text |
+| `mixed-revision` | explicit mixed version provenance | AI text subsequently edited by a human |
 | `nested-edit` | nested-editor marker | Text written through a nested editor |
 | `unknown` | no recognized signal | Legacy or unclassified event |
 
-Revision and nested-editor markers win over `userEvent`, because those changes
-are dispatched programmatically and may not carry a user event.
+Revision operations carry explicit per-version provenance. The internal revision
+marker alone never implies AI; legacy revisions without explicit provenance are
+reported as unknown. Nested-editor changes carry the active version's updated
+human/mixed provenance; legacy nested edits without it retain the `nested-edit`
+classification.
 
 ## Report Builder
 

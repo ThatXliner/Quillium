@@ -32,7 +32,9 @@ export type ChangeOrigin =
     | "delete" // delete.* (non-cut)
     | "restore" // input.restore — crash-recovery replay, NOT authorship
     | "format" // bare userEvent "input" (markdownFormatting)
-    | "ai-revision" // revisionInternalEdit present — accepted version switch
+    | "human-revision" // explicitly human-authored revision version
+    | "ai-revision" // explicitly AI-authored revision version
+    | "mixed-revision" // AI version subsequently edited by a human
     | "nested-edit" // nestedEditorEdit present
     | "unknown"; // legacy event or unrecognized userEvent
 
@@ -93,6 +95,7 @@ export type TransactionReplayAnnotations = {
      */
     doneTopSelectionsAfter?: SelectionJSON[];
     revisionInternalEdit?: boolean;
+    revisionProvenance?: "human" | "ai" | "mixed";
     nestedEditorEdit?: number;
     revisionCleanup?: boolean;
 };

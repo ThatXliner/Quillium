@@ -17,18 +17,30 @@
  */
 
 import type { ChangeOrigin } from "$lib/db/events";
+import type { RevisionProvenance } from "$lib/editor/plugins/annotations/models";
 
 export function classifyOrigin(args: {
     userEvent: string | undefined;
     hasRevisionInternalEdit: boolean;
     hasNestedEditorEdit: boolean;
+    revisionProvenance?: RevisionProvenance;
 }): ChangeOrigin {
-    // Revision/nested markers are unambiguous and win over userEvent:
-    // accepted version switches and nested-editor-originated changes are
-    // dispatched programmatically and carry whatever userEvent the caller
-    // happened to set (often none).
-    if (args.hasRevisionInternalEdit) return "ai-revision";
-    if (args.hasNestedEditorEdit) return "nested-edit";
+    const explicitRevisionOrigin =
+        args.revisionProvenance === "human"
+            ? "human-revision"
+            : args.revisionProvenance === "ai"
+              ? "ai-revision"
+              : args.revisionProvenance === "mixed"
+                ? "mixed-revision"
+                : undefined;
+
+    // A revision-system marker says how the edit was applied, not who authored
+    // its text. Only an explicit, persisted version provenance may assign the
+    // human/AI/mixed label; legacy unlabelled revisions remain unknown.
+    if (args.hasRevisionInternalEdit) {
+        return explicitRevisionOrigin ?? "unknown";
+    }
+    if (args.hasNestedEditorEdit) return explicitRevisionOrigin ?? "nested-edit";
 
     const ue = args.userEvent ?? "";
     if (ue === "input.restore") return "restore";

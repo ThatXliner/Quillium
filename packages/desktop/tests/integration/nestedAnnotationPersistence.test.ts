@@ -33,7 +33,7 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
-import { history, undo } from "@codemirror/commands";
+import { history, redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -78,8 +78,14 @@ function restoreNestedView(blob: VersionState) {
     return new EditorView({ state, parent: el });
 }
 
-function addRevision(view: EditorView, from: number, to: number, doc: string): number {
-    const builtVersions = [makeVersion({ doc })];
+function addRevision(
+    view: EditorView,
+    from: number,
+    to: number,
+    doc: string,
+    provenance: "human" | "ai" | "mixed" = "human",
+): number {
+    const builtVersions = [makeVersion({ doc, provenance })];
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
@@ -291,7 +297,7 @@ describe("syncingFromParent guard prevents feedback loop", () => {
     });
 
     it("translateAndDispatch fires normally when syncingFromParent is false", () => {
-        const revId = addRevision(parentView, 0, 5, "hello");
+        const revId = addRevision(parentView, 0, 5, "hello", "ai");
 
         let translateCalled = false;
         const syncingFromParent = false;
@@ -311,6 +317,21 @@ describe("syncingFromParent guard prevents feedback loop", () => {
         expect(translateCalled).toBe(true);
         // Parent should reflect the change
         expect(parentView.state.doc.toString()).toBe("hello! world");
+        const revision = parentView.state.field(annotationField)[revId];
+        expect(isAnnotationOfType(revision, "revision")).toBe(true);
+        if (isAnnotationOfType(revision, "revision")) {
+            expect(revision.versions[0].provenance).toBe("mixed");
+        }
+
+        expect(undo(parentView)).toBe(true);
+        const undone = parentView.state.field(annotationField)[revId];
+        expect(isAnnotationOfType(undone, "revision") && undone.versions[0].provenance).toBe("ai");
+
+        expect(redo(parentView)).toBe(true);
+        const redone = parentView.state.field(annotationField)[revId];
+        expect(isAnnotationOfType(redone, "revision") && redone.versions[0].provenance).toBe(
+            "mixed",
+        );
 
         nestedEditor.destroy();
     });
