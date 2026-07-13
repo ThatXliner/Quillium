@@ -70,6 +70,7 @@ describe("joiner view hardening", () => {
         return {
             id,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(from, to),
             thread: [],
         };
@@ -145,6 +146,7 @@ describe("joiner view hardening", () => {
                     {
                         id: 0,
                         _type: "revision",
+                        status: "active" as const,
                         selection: EditorSelection.single(0, 2),
                         thread: [],
                         versions: [firstVersion],
@@ -153,6 +155,7 @@ describe("joiner view hardening", () => {
                     {
                         id: 1,
                         _type: "revision",
+                        status: "active" as const,
                         selection: EditorSelection.single(2, 4),
                         thread: [],
                         versions: [secondVersion],
@@ -383,6 +386,7 @@ describe("joiner view hardening", () => {
             effects: addAnnotation.of({
                 id: 0,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(6, 11),
                 thread: [],
                 versions: ownerVersions,

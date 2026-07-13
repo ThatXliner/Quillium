@@ -333,6 +333,7 @@ describe("exportDocument", () => {
                         annotationField: {
                             "0": {
                                 _type: "comment",
+                                status: "active" as const,
                                 id: 0,
                                 thread: [{ message: "Nested note", author: "Bob", time: 1 }],
                                 selection: {

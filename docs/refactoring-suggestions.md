@@ -149,14 +149,12 @@ used internally + tests. Either delete `equalAnnotationsSignature` (git keeps
 it) or move such helpers into a test-utils module so the public barrel reflects
 the real API.
 
-### 9. `getActiveAnnotation`'s "pending" heuristics *(filed as [#302](https://github.com/ThatXliner/Quillium/issues/302))*
+### 9. ✅ `getActiveAnnotation`'s "pending" heuristics *(done — explicit annotation status, [#302](https://github.com/ThatXliner/Quillium/issues/302))*
 
-The function returns any pending comment/empty revision *regardless of cursor
-position*, using `thread.length === 0` / `versions.length === 0` as a proxy for
-"pending". This is already flagged in-code (issue #38) — an explicit annotation
-status field (or FSM) would remove the proxy checks scattered across
-`utils.ts`, `invertedAnnotationFieldEffects` (`thread.length === 0` ⇒ pending
-comment), and the UI components that re-derive the same notion.
+`status: "pending" | "active"` now owns lifecycle state across active-annotation
+resolution, undo inversion, clipboard handling, collaboration, and UI rendering.
+Content-length checks remain only in the legacy-data normalizer used at load
+boundaries.
 
 ### 10. ✅ `modalStack` bookkeeping duplication (`stores.ts`) *(done — `trimModalAnnotationStores()`)*
 

@@ -141,6 +141,7 @@ function rawSelection(from: number, to: number) {
 function nestedComment(id: number, from: number, to: number) {
     return {
         _type: "comment",
+        status: "active" as const,
         id,
         selection: rawSelection(from, to),
         thread: [],
@@ -155,6 +156,7 @@ function nestedSuggestion(
 ) {
     return {
         _type: "suggestion",
+        status: "active" as const,
         id,
         selection: rawSelection(from, to),
         thread: [],
@@ -383,6 +385,7 @@ describe("nested annotation creation enters parent undo history via version stat
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -438,6 +441,7 @@ describe("nested annotation creation enters parent undo history via version stat
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -486,6 +490,7 @@ describe("nested annotation creation enters parent undo history via version stat
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -557,6 +562,7 @@ describe("nested annotation creation enters parent undo history via version stat
                 annotationField: {
                     0: {
                         _type: "comment",
+                        status: "active" as const,
                         id: 0,
                         selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
                         thread: [],
@@ -570,6 +576,7 @@ describe("nested annotation creation enters parent undo history via version stat
                 annotationField: {
                     0: {
                         _type: "comment",
+                        status: "active" as const,
                         id: 0,
                         selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
                         thread: [],
@@ -589,6 +596,7 @@ describe("nested annotation creation enters parent undo history via version stat
                 annotationField: {
                     0: {
                         _type: "comment",
+                        status: "active" as const,
                         id: 0,
                         selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
                         thread: [],
@@ -820,6 +828,7 @@ describe("multiple version state flushes are independently undoable", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -847,6 +856,7 @@ describe("multiple version state flushes are independently undoable", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -856,6 +866,7 @@ describe("multiple version state flushes are independently undoable", () => {
                 },
                 1: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 1,
                     selection: {
                         ranges: [{ anchor: 6, head: 11 }],
@@ -942,6 +953,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -973,6 +985,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -1006,6 +1019,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -1042,6 +1056,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 6, head: 11 }],

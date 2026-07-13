@@ -664,6 +664,7 @@ export function createComment({
             effects: [
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "comment"),
+                    status: "active",
                     thread: [{ message: comment, author, time: Date.now() }],
                 }),
             ],

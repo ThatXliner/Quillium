@@ -1,11 +1,13 @@
 import {
     type Annotations,
     type GenericAnnotation,
+    type RawAnnotation,
     clone,
     createNewAnnotation,
     getLastId,
     getNewId,
     isAnnotationOfType,
+    normalizeAnnotation,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { EditorSelection } from "@codemirror/state";
@@ -24,7 +26,7 @@ function emptyAnnotations(): Annotations {
 function withAnnotations(...types: Array<"comment" | "suggestion" | "revision">): Annotations {
     const annotations: Annotations = {};
     types.forEach((type, i) => {
-        const base = { id: i, selection: sel(0, 10), thread: [] };
+        const base = { id: i, selection: sel(0, 10), thread: [], status: "active" as const };
         if (type === "comment") {
             annotations[i] = { ...base, _type: "comment" };
         } else if (type === "suggestion") {
@@ -53,8 +55,8 @@ describe("getNewId", () => {
 
     it("handles non-contiguous IDs", () => {
         const annotations: Annotations = {
-            5: { id: 5, _type: "comment", selection: sel(0, 1), thread: [] },
-            12: { id: 12, _type: "comment", selection: sel(2, 3), thread: [] },
+            5: { id: 5, _type: "comment", selection: sel(0, 1), thread: [], status: "active" },
+            12: { id: 12, _type: "comment", selection: sel(2, 3), thread: [], status: "active" },
         };
         expect(getNewId(annotations)).toBe(13);
     });
@@ -82,12 +84,14 @@ describe("isAnnotationOfType", () => {
     const comment: GenericAnnotation = {
         id: 0,
         _type: "comment",
+        status: "active" as const,
         selection: sel(0, 5),
         thread: [],
     };
     const revision: GenericAnnotation = {
         id: 1,
         _type: "revision",
+        status: "active" as const,
         selection: sel(0, 5),
         thread: [],
         activeVersionId: "",
@@ -96,6 +100,7 @@ describe("isAnnotationOfType", () => {
     const suggestion: GenericAnnotation = {
         id: 2,
         _type: "suggestion",
+        status: "active" as const,
         selection: sel(0, 5),
         thread: [],
         replacements: [],
@@ -151,6 +156,35 @@ describe("createNewAnnotation", () => {
         const a = createNewAnnotation(emptyAnnotations(), sel(0, 1), "comment");
         expect(a.thread).toEqual([]);
     });
+
+    it("sets lifecycle status explicitly at creation", () => {
+        expect(createNewAnnotation({}, sel(0, 1), "comment").status).toBe("pending");
+        expect(createNewAnnotation({}, sel(0, 1), "suggestion").status).toBe("active");
+        expect(createNewAnnotation({}, sel(0, 1), "revision").status).toBe("active");
+    });
+});
+
+describe("normalizeAnnotation", () => {
+    it("heals legacy annotations once at the serialization boundary", () => {
+        const legacy = {
+            id: 0,
+            _type: "comment",
+            selection: sel(0, 1).toJSON(),
+            thread: [],
+        } satisfies RawAnnotation;
+        expect(normalizeAnnotation(legacy).status).toBe("pending");
+    });
+
+    it("preserves explicit status even when content lengths disagree", () => {
+        const activeEmpty = {
+            id: 0,
+            _type: "comment",
+            status: "active",
+            selection: sel(0, 1).toJSON(),
+            thread: [],
+        } satisfies RawAnnotation;
+        expect(normalizeAnnotation(activeEmpty)).toBe(activeEmpty);
+    });
 });
 
 // ── clone ─────────────────────────────────────────────────────────────────────
@@ -160,6 +194,7 @@ describe("clone", () => {
         const original: GenericAnnotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: sel(0, 10),
             thread: [{ message: "hello", author: "alice", time: 1 }],
         };
@@ -172,6 +207,7 @@ describe("clone", () => {
         const original: GenericAnnotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: sel(5, 15),
             thread: [],
         };

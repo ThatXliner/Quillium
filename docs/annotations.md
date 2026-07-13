@@ -21,6 +21,7 @@ type BaseAnnotation = {
     selection: EditorSelection; // what text is annotated (document positions)
     id: number;                 // unique within the annotation map
     thread: Thread;             // array of { message, author, time }
+    status: "pending" | "active"; // explicit lifecycle state
     _historyId?: string;        // private stable lineage; backfilled for legacy data
 };
 
@@ -38,6 +39,11 @@ type Annotations = { [id: number]: GenericAnnotation };
 ```
 
 **Important:** Always use `isAnnotationOfType(annotation, "revision")` — never compare `_type` directly.
+
+**Important:** Read `annotation.status` to determine whether an annotation needs
+user attention. Content lengths do not define lifecycle state. Legacy snapshots
+without `status` are healed once at deserialization; the first thread-message or
+revision-version effect transitions a pending annotation to active.
 
 **Important:** A revision points at its active version by **stable `id`** (`activeVersionId`), not by array index. The `versions[]` array stays ordered (pills, `Ctrl-[` / `Ctrl-]` navigation are positional), but identity is the id. Read the active version with the `activeVersion(rev)` / `activeVersionIndex(rev)` helpers — never `rev.versions[rev.activeVersionId]` (it's not an index). See [Version identity](#version-identity).
 

@@ -44,6 +44,7 @@ function makeAnnotatedStateJson(doc = "The quick brown fox"): string {
         {
             id: 1,
             _type: "revision",
+            status: "active" as const,
             thread: [],
             selection: EditorSelection.single(4, 9),
             activeVersionId: quick.id,
@@ -52,6 +53,7 @@ function makeAnnotatedStateJson(doc = "The quick brown fox"): string {
         {
             id: 2,
             _type: "revision",
+            status: "active" as const,
             thread: [],
             selection: EditorSelection.single(16, 19),
             activeVersionId: fox.id,
@@ -60,12 +62,14 @@ function makeAnnotatedStateJson(doc = "The quick brown fox"): string {
         {
             id: 3,
             _type: "comment",
+            status: "active" as const,
             thread: [{ author: "Reviewer", message: "Strong opener.", time: 1 }],
             selection: EditorSelection.single(0, 3),
         },
         {
             id: 4,
             _type: "suggestion",
+            status: "active" as const,
             author: "AI",
             thread: [{ author: "AI", message: "Consider a richer color.", time: 2 }],
             selection: EditorSelection.single(10, 15),

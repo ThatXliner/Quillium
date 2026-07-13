@@ -50,6 +50,7 @@ describe("yjsAnnotations", () => {
         return {
             id,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(from, to),
             thread: [],
         };
@@ -243,6 +244,7 @@ describe("yjsAnnotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [{ message: "test", author: "user", time: 123 }],
             };
@@ -261,6 +263,7 @@ describe("yjsAnnotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 replacements: [{ text: "replacement", rationale: "test" }],
@@ -285,6 +288,7 @@ describe("yjsAnnotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: revVersions,
@@ -326,6 +330,7 @@ describe("revision sync", () => {
         return {
             id,
             _type: "revision",
+            status: "active" as const,
             selection: EditorSelection.single(from, to),
             thread: [],
             versions: builtVersions,
@@ -486,6 +491,7 @@ describe("thread sync", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(0, 5),
             thread: [{ message: "initial", author: "user1", time: 100 }],
         };
@@ -513,6 +519,7 @@ describe("thread sync", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(0, 5),
             thread: [],
         };
@@ -570,6 +577,7 @@ describe("suggestion sync", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "suggestion",
+            status: "active" as const,
             selection: EditorSelection.single(0, 5),
             thread: [],
             replacements: [{ text: "replacement" }],

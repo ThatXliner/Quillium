@@ -15,6 +15,7 @@ function buildLinkedView(): { view: EditorView; focus: ReturnType<typeof vi.fn> 
         {
             id: 1,
             _type: "revision",
+            status: "active" as const,
             thread: [],
             selection: EditorSelection.single(4, 9),
             activeVersionId: firstOriginal.id,
@@ -23,6 +24,7 @@ function buildLinkedView(): { view: EditorView; focus: ReturnType<typeof vi.fn> 
         {
             id: 2,
             _type: "revision",
+            status: "active" as const,
             thread: [],
             selection: EditorSelection.single(10, 13),
             activeVersionId: secondOriginal.id,

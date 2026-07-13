@@ -59,6 +59,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 1,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [{ message: "test", author: "user", time: 1000 }],
             };
@@ -82,6 +83,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 2,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 replacements: [{ text: "better", rationale: "clarity" }],
@@ -105,6 +107,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [revVersion],
@@ -136,6 +139,7 @@ describe("annotationSchema", () => {
                 "0": {
                     id: 0,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 7).toJSON(),
                     thread: [],
                 },
@@ -147,6 +151,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [version],
@@ -180,6 +185,7 @@ describe("annotationSchema", () => {
                 "0": {
                     id: 0,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 5).toJSON(),
                     thread: [],
                     activeVersionIndex: 1,
@@ -218,6 +224,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 1,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [{ message: "hello", author: "user", time: 1000 }],
             };
@@ -239,6 +246,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 2,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(6, 11),
                 thread: [],
                 replacements: [{ text: "world2" }],
@@ -263,6 +271,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [roundtripVersion],
@@ -287,6 +296,7 @@ describe("annotationSchema", () => {
                 "0": {
                     id: 0,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 2).toJSON(),
                     thread: [],
                 },
@@ -298,6 +308,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [version],

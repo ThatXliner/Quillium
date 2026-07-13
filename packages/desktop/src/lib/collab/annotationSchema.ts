@@ -8,6 +8,7 @@ import {
     type VersionState,
     activeVersionIndex,
     isAnnotationOfType,
+    normalizeAnnotation,
     normalizeRevision,
 } from "$lib/editor/plugins/annotations/models";
 /**
@@ -72,6 +73,7 @@ export function codeMirrorToYjsAnnotation(
     ydoc.transact(() => {
         node.set("id", generateAnnotationId(clientId));
         node.set("_type", annotation._type);
+        node.set("status", annotation.status);
         node.set("startPos", startPos);
         node.set("endPos", endPos);
 
@@ -173,10 +175,12 @@ export function yjsAnnotationToCodeMirror(
         return null;
     }
 
-    const base = { id: numericId, selection, thread };
+    const rawStatus = node.get("status");
+    const status = rawStatus === "pending" || rawStatus === "active" ? rawStatus : undefined;
+    const base = { id: numericId, selection, thread, status };
 
     if (type === "comment") {
-        return { ...base, _type: "comment" };
+        return normalizeAnnotation({ ...base, _type: "comment" } as GenericAnnotation);
     }
 
     if (type === "suggestion") {
@@ -184,12 +188,12 @@ export function yjsAnnotationToCodeMirror(
         const replacements: SuggestionReplacement[] =
             replArr instanceof Y.Array ? (replArr.toArray() as SuggestionReplacement[]) : [];
         const author = node.get("author");
-        return {
+        return normalizeAnnotation({
             ...base,
             _type: "suggestion",
             replacements,
             author: typeof author === "string" ? author : undefined,
-        };
+        } as GenericAnnotation);
     }
 
     // revision
@@ -237,13 +241,15 @@ export function yjsAnnotationToCodeMirror(
     // normalizeRevision heals legacy rooms into the runtime id-native shape:
     // versions without ids get ids, and activeVersionIndex is translated into
     // activeVersionId when the newer pointer is missing or stale.
-    return normalizeRevision({
-        ...base,
-        _type: "revision",
-        versions,
-        ...(typeof activeVersionId === "string" ? { activeVersionId } : {}),
-        activeVersionIndex: rawIndex,
-    });
+    return normalizeRevision(
+        normalizeAnnotation({
+            ...base,
+            _type: "revision",
+            versions,
+            ...(typeof activeVersionId === "string" ? { activeVersionId } : {}),
+            activeVersionIndex: rawIndex,
+        } as unknown as GenericAnnotation) as never,
+    );
 }
 
 function orderedVersionKeys(node: YjsAnnotationNode, versionsMap: Y.Map<Y.Map<unknown>>): string[] {
@@ -297,10 +303,10 @@ export function getRawAnnotationField(version: VersionState): RawAnnotations | u
 }
 
 function rawAnnotationToCodeMirror(raw: RawAnnotation): GenericAnnotation {
-    const annotation = {
+    const annotation = normalizeAnnotation({
         ...raw,
         selection: EditorSelection.fromJSON(raw.selection),
-    } as GenericAnnotation;
+    } as GenericAnnotation);
     return isAnnotationOfType(annotation, "revision") ? normalizeRevision(annotation) : annotation;
 }
 

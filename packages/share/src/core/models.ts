@@ -34,6 +34,7 @@ import { z } from "zod";
 // what about multiple authors and stuff???
 export type ThreadMessage = { message: string; author: string; time: number };
 export type Thread = ThreadMessage[];
+export type AnnotationStatus = "pending" | "active";
 export function clone(annotation: GenericAnnotation): GenericAnnotation {
     return {
         ...structuredClone(annotation),
@@ -52,6 +53,8 @@ type BaseAnnotation = {
     selection: EditorSelection;
     id: number;
     thread: Thread;
+    /** Explicit lifecycle state; never infer this from thread/version contents at runtime. */
+    status: AnnotationStatus;
     /** Stable lineage token used to distinguish a removed annotation from ID reuse. */
     _historyId?: string;
 };
@@ -69,13 +72,14 @@ export function createNewAnnotation<T extends AnnotationType>(
     annotations: Annotations,
     selection: EditorSelection,
     type: T,
-) {
+): BaseAnnotation & { _type: T } {
     const newId = getNewId(annotations);
     return {
         selection,
         id: newId,
         _type: type,
         thread: [],
+        status: type === "comment" ? "pending" : "active",
         _historyId: newAnnotationHistoryId(),
         // um this ain't getting serialized baby
         // sameTypeAs: (annotation: GenericAnnotation) => annotation._type === type,
@@ -226,6 +230,25 @@ export function normalizeRevision(rev: RawRevisionLike): RevisionAnnotation {
     return { ...base, versions, activeVersionId } as unknown as RevisionAnnotation;
 }
 
+/**
+ * Heal annotations from snapshots and collaboration rooms created before status
+ * was persisted. Content-length checks live only at this compatibility boundary;
+ * every annotation in live editor state has an explicit status afterwards.
+ */
+export function normalizeAnnotation<T extends GenericAnnotation | RawAnnotation>(
+    annotation: T,
+): T & { status: AnnotationStatus } {
+    if (annotation.status === "pending" || annotation.status === "active") {
+        return annotation as T & { status: AnnotationStatus };
+    }
+    const pending =
+        (annotation._type === "comment" && annotation.thread.length === 0) ||
+        (annotation._type === "revision" && annotation.versions.length === 0);
+    return { ...annotation, status: pending ? "pending" : "active" } as T & {
+        status: AnnotationStatus;
+    };
+}
+
 // The loose input shape normalizeRevision accepts: a revision-ish object from
 // either the new or the legacy on-disk shape.
 type RawRevisionLike = {
@@ -283,6 +306,8 @@ export const VersionStateSchema = z
 const RawBaseSchema = z.object({
     id: z.number(),
     thread: z.array(ThreadMessageSchema),
+    // Optional on disk for back-compat. normalizeAnnotation() heals legacy data.
+    status: z.enum(["pending", "active"]).optional(),
     selection: EditorSelectionSchema,
     // Optional on disk for back-compat. annotationField normalizes legacy data
     // before it enters live state.
@@ -416,6 +441,8 @@ const SerializedBase = z.object({
     relAnchor: z.number().int(),
     relHead: z.number().int(),
     thread: z.array(ThreadMessageSchema),
+    // Optional for clipboard payloads copied by older Quillium releases.
+    status: z.enum(["pending", "active"]).optional(),
 });
 // Tripwire: if a fourth annotation type is added to RawAnnotationSchema, this
 // `satisfies` fails to compile (4 options no longer assignable to a 3-tuple),

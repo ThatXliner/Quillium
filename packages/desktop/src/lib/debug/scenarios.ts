@@ -1070,6 +1070,7 @@ export const scenarios: Scenario[] = [
                                 selection,
                                 "comment",
                             ),
+                            status: "active",
                             thread: [
                                 {
                                     message:

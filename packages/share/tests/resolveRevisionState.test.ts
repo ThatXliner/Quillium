@@ -14,6 +14,7 @@ function buildNestedState(): EditorState {
             2: {
                 id: 2,
                 _type: "revision",
+                status: "active" as const,
                 thread: [],
                 selection: { ranges: [{ anchor: 0, head: 6 }], main: 0 },
                 activeVersionId: nestedOriginal.id,
@@ -25,6 +26,7 @@ function buildNestedState(): EditorState {
     const revision: GenericAnnotation = {
         id: 1,
         _type: "revision",
+        status: "active" as const,
         thread: [],
         selection: EditorSelection.single(0, 14),
         activeVersionId: outerOriginal.id,
@@ -71,6 +73,7 @@ describe("resolveRevisionVersionState", () => {
                     let nestedRevision: Record<string, unknown> = {
                         id: depth,
                         _type: "revision",
+                        status: "active" as const,
                         thread: [],
                         selection: EditorSelection.single(0, 1).toJSON(),
                         activeVersionId: targetVersions[0].id,
@@ -94,6 +97,7 @@ describe("resolveRevisionVersionState", () => {
                         nestedRevision = {
                             id: parentId,
                             _type: "revision",
+                            status: "active" as const,
                             thread: [],
                             selection: EditorSelection.single(0, 1).toJSON(),
                             activeVersionId: versions[0].id,

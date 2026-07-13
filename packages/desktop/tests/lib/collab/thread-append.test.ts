@@ -57,6 +57,7 @@ describe("thread Y.Array sync", () => {
         // Seed a comment annotation on A
         const comment: GenericAnnotation = {
             _type: "comment",
+            status: "active" as const,
             id: 0,
             selection: EditorSelection.single(0, 5),
             thread: [],
@@ -115,6 +116,7 @@ describe("thread Y.Array sync", () => {
         // Seed a comment annotation on A with one initial message
         const comment: GenericAnnotation = {
             _type: "comment",
+            status: "active" as const,
             id: 0,
             selection: EditorSelection.single(0, 5),
             thread: [{ message: "initial", author: "A", time: 1 }],
@@ -173,6 +175,7 @@ describe("thread Y.Array sync", () => {
             // Create annotation with 3 messages
             const comment: GenericAnnotation = {
                 _type: "comment",
+                status: "active" as const,
                 id: 0,
                 selection: EditorSelection.single(0, 5),
                 thread: [
