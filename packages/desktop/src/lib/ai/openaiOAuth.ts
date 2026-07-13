@@ -1,6 +1,7 @@
 import {
     type OpenAIOAuthSession,
     createOpenAIOAuthRequest,
+    createOpenAIOAuthTransport,
     exchangeOpenAIOAuthCode,
     refreshOpenAIOAuthTokens,
 } from "@openai-oauth/core";
@@ -11,9 +12,9 @@ import {
  * Svelte/Tauri: PKCE login, callback validation, refresh, and keychain storage.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { setOpenAIOAuthConnected } from "./settings.svelte";
 
 const PROVIDER = "openai-oauth";
-export const HAS_OPENAI_OAUTH_KEY = "quillium-has-openai-oauth";
 const REDIRECT_URI = "http://localhost:1455/auth/callback";
 const EXPIRY_MARGIN_MS = 5 * 60 * 1000;
 
@@ -39,18 +40,47 @@ function toSession(
 
 async function saveSession(session: OpenAIOAuthSession): Promise<void> {
     await invoke("set_api_key", { provider: PROVIDER, key: JSON.stringify(session) });
-    localStorage.setItem(HAS_OPENAI_OAUTH_KEY, "1");
+    setOpenAIOAuthConnected(true);
 }
 
 export async function getStoredOpenAISession(): Promise<OpenAIOAuthSession | null> {
     const value = await invoke<string | null>("get_api_key", { provider: PROVIDER });
-    if (!value) return null;
+    if (!value) {
+        setOpenAIOAuthConnected(false);
+        return null;
+    }
     try {
-        return JSON.parse(value) as OpenAIOAuthSession;
+        const session = JSON.parse(value) as OpenAIOAuthSession;
+        setOpenAIOAuthConnected(true);
+        return session;
     } catch {
         await disconnectOpenAI();
         return null;
     }
+}
+
+export async function listOpenAIModels(): Promise<string[]> {
+    const transport = createOpenAIOAuthTransport({ auth: getFreshOpenAISession });
+    const response = await transport.request("/models");
+    const payload = (await response.json()) as {
+        data?: Array<{ id?: unknown }>;
+        error?: { message?: unknown };
+    };
+    if (!response.ok) {
+        throw new Error(
+            typeof payload.error?.message === "string"
+                ? payload.error.message
+                : "Could not load models for this ChatGPT account.",
+        );
+    }
+    const models = (payload.data ?? [])
+        .map((model) => model.id)
+        .filter(
+            (id): id is string =>
+                typeof id === "string" && id.length > 0 && !id.toLowerCase().includes("image"),
+        );
+    if (models.length === 0) throw new Error("No compatible ChatGPT models were found.");
+    return [...new Set(models)];
 }
 
 export async function getFreshOpenAISession(): Promise<OpenAIOAuthSession | null> {
@@ -87,5 +117,5 @@ export async function signInWithChatGPT(): Promise<OpenAIOAuthSession> {
 
 export async function disconnectOpenAI(): Promise<void> {
     await invoke("delete_api_key", { provider: PROVIDER });
-    localStorage.removeItem(HAS_OPENAI_OAUTH_KEY);
+    setOpenAIOAuthConnected(false);
 }

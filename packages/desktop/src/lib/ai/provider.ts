@@ -56,11 +56,15 @@ export function createModel(
                 kind: "openai-oauth",
                 getSession: getFreshOpenAISession,
             })(modelId) as unknown as LanguageModel;
-        case "openai-compatible":
+        case "openai-compatible": {
+            if (!baseURL?.trim()) {
+                throw new Error("Add a local endpoint base URL before using AI features.");
+            }
             return createOpenAI({
                 apiKey: apiKey || "unused",
-                baseURL: baseURL || "http://localhost:11434/v1",
+                baseURL: baseURL.trim(),
             })(modelId) as LanguageModel;
+        }
         case "anthropic":
             return createAnthropic({ apiKey })(modelId) as unknown as LanguageModel;
         case "google":

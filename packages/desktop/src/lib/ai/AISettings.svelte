@@ -30,7 +30,12 @@ provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
 import ModelGuideModal from "$lib/ai/ModelGuideModal.svelte";
-import { disconnectOpenAI, getStoredOpenAISession, signInWithChatGPT } from "$lib/ai/openaiOAuth";
+import {
+    disconnectOpenAI,
+    getStoredOpenAISession,
+    listOpenAIModels,
+    signInWithChatGPT,
+} from "$lib/ai/openaiOAuth";
 import type { Provider } from "$lib/ai/provider";
 import {
     HAS_API_KEY_KEY,
@@ -168,6 +173,9 @@ let oauthStatus = $state<"checking" | "signed-out" | "starting" | "signed-in" | 
     initialOAuthStatus(),
 );
 let oauthError = $state("");
+let oauthModels = $state<string[]>([]);
+let oauthModelsStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
+let oauthModelsError = $state("");
 
 let effectiveProvider = $derived<Provider>(
     selectedTab === "openai" && useChatGPT
@@ -198,6 +206,33 @@ $effect(() => {
             if (cancelled) return;
             oauthStatus = "error";
             oauthError = String(error);
+        });
+    return () => {
+        cancelled = true;
+    };
+});
+
+$effect(() => {
+    if (!useChatGPT || oauthStatus !== "signed-in") {
+        oauthModels = [];
+        oauthModelsStatus = "idle";
+        oauthModelsError = "";
+        return;
+    }
+    let cancelled = false;
+    oauthModelsStatus = "loading";
+    oauthModelsError = "";
+    listOpenAIModels()
+        .then((models) => {
+            if (cancelled) return;
+            oauthModels = models;
+            oauthModelsStatus = "ready";
+            if (!models.includes(selectedModel)) selectModel(models[0]);
+        })
+        .catch((error) => {
+            if (cancelled) return;
+            oauthModelsStatus = "error";
+            oauthModelsError = String(error);
         });
     return () => {
         cancelled = true;
@@ -352,6 +387,8 @@ async function saveApiKey() {
             <p class="text-[11px] text-amber-700/90 leading-snug">
                 {useChatGPT
                     ? "Connect your ChatGPT account to enable Chat, Feedback, and Revise."
+                    : useCustomEndpoint
+                      ? "Add a local endpoint URL to enable Chat, Feedback, and Revise."
                     : "Add an API key below to enable Chat, Feedback, and Revise."}
             </p>
         </div>
@@ -468,11 +505,37 @@ async function saveApiKey() {
     {/if}
 
     <!-- Model -->
+    {#if !useChatGPT || oauthStatus === "signed-in"}
     <div>
         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
             Model
         </p>
-        {#if useCustomEndpoint}
+        {#if useChatGPT}
+            {#if oauthModelsStatus === "ready"}
+                <div class="relative rounded-lg border border-black/10 bg-white/50 focus-within:border-blue-400">
+                    <select
+                        value={selectedModel}
+                        onchange={(event) => selectModel(event.currentTarget.value)}
+                        class="w-full appearance-none bg-transparent px-3 py-2.5 pr-8 text-xs text-black/70 outline-none"
+                    >
+                        {#each oauthModels as model}
+                            <option value={model}>{model}</option>
+                        {/each}
+                    </select>
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-black/35">⌄</span>
+                </div>
+                <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                    Models available to your connected ChatGPT account.
+                </p>
+            {:else if oauthModelsStatus === "error"}
+                <div class="rounded-lg border border-red-200/70 bg-red-50/60 px-3 py-2.5">
+                    <p class="text-[10px] text-red-700/80 leading-relaxed">{oauthModelsError}</p>
+                </div>
+            {:else}
+                <div class="h-10 animate-pulse rounded-lg border border-black/5 bg-black/5"></div>
+                <p class="text-[10px] text-black/30 mt-1.5">Loading available models…</p>
+            {/if}
+        {:else if useCustomEndpoint}
             <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
                 <input
                     type="text"
@@ -509,6 +572,7 @@ async function saveApiKey() {
             </div>
         {/if}
     </div>
+    {/if}
 
     <!-- API Key -->
     {#if !useCustomEndpoint}
