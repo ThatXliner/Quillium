@@ -8,7 +8,14 @@ import {
     persistentHistoryStateExtension,
 } from "$lib/editor/persistentHistory";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    addAnnotation,
+    annotationField,
+    nestedEditorEdit,
+    setActiveRevisionVersion,
+    updateRevisionVersionLabel,
+    updateRevisionVersionState,
+} from "$lib/editor/plugins/annotations/annotationField";
 import {
     activeVersionIndex,
     createNewAnnotation,
@@ -163,6 +170,87 @@ describe("persistence round-trip integration", () => {
         const { from, to } = annotations[0].selection.main;
         expect(restored.sliceDoc(from, to)).toBe("Beta");
         expect(annotations[0].thread[0]?.message).toBe("Check wording");
+    });
+
+    it("replays revision version edits, switches, and labels without a fresh snapshot", () => {
+        const payloads: object[] = [];
+        const extensions = [
+            persistHistoryFacet.of(true),
+            persistentHistoryExtension,
+            history(),
+            annotationExtensions(),
+            EditorView.updateListener.of((update) => {
+                const payload = buildEventPayload(update);
+                if (payload) payloads.push(payload);
+            }),
+        ];
+        const state = EditorState.create({ doc: "Alpha", extensions });
+        const parent = document.createElement("div");
+        document.body.appendChild(parent);
+        view = new EditorView({ state, parent });
+
+        const firstVersion = makeVersion({ doc: "Alpha", label: "First" });
+        const secondVersion = makeVersion({ doc: "Beta", label: "Second" });
+        const revision = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "revision",
+            ),
+            activeVersionId: firstVersion.id,
+            versions: [firstVersion, secondVersion],
+        };
+        view.dispatch({ effects: addAnnotation.of(revision) });
+
+        // Simulate the last snapshot before several version actions. Everything
+        // below must survive through the event tail alone after a crash.
+        const snapshot = JSON.stringify(view.state.toJSON(savedFields));
+        payloads.length = 0;
+
+        view.dispatch({
+            changes: { from: 0, to: 5, insert: "Alpha one" },
+            annotations: [nestedEditorEdit.of(revision.id), Transaction.addToHistory.of(true)],
+        });
+        view.dispatch(
+            updateRevisionVersionState(view.state, revision.id, secondVersion.id, {
+                ...secondVersion,
+                doc: "Beta two",
+            }),
+        );
+        view.dispatch(setActiveRevisionVersion(view.state, revision.id, secondVersion.id));
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: "Beta two!" },
+            annotations: [nestedEditorEdit.of(revision.id), Transaction.addToHistory.of(true)],
+        });
+        view.dispatch(
+            updateRevisionVersionLabel(view.state, revision.id, firstVersion.id, "Opening"),
+        );
+        view.dispatch(
+            updateRevisionVersionLabel(view.state, revision.id, secondVersion.id, "Selected"),
+        );
+
+        const events: EventRecord[] = payloads.map((payload, index) => ({
+            id: index + 1,
+            eventType: (payload as { type: string }).type,
+            payload: JSON.stringify(payload),
+            createdAt: index + 1,
+        }));
+        const restored = reconstructState(snapshot, events, extensions);
+
+        expect(events).toHaveLength(6);
+        expect(restored.doc.toString()).toBe(view.state.doc.toString());
+        expect(restored.toJSON({ annotationField })).toEqual(
+            view.state.toJSON({ annotationField }),
+        );
+
+        const restoredRevision = restored.field(annotationField)[revision.id];
+        expect(isAnnotationOfType(restoredRevision, "revision")).toBe(true);
+        if (!isAnnotationOfType(restoredRevision, "revision")) return;
+        expect(restoredRevision.activeVersionId).toBe(secondVersion.id);
+        expect(restoredRevision.versions).toEqual([
+            expect.objectContaining({ id: firstVersion.id, doc: "Alpha one", label: "Opening" }),
+            expect.objectContaining({ id: secondVersion.id, doc: "Beta two!", label: "Selected" }),
+        ]);
     });
 
     it("fails closed to fresh history for legacy or unknown effect payloads", () => {
