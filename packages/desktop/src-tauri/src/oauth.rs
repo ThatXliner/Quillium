@@ -41,7 +41,18 @@ const SUCCESS_PAGE: &str = r##"<!doctype html>
 <body>
     <main>
         <div class="mark" aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 34 34" fill="none"><path d="M8 6.5h10.1c5.7 0 9.9 4.1 9.9 10.2 0 5-2.8 8.7-7.1 9.9L25 31l-4.1.1-3.4-3.8H8V6.5Zm4.2 4v12.8h5.9c3.4 0 5.6-2.5 5.6-6.5s-2.3-6.3-5.9-6.3h-5.6Z" fill="currentColor"/></svg>
+            <svg width="30" height="30" viewBox="0 0 200 200" fill="none">
+                <g transform="translate(113, 96) rotate(19) scale(1.18) translate(-100, -100)">
+                    <path d="M140,28 C128,42 110,55 90,68 C74,80 62,96 56,116 C52,132 52,150 56,168 L60,174 C60,152 64,134 72,118 C82,100 96,88 112,76 C126,65 136,50 140,36Z"
+                          fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+                    <path d="M138,32 C118,62 94,98 72,135 C62,150 58,166 58,174"
+                          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="58" cy="174" r="3.2" fill="#3b82f6"/>
+                    <circle cx="55" cy="179.5" r="3.2" fill="#a855f7"/>
+                    <circle cx="61" cy="179.5" r="3.2" fill="#22c55e"/>
+                    <circle cx="58" cy="185" r="3.2" fill="#fcbc05"/>
+                </g>
+            </svg>
         </div>
         <h1>Connected</h1>
         <p>You can close this tab and return to Quillium.</p>
