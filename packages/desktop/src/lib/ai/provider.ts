@@ -31,6 +31,34 @@ export type Provider =
     | "google"
     | "deepseek";
 
+// The Codex Responses API runs with `store: false`, so the server never persists
+// response items. @openai-oauth/core keeps an in-memory CodexResponsesState that
+// re-expands the `item_reference`s the AI SDK emits for prior assistant turns back
+// into full content. That state lives inside the transport built by
+// createOpenAIOAuth, so the provider MUST be created once and reused across turns —
+// building a fresh one per message gives each turn an empty state, and multi-turn
+// chats fail with "Item with id 'msg_…' not found. Items are not persisted when
+// `store` is set to false." Token refresh is unaffected: the session is resolved
+// per-request via getFreshOpenAISession.
+let openAIOAuthProvider: ReturnType<typeof createOpenAIOAuth> | null = null;
+
+function getOpenAIOAuthProvider(): ReturnType<typeof createOpenAIOAuth> {
+    if (!openAIOAuthProvider) {
+        openAIOAuthProvider = createOpenAIOAuth({
+            kind: "openai-oauth",
+            getSession: getFreshOpenAISession,
+            fetch: openAIOAuthFetch,
+        });
+    }
+    return openAIOAuthProvider;
+}
+
+// Drop the cached provider (and its response-replay state) when the ChatGPT
+// connection changes, so a fresh sign-in starts from a clean slate.
+export function resetOpenAIOAuthProvider(): void {
+    openAIOAuthProvider = null;
+}
+
 /**
  * Instantiate a vendor-specific LanguageModel for the given provider.
  *
@@ -52,11 +80,7 @@ export function createModel(
         case "openai":
             return createOpenAI({ apiKey })(modelId) as LanguageModel;
         case "openai-oauth":
-            return createOpenAIOAuth({
-                kind: "openai-oauth",
-                getSession: getFreshOpenAISession,
-                fetch: openAIOAuthFetch,
-            })(modelId) as unknown as LanguageModel;
+            return getOpenAIOAuthProvider()(modelId) as unknown as LanguageModel;
         case "openai-compatible": {
             if (!baseURL?.trim()) {
                 throw new Error("Add a local endpoint base URL before using AI features.");

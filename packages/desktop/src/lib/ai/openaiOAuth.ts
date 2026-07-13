@@ -13,6 +13,7 @@ import {
  */
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { resetOpenAIOAuthProvider } from "./provider";
 import { setOpenAIOAuthConnected } from "./settings.svelte";
 
 const PROVIDER = "openai-oauth";
@@ -131,4 +132,5 @@ export async function signInWithChatGPT(): Promise<OpenAIOAuthSession> {
 export async function disconnectOpenAI(): Promise<void> {
     await invoke("delete_api_key", { provider: PROVIDER });
     setOpenAIOAuthConnected(false);
+    resetOpenAIOAuthProvider();
 }
