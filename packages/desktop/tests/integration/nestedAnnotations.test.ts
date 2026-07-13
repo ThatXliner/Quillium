@@ -581,6 +581,22 @@ describe("revision with empty version content", () => {
 // ── Nested edit empties revision, then undo ─────────────────────────────────
 
 describe("nested edit deletes all revision content", () => {
+    it("undoing a version switch to empty does not trigger collapsed cleanup", async () => {
+        view = createView("a");
+        const revId = addRevision(view, 0, 1, [{ doc: "a" }, { doc: "a" }], 0);
+
+        simulateNestedEdit(view, revId, 0, 1, "");
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
+        undo(view);
+        await Promise.resolve();
+
+        const rev = getRevision(view, revId);
+        expect(view.state.doc.toString()).toBe("");
+        expect(rev).toBeDefined();
+        expect(rev?.selection.main.empty).toBe(true);
+        expect(getVersionDoc(view, revId)).toBe("");
+    });
+
     it("deleting all content via nested edit collapses revision", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }]);
@@ -604,6 +620,36 @@ describe("nested edit deletes all revision content", () => {
         expect(view.state.doc.toString()).toBe("hello world");
         expect(getVersionDoc(view, revId)).toBe("hello");
         expect(getRevisionSlice(view, revId)).toBe("hello");
+    });
+
+    it("redo of a full nested delete keeps the active version empty", () => {
+        view = createView("hello world");
+        const revId = addRevision(view, 0, 5, [{ doc: "hello" }]);
+
+        simulateNestedEdit(view, revId, 0, 5, "");
+        undo(view);
+        redo(view);
+
+        expect(view.state.doc.toString()).toBe(" world");
+        expect(getRevisionSlice(view, revId)).toBe("");
+        expect(getVersionDoc(view, revId)).toBe("");
+    });
+
+    it("undoing an insertion into an empty version preserves the revision", async () => {
+        view = createView("");
+        const revId = addRevision(view, 0, 0, [{ doc: "" }, { doc: "other" }]);
+
+        simulateNestedEdit(view, revId, 0, 0, "hi");
+        undo(view);
+        await Promise.resolve();
+
+        expect(getRevision(view, revId)).toBeDefined();
+        expect(getVersionDoc(view, revId)).toBe("");
+
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 0)));
+        expect(view.state.doc.toString()).toBe("");
+        expect(getVersionDoc(view, revId)).toBe("");
     });
 
     it("partial delete via nested edit, undo, redo cycle stays consistent", () => {

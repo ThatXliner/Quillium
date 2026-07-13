@@ -100,7 +100,9 @@ Grammar and style checking integration:
 The full extension stack registered in `Editor.svelte`:
 
 ```typescript
-export const savedFields = { historyField, annotationField };
+// historyField is intentionally session-only because its JSON format omits
+// custom annotation effects.
+export const savedFields = { annotationField, versionGroupField };
 
 // Extension order matters for precedence
 const extensions = [

@@ -19,8 +19,7 @@ import { appSettings } from "$lib/settings.svelte";
  *   - Editor.svelte calls `getExtensions(options)` and feeds the
  *     result into an EditorState.
  *   - `savedFields` is used by both serialisation (save) and
- *     deserialisation (load) to persist history and annotations
- *     across sessions.
+ *     deserialisation (load) to persist annotations across sessions.
  */
 import {
     autocompletion,
@@ -31,7 +30,6 @@ import {
 import {
     defaultKeymap,
     history,
-    historyField,
     historyKeymap,
     indentWithTab,
     redo,
@@ -58,8 +56,11 @@ import { versionGroupField } from "./plugins/annotations";
 import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
-// Adding a field here means it survives across application restarts.
-export const savedFields = { historyField, annotationField, versionGroupField };
+// CodeMirror's history JSON intentionally omits custom StateEffects. Persisting
+// historyField would therefore restore doc changes while dropping annotation
+// and version inverses, creating a corrupt undo stack after restart. Start each
+// loaded snapshot with fresh history instead; live in-session undo is unchanged.
+export const savedFields = { annotationField, versionGroupField };
 // Nested editors delegate undo/redo to the parent, so they don't own
 // a history stack. Only annotationField is persisted in version blobs
 // (for nested annotations created inside a modal).

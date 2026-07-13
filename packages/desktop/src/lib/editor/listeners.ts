@@ -179,7 +179,11 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     // replaces doc text AND updates activeVersionIndex). Without the
     // revisionInternalEdit check, version switches and similar operations would
     // not be persisted to the event log.
-    if (!tr.docChanged || tr.annotation(revisionInternalEdit)) {
+    if (
+        !tr.docChanged ||
+        tr.annotation(revisionInternalEdit) ||
+        tr.annotation(nestedEditorEdit) !== undefined
+    ) {
         const before = tr.startState.field(annotationField);
         const after = tr.state.field(annotationField);
         for (const [idStr, ann] of Object.entries(after)) {
