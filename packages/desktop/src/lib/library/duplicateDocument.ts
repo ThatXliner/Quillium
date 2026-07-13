@@ -32,26 +32,10 @@ function collectAnnotationIds(value: unknown, ids: Set<number>): void {
     for (const child of Object.values(value)) collectAnnotationIds(child, ids);
 }
 
-function createIdentityAllocator(sourceNumericIds: Set<number>) {
-    let nextNumericId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
-    let stringCounter = 0;
-
-    return {
-        annotationId(): number {
-            while (sourceNumericIds.has(nextNumericId)) nextNumericId++;
-            return nextNumericId++;
-        },
-        stringId(prefix: "annotation" | "version" | "group"): string {
-            stringCounter++;
-            const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
-            return `${prefix}_${random}_${stringCounter}`;
-        },
-    };
-}
-
 function remapSerializedState(
     state: JsonRecord,
-    identities: ReturnType<typeof createIdentityAllocator>,
+    nextAnnotationId: () => number,
+    nextStringId: (prefix: "annotation" | "version" | "group") => string,
 ): JsonRecord {
     const next: JsonRecord = { ...state };
     const annotations = isRecord(state.annotationField) ? state.annotationField : {};
@@ -61,7 +45,7 @@ function remapSerializedState(
     for (const [key, value] of Object.entries(annotations)) {
         if (!isRecord(value)) continue;
         const oldId = typeof value.id === "number" ? value.id : Number(key);
-        if (Number.isSafeInteger(oldId)) annotationIds.set(oldId, identities.annotationId());
+        if (Number.isSafeInteger(oldId)) annotationIds.set(oldId, nextAnnotationId());
     }
 
     const remappedAnnotations: JsonRecord = {};
@@ -74,25 +58,25 @@ function remapSerializedState(
         const annotation: JsonRecord = {
             ...value,
             id: newId,
-            _historyId: identities.stringId("annotation"),
+            _historyId: nextStringId("annotation"),
         };
         if (value._type === "revision" && Array.isArray(value.versions)) {
             const idsForRevision = new Map<string, string>();
             for (const version of value.versions) {
                 if (isRecord(version) && typeof version.id === "string") {
-                    idsForRevision.set(version.id, identities.stringId("version"));
+                    idsForRevision.set(version.id, nextStringId("version"));
                 }
             }
             versionIds.set(oldId, idsForRevision);
             annotation.versions = value.versions.map((version) => {
                 if (!isRecord(version)) return version;
-                const remapped = remapSerializedState(version, identities);
+                const remapped = remapSerializedState(version, nextAnnotationId, nextStringId);
                 return {
                     ...remapped,
                     id:
                         typeof version.id === "string"
                             ? idsForRevision.get(version.id)
-                            : identities.stringId("version"),
+                            : nextStringId("version"),
                 };
             });
             if (typeof value.activeVersionId === "string") {
@@ -107,7 +91,7 @@ function remapSerializedState(
         const groups: JsonRecord = {};
         for (const value of Object.values(state.versionGroupField)) {
             if (!isRecord(value)) continue;
-            const groupId = identities.stringId("group");
+            const groupId = nextStringId("group");
             const members = Array.isArray(value.members)
                 ? value.members.flatMap((member) => {
                       if (
@@ -136,8 +120,20 @@ function remapSerializedState(
 export function remapDocumentStateIdentities(states: JsonRecord[]): JsonRecord[] {
     const sourceIds = new Set<number>();
     for (const state of states) collectAnnotationIds(state, sourceIds);
-    const identities = createIdentityAllocator(sourceIds);
-    return states.map((state) => remapSerializedState(state, identities));
+    let nextNumericId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    let stringCounter = 0;
+
+    const nextAnnotationId = () => {
+        while (sourceIds.has(nextNumericId)) nextNumericId++;
+        return nextNumericId++;
+    };
+    const nextStringId = (prefix: "annotation" | "version" | "group") => {
+        stringCounter++;
+        const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
+        return `${prefix}_${random}_${stringCounter}`;
+    };
+
+    return states.map((state) => remapSerializedState(state, nextAnnotationId, nextStringId));
 }
 
 /** Create a fully independent, history-free copy and return its new document id. */
