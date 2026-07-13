@@ -32,7 +32,10 @@ Canonical image comparisons use the Bun-locked Playwright version and Chromium o
 Linux snapshots are canonical. A run on macOS or Windows is useful for diagnosis, but its output
 must not replace the Linux baseline because font rasterization and browser rendering differ by OS.
 Expected filenames retain Playwright's platform suffix (`-chromium-linux.png`); a developer run on
-macOS creates separate `-chromium-darwin.png` files and cannot silently overwrite the Linux images.
+macOS or Windows keeps the semantic parts of each visual scenario active but ignores screenshot
+comparisons by default. Set `E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` to produce separate platform
+images for diagnosis; those images cannot silently overwrite the Linux baselines and must not be
+committed.
 
 The checked-in baseline sets are:
 
@@ -91,8 +94,10 @@ CI=1 bun run e2e:test:full -- --update-snapshots --retries=0
 ```
 
 This produces the Linux images in `packages/e2e/tests/webPreview.pw.ts-snapshots/`. Running the same
-command directly on macOS produces separate Darwin images, not canonical Linux baselines. Do not
-use production Supabase credentials to create or update a baseline.
+command directly on macOS ignores screenshot assertions by default. Set
+`E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` only to generate separate Darwin diagnostic images, not to
+update canonical baselines. Do not use production Supabase credentials to create or update a
+baseline.
 
 Never update a baseline merely because CI produced a new actual image. First rule out missing fonts,
 unfrozen time or IDs, unfinished animations, incorrect fixture state, viewport drift, clipping,

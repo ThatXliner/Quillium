@@ -77,8 +77,12 @@ Web Preview image assertions cover modern `published_state` and pre-migration
 legacy rendering in light and dark themes at wide, tablet, and mobile widths,
 plus nested revision, long comment, and multi-option suggestion modals. Expected
 images live in `packages/e2e/tests/webPreview.pw.ts-snapshots/` and Linux is the
-canonical rendering environment. To review an intentional visual change, run
-this on the documented Ubuntu/Playwright environment:
+canonical rendering environment. On macOS and Windows, the same tests retain
+their interaction and semantic assertions but ignore screenshot comparisons,
+so `e2e:test:full` does not generate noncanonical baselines. Set
+`E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` only when a platform-specific diagnostic
+image is useful; do not commit those images. To review an intentional visual
+change, run this on the documented Ubuntu/Playwright environment:
 
 ```bash
 CI=1 bun run e2e:test:full -- --update-snapshots
