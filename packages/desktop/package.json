@@ -17,6 +17,7 @@
     "tauri:mas": "VITE_MAS=true tauri build --config src-tauri/tauri.mas.conf.json --bundles app --target aarch64-apple-darwin",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:collab-fuzz": "COLLAB_FUZZ=1 vitest run src/lib/collab/fuzz/convergence.fuzz.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:coverage": "vitest run --coverage",

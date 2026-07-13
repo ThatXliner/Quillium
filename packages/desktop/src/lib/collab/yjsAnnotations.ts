@@ -103,6 +103,7 @@ import {
 } from "./annotationSchema";
 import { absoluteToRelative } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
+import { yjsAnnotation } from "./yjsBinding";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
@@ -373,7 +374,23 @@ export function createAnnotationSyncPlugin(
                             e.is(_updateRevisionVersionState),
                     ),
                 );
-                if (!hasAnnotationEffect && !hasNestedEditorEdit) return;
+                // A pure text edit can still remove annotations when their
+                // mapped ranges collapse. Reconcile those membership changes
+                // so Yjs does not retain annotations that CodeMirror dropped.
+                const beforeAnnotations = update.startState.field(annotationField);
+                const afterAnnotations = update.state.field(annotationField);
+                const beforeIds = Object.keys(beforeAnnotations);
+                const isRemoteTextProjection = update.transactions.some((tr) =>
+                    tr.annotation(yjsAnnotation),
+                );
+                const annotationMembershipChanged =
+                    !isRemoteTextProjection &&
+                    (beforeIds.length !== Object.keys(afterAnnotations).length ||
+                        beforeIds.some((id) => afterAnnotations[Number(id)] === undefined));
+
+                if (!hasAnnotationEffect && !hasNestedEditorEdit && !annotationMembershipChanged) {
+                    return;
+                }
 
                 this.diffAndReconcile(update);
             }

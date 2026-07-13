@@ -151,6 +151,20 @@ describe("annotation sync (Phase 11)", () => {
             annB = peerB.view.state.field(annotationField);
             expect(Object.keys(annB).length).toBe(0);
         });
+
+        it("deleting all annotated text removes the annotation from Yjs and both peers", async () => {
+            const comment = createComment(1, 0, 5);
+            peerA.view.dispatch({ effects: addAnnotation.of(comment) });
+            await flushAll(peerA, peerB);
+
+            peerA.view.dispatch({ changes: { from: 0, to: 5, insert: "" } });
+            await flushAll(peerA, peerB);
+
+            expect(Object.keys(peerA.view.state.field(annotationField))).toHaveLength(0);
+            expect(Object.keys(peerB.view.state.field(annotationField))).toHaveLength(0);
+            expect(peerA.ymap.size).toBe(0);
+            expect(peerB.ymap.size).toBe(0);
+        });
     });
 
     describe("revision sync", () => {

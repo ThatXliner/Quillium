@@ -147,8 +147,9 @@ Quillium is not bug-free, because no serious software is. Robustness means under
 remaining risks and building systems that expose or contain them.
 
 There are boundaries I will not blur for marketing. Bounded collaboration property tests run today,
-but the planned 10,000-operation, two-peer convergence campaign is still future work. The desktop
-app has also had far more testing than Omni's newer collaboration path.
+and an opt-in stress test now applies 10,000 seeded edits across two peers. That longer campaign
+runs on demand rather than on every pull request because it is deliberately expensive. The desktop
+app has still had far more real-world testing than Omni's newer collaboration path.
 
 Quillium's most dangerous operations are not protected by a handful of handwritten happy paths.
 Its editing model is checked against thousands of generated states and long command sequences. Its

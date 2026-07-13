@@ -10,6 +10,7 @@
     "desktop:check": "bun run --cwd packages/desktop check",
     "desktop:test": "bun run --cwd packages/desktop test",
     "desktop:test:run": "bun run --cwd packages/desktop test:run",
+    "desktop:test:collab-fuzz": "bun run --cwd packages/desktop test:collab-fuzz",
     "desktop:test:coverage": "bun run --cwd packages/desktop test:coverage",
     "desktop:test:e2e": "bun run --cwd packages/desktop test:e2e",
     "desktop:test:e2e:headed": "bun run --cwd packages/desktop test:e2e:headed",

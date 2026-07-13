@@ -26,7 +26,12 @@ export interface EncodedPosition {
  */
 export function absoluteToRelative(ytext: Y.Text, selection: EditorSelection): EncodedPosition {
     const startRel = Y.createRelativePositionFromTypeIndex(ytext, selection.main.from);
-    const endRel = Y.createRelativePositionFromTypeIndex(ytext, selection.main.to);
+    // CodeMirror maps an insertion at a non-empty range's start into the range,
+    // but maps an insertion at its end outside the range. Yjs's default right
+    // association expands both boundaries, so the end must associate left.
+    // A cursor uses the same association on both sides to remain collapsed.
+    const endAssociation = selection.main.empty ? 0 : -1;
+    const endRel = Y.createRelativePositionFromTypeIndex(ytext, selection.main.to, endAssociation);
     return {
         startPos: Y.encodeRelativePosition(startRel),
         endPos: Y.encodeRelativePosition(endRel),
