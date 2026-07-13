@@ -1,6 +1,7 @@
 <script lang="ts">
-import { aiSettings } from "$lib/ai/settings.svelte";
+import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { getCurrentUserName } from "$lib/auth";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
@@ -274,11 +275,20 @@ async function aiSuggestion() {
                                 <div class="flex items-center gap-1">
                                     {#if appSettings.aiEnabled}
                                     <button
-                                        aria-label="Get AI suggestion"
-                                        title="Get AI suggestion"
+                                        aria-label={hasApiKey()
+                                            ? "Get AI suggestion"
+                                            : "Get AI suggestion — add an API key in AI settings"}
+                                        aria-disabled={!hasApiKey()}
+                                        title={hasApiKey()
+                                            ? "Get AI suggestion"
+                                            : "Add an API key in AI settings to get a suggestion"}
                                         class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium
-                                            text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
-                                        onclick={aiSuggestion}
+                                            transition-colors {hasApiKey()
+                                                ? 'text-black/35 hover:text-black/60 hover:bg-white/50'
+                                                : 'text-black/20 cursor-pointer'}"
+                                        onclick={hasApiKey()
+                                            ? aiSuggestion
+                                            : () => appEventBus.emit({ type: "ai-open-settings" })}
                                     >
                                         <SparklesIcon size={11} />
                                         <span>Suggest</span>
