@@ -74,13 +74,11 @@ describe("createModel", () => {
         expect(model).toMatchObject({ provider: "openai", modelId: "llama3" });
     });
 
-    it("uses fallback baseURL when none provided for openai-compatible", () => {
-        createModel("openai-compatible", "", "llama3");
-
-        expect(mocked.createOpenAI).toHaveBeenCalledWith({
-            apiKey: "unused",
-            baseURL: "http://localhost:11434/v1",
-        });
+    it("rejects an empty baseURL for openai-compatible", () => {
+        expect(() => createModel("openai-compatible", "", "llama3")).toThrow(
+            "Add a local endpoint base URL",
+        );
+        expect(mocked.createOpenAI).not.toHaveBeenCalled();
     });
 
     it("routes anthropic provider through createAnthropic", () => {
