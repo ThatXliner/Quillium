@@ -32,36 +32,27 @@ function collectAnnotationIds(value: unknown, ids: Set<number>): void {
     for (const child of Object.values(value)) collectAnnotationIds(child, ids);
 }
 
-class IdentityFactory {
-    private nextNumericId: number;
-    private stringCounter = 0;
-    private readonly generatedNumericIds = new Set<number>();
+function createIdentityAllocator(sourceNumericIds: Set<number>) {
+    let nextNumericId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    let stringCounter = 0;
 
-    constructor(private readonly sourceNumericIds: Set<number>) {
-        const randomOffset = Math.floor(Math.random() * 1000);
-        this.nextNumericId = Date.now() * 1000 + randomOffset;
-    }
-
-    annotationId(): number {
-        while (
-            this.sourceNumericIds.has(this.nextNumericId) ||
-            this.generatedNumericIds.has(this.nextNumericId)
-        ) {
-            this.nextNumericId++;
-        }
-        const id = this.nextNumericId++;
-        this.generatedNumericIds.add(id);
-        return id;
-    }
-
-    stringId(prefix: "annotation" | "version" | "group"): string {
-        this.stringCounter++;
-        const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
-        return `${prefix}_${random}_${this.stringCounter}`;
-    }
+    return {
+        annotationId(): number {
+            while (sourceNumericIds.has(nextNumericId)) nextNumericId++;
+            return nextNumericId++;
+        },
+        stringId(prefix: "annotation" | "version" | "group"): string {
+            stringCounter++;
+            const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
+            return `${prefix}_${random}_${stringCounter}`;
+        },
+    };
 }
 
-function remapSerializedState(state: JsonRecord, identities: IdentityFactory): JsonRecord {
+function remapSerializedState(
+    state: JsonRecord,
+    identities: ReturnType<typeof createIdentityAllocator>,
+): JsonRecord {
     const next: JsonRecord = { ...state };
     const annotations = isRecord(state.annotationField) ? state.annotationField : {};
     const annotationIds = new Map<number, number>();
@@ -145,7 +136,7 @@ function remapSerializedState(state: JsonRecord, identities: IdentityFactory): J
 export function remapDocumentStateIdentities(states: JsonRecord[]): JsonRecord[] {
     const sourceIds = new Set<number>();
     for (const state of states) collectAnnotationIds(state, sourceIds);
-    const identities = new IdentityFactory(sourceIds);
+    const identities = createIdentityAllocator(sourceIds);
     return states.map((state) => remapSerializedState(state, identities));
 }
 
