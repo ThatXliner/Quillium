@@ -10,10 +10,11 @@ use tauri_plugin_dialog::DialogExt;
 
 use db::{
     documents::{
-        create_document_with_history, create_draft, delete_document, get_document,
-        get_semantic_search_enabled, get_trash_retention, list_documents, list_drafts,
-        list_trashed_documents, purge_expired_trash, restore_document, set_semantic_search_enabled,
-        set_trash_retention, trash_document, update_document_meta,
+        create_document_with_history, create_draft, delete_document, duplicate_document,
+        get_document, get_semantic_search_enabled, get_trash_retention, list_documents,
+        list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
+        set_semantic_search_enabled, set_trash_retention, trash_document, update_document_meta,
+        DuplicateDraftState,
     },
     events::{
         append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
@@ -70,6 +71,21 @@ fn cmd_create_document(
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     create_document_with_history(&conn, &title, persist_history.unwrap_or(false))
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_duplicate_document(
+    state: tauri::State<DbState>,
+    semantic: tauri::State<SemanticState>,
+    source_document_id: String,
+    draft_states: Vec<DuplicateDraftState>,
+) -> Result<String, String> {
+    let document_id = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        duplicate_document(&conn, &source_document_id, &draft_states).map_err(|e| e.to_string())?
+    };
+    semantic.0.request_index(&document_id);
+    Ok(document_id)
 }
 
 /// `body_text` (the full plain text) is optional: rename/tag updates omit it
@@ -1234,6 +1250,7 @@ pub fn run() {
             cmd_list_documents,
             cmd_get_document,
             cmd_create_document,
+            cmd_duplicate_document,
             cmd_update_document_meta,
             cmd_search_documents,
             cmd_search_status,

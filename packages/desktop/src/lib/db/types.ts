@@ -20,6 +20,14 @@ export type DocumentMeta = {
     persistHistory: boolean;
 };
 
+/** One fully materialized live draft used by the atomic document-copy command. */
+export type DuplicateDraftState = {
+    sourceDraftId: string;
+    /** Last source event included in stateJson; rejects stale concurrent copies. */
+    sourceEventId: number;
+    stateJson: string;
+};
+
 export type TabMeta = {
     id: string;
     documentId: string;

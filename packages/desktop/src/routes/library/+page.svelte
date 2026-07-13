@@ -29,6 +29,7 @@ import DocumentGrid from "$lib/library/DocumentGrid.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
 import LibraryTopBar from "$lib/library/LibraryTopBar.svelte";
 import PreviewPanel from "$lib/library/PreviewPanel.svelte";
+import { duplicateLibraryDocument } from "$lib/library/duplicateDocument";
 import { parseTags } from "$lib/library/tags";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
@@ -49,6 +50,7 @@ let lastClickedId = $state<string | null>(null);
 let viewMode = $state<"grid" | "list">("grid");
 let query = $state("");
 let loading = $state(true);
+let duplicating = $state(false);
 let tab = $state<"library" | "trash">("library");
 let trashRetention = $state<number | null>(null);
 
@@ -217,6 +219,24 @@ function handleOpenInNewWindow(id: string) {
         doc ? getUndoHistoryPolicyAnalytics(doc) : undefined,
     );
     openInNewWindow(id);
+}
+
+async function handleDuplicate(id: string) {
+    if (duplicating) return;
+    duplicating = true;
+    try {
+        const copyId = await duplicateLibraryDocument(id);
+        posthog.capture("document_duplicated");
+        documents = await listDocuments();
+        selectedIds = new Set([copyId]);
+        lastClickedId = copyId;
+        toast.success("Document duplicated.");
+    } catch (error) {
+        console.error("[library] document duplication failed:", error);
+        toast.error("Couldn’t duplicate the document.");
+    } finally {
+        duplicating = false;
+    }
 }
 
 async function handleRenameTitle(id: string, newTitle: string) {
@@ -474,6 +494,13 @@ function handleKeydown(e: KeyboardEvent) {
         return;
     }
 
+    // D — duplicate selected document (only single selection)
+    if (e.key === "d" && !inInput && selectedIds.size === 1 && !trashMode) {
+        e.preventDefault();
+        handleDuplicate([...selectedIds][0]);
+        return;
+    }
+
     // G — grid view, L — list view
     if (e.key === "g" && !inInput) {
         viewMode = "grid";
@@ -575,6 +602,7 @@ onDestroy(() => {
                     onRestore={handleRestore}
                     onDeletePermanent={handleDeletePermanent}
                     onOpenInNewWindow={handleOpenInNewWindow}
+                    onDuplicate={handleDuplicate}
                     onTagClick={handleTagClick}
                 />
             {/if}
@@ -590,6 +618,7 @@ onDestroy(() => {
             {trashMode}
             onOpen={() => selectedIds.size === 1 && handleOpen([...selectedIds][0])}
             onOpenInNewWindow={() => selectedIds.size === 1 && handleOpenInNewWindow([...selectedIds][0])}
+            onDuplicate={() => selectedIds.size === 1 && handleDuplicate([...selectedIds][0])}
             onTrash={() => {
                 if (selectedIds.size === 1) handleTrash([...selectedIds][0]);
                 else if (selectedIds.size > 1) handleTrashSelected();
