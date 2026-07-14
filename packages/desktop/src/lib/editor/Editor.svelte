@@ -600,6 +600,7 @@ onMount(() => {
         {#if drafts.tabDrafts.length > 0}
             <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
                 <div
+                    data-annotation-occluder
                     class="pointer-events-auto absolute"
                     style="right: calc(50% + 408px + 1rem)"
                     style:width="{effectiveDraftPanelWidth}px"
