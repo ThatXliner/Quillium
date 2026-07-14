@@ -72,10 +72,13 @@ let renameInputEl = $state<HTMLInputElement | undefined>();
 // scrolls horizontally. We track overflow + scroll position to fade the
 // edges with a gradient mask, mirroring the AI sidebar's icon wheel.
 let stripEl = $state<HTMLDivElement | undefined>();
+let newTabButtonEl = $state<HTMLButtonElement | undefined>();
 let tabEls = $state<Record<string, HTMLDivElement>>({});
 let stripOverflows = $state(false);
 let canScrollLeft = $state(false);
 let canScrollRight = $state(false);
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const newTabShortcut = isMac ? "⌘T" : "Ctrl+T";
 
 // When the active tab changes (e.g. a freshly created tab appended off-screen),
 // bring it into view. Scroll the strip itself rather than scrollIntoView() so
@@ -88,9 +91,12 @@ $effect(() => {
         if (!stripEl || !el) return;
         const stripRect = stripEl.getBoundingClientRect();
         const elRect = el.getBoundingClientRect();
+        const isRightmostTab = tabs.at(-1)?.id === id;
+        const buttonRect = isRightmostTab ? newTabButtonEl?.getBoundingClientRect() : undefined;
+        const contentRight = Math.max(elRect.right, buttonRect?.right ?? elRect.right);
         let delta = 0;
-        if (elRect.right > stripRect.right) {
-            delta = elRect.right - stripRect.right + 12;
+        if (contentRight > stripRect.right) {
+            delta = contentRight - stripRect.right + 12;
         } else if (elRect.left < stripRect.left) {
             delta = elRect.left - stripRect.left - 12;
         }
@@ -393,11 +399,11 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
     class="mx-auto w-full max-w-[816px] flex items-end gap-0.5 select-none mt-8 max-[840px]:mx-3 max-[840px]:w-auto relative {draggingId ? 'z-[60]' : ''}"
 >
     <!--
-        Inner strip: the actual tablist (holds only the tabs; the + button
-        sits outside it). Tabs flex-shrink to fit, then scroll horizontally
+        Inner strip: the actual tablist. Tabs flex-shrink to fit, then scroll horizontally
         once they hit their minimum width. Mask fades the scrollable edges;
-        the scrollbar is hidden (scrub by drag/wheel). min-w-0 lets it shrink
-        below content size so the + button stays pinned and never scrolls.
+        the scrollbar is hidden (scrub by drag/wheel). The new-tab action is
+        the final item so it always sits beside the rightmost tab and remains
+        reachable when the strip overflows.
     -->
     <div
         bind:this={stripEl}
@@ -493,21 +499,26 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                 {/if}
             </div>
         {/each}
+
+        {#if !readOnly}
+            <button
+                bind:this={newTabButtonEl}
+                onclick={() => ontabcreate?.()}
+                aria-label="New tab"
+                title={`New tab (${newTabShortcut})`}
+                class="shrink-0 mb-1 ml-1 p-1.5 rounded-md text-black/45 bg-white/35
+                    hover:text-black/70 hover:bg-white/60 transition-colors
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70
+                    focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            >
+                <PlusIcon size={15} strokeWidth={2.25} />
+            </button>
+        {/if}
     </div>
 
     <span id="document-tab-timeline-target" class="sr-only">Timeline target</span>
     <span id="document-tab-deleted" class="sr-only">Deleted tab, historical state</span>
 
-    {#if !readOnly}
-        <button
-            onclick={() => ontabcreate?.()}
-            aria-label="New tab"
-            title="New tab"
-            class="shrink-0 mb-1 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
-        >
-            <PlusIcon size={14} />
-        </button>
-    {/if}
 </div>
 
 <style>

@@ -36,6 +36,16 @@ test.describe("DocumentTabs", () => {
         expect(await q.countInvocations("cmd_create_tab")).toBeGreaterThanOrEqual(1);
     });
 
+    test("Command/Ctrl+T creates a new tab", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        await page.keyboard.press("ControlOrMeta+T");
+
+        await expect(page.getByRole("tab")).toHaveCount(2, { timeout: 5_000 });
+        expect(await q.countInvocations("cmd_create_tab")).toBeGreaterThanOrEqual(1);
+    });
+
     test("clicking a non-active tab calls cmd_set_active_tab", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();

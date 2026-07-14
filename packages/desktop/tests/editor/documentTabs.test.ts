@@ -165,6 +165,15 @@ describe("DocumentTabs", () => {
         expect(ontabcreate).toHaveBeenCalledOnce();
     });
 
+    it("places the labeled new-tab action directly after the rightmost tab", () => {
+        const { getByRole } = render(DocumentTabs, { props: defaultProps() });
+        const action = getByRole("button", { name: "New tab" });
+
+        expect(action.previousElementSibling).toHaveAttribute("data-tab-id", "b");
+        expect(action).toHaveAttribute("title", expect.stringMatching(/^New tab \(.+T\)$/));
+        expect(action.className).toContain("focus-visible:ring-2");
+    });
+
     it("keeps inactive tabs selectable in read-only mode", async () => {
         const ontabselect = vi.fn();
         const { getByText } = render(DocumentTabs, {
