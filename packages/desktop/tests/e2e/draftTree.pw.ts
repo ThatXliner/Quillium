@@ -71,6 +71,13 @@ test.describe("Draft panel", () => {
         // Enter the rail away from its center, where the hover button appears.
         await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 4);
         await expect(expand).toBeVisible();
+        const panelBox = await panel.boundingBox();
+        const expandBox = await expand.boundingBox();
+        expect(panelBox).not.toBeNull();
+        expect(expandBox).not.toBeNull();
+        expect(
+            Math.round(panelBox!.y + panelBox!.height - (expandBox!.y + expandBox!.height)),
+        ).toBe(8);
         await expand.click();
         await expect(panel).toHaveCSS("width", "560px");
         expect(

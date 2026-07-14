@@ -766,7 +766,7 @@ onMount(() => {
     }
     .draft-panel-full-width-button {
         position: absolute;
-        top: 50%;
+        bottom: 8px;
         left: -4px;
         display: flex;
         align-items: center;
@@ -782,7 +782,6 @@ onMount(() => {
         cursor: pointer;
         opacity: 0;
         pointer-events: none;
-        transform: translateY(-50%);
         transition:
             opacity 180ms ease,
             color 180ms ease,
