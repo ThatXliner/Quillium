@@ -30,7 +30,11 @@ import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
 import ThreadMessage from "./ThreadMessage.svelte";
-import { captureCommentEditorPosition, restoreCommentEditorPosition } from "./commentFocus";
+import {
+    type CommentEditorPosition,
+    captureCommentEditorPosition,
+    restoreCommentEditorPosition,
+} from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 
 let {
@@ -53,6 +57,8 @@ let {
     // When true, hides the reply input so the caller can render it
     // separately (e.g. anchored to the bottom of a modal column)
     hideReply = false,
+    originPosition = undefined,
+    onRestoreOrigin = undefined,
 }: {
     thread: ThreadType;
     updateThread: (thread: ThreadType) => void;
@@ -66,6 +72,8 @@ let {
     sendPillClass?: string;
     focusRingClass?: string;
     hideReply?: boolean;
+    originPosition?: CommentEditorPosition;
+    onRestoreOrigin?: () => void;
 } = $props();
 
 // Reply draft lives in the shared drafts store (keyed by annotation id) so
@@ -81,14 +89,16 @@ const sendActive = $derived(hasText);
 function blurToEditor() {
     textareaEl?.blur();
     const owningView = view ?? $editorView;
-    if (!owningView || !originSelection) return;
-    restoreCommentEditorPosition(owningView, originSelection);
+    const position = originPosition ?? originSelection;
+    if (!owningView || !position) return;
+    restoreCommentEditorPosition(owningView, position);
+    onRestoreOrigin?.();
 }
 
 function captureOrigin() {
     const owningView = view ?? $editorView;
     if (!owningView) return;
-    originSelection = captureCommentEditorPosition(owningView);
+    originSelection = originPosition ?? captureCommentEditorPosition(owningView);
 }
 
 $effect(() => {
