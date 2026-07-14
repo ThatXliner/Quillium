@@ -8,6 +8,7 @@
       - onclose: () => void — called when the modal is dismissed.
 -->
 <script lang="ts">
+import AchievementBadges from "$lib/achievements/AchievementBadges.svelte";
 import { type CharacterizerResult, generateCharacterization } from "$lib/ai/clientStreams";
 import {
     aiSettings,
@@ -16,6 +17,7 @@ import {
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
 import { computeStats } from "$lib/stats/compute";
@@ -203,6 +205,11 @@ function formatGradeLevel(grade: number): string {
                     </div>
                 </button>
             </div>
+
+            {#if $novelNovemberEnabled}
+                <div class="border-t border-black/[0.06]"></div>
+                <AchievementBadges />
+            {/if}
 
             {#if appSettings.aiEnabled}
                 <!-- Divider -->
