@@ -18,8 +18,9 @@ import "@testing-library/jest-dom/vitest";
 let views: EditorView[] = [];
 
 function installAnimationStub(): void {
-    if (Element.prototype.animate) return;
-    Object.defineProperty(Element.prototype, "animate", {
+    const prototype = Element.prototype as unknown as { animate?: Element["animate"] };
+    if (typeof prototype.animate === "function") return;
+    Object.defineProperty(prototype, "animate", {
         configurable: true,
         value: () => {
             const animation = {
@@ -95,7 +96,7 @@ describe("comment editor position restoration", () => {
     });
 
     it("prefers the position from before a comment card activated", async () => {
-        const view = createView("abcdefgh", EditorSelection.cursor(2));
+        const view = createView("abcdefgh", EditorSelection.single(2));
         const { getByPlaceholderText } = render(Thread, {
             props: {
                 thread: [{ message: "Existing comment", author: "Writer", time: 1 }],
@@ -117,13 +118,14 @@ describe("comment editor position restoration", () => {
 
     it("returns to the caret from before clicking a comment card", async () => {
         installAnimationStub();
-        const origin = EditorSelection.cursor(7);
+        const origin = EditorSelection.single(7);
         const view = createView("abcdefgh", origin);
         const comment: Annotation<"comment"> = {
             _type: "comment",
             id: 299,
             selection: EditorSelection.single(1, 4),
             thread: [{ message: "Existing comment", author: "Writer", time: 1 }],
+            status: "active",
         };
         const props = {
             comment,
@@ -144,8 +146,8 @@ describe("comment editor position restoration", () => {
         await fireEvent.keyDown(textarea, { key: "Escape" });
 
         expect(getDraft(299)).toBe("Unsent reply");
-        expect(view.state.selection.main.anchor).toBe(origin.anchor);
-        expect(view.state.selection.main.head).toBe(origin.head);
+        expect(view.state.selection.main.anchor).toBe(origin.main.anchor);
+        expect(view.state.selection.main.head).toBe(origin.main.head);
         expect(document.activeElement).toBe(view.contentDOM);
     });
 
