@@ -97,6 +97,8 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
+import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
+import { NOVEL_NOVEMBER_FEATURE_FLAG, isNovelNovemberFlagEnabled } from "$lib/goals/featureFlag";
 import posthog from "$lib/posthog";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
@@ -130,6 +132,7 @@ let updateReady = $state(false);
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 let authReconnecting = $state(false);
+let novelNovemberEnabled = $state(false);
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
@@ -340,6 +343,14 @@ onMount(() => {
 
     showTutorialOnFirstVisit();
 
+    // Feature flags are evaluated at the call site, matching the existing
+    // PostHog convention. Stay hidden until PostHog explicitly enables it.
+    const unsubNovelNovember = posthog.onFeatureFlags(() => {
+        novelNovemberEnabled = isNovelNovemberFlagEnabled(
+            posthog.getFeatureFlag(NOVEL_NOVEMBER_FEATURE_FLAG),
+        );
+    });
+
     // Check for updates silently in the background.
     // On MAS builds the banner redirects to the App Store instead of self-updating.
     // On mobile the updater plugin isn't registered, so skip entirely.
@@ -469,6 +480,7 @@ onMount(() => {
         unsubShowLicenses();
         unsubSurveyLifecycle();
         unsubWordCount();
+        unsubNovelNovember();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -617,7 +629,10 @@ if (import.meta.env.DEV) {
 
 <!-- Stats modal -->
 {#if $statsOpen}
-    <StatsModal onclose={() => ($statsOpen = false)} />
+    <StatsModal
+        writingGoalsEnabled={novelNovemberEnabled}
+        onclose={() => ($statsOpen = false)}
+    />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -665,6 +680,9 @@ if (import.meta.env.DEV) {
         <AutoAIWidget />
     {/if}
     <WordCountOverlay />
+    {#if novelNovemberEnabled}
+        <WritingGoalTracker />
+    {/if}
 </BottomLeftStack>
 <Toaster position="bottom-right" />
 

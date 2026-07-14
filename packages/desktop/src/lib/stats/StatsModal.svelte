@@ -16,13 +16,17 @@ import {
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
+import WritingGoalsPanel from "$lib/goals/WritingGoalsPanel.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
 import { computeStats } from "$lib/stats/compute";
 import { documentContent } from "$lib/stores";
 import { BarChart3, HelpCircle, X } from "lucide-svelte";
 
-const { onclose }: { onclose: () => void } = $props();
+const {
+    onclose,
+    writingGoalsEnabled = false,
+}: { onclose: () => void; writingGoalsEnabled?: boolean } = $props();
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 
@@ -203,6 +207,11 @@ function formatGradeLevel(grade: number): string {
                     </div>
                 </button>
             </div>
+
+            {#if writingGoalsEnabled}
+                <div class="border-t border-black/[0.06]"></div>
+                <WritingGoalsPanel />
+            {/if}
 
             {#if appSettings.aiEnabled}
                 <!-- Divider -->
