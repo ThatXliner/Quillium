@@ -13,15 +13,25 @@
  */
 
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    addAnnotation,
+    annotationField,
+    setActiveRevisionVersion,
+} from "$lib/editor/plugins/annotations/annotationField";
 import {
     type VersionGroupMember,
+    activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
 } from "$lib/editor/plugins/annotations/models";
+import {
+    createNestedEditorState,
+    translateAndDispatch,
+} from "$lib/editor/plugins/annotations/nestedEditor";
 import { createVersionGroup } from "$lib/editor/plugins/annotations/versionGroupField";
-import { EditorSelection } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
+import { EditorSelection, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 export type ScenarioCategory = "debug" | "demo";
 
@@ -170,6 +180,117 @@ function latestRevisionId(view: EditorView): number | undefined {
 
 export const scenarios: Scenario[] = [
     // ── DEBUG — structural and edge-case tests ─────────────────────────────────
+
+    {
+        id: "provenance-matrix",
+        label: "Provenance matrix",
+        description:
+            "Replay-safe history containing typed, pasted, human revision, AI revision, and human-edited AI revision events — load it, then open Authorship Playback",
+        category: "debug",
+        // Authorship Playback reconstructs the document from the event stream.
+        // Starting empty ensures event one contains the complete seed text.
+        doc: "",
+        setup(view) {
+            const seed = [
+                "Human revision target begins plainly.",
+                "AI revision target begins plainly.",
+                "Mixed revision target begins plainly.",
+            ].join("\n\n");
+            view.dispatch({
+                changes: { from: 0, insert: seed },
+                annotations: Transaction.userEvent.of("input.type"),
+            });
+            view.dispatch({
+                changes: { from: view.state.doc.length, insert: "\n\nPasted provenance sample." },
+                annotations: Transaction.userEvent.of("input.paste"),
+            });
+
+            const humanTarget = "Human revision target begins plainly.";
+            const humanFrom = view.state.doc.toString().indexOf(humanTarget);
+            const humanVersions = [
+                makeVersion({ doc: humanTarget, label: "Original", provenance: "human" }),
+                makeVersion({
+                    doc: "A human rewrote this revision.",
+                    label: "Human rewrite",
+                    provenance: "human",
+                }),
+            ];
+            const humanRevision = {
+                ...createNewAnnotation(
+                    view.state.field(annotationField),
+                    EditorSelection.single(humanFrom, humanFrom + humanTarget.length),
+                    "revision",
+                ),
+                activeVersionId: humanVersions[0].id,
+                versions: humanVersions,
+            };
+            view.dispatch({ effects: addAnnotation.of(humanRevision) });
+            view.dispatch(
+                setActiveRevisionVersion(view.state, humanRevision.id, humanVersions[1].id),
+            );
+
+            createRevision({
+                targetText: "AI revision target begins plainly.",
+                versions: [{ label: "AI rewrite", text: "AI rewrote this revision." }],
+                threadMessage: "Generated for the provenance debug matrix.",
+                author: "AI",
+                view,
+            });
+            const aiRevisionId = latestRevisionId(view);
+            if (aiRevisionId !== undefined) {
+                const revision = view.state.field(annotationField)[aiRevisionId];
+                if (revision && isAnnotationOfType(revision, "revision")) {
+                    const aiVersion = revision.versions.find(
+                        (version) => version.label === "AI rewrite",
+                    );
+                    if (aiVersion) {
+                        view.dispatch(
+                            setActiveRevisionVersion(view.state, revision.id, aiVersion.id),
+                        );
+                    }
+                }
+            }
+
+            createRevision({
+                targetText: "Mixed revision target begins plainly.",
+                versions: [{ label: "AI draft", text: "AI drafted this mixed revision." }],
+                threadMessage: "This AI version will receive a human edit.",
+                author: "AI",
+                view,
+            });
+            const mixedRevisionId = latestRevisionId(view);
+            if (mixedRevisionId === undefined) return;
+            let mixedRevision = view.state.field(annotationField)[mixedRevisionId];
+            if (!mixedRevision || !isAnnotationOfType(mixedRevision, "revision")) return;
+            const aiDraft = mixedRevision.versions.find((version) => version.label === "AI draft");
+            if (!aiDraft) return;
+            view.dispatch(setActiveRevisionVersion(view.state, mixedRevision.id, aiDraft.id));
+
+            mixedRevision = view.state.field(annotationField)[mixedRevisionId];
+            if (!mixedRevision || !isAnnotationOfType(mixedRevision, "revision")) return;
+            const nestedHost = document.createElement("div");
+            const nestedState = createNestedEditorState(
+                activeVersion(mixedRevision),
+                (update) => translateAndDispatch(update, view, mixedRevisionId),
+                view,
+                mixedRevisionId,
+            );
+            const nestedView = new EditorView({ state: nestedState, parent: nestedHost });
+            const draftText = nestedView.state.doc.toString();
+            const drafted = draftText.indexOf("drafted");
+            if (drafted !== -1) {
+                nestedView.dispatch({
+                    changes: {
+                        from: drafted,
+                        to: drafted + "drafted".length,
+                        insert: "drafted, then a human polished,",
+                    },
+                    annotations: Transaction.userEvent.of("input.type"),
+                });
+            }
+            nestedView.destroy();
+        },
+    },
 
     {
         id: "single-comment",
