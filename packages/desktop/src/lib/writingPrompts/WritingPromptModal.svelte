@@ -15,6 +15,7 @@ import {
     type PromptCategory,
     type WritingPrompt,
     chooseWritingPrompt,
+    formatPromptInsertion,
 } from "./prompts";
 
 const { onclose }: { onclose: () => void } = $props();
@@ -38,9 +39,15 @@ function insertPrompt(): void {
     if (!view) return;
 
     const selection = view.state.selection.main;
+    const insertion = formatPromptInsertion(
+        view.state.doc.toString(),
+        selection.from,
+        selection.to,
+        prompt.text,
+    );
     view.dispatch({
-        changes: { from: selection.from, to: selection.to, insert: prompt.text },
-        selection: { anchor: selection.from + prompt.text.length },
+        changes: { from: selection.from, to: selection.to, insert: insertion.text },
+        selection: { anchor: selection.from + insertion.cursorOffset },
         annotations: Transaction.addToHistory.of(true),
         scrollIntoView: true,
     });

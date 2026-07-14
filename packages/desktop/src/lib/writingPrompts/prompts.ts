@@ -195,3 +195,32 @@ export function chooseWritingPrompt(
     );
     return freshCandidates[Math.max(0, index)];
 }
+
+export type PromptInsertion = {
+    text: string;
+    cursorOffset: number;
+};
+
+/** Keep an inserted prompt visually separate from prose on either side. */
+export function formatPromptInsertion(
+    documentText: string,
+    from: number,
+    to: number,
+    promptText: string,
+): PromptInsertion {
+    const before = documentText.slice(0, from);
+    const after = documentText.slice(to);
+    const prefix =
+        before.length === 0 || before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+    const suffix =
+        after.length === 0 || after.startsWith("\n\n")
+            ? ""
+            : after.startsWith("\n")
+              ? "\n"
+              : "\n\n";
+
+    return {
+        text: `${prefix}${promptText}${suffix}`,
+        cursorOffset: prefix.length + promptText.length,
+    };
+}

@@ -2,6 +2,7 @@ import {
     PROMPT_CATEGORIES,
     WRITING_PROMPTS,
     chooseWritingPrompt,
+    formatPromptInsertion,
     promptsInCategory,
 } from "$lib/writingPrompts/prompts";
 import { describe, expect, it } from "vitest";
@@ -27,5 +28,17 @@ describe("writing prompts", () => {
 
     it("clamps an injected random value at the end of the library", () => {
         expect(chooseWritingPrompt(null, undefined, () => 1)).toEqual(WRITING_PROMPTS.at(-1));
+    });
+
+    it("separates a prompt from prose at the cursor", () => {
+        const insertion = formatPromptInsertion("Opening paragraph.", 18, 18, "Keep writing.");
+
+        expect(insertion).toEqual({ text: "\n\nKeep writing.", cursorOffset: 15 });
+    });
+
+    it("preserves an existing blank-line boundary", () => {
+        const insertion = formatPromptInsertion("Before\n\nAfter", 8, 8, "Prompt");
+
+        expect(insertion).toEqual({ text: "Prompt\n\n", cursorOffset: 6 });
     });
 });
