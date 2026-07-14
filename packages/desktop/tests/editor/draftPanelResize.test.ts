@@ -1,5 +1,4 @@
 import {
-    DRAFT_PANEL_MAX_WIDTH,
     DRAFT_PANEL_MIN_WIDTH,
     clampDraftPanelWidth,
     getDraftPanelMaxWidth,
@@ -8,15 +7,16 @@ import {
 import { describe, expect, it } from "vitest";
 
 describe("draft panel resize", () => {
-    it("uses the full configured range on wide viewports", () => {
-        expect(getDraftPanelMaxWidth(1600)).toBe(DRAFT_PANEL_MAX_WIDTH);
-        expect(clampDraftPanelWidth(999, 1600)).toBe(DRAFT_PANEL_MAX_WIDTH);
+    it("fills the available left rail on wide viewports", () => {
+        expect(getDraftPanelMaxWidth(1600)).toBe(360);
+        expect(getDraftPanelMaxWidth(2000)).toBe(560);
+        expect(clampDraftPanelWidth(999, 2000)).toBe(560);
         expect(clampDraftPanelWidth(0, 1600)).toBe(DRAFT_PANEL_MIN_WIDTH);
     });
 
     it("caps the panel to preserve the editor margin on narrower windows", () => {
         expect(getDraftPanelMaxWidth(1440)).toBe(280);
-        expect(clampDraftPanelWidth(DRAFT_PANEL_MAX_WIDTH, 1440)).toBe(280);
+        expect(clampDraftPanelWidth(999, 1440)).toBe(280);
     });
 
     it("never reports a maximum below the usable minimum", () => {

@@ -8,7 +8,6 @@
  */
 
 export const DRAFT_PANEL_MIN_WIDTH = 192;
-export const DRAFT_PANEL_MAX_WIDTH = 360;
 export const DRAFT_PANEL_DEFAULT_WIDTH = 192;
 
 const EDITOR_HALF_WIDTH = 408;
@@ -21,7 +20,7 @@ export function getDraftPanelMaxWidth(viewportWidth: number): number {
     const availableWidth = Math.floor(
         viewportWidth / 2 - EDITOR_HALF_WIDTH - PANEL_EDITOR_GAP - VIEWPORT_MARGIN,
     );
-    return Math.max(DRAFT_PANEL_MIN_WIDTH, Math.min(DRAFT_PANEL_MAX_WIDTH, availableWidth));
+    return Math.max(DRAFT_PANEL_MIN_WIDTH, availableWidth);
 }
 
 export function clampDraftPanelWidth(width: number, viewportWidth: number): number {

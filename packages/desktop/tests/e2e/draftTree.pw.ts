@@ -55,6 +55,40 @@ test.describe("Draft panel", () => {
         await expect(panel).toHaveCSS("width", "280px");
     });
 
+    test("offers a hover control that fills the available width", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await page.setViewportSize({ width: 2000, height: 900 });
+
+        const panel = page.locator('[aria-label="Draft tree"]');
+        const handle = page.getByRole("slider", { name: "Resize drafts panel" });
+        const expand = page.getByRole("button", {
+            name: "Expand drafts panel to available width",
+        });
+
+        const handleBox = await handle.boundingBox();
+        expect(handleBox).not.toBeNull();
+        // Enter the rail away from its center, where the hover button appears.
+        await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 4);
+        await expect(expand).toBeVisible();
+        await expand.click();
+        await expect(panel).toHaveCSS("width", "560px");
+        expect(
+            await page.evaluate(
+                () =>
+                    JSON.parse(localStorage.getItem("quillium-app-settings") ?? "{}")
+                        .draftPanelWidth,
+            ),
+        ).toBe(560);
+
+        const restore = page.getByRole("button", {
+            name: "Restore default drafts panel width",
+        });
+        await expect(restore).toBeVisible();
+        await restore.click();
+        await expect(panel).toHaveCSS("width", "192px");
+    });
+
     test("panel renders the root draft on load", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();

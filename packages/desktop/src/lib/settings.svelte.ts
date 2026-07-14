@@ -9,11 +9,7 @@ import {
     READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     normalizeReadonlyShareAutoUpdateDebounceMs,
 } from "$lib/collab/readonlyShareAutoUpdate";
-import {
-    DRAFT_PANEL_DEFAULT_WIDTH,
-    DRAFT_PANEL_MAX_WIDTH,
-    DRAFT_PANEL_MIN_WIDTH,
-} from "$lib/editor/draftPanelResize";
+import { DRAFT_PANEL_DEFAULT_WIDTH, DRAFT_PANEL_MIN_WIDTH } from "$lib/editor/draftPanelResize";
 
 const STORAGE_KEY = "quillium-app-settings";
 
@@ -154,10 +150,7 @@ function loadSettings(): AppSettings {
             merged.persistUndoHistoryForNewDocuments === true;
         merged.draftPanelWidth =
             typeof merged.draftPanelWidth === "number" && Number.isFinite(merged.draftPanelWidth)
-                ? Math.min(
-                      DRAFT_PANEL_MAX_WIDTH,
-                      Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth)),
-                  )
+                ? Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth))
                 : DRAFT_PANEL_DEFAULT_WIDTH;
         return merged;
     } catch {
