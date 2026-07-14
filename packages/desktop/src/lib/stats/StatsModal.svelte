@@ -16,11 +16,16 @@ import {
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
+import { listDraftEvents } from "$lib/db";
 import { appSettings } from "$lib/settings.svelte";
+import AnalyticsDashboard from "$lib/stats/AnalyticsDashboard.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
+import { type WritingAnalytics, computeWritingAnalytics } from "$lib/stats/analytics";
 import { computeStats } from "$lib/stats/compute";
-import { documentContent } from "$lib/stores";
+import { onWritingAnalyticsFlagChange } from "$lib/stats/featureFlag";
+import { currentDocumentTitle, currentDraftId, documentContent } from "$lib/stores";
 import { BarChart3, HelpCircle, X } from "lucide-svelte";
+import { onMount } from "svelte";
 
 const { onclose }: { onclose: () => void } = $props();
 
@@ -29,6 +34,11 @@ let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let text = $derived($documentContent);
 let stats = $derived(computeStats(text));
 let diversity = $derived(formatDiversity(stats.vocabularyDiversity));
+let activeTab = $state<"document" | "analytics">("document");
+let analyticsEnabled = $state(false);
+let analytics = $state<WritingAnalytics | null>(null);
+let analyticsLoading = $state(false);
+let analyticsError = $state<string | null>(null);
 
 // AI characterizer state
 let analyzing = $state(false);
@@ -62,6 +72,43 @@ $effect(() => {
     if (dialogEl && !dialogEl.open) {
         dialogEl.showModal();
     }
+});
+
+onMount(() =>
+    onWritingAnalyticsFlagChange((enabled) => {
+        analyticsEnabled = enabled;
+    }),
+);
+
+$effect(() => {
+    const enabled = analyticsEnabled;
+    const draftId = $currentDraftId;
+    if (!enabled || !draftId) {
+        analytics = null;
+        analyticsLoading = false;
+        analyticsError = null;
+        if (!enabled) activeTab = "document";
+        return;
+    }
+
+    let cancelled = false;
+    analyticsLoading = true;
+    analyticsError = null;
+    listDraftEvents(draftId)
+        .then((events) => {
+            if (!cancelled) analytics = computeWritingAnalytics(events);
+        })
+        .catch((loadError: unknown) => {
+            if (cancelled) return;
+            console.error("[stats] writing analytics load failed", loadError);
+            analyticsError = "Writing history could not be loaded.";
+        })
+        .finally(() => {
+            if (!cancelled) analyticsLoading = false;
+        });
+    return () => {
+        cancelled = true;
+    };
 });
 
 function handleBackdropClick(e: MouseEvent) {
@@ -158,8 +205,33 @@ function formatGradeLevel(grade: number): string {
             </button>
         </div>
 
+        {#if analyticsEnabled}
+            <div class="flex gap-1 px-5 pt-2.5 border-b border-black/[0.06] shrink-0">
+                <button
+                    class:active-tab={activeTab === "document"}
+                    class="stats-tab"
+                    onclick={() => (activeTab = "document")}
+                >Document</button>
+                <button
+                    class:active-tab={activeTab === "analytics"}
+                    class="stats-tab"
+                    onclick={() => (activeTab = "analytics")}
+                >Trends & goals</button>
+            </div>
+        {/if}
+
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5 max-h-[80vh]">
+            {#if activeTab === "analytics" && analyticsEnabled && $currentDraftId}
+                <AnalyticsDashboard
+                    {analytics}
+                    currentWords={stats.words}
+                    draftId={$currentDraftId}
+                    documentTitle={$currentDocumentTitle}
+                    loading={analyticsLoading}
+                    loadError={analyticsError}
+                />
+            {:else}
             <!-- Basic stats grid -->
             <div class="grid grid-cols-4 gap-2.5">
                 <div class="stat-card">
@@ -293,6 +365,7 @@ function formatGradeLevel(grade: number): string {
                     {/if}
                 {/if}
             {/if}
+            {/if}
         </div>
     </div>
 </dialog>
@@ -325,6 +398,22 @@ function formatGradeLevel(grade: number): string {
         overflow: hidden;
         display: flex;
         flex-direction: column;
+    }
+
+    .stats-tab {
+        border-bottom: 2px solid transparent;
+        padding: 0.35rem 0.55rem 0.55rem;
+        font-size: 0.7rem;
+        color: rgba(0, 0, 0, 0.35);
+    }
+
+    .stats-tab:hover {
+        color: rgba(0, 0, 0, 0.58);
+    }
+
+    .stats-tab.active-tab {
+        border-bottom-color: rgba(16, 185, 129, 0.65);
+        color: rgba(0, 0, 0, 0.68);
     }
 
     .stat-card {
