@@ -809,8 +809,14 @@ test("deleted tab history shows its last state without leaking into later entrie
 
     await page.getByText("Deleted tab “Tab 2”").click();
 
-    await expect(tabs.getByRole("tab", { name: "Tab 2" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("Deleted tab · historical state")).toBeVisible();
+    const deletedTab = tabs.getByRole("tab", { name: "Tab 2" });
+    await expect(deletedTab).toHaveAttribute("aria-selected", "true");
+    await expect(deletedTab).toHaveAttribute("data-deleted", "true");
+    await expect(deletedTab).toHaveClass(/text-red-700/);
+    await expect(deletedTab.locator("span").first()).toHaveCSS(
+        "text-decoration-line",
+        "line-through",
+    );
     await expect(page.getByText("showing its last available state")).toBeVisible();
     await expect
         .poll(() =>
@@ -821,8 +827,9 @@ test("deleted tab history shows its last state without leaking into later entrie
     await expect(page.getByRole("button", { name: "Close tab" })).toHaveCount(0);
 
     await page.getByText("Before deletion").click();
-    await expect(page.getByText("Deleted tab · historical state")).toHaveCount(0);
-    await expect(tabs.getByRole("tab", { name: "Tab 2" })).toHaveAttribute("aria-selected", "true");
+    await expect(deletedTab).toHaveAttribute("aria-selected", "true");
+    await expect(deletedTab).toHaveAttribute("data-deleted", "false");
+    await expect(deletedTab.locator("span").first()).toHaveCSS("text-decoration-line", "none");
     expect(await qp.countInvocations("cmd_set_active_tab")).toBe(0);
     expect(await qp.countInvocations("cmd_set_active_draft")).toBe(0);
     expect(await qp.countInvocations("cmd_restore_to_coordinate")).toBe(0);

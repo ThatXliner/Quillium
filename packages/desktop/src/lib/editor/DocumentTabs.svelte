@@ -6,6 +6,7 @@
       activeTabId — id of the currently active tab
       readOnly    — navigation-only mode; hides and disables every mutation
       highlightedTabId — optional secondary highlight (e.g. history target)
+      deletedTabId — optional historical tombstone rendered red + struck through
       ontabselect — called with (tabId) when user clicks an inactive tab
       ontabcreate — called when user clicks +
       ontabrename — called with (tabId, newLabel) after inline rename
@@ -43,6 +44,7 @@ type Props = {
     tabs: TabMeta[];
     activeTabId: string | null;
     highlightedTabId?: string | null;
+    deletedTabId?: string | null;
     ontabselect: (tabId: string) => void;
 } & (
     | ({ readOnly: true } & Partial<TabMutationCallbacks>)
@@ -54,6 +56,7 @@ const {
     activeTabId,
     readOnly = false,
     highlightedTabId = null,
+    deletedTabId = null,
     ontabselect,
     ontabcreate,
     ontabrename,
@@ -406,6 +409,7 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
         {#each displayTabs as tab (tab.id)}
             {@const isActive = tab.id === activeTabId}
             {@const isHighlighted = tab.id === highlightedTabId}
+            {@const isDeleted = tab.id === deletedTabId}
             {@const isRenaming = renamingTabId === tab.id}
             {@const isDragged = draggingId === tab.id}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -415,8 +419,9 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                 animate:flip={{ duration: isDragged ? 0 : FLIP_MS }}
                 role="tab"
                 aria-selected={isActive}
-                aria-describedby={isHighlighted ? "document-tab-timeline-target" : undefined}
+                aria-describedby={[isHighlighted ? "document-tab-timeline-target" : null, isDeleted ? "document-tab-deleted" : null].filter(Boolean).join(" ") || undefined}
                 data-highlighted={isHighlighted}
+                data-deleted={isDeleted}
                 tabindex={isActive ? 0 : -1}
                 onpointerdown={(e) => onTabPointerDown(e, tab)}
                 onkeydown={(e) => onTabKeyDown(e, tab)}
@@ -429,16 +434,27 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg overflow-hidden transition-colors duration-100
-                    {isHighlighted ? 'ring-1 ring-inset ring-blue-300' : ''}
+                    {isHighlighted && !isDeleted ? 'ring-1 ring-inset ring-blue-300' : ''}
                     {isDragged ? '!transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]' : ''}
-                    {isActive
+                    {isDeleted
+                        ? isActive
+                            ? 'py-1.5 bg-red-50 text-red-700 font-semibold z-10 cursor-default ring-1 ring-inset ring-red-300'
+                            : 'py-1 bg-red-50/70 text-red-600 hover:bg-red-50 z-[1]'
+                        : isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold z-10 cursor-default'
                         : isDragged
                           ? 'py-1 bg-white text-black/70'
                           : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
                 "
             >
-                <FileTextIcon size={12} class="shrink-0 {isActive || isDragged ? 'text-black/50' : 'text-black/30'}" />
+                <FileTextIcon
+                    size={12}
+                    class="shrink-0 {isDeleted
+                        ? 'text-red-500'
+                        : isActive || isDragged
+                          ? 'text-black/50'
+                          : 'text-black/30'}"
+                />
                 {#if isRenaming}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <input
@@ -455,7 +471,10 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                         aria-label="Rename tab"
                     />
                 {:else}
-                    <span class="flex-1 min-w-0 max-w-[8rem] truncate">{tab.label}</span>
+                    <span
+                        class="flex-1 min-w-0 max-w-[8rem] truncate
+                            {isDeleted ? 'line-through decoration-red-500 decoration-1' : ''}"
+                    >{tab.label}</span>
                 {/if}
                 {#if !readOnly && tabs.length > 1}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -477,6 +496,7 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
     </div>
 
     <span id="document-tab-timeline-target" class="sr-only">Timeline target</span>
+    <span id="document-tab-deleted" class="sr-only">Deleted tab, historical state</span>
 
     {#if !readOnly}
         <button

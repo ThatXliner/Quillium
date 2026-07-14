@@ -58,7 +58,6 @@ const {
 } = $props();
 
 const shownDrafts = $derived(drafts.filter((draft) => draft.tabId === viewedTabId));
-const showingDeletedTab = $derived(deletedTabId !== null && viewedTabId === deletedTabId);
 let diffLayout = $state<DiffLayout>("inline");
 let projectedText = $state("");
 const hasTextChanges = $derived(
@@ -108,14 +107,6 @@ function setDiffLayout(layout: DiffLayout): void {
         <div class="history-document-grid">
             <div class="history-comparison-bar">
                 <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-black/60">
-                    {#if showingDeletedTab}
-                        <span
-                            class="rounded-full border border-red-200 bg-red-50 px-2 py-0.5
-                                font-medium text-red-700"
-                        >
-                            Deleted tab · historical state
-                        </span>
-                    {/if}
                     {#if hasTextChanges}
                         <span class="flex items-center gap-1.5">
                             <span
@@ -180,6 +171,7 @@ function setDiffLayout(layout: DiffLayout): void {
                     {tabs}
                     activeTabId={viewedTabId}
                     highlightedTabId={highlightTabId}
+                    {deletedTabId}
                     {ontabselect}
                 />
             </div>
