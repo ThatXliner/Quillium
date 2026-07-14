@@ -58,6 +58,11 @@ function patchStylesheetCORS() {
 
 let posthogInitialised = false;
 
+/** Whether the PostHog client has been initialized and can serve feature flags. */
+export function isPostHogInitialised(): boolean {
+    return posthogInitialised;
+}
+
 function getPostHogEnv(): { key: string; host: string } | null {
     // $env/static/public, NOT import.meta.env — see supabase.ts for why.
     const key = PUBLIC_POSTHOG_KEY;

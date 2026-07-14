@@ -108,7 +108,7 @@ import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
-import { Toaster, toast } from "svelte-sonner";
+import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
 // set it immediately so Editor.svelte's fromSave picks it up on mount.
@@ -666,7 +666,6 @@ if (import.meta.env.DEV) {
     {/if}
     <WordCountOverlay />
 </BottomLeftStack>
-<Toaster position="bottom-right" />
 
 <!-- Top-right collab + account entry points -->
 <div data-annotation-occluder class="fixed top-8 right-8 z-40 flex items-center gap-3">

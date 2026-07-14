@@ -11,11 +11,17 @@ import "../app.css";
 import { onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
+import { featureFlags, startFeatureFlagSync } from "$lib/featureFlags.svelte";
 import posthog from "$lib/posthog";
 import { editorView, errorBanner } from "$lib/stores";
 import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
+import {
+    setWritingReminderFeatureEnabled,
+    startWritingReminderService,
+} from "$lib/writingReminders";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
+import { Toaster } from "svelte-sonner";
 
 const { children } = $props();
 
@@ -24,6 +30,8 @@ const { children } = $props();
 // nothing on Library/History, hiding logs exactly when they were
 // needed to diagnose a broken state.
 let appLogsOpen = $state(false);
+
+$effect(() => setWritingReminderFeatureEnabled(featureFlags.novelNovember));
 
 onMount(() => {
     let destroyed = false;
@@ -38,6 +46,15 @@ onMount(() => {
     return () => {
         destroyed = true;
         unlisten?.();
+    };
+});
+
+onMount(() => {
+    const stopReminders = startWritingReminderService();
+    const stopFlags = startFeatureFlagSync();
+    return () => {
+        stopFlags();
+        stopReminders();
     };
 });
 
@@ -56,6 +73,7 @@ onNavigate((navigation) => {
 
 <!-- Banner lives outside the boundary so it survives component tree errors -->
 <ErrorBanner />
+<Toaster position="bottom-right" />
 
 <!-- Logs viewer also outside the boundary: it must stay reachable when a
      page has crashed — that's precisely when the logs matter. -->

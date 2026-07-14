@@ -29,6 +29,7 @@ import {
     lastSavedAt,
     saveStatus,
 } from "$lib/stores";
+import { recordWritingActivity } from "$lib/writingReminders";
 import { historyField, isolateHistory } from "@codemirror/commands";
 import { type Annotation, ChangeSet, EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
@@ -834,6 +835,7 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
 
 // ── Auto-save listener ────────────────────────────────────────────
 const save = EditorView.updateListener.of((update: ViewUpdate) => {
+    if (update.docChanged) recordWritingActivity();
     if (update.transactions.some(changesPersistedState)) {
         persistTransaction(update);
     }
