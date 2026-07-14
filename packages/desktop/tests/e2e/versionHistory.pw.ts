@@ -763,6 +763,78 @@ test("draft activity selects its owning tab by default", async ({ page }) => {
         .toContain("Second tab text");
 });
 
+test("deleted tab history shows its last state without leaking into later entries", async ({
+    page,
+}) => {
+    const structure = makeTwoTabStructure();
+    const qp = new QuilliumPage(page, {
+        ...structure,
+        snapshots: [
+            {
+                id: 3,
+                draftId: "draft-test-1",
+                tabId: "tab-test-1",
+                draftLabel: "main",
+                upToEventId: 30,
+                createdAt: BASE_TIME - 1000,
+                label: "After deletion",
+                doc: "Main tab after deletion.",
+            },
+            {
+                id: 2,
+                draftId: "draft-test-2",
+                tabId: "tab-test-2",
+                draftLabel: "take 2",
+                upToEventId: 20,
+                createdAt: BASE_TIME - 3000,
+                label: "Before deletion",
+                doc: "Deleted tab's last text.",
+            },
+        ],
+        docEvents: [
+            {
+                id: 1,
+                documentId: "doc-test-1",
+                eventType: "tab_deleted",
+                payload: JSON.stringify({ tabId: "tab-test-2", label: "Tab 2" }),
+                createdAt: BASE_TIME - 2000,
+            },
+        ],
+    });
+    await qp.initHistory();
+
+    const tabs = page.getByRole("tablist", { name: "Document tabs" });
+    await expect(tabs.getByRole("tab", { name: "Main" })).toBeVisible();
+    await expect(tabs.getByRole("tab", { name: "Tab 2" })).toHaveCount(0);
+
+    await page.getByText("Deleted tab “Tab 2”").click();
+
+    const deletedTab = tabs.getByRole("tab", { name: "Tab 2" });
+    await expect(deletedTab).toHaveAttribute("aria-selected", "true");
+    await expect(deletedTab).toHaveAttribute("data-deleted", "true");
+    await expect(deletedTab).toHaveClass(/text-red-700/);
+    await expect(deletedTab.locator("span").first()).toHaveCSS(
+        "text-decoration-line",
+        "line-through",
+    );
+    await expect(page.getByText("showing its last available state")).toBeVisible();
+    await expect
+        .poll(() =>
+            page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? ""),
+        )
+        .toContain("Deleted tab's last text.");
+    await expect(page.getByRole("button", { name: "New tab" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Close tab" })).toHaveCount(0);
+
+    await page.getByText("Before deletion").click();
+    await expect(deletedTab).toHaveAttribute("aria-selected", "true");
+    await expect(deletedTab).toHaveAttribute("data-deleted", "false");
+    await expect(deletedTab.locator("span").first()).toHaveCSS("text-decoration-line", "none");
+    expect(await qp.countInvocations("cmd_set_active_tab")).toBe(0);
+    expect(await qp.countInvocations("cmd_set_active_draft")).toBe(0);
+    expect(await qp.countInvocations("cmd_restore_to_coordinate")).toBe(0);
+});
+
 test("empty state renders when there is no history", async ({ page }) => {
     const qp = new QuilliumPage(page, { snapshots: [] });
     await qp.initHistory();
