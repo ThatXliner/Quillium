@@ -51,6 +51,12 @@ import {
     recordWordCount,
     registerSurveyLifecycleListeners,
 } from "$lib/feedback/autoSurvey";
+import {
+    FOCUS_CONTROLS_HIDE_DELAY_MS,
+    FOCUS_MODE_FEATURE_FLAG,
+    isFocusModeFeatureEnabled,
+    isFocusModeShortcut,
+} from "$lib/focusMode";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import {
@@ -69,7 +75,9 @@ import {
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { invoke } from "@tauri-apps/api/core";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
@@ -130,6 +138,10 @@ let updateReady = $state(false);
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 let authReconnecting = $state(false);
+let focusModeAvailable = $state(false);
+let focusMode = $state(false);
+let focusControlsVisible = $state(false);
+let focusControlsTimer: ReturnType<typeof setTimeout> | undefined;
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
@@ -229,7 +241,53 @@ function handleChangelogDismiss() {
     $editorView?.focus();
 }
 
+function revealFocusControls() {
+    if (!focusMode) return;
+    focusControlsVisible = true;
+    clearTimeout(focusControlsTimer);
+    focusControlsTimer = setTimeout(() => {
+        focusControlsVisible = false;
+    }, FOCUS_CONTROLS_HIDE_DELAY_MS);
+}
+
+async function setFocusMode(enabled: boolean) {
+    if (enabled && !focusModeAvailable) return;
+    focusMode = enabled;
+    clearTimeout(focusControlsTimer);
+    focusControlsVisible = enabled;
+
+    try {
+        await getCurrentWindow().setFullscreen(enabled);
+    } catch (error) {
+        // Browser-only development and component tests have no Tauri window.
+        // Keep the distraction-free layout useful even without native fullscreen.
+        if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+            console.warn("[focusMode] Unable to change native fullscreen state", error);
+        }
+    }
+
+    if (enabled) revealFocusControls();
+    $editorView?.focus();
+    posthog.capture(enabled ? "focus_mode_entered" : "focus_mode_exited");
+}
+
+function toggleFocusMode() {
+    void setFocusMode(!focusMode);
+}
+
 function handleKeydown(e: KeyboardEvent) {
+    if (focusMode && e.key === "Tab") revealFocusControls();
+    if (isFocusModeShortcut(e)) {
+        if (!focusModeAvailable) return;
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+    }
+    if (focusMode && e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        void setFocusMode(false);
+        return;
+    }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         void editorComponent?.createNewTab();
@@ -340,6 +398,24 @@ onMount(() => {
 
     showTutorialOnFirstVisit();
 
+    function updateFocusModeAvailability() {
+        const available = isFocusModeFeatureEnabled(
+            posthog.getFeatureFlag(FOCUS_MODE_FEATURE_FLAG),
+        );
+        focusModeAvailable = available;
+        if (!available && focusMode) void setFocusMode(false);
+        if (!IS_MOBILE && "__TAURI_INTERNALS__" in window) {
+            invoke("cmd_set_focus_mode_available", { available }).catch((error) => {
+                console.warn("[focusMode] Unable to update native menu availability", error);
+            });
+        }
+    }
+
+    // Disabled until PostHog resolves the shared flag. The callback also runs
+    // when flags are reloaded, allowing a remote kill-switch to exit focus mode.
+    updateFocusModeAvailability();
+    const unsubscribeFeatureFlags = posthog.onFeatureFlags(updateFocusModeAvailability);
+
     // Check for updates silently in the background.
     // On MAS builds the banner redirects to the App Store instead of self-updating.
     // On mobile the updater plugin isn't registered, so skip entirely.
@@ -421,6 +497,9 @@ onMount(() => {
     listen("menu:authorship", () => {
         if (!destroyed) goToAuthorship();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:focus-mode", () => {
+        if (!destroyed && focusModeAvailable) toggleFocusMode();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:library", () => {
         if (!destroyed) goToLibrary();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
@@ -469,6 +548,8 @@ onMount(() => {
         unsubShowLicenses();
         unsubSurveyLifecycle();
         unsubWordCount();
+        unsubscribeFeatureFlags();
+        clearTimeout(focusControlsTimer);
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -571,10 +652,18 @@ if (import.meta.env.DEV) {
 }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window
+    onkeydown={handleKeydown}
+    onpointermove={revealFocusControls}
+    onfocus={revealFocusControls}
+/>
+
+<div class="app-shell">
 
 {#if appSettings.aiEnabled}
-    <AiSidebar />
+    <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+        <AiSidebar />
+    </div>
 {/if}
 <DictionaryPopover />
 <HarperTooltip />
@@ -582,37 +671,56 @@ if (import.meta.env.DEV) {
 <!-- In-app overflow menu — only visible on small/touch viewports (<900px).
      Reaches Settings / Library / History / Licenses / Export, the same
      actions the desktop-only native menu bar triggers. -->
-<MobileMenu
-    onsettings={() => ($settingsOpen = !$settingsOpen)}
-    onlibrary={goToLibrary}
-    onhistory={goToHistory}
-    onexport={handleMobileExport}
-/>
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <MobileMenu
+        onsettings={() => ($settingsOpen = !$settingsOpen)}
+        onlibrary={goToLibrary}
+        onhistory={goToHistory}
+        onexport={handleMobileExport}
+    />
+</div>
 
 <!-- Keyboard accessory toolbar — floats on top of the on-screen keyboard so
      formatting + annotation commands are reachable without a hardware keyboard.
      Only active on mobile; hides itself when the keyboard is closed. -->
-<MobileFormatBar enabled={IS_MOBILE} />
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <MobileFormatBar enabled={IS_MOBILE} />
+</div>
 
 <div class="h-screen w-full">
-    <Editor bind:this={editorComponent} />
+    <Editor bind:this={editorComponent} {focusMode} {focusControlsVisible} />
 </div>
+
+{#if focusMode}
+    <button
+        type="button"
+        class="focus-exit fixed top-7 right-7 z-[60] rounded-full bg-white/75 px-4 py-2 text-xs font-medium text-black/55 shadow-lg ring-1 ring-black/[0.06] backdrop-blur-md hover:bg-white hover:text-black/75 focus-visible:opacity-100"
+        class:focus-exit-visible={focusControlsVisible}
+        onclick={() => setFocusMode(false)}
+        aria-label="Exit focus mode"
+        title="Exit focus mode (Esc or Command/Ctrl+Shift+F)"
+    >
+        Exit focus mode
+    </button>
+{/if}
 
 <!-- Update banner — shown when a new version is available -->
 {#if updateAvailable}
-    <UpdateBanner
-        version={updateVersion}
-        installing={updateInstalling}
-        ready={updateReady}
-        masMode={effectiveMasMode}
-        oninstall={installUpdate}
-        ondismiss={() => {
-            posthog.capture("update_dismissed", { version: updateVersion });
-            localStorage.setItem("quillium_skipped_update", updateVersion);
-            updateAvailable = false;
-            debugMasMode = null;
-        }}
-    />
+    <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+        <UpdateBanner
+            version={updateVersion}
+            installing={updateInstalling}
+            ready={updateReady}
+            masMode={effectiveMasMode}
+            oninstall={installUpdate}
+            ondismiss={() => {
+                posthog.capture("update_dismissed", { version: updateVersion });
+                localStorage.setItem("quillium_skipped_update", updateVersion);
+                updateAvailable = false;
+                debugMasMode = null;
+            }}
+        />
+    </div>
 {/if}
 
 <!-- Stats modal -->
@@ -660,16 +768,22 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
-<BottomLeftStack>
-    {#if appSettings.aiEnabled}
-        <AutoAIWidget />
-    {/if}
-    <WordCountOverlay />
-</BottomLeftStack>
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <BottomLeftStack>
+        {#if appSettings.aiEnabled}
+            <AutoAIWidget />
+        {/if}
+        <WordCountOverlay />
+    </BottomLeftStack>
+</div>
 <Toaster position="bottom-right" />
 
 <!-- Top-right collab + account entry points -->
-<div data-annotation-occluder class="fixed top-8 right-8 z-40 flex items-center gap-3">
+<div
+    data-annotation-occluder
+    class="focus-chrome fixed top-8 right-8 z-40 flex items-center gap-3"
+    class:focus-chrome-hidden={focusMode && !focusControlsVisible}
+>
     {#if authLoading && authConnectionState === "connecting" && authReconnecting}
         <button
             disabled
@@ -737,8 +851,31 @@ if (import.meta.env.DEV) {
         <CommentModal commentId={entry.commentId} parentView={entry.parentView} stackIndex={i} />
     {/if}
 {/each}
+</div>
 
 <style>
+    .app-shell {
+        min-height: 100vh;
+    }
+    .focus-chrome {
+        transition:
+            opacity 240ms ease,
+            visibility 240ms ease;
+    }
+    .focus-chrome-hidden {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .focus-exit {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 240ms ease;
+    }
+    .focus-exit-visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
     :global(html) {
         background-color: #e5e7eb; /* gray-200 */
     }

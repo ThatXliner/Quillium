@@ -279,6 +279,8 @@ Include contextual properties that make events useful for analysis:
 | Event | Properties | Source |
 |-------|-----------|--------|
 | `app_session_started` | `word_count` | `editor/Editor.svelte` |
+| `focus_mode_entered` | — | `routes/+page.svelte` |
+| `focus_mode_exited` | — | `routes/+page.svelte` |
 
 #### AI
 
@@ -344,6 +346,7 @@ Feature flags are evaluated with `posthog.getFeatureFlag(flagName)` at the call 
 | Flag | Variants | Purpose | Source |
 |------|----------|---------|--------|
 | `context-generation-format` | `"control"` (default), `"structured"` | A/B test for how document context is formatted when sent to AI | `ai/clientStreams.ts` |
+| `novel-november` | `false` (default), `true` | Enables distraction-free focus mode | `routes/+page.svelte` |
 
 ### Error Tracking
 
