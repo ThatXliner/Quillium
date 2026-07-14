@@ -190,7 +190,11 @@ describe("persistence round-trip integration", () => {
         view = new EditorView({ state, parent });
 
         const firstVersion = makeVersion({ doc: "Alpha", label: "First" });
-        const secondVersion = makeVersion({ doc: "Beta", label: "Second" });
+        const secondVersion = makeVersion({
+            doc: "Beta",
+            label: "Second",
+            provenance: "ai",
+        });
         const revision = {
             ...createNewAnnotation(
                 view.state.field(annotationField),
@@ -215,6 +219,7 @@ describe("persistence round-trip integration", () => {
             updateRevisionVersionState(view.state, revision.id, secondVersion.id, {
                 ...secondVersion,
                 doc: "Beta two",
+                provenance: "mixed",
             }),
         );
         view.dispatch(setActiveRevisionVersion(view.state, revision.id, secondVersion.id));
@@ -249,7 +254,12 @@ describe("persistence round-trip integration", () => {
         expect(restoredRevision.activeVersionId).toBe(secondVersion.id);
         expect(restoredRevision.versions).toEqual([
             expect.objectContaining({ id: firstVersion.id, doc: "Alpha one", label: "Opening" }),
-            expect.objectContaining({ id: secondVersion.id, doc: "Beta two!", label: "Selected" }),
+            expect.objectContaining({
+                id: secondVersion.id,
+                doc: "Beta two!",
+                label: "Selected",
+                provenance: "mixed",
+            }),
         ]);
     });
 

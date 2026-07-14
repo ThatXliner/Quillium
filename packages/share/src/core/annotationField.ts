@@ -63,6 +63,7 @@ import {
     RawAnnotationSchema,
     type RawAnnotations,
     RawAnnotationsSchema,
+    type RevisionProvenance,
     type SuggestionReplacement,
     SuggestionReplacementSchema,
     type Thread,
@@ -70,6 +71,7 @@ import {
     type VersionState,
     VersionStateSchema,
     activeVersionIndex,
+    combineRevisionProvenance,
     createNewAnnotation,
     ensureAnnotationHistoryId,
     getNewId,
@@ -207,6 +209,8 @@ export const updateThread = StateEffect.define<{
 // stored in history and never inverted. The inverted StateEffects on each
 // transaction already carry the full semantic meaning of "undo this op."
 export const revisionInternalEdit = Annotation.define<boolean>();
+/** Explicit authorship of revision text applied by a revision-internal transaction. */
+export const revisionProvenance = Annotation.define<RevisionProvenance>();
 
 // Marks a parent-editor transaction that was originated by a nested editor
 // acting as a direct viewport. Set to the revision ID whose nested editor
@@ -584,6 +588,7 @@ export function setActiveRevisionVersion(
 
     const effects: StateEffect<unknown>[] = [];
     const changeSpecs: { from: number; to: number; insert: string }[] = [];
+    const appliedProvenance: Array<RevisionProvenance | undefined> = [];
     for (const sw of switches) {
         const rev = state.field(annotationField)[sw.annotationId];
         if (!isAnnotationOfType(rev, "revision")) continue;
@@ -592,6 +597,7 @@ export function setActiveRevisionVersion(
         effects.push(
             _updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }),
         );
+        appliedProvenance.push(v.provenance);
         changeSpecs.push({
             from: rev.selection.main.from,
             to: rev.selection.main.to,
@@ -600,6 +606,7 @@ export function setActiveRevisionVersion(
     }
 
     const changes = state.changes(changeSpecs);
+    const combinedProvenance = combineRevisionProvenance(appliedProvenance);
     // Move the EDITOR cursor into the primary switched revision so it becomes the
     // active annotation — collapses the "double selection" where the card you
     // click isn't the one the panel anchors to. Off by default so programmatic
@@ -608,6 +615,7 @@ export function setActiveRevisionVersion(
         effects,
         annotations: [
             revisionInternalEdit.of(true),
+            ...(combinedProvenance ? [revisionProvenance.of(combinedProvenance)] : []),
             Transaction.addToHistory.of(true),
             isolateHistory.of("full"),
         ],
@@ -732,6 +740,7 @@ export function createNewRevision(state: EditorState, annotationId: number) {
         selection: EditorSelection.cursor(from),
         annotations: [
             revisionInternalEdit.of(true),
+            revisionProvenance.of("human"),
             Transaction.addToHistory.of(true),
             isolateHistory.of("full"),
         ],
@@ -788,8 +797,12 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
         );
     }
 
+    const fallbackProvenance = deletingActive
+        ? nextVersions.find((version) => version.id === nextActiveId)?.provenance
+        : undefined;
     const annotations = [
         revisionInternalEdit.of(true),
+        ...(fallbackProvenance ? [revisionProvenance.of(fallbackProvenance)] : []),
         Transaction.addToHistory.of(true),
         isolateHistory.of("full"),
     ];
@@ -834,7 +847,11 @@ export function updateRevisionVersionState(
         }),
     ];
     const addToHistory = options.addToHistory ?? true;
-    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(addToHistory)];
+    const annotations = [
+        revisionInternalEdit.of(true),
+        ...(newVersionState.provenance ? [revisionProvenance.of(newVersionState.provenance)] : []),
+        Transaction.addToHistory.of(addToHistory),
+    ];
     if (original.activeVersionId !== versionId) {
         return state.update({
             effects,
@@ -886,8 +903,8 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
     const originalText = state.doc.sliceString(from, to);
 
     const versions: VersionState[] = [
-        makeVersion({ doc: originalText }),
-        ...annotation.replacements.map((r) => makeVersion({ doc: r.text })),
+        makeVersion({ doc: originalText, provenance: "human" }),
+        ...annotation.replacements.map((r) => makeVersion({ doc: r.text, provenance: "ai" })),
     ];
 
     const firstReplacement = annotation.replacements[0]?.text ?? originalText;
@@ -910,6 +927,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
         changes: state.changes({ from, to, insert: firstReplacement }),
         annotations: [
             revisionInternalEdit.of(true),
+            revisionProvenance.of(versions[1]?.provenance ?? "human"),
             Transaction.addToHistory.of(true),
             isolateHistory.of("full"),
         ],

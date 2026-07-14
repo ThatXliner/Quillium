@@ -102,6 +102,7 @@ import {
     makeVersionFromSelection,
     removeAnnotation,
     revisionInternalEdit,
+    revisionProvenance,
     setActiveRevisionVersion,
     suggestionPreviewField,
 } from "./annotationField";
@@ -167,6 +168,7 @@ function deleteAdjacentRevision(direction: "backward" | "forward"): StateCommand
                 effects: [removeAnnotation.of(target)],
                 annotations: [
                     revisionInternalEdit.of(true),
+                    revisionProvenance.of("human"),
                     Transaction.addToHistory.of(true),
                     isolateHistory.of("full"),
                 ],
@@ -754,7 +756,7 @@ export function createRevision({
     );
     const allVersions = [
         originalVersion,
-        ...versions.map(({ label, text }) => makeVersion({ doc: text, label })),
+        ...versions.map(({ label, text }) => makeVersion({ doc: text, label, provenance: "ai" })),
     ];
     view.dispatch(
         state.update({
@@ -844,6 +846,7 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
             annotations: autoVersion
                 ? [
                       revisionInternalEdit.of(true),
+                      revisionProvenance.of("human"),
                       Transaction.addToHistory.of(true),
                       isolateHistory.of("full"),
                   ]

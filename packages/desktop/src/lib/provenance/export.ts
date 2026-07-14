@@ -14,8 +14,8 @@
  *   - `$lib/posthog` for the `authorship_report_exported` analytics event.
  */
 
-import { sanitizeFilename, saveWithDialog } from "$lib/export";
 import { logAppEvent } from "$lib/appLog";
+import { sanitizeFilename, saveWithDialog } from "$lib/export";
 import posthog from "$lib/posthog";
 import { type ProvenanceReport, generateProvenanceReport } from "$lib/provenance/report";
 import { toast } from "svelte-sonner";
@@ -73,7 +73,9 @@ function buildTotalsSection(report: ProvenanceReport): string {
     const rows: Array<[string, number]> = [
         ["Typed", t.typedChars],
         ["Pasted", t.pastedChars],
+        ["Human revision", t.humanRevisionChars],
         ["AI revision", t.aiRevisionChars],
+        ["Mixed revision", t.mixedRevisionChars],
         ["Formatting", t.formatChars],
         ["Unknown", t.unknownChars],
     ];

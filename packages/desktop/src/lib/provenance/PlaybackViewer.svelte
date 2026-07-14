@@ -63,6 +63,18 @@ const ORIGIN_STYLES: Record<string, OriginStyle> = {
         dot: "bg-purple-500",
         mark: "rgba(168, 85, 247, 0.22)",
     },
+    "human-revision": {
+        label: "Human revision",
+        badge: "bg-emerald-100 text-emerald-700",
+        dot: "bg-emerald-500",
+        mark: "rgba(16, 185, 129, 0.22)",
+    },
+    "mixed-revision": {
+        label: "Mixed revision",
+        badge: "bg-fuchsia-100 text-fuchsia-700",
+        dot: "bg-fuchsia-500",
+        mark: "rgba(217, 70, 239, 0.22)",
+    },
     format: {
         label: "Formatting",
         badge: "bg-blue-100 text-blue-700",
@@ -77,7 +89,15 @@ const ORIGIN_STYLES: Record<string, OriginStyle> = {
     },
 };
 
-const LEGEND_ORDER = ["type", "paste", "ai-revision", "format", "other"] as const;
+const LEGEND_ORDER = [
+    "type",
+    "paste",
+    "human-revision",
+    "ai-revision",
+    "mixed-revision",
+    "format",
+    "other",
+] as const;
 
 /** Map a raw provenance origin to one of the five presentation buckets. */
 function styleKeyForOrigin(origin: Provenance["origin"] | undefined): string {
@@ -88,6 +108,10 @@ function styleKeyForOrigin(origin: Provenance["origin"] | undefined): string {
             return "paste";
         case "ai-revision":
             return "ai-revision";
+        case "human-revision":
+            return "human-revision";
+        case "mixed-revision":
+            return "mixed-revision";
         case "format":
             return "format";
         default:

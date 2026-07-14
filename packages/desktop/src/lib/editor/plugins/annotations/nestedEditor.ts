@@ -53,6 +53,7 @@ import {
     _updateRevisionVersionState,
     annotationField,
     nestedEditorEdit,
+    revisionProvenance,
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
@@ -61,6 +62,7 @@ import {
     activeVersion,
     activeVersionIndex,
     isAnnotationOfType,
+    provenanceAfterHumanEdit,
     versionText,
 } from "./models";
 
@@ -586,12 +588,28 @@ export function translateAndDispatch(
     // reactivation of the inline nested editor. The nested editor has focus
     // during these dispatches, so the parent cursor move is invisible.
     const effects: StateEffect<unknown>[] = [_nestedEditRevision.of(revisionId)];
+    const currentVersion = activeVersion(rev);
+    const humanEditProvenance = provenanceAfterHumanEdit(currentVersion);
     if (versionUpdate) {
         effects.push(
             _updateRevisionVersionState.of({
                 annotationId: revisionId,
                 versionId: versionUpdate.versionId,
-                versionState: versionUpdate.versionState,
+                versionState: {
+                    ...versionUpdate.versionState,
+                    provenance: humanEditProvenance,
+                },
+            }),
+        );
+    } else {
+        effects.push(
+            _updateRevisionVersionState.of({
+                annotationId: revisionId,
+                versionId: currentVersion.id,
+                versionState: {
+                    ...currentVersion,
+                    provenance: humanEditProvenance,
+                },
             }),
         );
     }
@@ -600,7 +618,11 @@ export function translateAndDispatch(
         changes: parentChanges,
         selection: EditorSelection.cursor(offset),
         effects,
-        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
+        annotations: [
+            nestedEditorEdit.of(revisionId),
+            revisionProvenance.of(humanEditProvenance),
+            Transaction.addToHistory.of(true),
+        ],
     });
     return true;
 }

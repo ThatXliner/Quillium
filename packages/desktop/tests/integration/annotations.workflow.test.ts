@@ -351,8 +351,11 @@ describe("annotation workflows integration", () => {
 
         expect(annotations[0].versions).toHaveLength(3);
         expect(annotations[0].versions[0]?.doc).toBe("Beta");
+        expect(annotations[0].versions[0]?.provenance).toBe("human");
         expect(annotations[0].versions[1]?.doc).toBe("Therefore");
+        expect(annotations[0].versions[1]?.provenance).toBe("ai");
         expect(annotations[0].versions[2]?.doc).toBe("Then");
+        expect(annotations[0].versions[2]?.provenance).toBe("ai");
         expect(annotations[0].thread[0]?.message).toBe("Try alternatives");
     });
 
