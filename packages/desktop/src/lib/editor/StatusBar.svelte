@@ -30,10 +30,27 @@ import {
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { type ExportFormat, exportDocument } from "$lib/export";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
+import { novelNovemberEnabled } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Play, Settings, X } from "lucide-svelte";
+import {
+    editorView,
+    saveStatus,
+    settingsOpen,
+    statsOpen,
+    tutorialActive,
+    writingPromptOpen,
+} from "$lib/stores";
+import {
+    BarChart3,
+    Download,
+    History,
+    LayoutGrid,
+    Lightbulb,
+    Play,
+    Settings,
+    X,
+} from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -359,6 +376,17 @@ $effect(() => {
             >
                 <BarChart3 size={20} />
             </button>
+            {#if $novelNovemberEnabled}
+                <button
+                    onclick={() => ($writingPromptOpen = true)}
+                    aria-label="Give me a writing prompt"
+                    title="Writing Prompt ({modKey}Shift+P)"
+                    class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                        {$writingPromptOpen ? 'text-orange-600' : 'text-orange-400 hover:text-orange-600'}"
+                >
+                    <Lightbulb size={20} />
+                </button>
+            {/if}
             <button
                 onclick={() => (exportOpen = true)}
                 aria-label="Export document"

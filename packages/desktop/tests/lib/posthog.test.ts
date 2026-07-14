@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock posthog-js before importing our module
-const { mockCapture, mockSetConfig, mockRegister, mockUnregister } = vi.hoisted(() => ({
+const {
+    mockCapture,
+    mockSetConfig,
+    mockRegister,
+    mockUnregister,
+    mockIsFeatureEnabled,
+    featureFlagCallbacks,
+} = vi.hoisted(() => ({
     mockCapture: vi.fn(),
     mockSetConfig: vi.fn(),
     mockRegister: vi.fn(),
     mockUnregister: vi.fn(),
+    mockIsFeatureEnabled: vi.fn(),
+    featureFlagCallbacks: [] as Array<() => void>,
 }));
 vi.mock("posthog-js", () => ({
     default: {
@@ -16,6 +25,14 @@ vi.mock("posthog-js", () => ({
         opt_in_capturing: vi.fn(),
         capture: mockCapture,
         set_config: mockSetConfig,
+        isFeatureEnabled: mockIsFeatureEnabled,
+        onFeatureFlags: vi.fn((callback: () => void) => {
+            featureFlagCallbacks.push(callback);
+            return () => {
+                const index = featureFlagCallbacks.indexOf(callback);
+                if (index >= 0) featureFlagCallbacks.splice(index, 1);
+            };
+        }),
     },
 }));
 vi.mock("$app/environment", () => ({ dev: true }));
@@ -34,9 +51,11 @@ import {
     DOCUMENT_CONTENT_SELECTOR,
     REDACTED_KEYS,
     capture,
+    novelNovemberEnabled,
     // TODO(#191): re-enable when syncShareDocumentAnalytics is restored
     // syncShareDocumentAnalytics,
 } from "$lib/posthog";
+import { get } from "svelte/store";
 
 describe("capture", () => {
     beforeEach(() => {
@@ -66,6 +85,29 @@ describe("capture", () => {
     it("passes through events with no redacted keys untouched", () => {
         capture("document_created", { count: 1 });
         expect(mockCapture).toHaveBeenCalledWith("document_created", { count: 1 });
+    });
+});
+
+describe("novelNovemberEnabled", () => {
+    beforeEach(() => {
+        mockIsFeatureEnabled.mockReset();
+        mockIsFeatureEnabled.mockReturnValue(false);
+    });
+
+    it("defaults closed when PostHog does not return literal true", () => {
+        expect(get(novelNovemberEnabled)).toBe(false);
+    });
+
+    it("reacts to novel-november flag changes", () => {
+        const values: boolean[] = [];
+        const unsubscribe = novelNovemberEnabled.subscribe((value) => values.push(value));
+
+        mockIsFeatureEnabled.mockReturnValue(true);
+        for (const callback of featureFlagCallbacks) callback();
+
+        expect(values.at(-1)).toBe(true);
+        expect(mockIsFeatureEnabled).toHaveBeenCalledWith("novel-november");
+        unsubscribe();
     });
 });
 

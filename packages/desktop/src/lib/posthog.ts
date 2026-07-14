@@ -6,7 +6,21 @@ import { appSettings } from "$lib/settings.svelte";
 import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
 import posthog, { DisplaySurveyType, SurveyPosition } from "posthog-js";
 import { toast } from "svelte-sonner";
-import { get } from "svelte/store";
+import { get, readable } from "svelte/store";
+
+/** Shared rollout flag for NaNoWriMo-oriented writing features. */
+export const NOVEL_NOVEMBER_FLAG = "novel-november";
+
+/**
+ * Reactive PostHog feature-flag state. It defaults closed until PostHog has
+ * loaded a literal `true`, so missing config, offline startup, and disabled
+ * flags never expose unfinished features.
+ */
+export const novelNovemberEnabled = readable(false, (set) => {
+    const refresh = () => set(posthog.isFeatureEnabled(NOVEL_NOVEMBER_FLAG) === true);
+    refresh();
+    return posthog.onFeatureFlags(refresh);
+});
 
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 

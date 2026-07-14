@@ -307,6 +307,9 @@ export const settingsOpen = writable<false | true | string>(false);
  */
 export const statsOpen = writable(false);
 
+/** Whether the feature-flagged writing prompt picker is open. */
+export const writingPromptOpen = writable(false);
+
 /**
  * Drops per-modal annotation state for stack indices [fromIndex, toIndex).
  * Every stack-shrinking operation must call this so a closed modal's

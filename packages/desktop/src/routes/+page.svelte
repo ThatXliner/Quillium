@@ -66,6 +66,7 @@ import {
     settingsOpen,
     statsOpen,
     tutorialActive,
+    writingPromptOpen,
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
@@ -97,7 +98,7 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
-import posthog from "$lib/posthog";
+import posthog, { novelNovemberEnabled } from "$lib/posthog";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
@@ -108,6 +109,7 @@ import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
+import WritingPromptModal from "$lib/writingPrompts/WritingPromptModal.svelte";
 import { Toaster, toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
@@ -137,6 +139,10 @@ const authConnectionState = $derived(getConnectionState());
 // in-memory user before landing offline, but the persisted session is
 // still there and the stuck user needs the Sign out escape hatch.
 const authCanReset = $derived(hasAuthStateToReset());
+
+$effect(() => {
+    if (!$novelNovemberEnabled) $writingPromptOpen = false;
+});
 
 let editorComponent = $state<{
     reload: () => Promise<void>;
@@ -230,6 +236,11 @@ function handleChangelogDismiss() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        if (!$novelNovemberEnabled) return;
+        e.preventDefault();
+        $writingPromptOpen = true;
+    }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         void editorComponent?.createNewTab();
@@ -580,12 +591,13 @@ if (import.meta.env.DEV) {
 <HarperTooltip />
 
 <!-- In-app overflow menu — only visible on small/touch viewports (<900px).
-     Reaches Settings / Library / History / Licenses / Export, the same
-     actions the desktop-only native menu bar triggers. -->
+     Reaches Settings / Library / History / Export plus gated mobile actions. -->
 <MobileMenu
     onsettings={() => ($settingsOpen = !$settingsOpen)}
     onlibrary={goToLibrary}
     onhistory={goToHistory}
+    writingPromptsEnabled={$novelNovemberEnabled}
+    onwritingprompt={() => ($writingPromptOpen = true)}
     onexport={handleMobileExport}
 />
 
@@ -618,6 +630,10 @@ if (import.meta.env.DEV) {
 <!-- Stats modal -->
 {#if $statsOpen}
     <StatsModal onclose={() => ($statsOpen = false)} />
+{/if}
+
+{#if $writingPromptOpen && $novelNovemberEnabled}
+    <WritingPromptModal onclose={() => ($writingPromptOpen = false)} />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
