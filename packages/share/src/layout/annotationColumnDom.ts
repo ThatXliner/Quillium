@@ -104,8 +104,30 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
             element.style.top = `${adjustedY[id] ?? 0}px`;
             element.style.left = "0px";
         }
-        if (Math.abs(container.scrollTop - overhead) > 1) {
-            container.scrollTo({ top: overhead, behavior: "smooth" });
+
+        // `overhead` only accounts for cards packed above the visible top
+        // (the boundary/UI-chrome case). Stacking can just as easily push the
+        // active card's own top and bottom below the container's visible
+        // window (e.g. several tall cards packed after it). Google
+        // Docs-style behavior never lets stacking order hide the active
+        // comment, so widen the scroll target to keep the active card's full
+        // extent on screen, falling back to `overhead` when there is none.
+        let targetScrollTop = overhead;
+        const activeMeasured =
+            active !== null ? measured.find(({ id }) => id === active) : undefined;
+        if (active !== null && activeMeasured) {
+            const activeTop = adjustedY[active] ?? 0;
+            const activeBottom = activeTop + activeMeasured.height;
+            const viewportHeight = container.clientHeight;
+            if (activeBottom > targetScrollTop + viewportHeight) {
+                targetScrollTop = activeBottom - viewportHeight;
+            }
+            if (activeTop < targetScrollTop) {
+                targetScrollTop = activeTop;
+            }
+        }
+        if (Math.abs(container.scrollTop - targetScrollTop) > 1) {
+            container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
         }
     }
 
