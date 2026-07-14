@@ -360,7 +360,8 @@ $effect(() => {
 });
 const pendingComment = $derived(
     sortedAnnotations.find(
-        (annotation) => isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0,
+        (annotation) =>
+            isAnnotationOfType(annotation, "comment") && annotation.status === "pending",
     ),
 );
 

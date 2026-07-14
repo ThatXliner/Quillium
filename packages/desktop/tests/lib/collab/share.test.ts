@@ -104,12 +104,14 @@ describe("serializeAnnotations", () => {
             10: {
                 id: "b",
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
             },
             11: {
                 id: "a",
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
             },
@@ -124,6 +126,7 @@ describe("serializeAnnotations", () => {
             0: {
                 id: 0,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 activeVersionId: outerVersion.id,
@@ -134,6 +137,7 @@ describe("serializeAnnotations", () => {
                             0: {
                                 id: 0,
                                 _type: "revision",
+                                status: "active" as const,
                                 thread: [],
                                 activeVersionIndex: 0,
                                 versions: [{ doc: "ell" }],
@@ -173,6 +177,7 @@ describe("serializeAnnotations", () => {
                 1: {
                     id: 1,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 5),
                     thread: [],
                     activeVersionId: first.id,
@@ -181,6 +186,7 @@ describe("serializeAnnotations", () => {
                 2: {
                     id: 2,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(6, 11),
                     thread: [],
                     activeVersionId: second.id,
@@ -218,6 +224,7 @@ describe("serializeAnnotations", () => {
                 7: {
                     id: 7,
                     _type: "revision",
+                    status: "active" as const,
                     thread: [],
                     activeVersionIndex: 0,
                     versions: [{ doc: "ell" }],
@@ -232,6 +239,7 @@ describe("serializeAnnotations", () => {
                 0: {
                     id: 0,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 5),
                     thread: [],
                     activeVersionId: outerVersion.id,

@@ -116,6 +116,7 @@ function addRevision(
             addAnnotation.of({
                 id,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(from, to),
                 thread: [],
                 activeVersionId: versions[activeIndex].id,
@@ -595,6 +596,7 @@ describe("undo/redo", () => {
         const annotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(1, 5),
             thread: [{ message: "old", author: "User", time: 1 }],
         } satisfies GenericAnnotation;
@@ -639,6 +641,7 @@ describe("undo/redo", () => {
         const annotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(1, 5),
             thread: [{ message: "old", author: "User", time: 1 }],
         } satisfies GenericAnnotation;
@@ -663,6 +666,7 @@ describe("undo/redo", () => {
         const fresh = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(4, 6),
             thread: [{ message: "fresh", author: "User", time: 2 }],
         } satisfies GenericAnnotation;
@@ -688,6 +692,7 @@ describe("undo/redo", () => {
         const annotation = {
             id: 0,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(1, 5),
             thread: [{ message: "old", author: "User", time: 1 }],
         } satisfies GenericAnnotation;
@@ -704,6 +709,7 @@ describe("undo/redo", () => {
             effects: addAnnotation.of({
                 id: 0,
                 _type: "comment",
+                status: "active" as const,
                 // Exactly matches the removed annotation's post-delete range.
                 // Numeric ID, type, and coordinates alone cannot distinguish it.
                 selection: EditorSelection.single(0, 2),
@@ -732,6 +738,7 @@ describe("undo/redo", () => {
             annotation: {
                 id: 0,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 2),
                 thread: [{ message: "note", author: "User", time: 1 }],
             } satisfies GenericAnnotation,
@@ -741,6 +748,7 @@ describe("undo/redo", () => {
             annotation: {
                 id: 0,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 2),
                 thread: [{ message: "replace", author: "User", time: 1 }],
                 replacements: [{ text: "YZ" }],
@@ -786,6 +794,7 @@ describe("undo/redo", () => {
             annotation: {
                 id: 0,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(2, 3),
                 thread: [{ message: "note", author: "User", time: 1 }],
             } satisfies GenericAnnotation,
@@ -795,6 +804,7 @@ describe("undo/redo", () => {
             annotation: {
                 id: 0,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(2, 3),
                 thread: [{ message: "replace", author: "User", time: 1 }],
                 replacements: [{ text: "x" }],
@@ -843,6 +853,7 @@ describe("undo/redo", () => {
                 addAnnotation.of({
                     id: 0,
                     _type: "suggestion",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 1),
                     thread: [{ message: "remove", author: "User", time: 1 }],
                     replacements: [{ text: "" }],
@@ -885,6 +896,7 @@ describe("undo/redo", () => {
         const oldNestedComment = {
             id: 7,
             _type: "comment",
+            status: "active" as const,
             selection: {
                 ranges: [{ anchor: 0, head: 2 }],
                 main: 0,
@@ -1156,6 +1168,7 @@ describe("undo/redo", () => {
                 addAnnotation.of({
                     id: 0,
                     _type: "comment",
+                    status: "pending" as const,
                     selection: EditorSelection.create([EditorSelection.range(5, 1)]),
                     thread: [{ message: "note", author: "User", time: 1 }],
                 }),
@@ -1187,6 +1200,7 @@ describe("undo/redo", () => {
                 addAnnotation.of({
                     id: 0,
                     _type: "suggestion",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 1),
                     thread: [{ message: "replace", author: "User", time: 1 }],
                     replacements: [{ text: "" }],
@@ -1275,6 +1289,7 @@ describe("thread undo/redo", () => {
                 }),
             ],
         }).state;
+        expect(getAnnotations(state)[0]?.status).toBe("active");
 
         undo({
             state,
@@ -1302,6 +1317,49 @@ describe("thread undo/redo", () => {
                 addAnnotation.of({
                     id: 0,
                     _type: "comment",
+                    status: "pending" as const,
+                    selection: EditorSelection.single(0, 5),
+                    thread: [],
+                }),
+            ],
+        }).state;
+        state = state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: 0,
+                    newThread: [{ message: "Note", author: "User", time: 1 }],
+                }),
+            ],
+        }).state;
+        expect(getAnnotations(state)[0]?.status).toBe("active");
+
+        undo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getAnnotations(state)[0]).toBeUndefined();
+
+        redo({
+            state,
+            dispatch: (tr) => {
+                state = tr.state;
+            },
+        });
+        expect(getAnnotations(state)[0]?.thread).toEqual([
+            { message: "Note", author: "User", time: 1 },
+        ]);
+    });
+
+    it("undo restores an active empty-thread comment instead of deleting it", () => {
+        let state = makeState("hello");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "comment",
+                    status: "active",
                     selection: EditorSelection.single(0, 5),
                     thread: [],
                 }),
@@ -1322,17 +1380,31 @@ describe("thread undo/redo", () => {
                 state = tr.state;
             },
         });
-        expect(getAnnotations(state)[0]).toBeUndefined();
+        expect(getAnnotations(state)[0]?.status).toBe("active");
+        expect(getAnnotations(state)[0]?.thread).toEqual([]);
+    });
+});
 
-        redo({
-            state,
-            dispatch: (tr) => {
-                state = tr.state;
-            },
-        });
-        expect(getAnnotations(state)[0]?.thread).toEqual([
-            { message: "Note", author: "User", time: 1 },
-        ]);
+describe("annotation status transitions", () => {
+    it("activates a pending revision when its first version is added", () => {
+        let state = makeState("");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "revision",
+                    status: "pending",
+                    selection: EditorSelection.single(0),
+                    thread: [],
+                    activeVersionId: "",
+                    versions: [],
+                }),
+            ],
+        }).state;
+
+        state = createNewRevision(state, 0).state;
+        expect(getRevision(state, 0).status).toBe("active");
+        expect(getRevision(state, 0).versions).toHaveLength(1);
     });
 });
 
@@ -1425,6 +1497,7 @@ describe("toJSON/fromJSON round-trip", () => {
                 value: {
                     id: 0,
                     _type: "comment",
+                    status: "active" as const,
                     selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
                     thread: [],
                 },
@@ -1463,6 +1536,7 @@ describe("toJSON/fromJSON round-trip", () => {
                 value: {
                     id: 0,
                     _type: "revision",
+                    status: "active" as const,
                     _historyId: "history-test",
                     selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
                     thread: [],
@@ -1918,6 +1992,7 @@ describe("edge cases", () => {
                 addAnnotation.of({
                     id: 1,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(10, 13),
                     thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
@@ -1952,6 +2027,7 @@ describe("edge cases", () => {
                 addAnnotation.of({
                     id: 1,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 3),
                     thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
@@ -1979,6 +2055,7 @@ describe("edge cases", () => {
                 addAnnotation.of({
                     id: 1,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(3, 6),
                     thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
@@ -2011,6 +2088,7 @@ describe("edge cases", () => {
                 addAnnotation.of({
                     id: 1,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(4, 7),
                     thread: [],
                     activeVersionId: rev1Version.id,
@@ -2044,6 +2122,7 @@ describe("edge cases", () => {
                 addAnnotation.of({
                     id: 1,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(5, 8),
                     thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
@@ -2079,6 +2158,7 @@ describe("edge cases", () => {
             0: {
                 id: 0,
                 _type: "comment",
+                status: "active" as const,
                 selection: { ranges: [{ anchor: 1, head: 4 }], main: 0 },
                 thread: [{ author: "user", message: "note", time: Date.now() }],
             },

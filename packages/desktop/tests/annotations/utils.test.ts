@@ -17,10 +17,17 @@ function selCursor(pos: number) {
     return EditorSelection.create([EditorSelection.cursor(pos)]);
 }
 
-function makeComment(id: number, from: number, to: number, threadLength = 0): GenericAnnotation {
+function makeComment(
+    id: number,
+    from: number,
+    to: number,
+    threadLength = 0,
+    status: GenericAnnotation["status"] = "active",
+): GenericAnnotation {
     return {
         id,
         _type: "comment",
+        status,
         selection: sel([from, to]),
         thread: Array(threadLength).fill({ message: "x", author: "a", time: 0 }),
     };
@@ -30,6 +37,7 @@ function makeRevision(id: number, from: number, to: number): GenericAnnotation {
     return {
         id,
         _type: "revision",
+        status: "active" as const,
         selection: sel([from, to]),
         thread: [],
         activeVersionId: "",
@@ -112,14 +120,14 @@ describe("canCreateNewComment", () => {
 
     it("returns false when a pending comment (empty thread) already exists", () => {
         const annotations: Annotations = {
-            0: makeComment(0, 0, 10, 0), // pending — empty thread
+            0: makeComment(0, 0, 10, 0, "pending"),
         };
         expect(canCreateNewComment(annotations)).toBe(false);
     });
 
     it("returns false even when other annotations exist alongside the pending comment", () => {
         const annotations: Annotations = {
-            0: makeComment(0, 0, 10, 0), // pending
+            0: makeComment(0, 0, 10, 0, "pending"),
             1: makeRevision(1, 20, 30),
         };
         expect(canCreateNewComment(annotations)).toBe(false);
@@ -130,5 +138,9 @@ describe("canCreateNewComment", () => {
             0: makeRevision(0, 0, 10),
         };
         expect(canCreateNewComment(annotations)).toBe(true);
+    });
+
+    it("allows an explicitly active comment with an empty thread", () => {
+        expect(canCreateNewComment({ 0: makeComment(0, 0, 10, 0, "active") })).toBe(true);
     });
 });

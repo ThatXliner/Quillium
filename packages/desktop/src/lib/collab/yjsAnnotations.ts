@@ -463,7 +463,7 @@ export function createAnnotationSyncPlugin(
 
             /**
              * Sync specific mutable fields from CM annotation to Yjs node.
-             * Handles: thread, activeVersionId, version order, version text, version label.
+             * Handles: status, thread, activeVersionId, version order, version text, version label.
              */
             private syncAnnotationFields(
                 ann: GenericAnnotation,
@@ -471,6 +471,10 @@ export function createAnnotationSyncPlugin(
                 ydoc: Y.Doc,
             ) {
                 this.syncAnnotationPositions(ann, node);
+
+                if (node.get("status") !== ann.status) {
+                    node.set("status", ann.status);
+                }
 
                 // Thread sync (all annotation types)
                 const threadArr = node.get("thread") as Y.Array<ThreadMessage> | undefined;

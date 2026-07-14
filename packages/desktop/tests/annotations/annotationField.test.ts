@@ -47,6 +47,7 @@ function makeComment(id: number, from: number, to: number): GenericAnnotation {
     return {
         id,
         _type: "comment",
+        status: "active" as const,
         selection: sel(from, to),
         thread: [],
     };
@@ -63,6 +64,7 @@ function makeRevision(
     return {
         id,
         _type: "revision",
+        status: "active" as const,
         selection: sel(from, to),
         thread: [],
         activeVersionId: builtVersions[activeIndex].id,
@@ -79,6 +81,7 @@ function makeSuggestion(
     return {
         id,
         _type: "suggestion",
+        status: "active" as const,
         selection: sel(from, to),
         thread: [],
         replacements,

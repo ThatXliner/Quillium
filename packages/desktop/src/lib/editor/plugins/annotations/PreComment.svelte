@@ -50,14 +50,14 @@ function resolvePendingComment() {
     if (
         pendingAnnotation &&
         isAnnotationOfType(pendingAnnotation, "comment") &&
-        pendingAnnotation.thread.length === 0
+        pendingAnnotation.status === "pending"
     ) {
         return pendingAnnotation;
     }
     if (
         activeAnnotationData &&
         isAnnotationOfType(activeAnnotationData, "comment") &&
-        activeAnnotationData.thread.length === 0
+        activeAnnotationData.status === "pending"
     ) {
         return activeAnnotationData;
     }

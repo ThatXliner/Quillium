@@ -151,6 +151,7 @@ describe("replayEvents", () => {
         const legacyRevision = {
             id: 0,
             _type: "revision",
+            status: "active" as const,
             thread: [],
             selection: EditorSelection.single(0, 5).toJSON(),
             activeVersionIndex: 1,

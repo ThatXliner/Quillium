@@ -29,10 +29,17 @@ function makeStateWithSelection(
     return tr.state;
 }
 
-function makeComment(id: number, from: number, to: number, threadLength = 1): GenericAnnotation {
+function makeComment(
+    id: number,
+    from: number,
+    to: number,
+    threadLength = 1,
+    status: GenericAnnotation["status"] = "active",
+): GenericAnnotation {
     return {
         id,
         _type: "comment",
+        status,
         selection: EditorSelection.single(from, to),
         thread: Array(threadLength).fill({
             message: "x",
@@ -47,6 +54,7 @@ function makeRevision(id: number, from: number, to: number): GenericAnnotation {
     return {
         id,
         _type: "revision",
+        status: "active" as const,
         selection: EditorSelection.single(from, to),
         thread: [],
         activeVersionId: v0.id,
@@ -121,14 +129,20 @@ describe("getActiveAnnotation", () => {
         expect(result!.id).toBe(1);
     });
 
-    it("a pending comment (thread.length === 0) is returned immediately regardless of cursor position", () => {
-        const pending = makeComment(0, 50, 60, 0);
+    it("a pending comment is returned immediately regardless of cursor position", () => {
+        const pending = makeComment(0, 50, 60, 1, "pending");
         // Cursor at position 0, annotation at 50-60 — doc must be long enough
         const doc = "a".repeat(65);
         const state = makeState(doc, 0, [pending]);
         const result = getActiveAnnotation(state);
         expect(result).toBeDefined();
         expect(result!.id).toBe(0);
+    });
+
+    it("an active empty-thread comment still requires the cursor to intersect it", () => {
+        const active = makeComment(0, 50, 60, 0, "active");
+        const state = makeState("a".repeat(65), 0, [active]);
+        expect(getActiveAnnotation(state)).toBeUndefined();
     });
 
     it("when cursor is a non-empty selection, only returns annotation if both anchor and head are within range", () => {

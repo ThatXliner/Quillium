@@ -119,6 +119,7 @@ function addComment(view: EditorView, from: number, to: number, message = "note"
                     EditorSelection.single(from, to),
                     "comment",
                 ),
+                status: "active",
                 thread: [{ message, author: "Tester", time: 0 }],
             }),
         }),
@@ -215,7 +216,13 @@ describe("serializeAnnotationsForCopy", () => {
         addComment(view, 6, 11, "on brave"); // "brave"
         const out = serializeAnnotationsForCopy(view.state, [{ from: 6, to: 21 }]); // "brave new world"
         expect(out).toEqual([
-            { _type: "comment", relAnchor: 0, relHead: 5, thread: [expect.any(Object)] },
+            {
+                _type: "comment",
+                status: "active",
+                relAnchor: 0,
+                relHead: 5,
+                thread: [expect.any(Object)],
+            },
         ]);
         // No id leaked into the serialized shape.
         expect(out[0]).not.toHaveProperty("id");
@@ -265,6 +272,7 @@ describe("serializeAnnotationsForCopy", () => {
         expect(out).toEqual([
             {
                 _type: "suggestion",
+                status: "active" as const,
                 relAnchor: 0,
                 relHead: 5,
                 thread: [],
@@ -508,6 +516,7 @@ describe("revision copy → paste round trip", () => {
         const html = encodeHtml("brave", [
             {
                 _type: "revision",
+                status: "active" as const,
                 relAnchor: 0,
                 relHead: 5,
                 thread: [],

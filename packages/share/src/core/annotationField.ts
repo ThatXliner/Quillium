@@ -79,6 +79,7 @@ import {
     isAnnotationOfType,
     isRawAnnotationOfType,
     makeVersion,
+    normalizeAnnotation,
     normalizeRevision,
     versionById,
     versionIndexById,
@@ -1098,6 +1099,7 @@ function applyRevisionVersionEffect(
             ...annotation,
             versions: newVersions,
             activeVersionId: makeActive ? e.value.newVersion.id : annotation.activeVersionId,
+            status: annotation.status === "pending" ? "active" : annotation.status,
         };
     }
     if (e.is(_deleteVersionFromRevision)) {
@@ -1344,7 +1346,7 @@ export const annotationField = StateField.define<Annotations>({
         const revisionsWithExplicitSelection = new Set<number>();
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
-                const added = ensureAnnotationHistoryId(e.value);
+                const added = ensureAnnotationHistoryId(normalizeAnnotation(e.value));
                 annotations[added.id] = added;
                 // Skip Phase 3 for revisions added via addAnnotation (e.g., from
                 // remote sync). The annotation already has correct versions[].doc
@@ -1396,7 +1398,14 @@ export const annotationField = StateField.define<Annotations>({
             } else if (e.is(updateThread)) {
                 const annotation = annotations[e.value.annotationId];
                 if (!annotation) continue;
-                annotations[e.value.annotationId] = { ...annotation, thread: e.value.newThread };
+                annotations[e.value.annotationId] = {
+                    ...annotation,
+                    thread: e.value.newThread,
+                    status:
+                        annotation.status === "pending" && e.value.newThread.length > 0
+                            ? "active"
+                            : annotation.status,
+                };
             } else if (
                 e.is(_addVersionToRevision) ||
                 e.is(_deleteVersionFromRevision) ||
@@ -1610,10 +1619,12 @@ export const annotationField = StateField.define<Annotations>({
             return {} as Annotations;
         }
         return mapValues(result.data, (x) => {
-            const withSelection = ensureAnnotationHistoryId({
-                ...x,
-                selection: EditorSelection.fromJSON(x.selection),
-            } as GenericAnnotation);
+            const withSelection = ensureAnnotationHistoryId(
+                normalizeAnnotation({
+                    ...x,
+                    selection: EditorSelection.fromJSON(x.selection),
+                } as GenericAnnotation),
+            );
             // Heal legacy revisions (no version ids / activeVersionIndex) into the
             // stable-id shape. Idempotent for already-migrated data.
             if (isAnnotationOfType(withSelection as GenericAnnotation, "revision")) {
@@ -1874,18 +1885,19 @@ const invertAnnotationFieldEffects = invertedEffects.of((transaction: Transactio
         } else if (effect.is(updateThread)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!oldAnnotation) continue;
+            const updatedAnnotation = transaction.state.field(annotationField)[oldAnnotation.id];
             // A first message closes a pending COMMENT. Undo intentionally
             // removes that draft comment instead of restoring an empty card.
             // Revisions and suggestions may also start with empty threads, but
             // their first message must never delete the entire annotation.
-            if (isAnnotationOfType(oldAnnotation, "comment") && oldAnnotation.thread.length === 0) {
-                const updatedAnnotation =
-                    transaction.state.field(annotationField)[oldAnnotation.id];
-                if (updatedAnnotation) {
-                    // Carry the post-update annotation so redo restores the
-                    // message, not the old empty pending comment.
-                    effects.push(removeAnnotation.of(updatedAnnotation));
-                }
+            if (
+                isAnnotationOfType(oldAnnotation, "comment") &&
+                oldAnnotation.status === "pending" &&
+                updatedAnnotation?.status === "active"
+            ) {
+                // Carry the post-update annotation so redo restores the
+                // message, not the old empty pending comment.
+                effects.push(removeAnnotation.of(updatedAnnotation));
             } else {
                 effects.push(
                     updateThread.of({

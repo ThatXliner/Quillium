@@ -60,6 +60,7 @@ import {
     isAnnotationOfType,
     newAnnotationHistoryId,
     newVersionId,
+    normalizeAnnotation,
     normalizeRevision,
 } from "./models";
 import { cleanRangesOf } from "./utils";
@@ -196,11 +197,11 @@ function copyableAnnotationsIn(state: EditorState, from: number, to: number): Ge
         // copied text would not match the version blob — pasting it produces a
         // revision whose empty range disagrees with its rendered active version.
         if (aFrom === aTo) continue;
-        // A pending comment (empty thread) is an unfinished, single-instance
+        // A pending comment is an unfinished, single-instance
         // state guarded by canCreateNewComment; carrying it would let paste create
         // a second pending highlight that bypasses that guard. Only resolved
         // comments (with at least one message) are copyable.
-        if (isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0) continue;
+        if (isAnnotationOfType(annotation, "comment") && annotation.status === "pending") continue;
         result.push(annotation);
     }
     return result;
@@ -342,13 +343,13 @@ function rebuildAnnotation(
     // Inverse of serialization: drop the rebased offsets, restore id/selection,
     // and carry every other field (thread, replacements, versions, …) verbatim.
     const { relAnchor: _relAnchor, relHead: _relHead, ...rest } = serialized;
-    const rebuilt = {
+    const rebuilt = normalizeAnnotation({
         ...rest,
         id,
         selection,
         // A paste is a new annotation lineage even when its numeric ID is reused.
         _historyId: newAnnotationHistoryId(),
-    } as GenericAnnotation;
+    } as GenericAnnotation);
     if (isAnnotationOfType(rebuilt, "revision")) {
         // Heal both legacy (activeVersionIndex / no version ids) and new-shape
         // payloads into a consistent revision, then regenerate fresh version ids

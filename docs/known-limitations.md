@@ -8,8 +8,7 @@ Current gaps and technical debt.
 |------------|--------|
 | **Multi-selection not supported** | System assumes one selection range per annotation (`selection.main`). Multi-cursor not handled. |
 | **Thread updates are coarse-grained** | `updateThread` replaces entire thread array. Undo of a single message edit reverts the entire thread. |
-| **One pending comment at a time** | `canCreateNewComment()` enforces single draft (empty-thread) comment. Finer-grained locking unresolved. |
-| **No explicit annotation status enum** | `thread.length === 0` means pending comment; no FSM. Acknowledged technical debt. |
+| **One pending comment at a time** | `canCreateNewComment()` enforces a single annotation with `status: "pending"`. Finer-grained locking unresolved. |
 | **`addSuggestion` inversion uses `Math.max` on IDs** | Assumes IDs are sequential and increasing; works until suggestions are added in bulk. |
 
 ## Nested Editors
