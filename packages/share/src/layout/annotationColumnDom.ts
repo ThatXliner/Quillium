@@ -13,7 +13,7 @@ import {
     layoutColumnPositions,
 } from "./annotationLayout";
 
-export type AnnotationColumnGeometry = { left: number; width: number };
+export type AnnotationColumnGeometry = { left: number; width: number; topClamp?: number };
 
 export type ApplyAnnotationColumnOptions<Id extends AnnotationLayoutId> = {
     container: HTMLElement | undefined;
@@ -89,7 +89,11 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
         const measured = items.map((item) => ({ ...item, height: this.getCardHeight(item.id) }));
         const active =
             activeId !== null && items.some(({ id }) => id === activeId) ? activeId : null;
-        const { adjustedY, overhead, maxBottom } = layoutColumnPositions(measured, active);
+        const { adjustedY, overhead, maxBottom } = layoutColumnPositions(
+            measured,
+            active,
+            geometry.topClamp,
+        );
 
         if (inner) {
             inner.style.height = `${columnInnerHeight(maxBottom, container.clientHeight, overhead)}px`;

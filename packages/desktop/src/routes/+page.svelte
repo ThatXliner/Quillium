@@ -658,7 +658,7 @@ if (import.meta.env.DEV) {
 <Toaster position="bottom-right" />
 
 <!-- Top-right collab + account entry points -->
-<div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+<div data-annotation-occluder class="fixed top-8 right-8 z-40 flex items-center gap-3">
     {#if authLoading && authConnectionState === "connecting" && authReconnecting}
         <button
             disabled
