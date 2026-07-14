@@ -9,6 +9,7 @@ import Kbd from "$lib/ui/Kbd.svelte";
 import {
     AppWindow,
     CheckSquare,
+    Copy,
     Download,
     ExternalLink,
     FileText,
@@ -30,6 +31,7 @@ interface Props {
     trashMode: boolean;
     onOpen: () => void;
     onOpenInNewWindow: () => void;
+    onDuplicate: () => void;
     onTrash: () => void;
     onRestore: () => void;
     onDeletePermanent: () => void;
@@ -43,6 +45,7 @@ const {
     trashMode,
     onOpen,
     onOpenInNewWindow,
+    onDuplicate,
     onTrash,
     onRestore,
     onDeletePermanent,
@@ -380,6 +383,14 @@ function handleDeletePermanent() {
                         {/if}
                     </div>
                 </div>
+                <button
+                    onclick={onDuplicate}
+                    class="group w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                    <Copy size={13} />
+                    Duplicate document
+                    <Kbd keys="D" />
+                </button>
                 <button
                     onclick={onTrash}
                     class="group w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-red-400 hover:bg-red-50 transition-colors"
