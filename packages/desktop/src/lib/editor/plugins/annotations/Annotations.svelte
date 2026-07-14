@@ -864,7 +864,6 @@ onDestroy(() => annotationColumnDom.destroy());
                 revision={c}
                 view={resolvedView}
                 {isActive}
-                remove={remove.bind(null, i)}
                 updateThread={dispatchUpdateThread.bind(null, i)}
             />
         {/if}
