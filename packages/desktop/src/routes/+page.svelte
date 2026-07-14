@@ -723,7 +723,12 @@ if (import.meta.env.DEV) {
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
     {:else if entry.type === "comment"}
-        <CommentModal commentId={entry.commentId} parentView={entry.parentView} stackIndex={i} />
+        <CommentModal
+            commentId={entry.commentId}
+            parentView={entry.parentView}
+            stackIndex={i}
+            originSelection={entry.originSelection}
+        />
     {/if}
 {/each}
 

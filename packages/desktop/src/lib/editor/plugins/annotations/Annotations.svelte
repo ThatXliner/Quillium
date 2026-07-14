@@ -67,6 +67,7 @@ import {
     idSignature,
     sidesEqual,
 } from "./annotationLayout";
+import { captureCommentEditorPosition } from "./commentFocus";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -177,6 +178,7 @@ $effect(() => {
                 resolvedView.state
                     .sliceDoc(active.selection.main.from, active.selection.main.to)
                     .slice(0, 40) || "Comment",
+            originSelection: captureCommentEditorPosition(resolvedView),
         });
     } else if (isAnnotationOfType(active, "revision")) {
         modalStack.push({

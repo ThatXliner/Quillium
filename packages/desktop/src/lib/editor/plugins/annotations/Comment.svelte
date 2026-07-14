@@ -33,6 +33,7 @@ import type { Annotation, Thread as ThreadType } from ".";
 import { annotationField } from ".";
 import Thread from "./Thread.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
+import { captureCommentEditorPosition } from "./commentFocus";
 
 const {
     comment,
@@ -88,6 +89,7 @@ function openComment() {
         commentId: comment.id,
         parentView: view,
         label: selectedText.slice(0, 40) || "Comment",
+        originSelection: captureCommentEditorPosition(view),
     });
 }
 

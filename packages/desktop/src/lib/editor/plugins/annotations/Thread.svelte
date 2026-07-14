@@ -30,6 +30,7 @@ import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
 import ThreadMessage from "./ThreadMessage.svelte";
+import { captureCommentEditorPosition, restoreCommentEditorPosition } from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 
 let {
@@ -73,17 +74,27 @@ let {
 const newMessage = $derived(getDraft(annotationId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
+let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 const hasText = $derived(!!newMessage.trim());
 const sendActive = $derived(hasText);
 function blurToEditor() {
     textareaEl?.blur();
-    (view ?? $editorView)?.focus();
+    const owningView = view ?? $editorView;
+    if (!owningView || !originSelection) return;
+    restoreCommentEditorPosition(owningView, originSelection);
+}
+
+function captureOrigin() {
+    const owningView = view ?? $editorView;
+    if (!owningView) return;
+    originSelection = captureCommentEditorPosition(owningView);
 }
 
 $effect(() => {
     return annotationEventBus.on("annotation-focus-reply", (event) => {
         if (event.annotationId !== annotationId) return;
+        captureOrigin();
         textareaEl?.focus();
     });
 });
@@ -121,7 +132,10 @@ function send() {
             rows="2"
             class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
                 text-black/70 placeholder:text-black/30"
-            onfocus={() => (isFocused = true)}
+            onfocus={() => {
+                captureOrigin();
+                isFocused = true;
+            }}
             onblur={() => (isFocused = false)}
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -129,6 +143,7 @@ function send() {
                     send();
                 } else if (e.key === "Escape") {
                     e.preventDefault();
+                    e.stopPropagation();
                     blurToEditor();
                 }
             }}

@@ -26,6 +26,7 @@ import posthog from "$lib/posthog";
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
 import { removeAnnotation, updateThread } from "./annotationField";
+import { captureCommentEditorPosition, restoreCommentEditorPosition } from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 import { type Annotations, type GenericAnnotation, isAnnotationOfType } from "./models";
 import { canCreateNewComment } from "./utils";
@@ -44,6 +45,7 @@ const {
 
 let textarea = $state<HTMLTextAreaElement | undefined>();
 let focusedPendingId = $state<number | undefined>(undefined);
+let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 
 function resolvePendingComment() {
@@ -79,6 +81,7 @@ $effect(() => {
         pendingComment.id !== focusedPendingId
     ) {
         const targetId = pendingComment.id;
+        originSelection = captureCommentEditorPosition(view);
         tick().then(() => {
             if (resolvePendingComment()?.id === targetId) {
                 focusedPendingId = targetId;
@@ -131,6 +134,11 @@ function addComment() {
     clearDraft(pendingComment.id);
 }
 
+function dismissComposer() {
+    textarea?.blur();
+    if (originSelection) restoreCommentEditorPosition(view, originSelection);
+}
+
 /**
  * Discard the pending comment by removing its annotation from
  * the CodeMirror state entirely.
@@ -175,8 +183,13 @@ function cancelComment() {
                     addComment();
                     // @ts-ignore
                     e.target.blur();
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dismissComposer();
                 }
             }}
+            onfocus={() => (originSelection = captureCommentEditorPosition(view))}
             placeholder="Add a comment…"
             class="flex-1 text-xs text-black/70 placeholder:text-black/30 bg-transparent resize-none focus:outline-none leading-relaxed"
             rows="2"
