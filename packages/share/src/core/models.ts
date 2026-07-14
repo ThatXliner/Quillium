@@ -419,9 +419,35 @@ export function groupPartnersOf(
  * if the group already holds a (different) version of the member's revision.
  */
 export function canAddMemberToGroup(group: VersionGroup, member: VersionGroupMember): boolean {
-    return !group.members.some(
-        (m) => m.revisionId === member.revisionId && m.versionId !== member.versionId,
-    );
+    return versionGroupMembershipError(group, member) === undefined;
+}
+
+/** Explain why a member cannot join a group, for validation and accessible UI copy. */
+export function versionGroupMembershipError(
+    group: VersionGroup,
+    member: VersionGroupMember,
+): string | undefined {
+    if (
+        group.members.some(
+            (existing) =>
+                existing.revisionId === member.revisionId &&
+                existing.versionId !== member.versionId,
+        )
+    ) {
+        return "Each linked version must come from a different revision.";
+    }
+    return undefined;
+}
+
+/** Validate a complete group before any reducer effects are emitted. */
+export function versionGroupMembersError(
+    members: readonly VersionGroupMember[],
+): string | undefined {
+    if (members.length < 2) return "A version group needs at least two revisions.";
+    if (new Set(members.map((member) => member.revisionId)).size !== members.length) {
+        return "Each linked version must come from a different revision.";
+    }
+    return undefined;
 }
 
 export const VersionGroupMemberSchema = z.object({
@@ -431,7 +457,14 @@ export const VersionGroupMemberSchema = z.object({
 export const VersionGroupSchema = z.object({
     id: z.string(),
     label: z.string(),
-    members: z.array(VersionGroupMemberSchema),
+    members: z.array(VersionGroupMemberSchema).superRefine((members, context) => {
+        if (new Set(members.map((member) => member.revisionId)).size !== members.length) {
+            context.addIssue({
+                code: "custom",
+                message: "Each linked version must come from a different revision.",
+            });
+        }
+    }),
 });
 export const VersionGroupsSchema = z.record(z.string(), VersionGroupSchema);
 

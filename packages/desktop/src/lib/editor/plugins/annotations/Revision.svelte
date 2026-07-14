@@ -2,7 +2,7 @@
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { linkAnchor, versionGroups } from "$lib/stores";
+import { linkAnchor } from "$lib/stores";
 import { modalStack } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 /**
@@ -51,9 +51,19 @@ import {
 import { NestedEditorController } from "./NestedEditorController";
 import Thread from "./Thread.svelte";
 import { type VersionState, activeVersionIndex, versionById, versionText } from "./models";
-import { type VersionGroupMember, canAddMemberToGroup, groupOfMember } from "./models";
+import {
+    type VersionGroupMember,
+    type VersionGroups,
+    groupOfMember,
+    versionGroupMembershipError,
+} from "./models";
 import { previewVersionText } from "./nestedEditor";
-import { addVersionToGroup, createVersionGroup, removeVersionFromGroup } from "./versionGroupField";
+import {
+    addVersionToGroup,
+    createVersionGroup,
+    removeVersionFromGroup,
+    versionGroupField,
+} from "./versionGroupField";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -62,12 +72,14 @@ const {
     revision,
     isActive,
     view,
+    versionGroupsData,
     remove,
     updateThread,
 }: {
     revision: Annotation<"revision">;
     isActive: boolean;
     view: EditorView;
+    versionGroupsData?: VersionGroups;
     remove: () => void;
     updateThread: (thread: ThreadType) => void;
 } = $props();
@@ -176,7 +188,7 @@ function groupColor(groupId: string): string {
     return sharedGroupColor(groupId);
 }
 
-const allGroups = $derived($versionGroups ?? {});
+const allGroups = $derived(versionGroupsData ?? view.state.field(versionGroupField, false) ?? {});
 function memberOf(versionId: string): VersionGroupMember {
     return { revisionId: revision.id, versionId };
 }
@@ -223,24 +235,59 @@ const revisionVersionViews = $derived(
 
 // Which version's link dropdown is open (-1 = none).
 let openLinkMenu = $state<number | null>(null);
+let linkMenuElement = $state<HTMLDivElement>();
+let linkTriggerElement: HTMLButtonElement | null = null;
+let linkError = $state<string | null>(null);
 
-// Groups this version is allowed to JOIN: existing groups that don't already
-// hold a different version of this same revision, and aren't the version's
-// current group.
-function joinableGroups(versionId: string) {
+function closeLinkMenu({ restoreFocus = false } = {}) {
+    openLinkMenu = null;
+    if (restoreFocus) linkTriggerElement?.focus();
+}
+
+$effect(() => {
+    if (openLinkMenu === null) return;
+    const dismissOutside = (event: PointerEvent | FocusEvent) => {
+        if (
+            event.target instanceof Node &&
+            (linkMenuElement?.contains(event.target) || linkTriggerElement?.contains(event.target))
+        )
+            return;
+        closeLinkMenu();
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("focusin", dismissOutside);
+    return () => {
+        document.removeEventListener("pointerdown", dismissOutside);
+        document.removeEventListener("focusin", dismissOutside);
+    };
+});
+
+// Existing groups the menu can inspect. Invalid same-revision targets stay
+// visible but disabled so the uniqueness rule is understandable rather than
+// silently filtering the group out.
+function groupOptions(versionId: string) {
     const current = groupForVersion(versionId);
-    return Object.values(allGroups).filter(
-        (g) => g.id !== current?.id && canAddMemberToGroup(g, memberOf(versionId)),
-    );
+    return Object.values(allGroups)
+        .filter((group) => group.id !== current?.id)
+        .map((group) => ({
+            group,
+            error: versionGroupMembershipError(group, memberOf(versionId)),
+        }));
 }
 
 function linkToExistingGroup(versionId: string, groupId: string) {
+    const group = allGroups[groupId];
+    const error = group ? versionGroupMembershipError(group, memberOf(versionId)) : undefined;
+    if (error) {
+        linkError = error;
+        return;
+    }
     view.dispatch(addVersionToGroup(view.state, groupId, memberOf(versionId)));
-    openLinkMenu = null;
+    closeLinkMenu();
 }
 function unlinkVersion(versionId: string) {
     view.dispatch(removeVersionFromGroup(view.state, memberOf(versionId)));
-    openLinkMenu = null;
+    closeLinkMenu();
 }
 
 // "Link mode": a group needs ≥2 members from DIFFERENT revisions, which the
@@ -251,31 +298,64 @@ function startLink(versionId: string) {
     const existing = groupForVersion(versionId);
     // Picking an already-grouped version anchors on its group (so the next pick
     // joins that group); otherwise anchor on the bare member.
-    $linkAnchor = { member: memberOf(versionId), groupId: existing?.id };
-    openLinkMenu = null;
+    $linkAnchor = { view, member: memberOf(versionId), groupId: existing?.id };
+    linkError = null;
+    closeLinkMenu();
 }
 function completeLink(versionId: string) {
-    const anchor = $linkAnchor;
-    if (!anchor || anchor.member.revisionId === revision.id) return;
+    const anchor = $linkAnchor?.view === view ? $linkAnchor : null;
+    if (!anchor) return;
+    if (anchor.member.revisionId === revision.id) {
+        linkError = "Each linked version must come from a different revision.";
+        return;
+    }
     const partner = memberOf(versionId);
     if (anchor.groupId && allGroups[anchor.groupId]) {
         // Anchor is in a group → just add the partner to it.
         view.dispatch(addVersionToGroup(view.state, anchor.groupId, partner));
     } else {
         // Neither grouped → create a fresh 2-member group.
-        const { spec } = createVersionGroup("Linked", [anchor.member, partner]);
+        const { spec, error } = createVersionGroup("Linked", [anchor.member, partner]);
+        if (error) {
+            linkError = error;
+            return;
+        }
         view.dispatch(spec);
     }
     $linkAnchor = null;
-    openLinkMenu = null;
+    closeLinkMenu();
 }
 function cancelLink() {
     $linkAnchor = null;
+    linkError = null;
 }
 // True for this card's versions while an anchor on ANOTHER revision is waiting.
 const linkTargetable = $derived(
-    $linkAnchor !== null && $linkAnchor.member.revisionId !== revision.id,
+    $linkAnchor?.view === view && $linkAnchor.member.revisionId !== revision.id,
 );
+
+async function toggleLinkMenu(event: MouseEvent | KeyboardEvent, versionIndex: number) {
+    if (openLinkMenu === versionIndex) {
+        closeLinkMenu();
+        return;
+    }
+    linkTriggerElement = event.currentTarget as HTMLButtonElement;
+    linkError = null;
+    openLinkMenu = versionIndex;
+    await tick();
+}
+
+async function openLinkMenuFromKeyboard(event: KeyboardEvent, versionIndex: number) {
+    if (event.key === "Escape" && openLinkMenu === versionIndex) {
+        event.preventDefault();
+        closeLinkMenu({ restoreFocus: true });
+        return;
+    }
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    if (openLinkMenu !== versionIndex) await toggleLinkMenu(event, versionIndex);
+    linkMenuElement?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+}
 
 $effect(() => {
     return annotationEventBus.on("revision-boundary-nudge", (event) => {
@@ -642,12 +722,15 @@ function selectRevisionVersion(version: RevisionVersionView) {
     <button
         class="px-1 py-1 transition-colors text-black/30 hover:text-blue-600
             {versionGroup ? 'text-blue-600' : ''}"
-        onclick={() => {
+        onclick={(event) => {
             focusThisRevision();
-            openLinkMenu = openLinkMenu === versionView.index ? null : versionView.index;
+            void toggleLinkMenu(event, versionView.index);
         }}
+        onkeydown={(event) => void openLinkMenuFromKeyboard(event, versionView.index)}
         title="Link to a version of another revision"
         aria-label="Link version"
+        aria-haspopup="menu"
+        aria-expanded={openLinkMenu === versionView.index}
     >
         <Link2 size={10} />
     </button>
@@ -672,11 +755,21 @@ function selectRevisionVersion(version: RevisionVersionView) {
     {@const versionGroup = groupForVersion(version.id)}
     {#if openLinkMenu === versionView.index}
         <div
+            bind:this={linkMenuElement}
             class="absolute z-30 top-full mt-1 left-0 min-w-[170px] rounded-lg bg-white shadow-lg ring-1 ring-black/10 py-1 text-[11px]"
             transition:slide={{ duration: 120, easing: cubicOut }}
+            role="menu"
+            tabindex="-1"
+            aria-label="Manage linked version"
+            onkeydown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                closeLinkMenu({ restoreFocus: true });
+            }}
         >
             {#if versionGroup}
                 <button
+                    role="menuitem"
                     class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
                     onclick={() => unlinkVersion(version.id)}
                 >
@@ -685,31 +778,46 @@ function selectRevisionVersion(version: RevisionVersionView) {
                 <div class="my-1 border-t border-black/5"></div>
             {/if}
             <button
+                role="menuitem"
                 class="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700 font-medium"
                 onclick={() => startLink(version.id)}
             >
                 Link to another revision…
             </button>
-            {#each joinableGroups(version.id) as group}
+            {#each groupOptions(version.id) as option}
                 <button
-                    class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5"
-                    onclick={() => linkToExistingGroup(version.id, group.id)}
+                    role="menuitem"
+                    class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5 disabled:text-black/30 disabled:hover:bg-transparent"
+                    onclick={() => linkToExistingGroup(version.id, option.group.id)}
+                    disabled={option.error !== undefined}
+                    title={option.error}
                 >
                     <span
                         class="w-1.5 h-1.5 rounded-full shrink-0"
-                        style:background-color={groupColor(group.id)}
+                        style:background-color={groupColor(option.group.id)}
                     ></span>
-                    <span class="truncate">Join "{group.label}"</span>
+                    <span class="truncate">Join "{option.group.label}"</span>
                 </button>
+                {#if option.error}
+                    <p class="px-3 pb-1 text-[10px] leading-tight text-black/35">{option.error}</p>
+                {/if}
             {/each}
+            {#if linkError}
+                <p role="alert" class="px-3 py-1 text-[10px] leading-tight text-red-600">
+                    {linkError}
+                </p>
+            {/if}
         </div>
     {/if}
 {/snippet}
 
 {#snippet afterVersions()}
-    {#if $linkAnchor && $linkAnchor.member.revisionId === revision.id}
+    {#if $linkAnchor?.view === view && $linkAnchor.member.revisionId === revision.id}
         <div class="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-blue-700">
-            <span>Pick a version on another revision to link…</span>
+            <span>
+                Pick a version on another revision. Versions from this revision cannot link
+                together.
+            </span>
             <button class="underline hover:text-blue-800" onclick={cancelLink}>cancel</button>
         </div>
     {/if}

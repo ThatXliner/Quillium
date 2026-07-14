@@ -240,6 +240,7 @@ export function mergeNestedVersionState(
     const blob: Record<string, unknown> = {
         ...existing,
         annotationField: nestedState.annotationField,
+        versionGroupField: nestedState.versionGroupField,
     };
     if (nestedState.selection !== undefined) {
         blob.selection = nestedState.selection;

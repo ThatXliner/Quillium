@@ -39,6 +39,7 @@ import {
     type Annotations as AnnotationsMap,
     type GenericAnnotation,
     type Thread as ThreadType,
+    type VersionGroups,
     addAnnotation,
     annotationField,
     createNewRevision,
@@ -307,6 +308,7 @@ let dialogEl = $state<HTMLDialogElement>();
 // making these the reactive entry-point for the Svelte template.
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+let modalVersionGroups = $state<VersionGroups>({});
 
 // For deeply nested modals (level 2+), undo must target the root view
 // that owns the history stack — not the immediate parent, which has
@@ -317,9 +319,10 @@ const controller = new NestedEditorController(
     view,
     revisionId,
     {
-        onUpdate: (annotations, activeAnnotation) => {
+        onUpdate: (annotations, activeAnnotation, versionGroups) => {
             modalAnnotations = annotations;
             modalActiveAnnotation = activeAnnotation;
+            modalVersionGroups = versionGroups;
         },
     },
     "flush",
@@ -344,6 +347,7 @@ function destroyEditor() {
     controller.destroy();
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
+    modalVersionGroups = {};
 }
 
 function close() {
@@ -715,6 +719,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       view={controller.editor}
       annotationsData={modalAnnotations}
       activeAnnotationData={modalActiveAnnotation ?? null}
+      versionGroupsData={modalVersionGroups}
       layout="inline"
     />
   {/if}

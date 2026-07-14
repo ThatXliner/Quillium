@@ -87,6 +87,8 @@ export const versionGroups = writable<VersionGroups | undefined>();
  * two picks happen on two different components. null = not linking.
  */
 export const linkAnchor = writable<{
+    /** Editor state that owns the group; revision ids are only unique within this scope. */
+    view: EditorView;
     member: { revisionId: number; versionId: string };
     groupId?: string;
 } | null>(null);

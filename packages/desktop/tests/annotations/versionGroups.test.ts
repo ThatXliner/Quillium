@@ -225,6 +225,21 @@ describe("exclusive membership", () => {
 });
 
 describe("one version per revision per group", () => {
+    it("rejects creating a group with two versions from the same revision", () => {
+        const v = createView("AAAA");
+        view = v;
+        const a = addRevision(v, 0, 4, [{ doc: "AAAA" }, { doc: "aaaa" }]);
+
+        const invalid = createVersionGroup("Invalid", [
+            { revisionId: a.id, versionId: a.versionIds[0] },
+            { revisionId: a.id, versionId: a.versionIds[1] },
+        ]);
+        v.dispatch(invalid.spec);
+
+        expect(invalid.error).toBe("Each linked version must come from a different revision.");
+        expect(groups(v)).toEqual({});
+    });
+
     it("rejects adding a second version of the same revision to a group", () => {
         const { v, a, b, formalId } = setupLinkedDoc();
         view = v;

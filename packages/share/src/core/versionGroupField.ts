@@ -43,6 +43,7 @@ import {
     groupOfMember,
     membersEqual,
     newGroupId,
+    versionGroupMembersError,
 } from "./models";
 
 // ── Effects ─────────────────────────────────────────────────────
@@ -65,6 +66,18 @@ export const _renameVersionGroup = StateEffect.define<{ groupId: string; label: 
 // undo entries use granular semantic effects instead, but the history codec
 // keeps this effect for backward compatibility with existing documents.
 export const _restoreVersionGroups = StateEffect.define<{ groups: VersionGroups }>();
+
+/** Whether an effect mutates the version-group field. */
+export function isVersionGroupEffect(effect: StateEffect<unknown>): boolean {
+    return (
+        effect.is(_createVersionGroup) ||
+        effect.is(_deleteVersionGroup) ||
+        effect.is(_addMemberToGroup) ||
+        effect.is(_removeMemberFromGroup) ||
+        effect.is(_renameVersionGroup) ||
+        effect.is(_restoreVersionGroups)
+    );
+}
 
 export type SerializedVersionGroupHistoryEffect = {
     type: string;
@@ -444,8 +457,10 @@ export const invertedVersionGroupEffects = invertedEffects.of((transaction: Tran
 export function createVersionGroup(
     label: string,
     members: [VersionGroupMember, VersionGroupMember, ...VersionGroupMember[]],
-): { spec: TransactionSpec; groupId: string } {
+): { spec: TransactionSpec; groupId: string; error?: string } {
     const groupId = newGroupId();
+    const error = versionGroupMembersError(members);
+    if (error) return { spec: {}, groupId, error };
     const group: VersionGroup = { id: groupId, label, members: [] };
     // Create empty, then add members so exclusive-membership detach runs per add.
     const effects: StateEffect<unknown>[] = [_createVersionGroup.of({ group })];

@@ -3,6 +3,7 @@ import {
     type Annotations as AnnotationMap,
     type GenericAnnotation,
     type Thread,
+    type VersionGroups,
     annotationField,
     isAnnotationOfType,
     removeAnnotation,
@@ -17,7 +18,14 @@ import {
     appSettings,
     persistSettings,
 } from "$lib/settings.svelte";
-import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
+import {
+    activeAnnotation,
+    annotations,
+    editorView,
+    modalStack,
+    selectedText,
+    versionGroups,
+} from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 /**
@@ -77,11 +85,13 @@ const {
     view = undefined,
     annotationsData = undefined,
     activeAnnotationData = undefined,
+    versionGroupsData = undefined,
     layout = "floating",
 }: {
     view?: EditorView;
     annotationsData?: AnnotationMap;
     activeAnnotationData?: GenericAnnotation | null;
+    versionGroupsData?: VersionGroups;
     layout?: "floating" | "inline";
 } = $props();
 
@@ -89,6 +99,7 @@ const {
 // single consistent data source regardless of context.
 const resolvedView = $derived(view ?? $editorView);
 const resolvedAnnotations = $derived(annotationsData ?? $annotations);
+const resolvedVersionGroups = $derived(versionGroupsData ?? $versionGroups ?? {});
 const resolvedActiveAnnotation = $derived(
     activeAnnotationData === undefined ? $activeAnnotation : activeAnnotationData,
 );
@@ -863,6 +874,7 @@ onDestroy(() => annotationColumnDom.destroy());
             <Revision
                 revision={c}
                 view={resolvedView}
+                versionGroupsData={resolvedVersionGroups}
                 {isActive}
                 remove={remove.bind(null, i)}
                 updateThread={dispatchUpdateThread.bind(null, i)}

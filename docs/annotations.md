@@ -162,10 +162,18 @@ switch entry point (pill, `Ctrl-[` / `Ctrl-]`, modal) cascades for free. The
 `annotationField ↔ versionGroupField` import pair is a safe ESM cycle (all
 cross-references are inside function bodies).
 
-Public builders: `createVersionGroup(label, members)` → `{ spec, groupId }`,
+Public builders: `createVersionGroup(label, members)` → `{ spec, groupId, error? }`,
 `addVersionToGroup`, `removeVersionFromGroup`, `deleteVersionGroup`,
 `renameVersionGroup`. Both group switches and the document-level group structure
 sync through Yjs collaboration.
+
+Nested editor levels use the same field and controls. Each revision version blob
+persists its nested `annotationField` and `versionGroupField`; groups are scoped to
+that editor level because annotation ids are only unique within their containing
+buffer. The modal annotation panel passes its live nested group map to every
+revision card, so memberships can be inspected and changed at any depth. A link
+anchor carries its owning `EditorView` to prevent accidentally linking revisions
+whose local ids happen to match across different nesting levels.
 
 ## The annotationField StateField
 

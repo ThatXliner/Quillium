@@ -31,6 +31,10 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { normalizeSerializedSelection } from "$lib/editor/plugins/annotations/nestedEditor";
+import {
+    createVersionGroup,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
 import { history, redo, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
@@ -612,6 +616,48 @@ describe("nested annotation creation enters parent undo history via version stat
 // ── NestedEditorController sync gap regressions ─────────────────────────────
 
 describe("NestedEditorController annotation flush regressions", () => {
+    it("persists nested version groups through parent undo and redo", () => {
+        const nestedRevision = (id: number, from: number, to: number, versionId: string) => ({
+            _type: "revision",
+            status: "active" as const,
+            id,
+            selection: rawSelection(from, to),
+            thread: [],
+            activeVersionId: versionId,
+            versions: [{ id: versionId, doc: "hello" }],
+        });
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: {
+                0: nestedRevision(0, 0, 5, "nested-a"),
+                1: nestedRevision(1, 6, 11, "nested-b"),
+            },
+        });
+        const mounted = mountNestedController(view, revId);
+        const group = createVersionGroup("Nested", [
+            { revisionId: 0, versionId: "nested-a" },
+            { revisionId: 1, versionId: "nested-b" },
+        ]);
+
+        mounted.editor.dispatch(group.spec);
+        expect(mounted.editor.state.field(versionGroupField)[group.groupId]?.members).toHaveLength(
+            2,
+        );
+        const storedGroups = () => {
+            const revision = view.state.field(annotationField)[revId];
+            if (!revision || !isAnnotationOfType(revision, "revision")) return undefined;
+            return (activeVersion(revision) as { versionGroupField?: Record<string, unknown> })
+                .versionGroupField;
+        };
+        expect(storedGroups()?.[group.groupId]).toBeDefined();
+
+        undo(view);
+        expect(storedGroups()).toBeUndefined();
+        redo(view);
+        expect(storedGroups()?.[group.groupId]).toBeDefined();
+        mounted.destroy();
+    });
+
     it("keeps nested annotation remaps atomic across repeated undo and redo", () => {
         const revId = addRevision(view, 0, 11, {
             doc: "hello world",

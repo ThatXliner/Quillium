@@ -69,10 +69,10 @@ export const savedFields = {
     annotationField,
     versionGroupField,
 };
-// Nested editors delegate undo/redo to the parent, so they don't own
-// a history stack. Only annotationField is persisted in version blobs
-// (for nested annotations created inside a modal).
-export const nestedSavedFields = { annotationField };
+// Nested editors delegate undo/redo to the parent, so they don't own a history
+// stack. Their annotations and version groups are persisted in the containing
+// version blob so every nesting level retains its own linked-version state.
+export const nestedSavedFields = { annotationField, versionGroupField };
 
 const editorKeymap: KeyBinding[] = [
     ...closeBracketsKeymap,

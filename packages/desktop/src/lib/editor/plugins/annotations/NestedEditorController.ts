@@ -33,7 +33,12 @@ import {
     updateRevisionVersionState,
     updateThread,
 } from "./annotationField";
-import type { Annotation as AnnotationType, Annotations, VersionState } from "./models";
+import type {
+    Annotation as AnnotationType,
+    Annotations,
+    VersionGroups,
+    VersionState,
+} from "./models";
 import type { GenericAnnotation } from "./models";
 import { isAnnotationOfType, versionById } from "./models";
 import {
@@ -42,13 +47,18 @@ import {
     translateAndDispatch,
 } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
+import { isVersionGroupEffect, versionGroupField } from "./versionGroupField";
 
 /** Transaction annotation marking a sync from the parent document. */
 const parentSyncEdit = Annotation.define<true>();
 
 export type NestedEditorCallbacks = {
-    /** Called after every nested editor transaction with updated annotation state. */
-    onUpdate?: (annotations: Annotations, activeAnnotation: GenericAnnotation | undefined) => void;
+    /** Called after every nested transaction with updated annotations and version groups. */
+    onUpdate?: (
+        annotations: Annotations,
+        activeAnnotation: GenericAnnotation | undefined,
+        versionGroups: VersionGroups,
+    ) => void;
 };
 
 export type FlushBehavior = "flush" | "flush-on-destroy" | "no-flush";
@@ -73,16 +83,22 @@ export function transactionsHaveAnnotationMutationEffect(
                 e.is(_updateActiveRevisionVersion) ||
                 e.is(_updateRevisionVersionDoc) ||
                 e.is(_updateRevisionVersionLabel) ||
-                e.is(_updateRevisionVersionState),
+                e.is(_updateRevisionVersionState) ||
+                isVersionGroupEffect(e),
         ),
     );
 }
 
 export function serializedNestedAnnotationSnapshot(version: VersionState): string {
-    const raw = version as { annotationField?: unknown; selection?: unknown };
+    const raw = version as {
+        annotationField?: unknown;
+        selection?: unknown;
+        versionGroupField?: unknown;
+    };
     return JSON.stringify({
         annotationField: raw.annotationField ?? null,
         selection: raw.selection ?? null,
+        versionGroupField: raw.versionGroupField ?? null,
     });
 }
 
@@ -154,6 +170,7 @@ export class NestedEditorController {
         this.callbacks.onUpdate?.(
             this._editor.state.field(annotationField),
             getActiveAnnotation(this._editor.state),
+            this._editor.state.field(versionGroupField),
         );
 
         // Apply pending selection
@@ -300,8 +317,8 @@ export class NestedEditorController {
      * Internal: called on every nested editor transaction.
      * Handles both upward data paths:
      *   1. Doc changes → translateAndDispatch (maps changes to parent coordinates)
-     *   2. Annotation changes → flushAnnotationStateToParent (serializes
-     *      annotationField blob to the parent's version state)
+     *   2. Annotation/group changes → flushAnnotationStateToParent (serializes
+     *      both nested state fields to the parent's version state)
      */
     private onNestedUpdate(update: ViewUpdate): void {
         if (!this._editor) return;
@@ -366,6 +383,7 @@ export class NestedEditorController {
         this.callbacks.onUpdate?.(
             this._editor.state.field(annotationField),
             getActiveAnnotation(this._editor.state),
+            this._editor.state.field(versionGroupField),
         );
     }
 
@@ -427,9 +445,9 @@ export class NestedEditorController {
     }
 
     /**
-     * Serialize the nested editor's annotationField state to the parent's
-     * version blob. This is the upward path for annotation mutations — the
-     * complement to translateAndDispatch for doc changes.
+     * Serialize the nested editor's annotations and version groups to the
+     * parent's version blob. This is the upward path for nested metadata
+     * mutations — the complement to translateAndDispatch for doc changes.
      *
      * @param addToHistory — whether the parent dispatch enters the undo
      *   history. `true` for user-initiated annotation mutations (add, remove,
@@ -521,7 +539,11 @@ export class NestedEditorController {
                 (existing as { annotationField?: unknown })?.annotationField ?? {},
             );
             const nestedAnns = JSON.stringify(nestedState.annotationField ?? {});
-            const annsDiffer = parentAnns !== nestedAnns;
+            const parentGroups = JSON.stringify(
+                (existing as { versionGroupField?: unknown })?.versionGroupField ?? {},
+            );
+            const nestedGroups = JSON.stringify(nestedState.versionGroupField ?? {});
+            const annsDiffer = parentAnns !== nestedAnns || parentGroups !== nestedGroups;
 
             if (annsDiffer) {
                 posthog.capture("nested_editor_flush_to_parent_meaningful", {
