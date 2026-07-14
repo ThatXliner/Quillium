@@ -1043,6 +1043,12 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(
+            &MenuItemBuilder::with_id("new-tab", "New Tab")
+                .accelerator("CmdOrCtrl+T")
+                .build(app)?,
+        )
+        .separator()
+        .item(
             &MenuItemBuilder::with_id("library", "Library")
                 .accelerator("CmdOrCtrl+O")
                 .build(app)?,
@@ -1114,6 +1120,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             | "history"
             | "authorship"
             | "library"
+            | "new-tab"
             | "open-in-new-window"
             | "licenses"
             | "feedback"

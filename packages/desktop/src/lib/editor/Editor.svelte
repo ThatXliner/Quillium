@@ -167,6 +167,10 @@ export function startEditingTitle() {
     titleBar?.startEditing();
 }
 
+export function createNewTab(): Promise<void> {
+    return drafts.handleTabCreate();
+}
+
 function getWordCount(doc: string): number {
     return doc.trim().split(/\s+/).filter(Boolean).length;
 }
