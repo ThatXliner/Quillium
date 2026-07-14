@@ -30,7 +30,7 @@ import {
     updateDocumentMeta,
 } from "$lib/db";
 import type { EventPayload } from "$lib/db/events";
-import { type Scenario, scenarios } from "$lib/debug/scenarios";
+import { type Scenario, type ScenarioGroup, scenarios } from "$lib/debug/scenarios";
 import { debugAuthWaitlistMode, debugForceSurvey, debugPanelActive } from "$lib/debug/store.svelte";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
 import { buildEventPayload } from "$lib/editor/listeners";
@@ -98,8 +98,30 @@ function startCountdown(type: string, callback: () => void) {
     }, 1000);
 }
 
+// Fixed display order for accordion sections — only groups with at least
+// one matching scenario are rendered (see groupScenarios below).
+const DEBUG_GROUP_ORDER: ScenarioGroup[] = [
+    "Showcase",
+    "Comments",
+    "Suggestions",
+    "Revisions",
+    "Combinations & edge cases",
+    "Provenance & authorship",
+    "Privacy & safety",
+    "Screenshot & video fixtures",
+];
+const DEMO_GROUP_ORDER: ScenarioGroup[] = ["Editorial sessions", "Linked versions"];
+
+function groupScenarios(list: Scenario[], order: ScenarioGroup[]) {
+    return order
+        .map((name) => ({ name, scenarios: list.filter((s) => s.group === name) }))
+        .filter((g) => g.scenarios.length > 0);
+}
+
 const debugScenarios = scenarios.filter((s) => s.category === "debug");
 const demoScenarios = scenarios.filter((s) => s.category === "demo");
+const groupedDebugScenarios = groupScenarios(debugScenarios, DEBUG_GROUP_ORDER);
+const groupedDemoScenarios = groupScenarios(demoScenarios, DEMO_GROUP_ORDER);
 
 function close() {
     $debugPanelActive = false;
@@ -308,38 +330,60 @@ function handleKeydown(e: KeyboardEvent) {
                 <div class="px-4 pt-3 pb-2 flex items-center gap-2">
                     <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Debug</span>
                 </div>
-                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
-                    {#each debugScenarios as scenario}
-                        {@const isLoading = loading === scenario.id}
-                        {@const isLoaded = lastLoaded === scenario.id && loading === null}
-                        <div
-                            class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
-                                isLoaded
-                                    ? "border-green-200 bg-green-50/70"
-                                    : "border-black/8 bg-white/50 hover:bg-white/80"
-                            }`}
+                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-2">
+                    {#each groupedDebugScenarios as group}
+                        <details
+                            class="group rounded-xl border border-black/8 bg-white/40"
+                            open={group.name !== "Screenshot & video fixtures"}
                         >
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
-                                    {#if isLoaded}
-                                        <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
-                                    {/if}
-                                </div>
-                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
-                            </div>
-                            <button
-                                onclick={() => runScenario(scenario)}
-                                disabled={loading !== null}
-                                class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                                    isLoading
-                                        ? "bg-blue-100 text-blue-400 cursor-wait"
-                                        : "bg-black/8 hover:bg-black/14 text-black/60 disabled:opacity-40 disabled:cursor-not-allowed"
-                                }`}
+                            <summary
+                                class="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer select-none list-none marker:content-none"
                             >
-                                {isLoading ? "Saving…" : "Load"}
-                            </button>
-                        </div>
+                                <span class="flex items-center gap-1.5 text-[11px] font-semibold text-black/55">
+                                    <svg
+                                        class="w-2 h-2 shrink-0 text-black/30 transition-transform group-open:rotate-90"
+                                        viewBox="0 0 8 8"
+                                        fill="currentColor"
+                                    ><path d="M1 0l6 4-6 4z" /></svg>
+                                    {group.name}
+                                </span>
+                                <span class="text-[10px] text-black/30">{group.scenarios.length}</span>
+                            </summary>
+                            <div class="flex flex-col gap-1.5 px-3 pb-3 pt-1">
+                                {#each group.scenarios as scenario}
+                                    {@const isLoading = loading === scenario.id}
+                                    {@const isLoaded = lastLoaded === scenario.id && loading === null}
+                                    <div
+                                        class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                                            isLoaded
+                                                ? "border-green-200 bg-green-50/70"
+                                                : "border-black/8 bg-white/50 hover:bg-white/80"
+                                        }`}
+                                    >
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                                {#if isLoaded}
+                                                    <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
+                                                {/if}
+                                            </div>
+                                            <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                                        </div>
+                                        <button
+                                            onclick={() => runScenario(scenario)}
+                                            disabled={loading !== null}
+                                            class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                                                isLoading
+                                                    ? "bg-blue-100 text-blue-400 cursor-wait"
+                                                    : "bg-black/8 hover:bg-black/14 text-black/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                            }`}
+                                        >
+                                            {isLoading ? "Saving…" : "Load"}
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </details>
                     {/each}
                 </div>
             </div>
@@ -353,38 +397,57 @@ function handleKeydown(e: KeyboardEvent) {
                     <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Demo</span>
                     <span class="text-[10px] text-black/30">polished · show-ready</span>
                 </div>
-                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
-                    {#each demoScenarios as scenario}
-                        {@const isLoading = loading === scenario.id}
-                        {@const isLoaded = lastLoaded === scenario.id && loading === null}
-                        <div
-                            class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
-                                isLoaded
-                                    ? "border-blue-200 bg-blue-50/60"
-                                    : "border-black/8 bg-white/50 hover:bg-white/80"
-                            }`}
-                        >
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
-                                    {#if isLoaded}
-                                        <span class="text-[10px] text-blue-500 font-medium">✓ loaded</span>
-                                    {/if}
-                                </div>
-                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
-                            </div>
-                            <button
-                                onclick={() => runScenario(scenario)}
-                                disabled={loading !== null}
-                                class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                                    isLoading
-                                        ? "bg-blue-100 text-blue-400 cursor-wait"
-                                        : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                                }`}
+                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-2">
+                    {#each groupedDemoScenarios as group}
+                        <details class="group rounded-xl border border-black/8 bg-white/40" open>
+                            <summary
+                                class="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer select-none list-none marker:content-none"
                             >
-                                {isLoading ? "Saving…" : "Load"}
-                            </button>
-                        </div>
+                                <span class="flex items-center gap-1.5 text-[11px] font-semibold text-black/55">
+                                    <svg
+                                        class="w-2 h-2 shrink-0 text-black/30 transition-transform group-open:rotate-90"
+                                        viewBox="0 0 8 8"
+                                        fill="currentColor"
+                                    ><path d="M1 0l6 4-6 4z" /></svg>
+                                    {group.name}
+                                </span>
+                                <span class="text-[10px] text-black/30">{group.scenarios.length}</span>
+                            </summary>
+                            <div class="flex flex-col gap-1.5 px-3 pb-3 pt-1">
+                                {#each group.scenarios as scenario}
+                                    {@const isLoading = loading === scenario.id}
+                                    {@const isLoaded = lastLoaded === scenario.id && loading === null}
+                                    <div
+                                        class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                                            isLoaded
+                                                ? "border-blue-200 bg-blue-50/60"
+                                                : "border-black/8 bg-white/50 hover:bg-white/80"
+                                        }`}
+                                    >
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                                {#if isLoaded}
+                                                    <span class="text-[10px] text-blue-500 font-medium">✓ loaded</span>
+                                                {/if}
+                                            </div>
+                                            <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                                        </div>
+                                        <button
+                                            onclick={() => runScenario(scenario)}
+                                            disabled={loading !== null}
+                                            class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                                                isLoading
+                                                    ? "bg-blue-100 text-blue-400 cursor-wait"
+                                                    : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                            }`}
+                                        >
+                                            {isLoading ? "Saving…" : "Load"}
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </details>
                     {/each}
                 </div>
             </div>

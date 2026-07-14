@@ -138,7 +138,11 @@ const authConnectionState = $derived(getConnectionState());
 // still there and the stuck user needs the Sign out escape hatch.
 const authCanReset = $derived(hasAuthStateToReset());
 
-let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
+let editorComponent = $state<{
+    reload: () => Promise<void>;
+    startEditingTitle: () => void;
+    createNewTab: () => Promise<void>;
+}>();
 
 const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
@@ -226,6 +230,10 @@ function handleChangelogDismiss() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        void editorComponent?.createNewTab();
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "o") {
         e.preventDefault();
         goToLibrary();
@@ -415,6 +423,9 @@ onMount(() => {
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:library", () => {
         if (!destroyed) goToLibrary();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:new-tab", () => {
+        if (!destroyed) void editorComponent?.createNewTab();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:licenses", () => {
         if (!destroyed) licensesOpen = !licensesOpen;
@@ -658,7 +669,7 @@ if (import.meta.env.DEV) {
 <Toaster position="bottom-right" />
 
 <!-- Top-right collab + account entry points -->
-<div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+<div data-annotation-occluder class="fixed top-8 right-8 z-40 flex items-center gap-3">
     {#if authLoading && authConnectionState === "connecting" && authReconnecting}
         <button
             disabled

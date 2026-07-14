@@ -15,6 +15,12 @@ export type LayoutItem<Id extends AnnotationLayoutId = AnnotationLayoutId> = {
     height: number;
 };
 
+export type HorizontalRect = {
+    left: number;
+    right: number;
+    bottom: number;
+};
+
 export type BalanceItem<Id extends AnnotationLayoutId = AnnotationLayoutId> = LayoutItem<Id> & {
     viewportX: number;
 };
@@ -26,6 +32,24 @@ export const COLUMN_BOTTOM_PADDING = 24;
 export const MIN_ANNOTATION_COLUMN_WIDTH = 150;
 /** Exact motion contract used by both desktop and public read-only columns. */
 export const ANNOTATION_CARD_TOP_TRANSITION = "top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+
+/**
+ * Keep a floating column below persistent chrome that occupies the same
+ * horizontal lane. Elements elsewhere on the page must not push the column
+ * down, so the collision check deliberately ignores vertical position.
+ */
+export function annotationTopClamp(
+    column: Pick<HorizontalRect, "left" | "right">,
+    occluders: readonly HorizontalRect[],
+    minimum = TOP_CLAMP,
+): number {
+    let clamp = minimum;
+    for (const occluder of occluders) {
+        if (occluder.right <= column.left || occluder.left >= column.right) continue;
+        clamp = Math.max(clamp, occluder.bottom + MIN_SPACING);
+    }
+    return clamp;
+}
 
 export function compareAnnotationLayoutIds(a: AnnotationLayoutId, b: AnnotationLayoutId): number {
     if (typeof a === "number" && typeof b === "number") return a - b;
@@ -92,6 +116,7 @@ export type ColumnLayout<Id extends AnnotationLayoutId = AnnotationLayoutId> = {
 export function layoutColumnPositions<Id extends AnnotationLayoutId>(
     cards: LayoutItem<Id>[],
     activeId: Id | null,
+    topClamp?: number,
 ): ColumnLayout<Id> {
     const sortedByPos = [...cards].sort((a, b) =>
         a.viewportY !== b.viewportY
@@ -101,17 +126,23 @@ export function layoutColumnPositions<Id extends AnnotationLayoutId>(
     const adjustedY = {} as LayoutValueMap<Id, number>;
     const activeIdx =
         activeId === null ? -1 : sortedByPos.findIndex((card) => card.id === activeId);
+    const minimumTop = topClamp ?? TOP_CLAMP;
 
     if (activeIdx === -1) {
-        let lastBottom = TOP_CLAMP;
+        let lastBottom = minimumTop;
         for (const { id, viewportY, height } of sortedByPos) {
-            const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
+            const y = Math.max(viewportY, lastBottom, minimumTop);
             adjustedY[id] = y;
             lastBottom = y + height + MIN_SPACING;
         }
     } else {
         const activeItem = sortedByPos[activeIdx];
-        const activeY = activeItem.viewportY;
+        // Preserve the historical natural anchor when hosts do not provide a
+        // boundary. A geometry-aware host opts into clearing its own chrome.
+        const activeY =
+            topClamp === undefined
+                ? activeItem.viewportY
+                : Math.max(activeItem.viewportY, topClamp);
         adjustedY[activeItem.id] = activeY;
 
         let ceiling = activeY - MIN_SPACING;
@@ -132,7 +163,19 @@ export function layoutColumnPositions<Id extends AnnotationLayoutId>(
     }
 
     const yValues = sortedByPos.map(({ id }) => adjustedY[id] ?? 0);
-    const minY = yValues.length ? Math.min(...yValues) : 0;
+    let minY = yValues.length ? Math.min(...yValues) : 0;
+
+    // A host-provided boundary applies to the whole visible stack. When cards
+    // packed above an active card would cross it, move the complete stack down
+    // instead of hiding those cards in the occluded region.
+    const boundaryShift = topClamp === undefined ? 0 : Math.max(0, topClamp - minY);
+    if (boundaryShift > 0) {
+        for (const { id } of sortedByPos) {
+            adjustedY[id] = (adjustedY[id] ?? 0) + boundaryShift;
+        }
+        minY += boundaryShift;
+    }
+
     const overhead = minY < 0 ? -minY : 0;
     if (overhead > 0) {
         for (const { id } of sortedByPos) adjustedY[id] = (adjustedY[id] ?? 0) + overhead;

@@ -9,7 +9,12 @@
  * category: "debug" — raw structural/edge-case tests
  * category: "demo"  — polished, realistic scenarios suitable for demos
  *
- * To add a new scenario: append an entry to the `scenarios` array.
+ * `group` further buckets scenarios within a category so the debug panel can
+ * render them as accordion sections instead of one long flat list — see
+ * `ScenarioGroup` below for the fixed set of section names.
+ *
+ * To add a new scenario: append an entry to the `scenarios` array and pick
+ * (or add) a `group` for it.
  */
 
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
@@ -35,11 +40,29 @@ import { EditorView } from "@codemirror/view";
 
 export type ScenarioCategory = "debug" | "demo";
 
+/**
+ * Sub-grouping within a category, used to render the debug panel as
+ * accordion sections instead of one long flat list. Purely presentational —
+ * doesn't affect scenario behavior.
+ */
+export type ScenarioGroup =
+    | "Showcase"
+    | "Comments"
+    | "Suggestions"
+    | "Revisions"
+    | "Combinations & edge cases"
+    | "Provenance & authorship"
+    | "Privacy & safety"
+    | "Screenshot & video fixtures"
+    | "Editorial sessions"
+    | "Linked versions";
+
 export type Scenario = {
     id: string;
     label: string;
     description: string;
     category: ScenarioCategory;
+    group: ScenarioGroup;
     /** The document content to set before applying annotations. */
     doc: string;
     setup: (view: EditorView) => void;
@@ -131,6 +154,26 @@ She nodded, slowly, looking at something through the windscreen. He followed her
 
 He wasn't sure what it meant, but it didn't sound like the end of something. It sounded like the middle.`;
 
+// Public domain — the opening movement of Emerson's "Self-Reliance" (1841),
+// used by the feature-showcase scenario. Excerpted verbatim from the Project
+// Gutenberg edition (Essays: First Series, ebook #2944) so the "kitchen sink"
+// scenario below has ~1,000 words of real prose with enough distinct
+// sentences to hang every annotation feature on without any two targets
+// colliding.
+const DOC_SELF_RELIANCE = `I read the other day some verses written by an eminent painter which were original and not conventional. The soul always hears an admonition in such lines, let the subject be what it may. The sentiment they instill is of more value than any thought they may contain. To believe your own thought, to believe that what is true for you in your private heart is true for all men — that is genius. Speak your latent conviction, and it shall be the universal sense; for the inmost in due time becomes the outmost, and our first thought is rendered back to us by the trumpets of the Last Judgment. Familiar as the voice of the mind is to each, the highest merit we ascribe to Moses, Plato and Milton is that they set at naught books and traditions, and spoke not what men, but what they thought. A man should learn to detect and watch that gleam of light which flashes across his mind from within, more than the lustre of the firmament of bards and sages. Yet he dismisses without notice his thought, because it is his. In every work of genius we recognize our own rejected thoughts; they come back to us with a certain alienated majesty. Great works of art have no more affecting lesson for us than this. They teach us to abide by our spontaneous impression with good-humored inflexibility then most when the whole cry of voices is on the other side. Else to-morrow a stranger will say with masterly good sense precisely what we have thought and felt all the time, and we shall be forced to take with shame our own opinion from another.
+
+There is a time in every man's education when he arrives at the conviction that envy is ignorance; that imitation is suicide; that he must take himself for better for worse as his portion; that though the wide universe is full of good, no kernel of nourishing corn can come to him but through his toil bestowed on that plot of ground which is given to him to till. The power which resides in him is new in nature, and none but he knows what that is which he can do, nor does he know until he has tried. Not for nothing one face, one character, one fact, makes much impression on him, and another none. This sculpture in the memory is not without preestablished harmony. The eye was placed where one ray should fall, that it might testify of that particular ray. We but half express ourselves, and are ashamed of that divine idea which each of us represents. It may be safely trusted as proportionate and of good issues, so it be faithfully imparted, but God will not have his work made manifest by cowards. A man is relieved and gay when he has put his heart into his work and done his best; but what he has said or done otherwise shall give him no peace. It is a deliverance which does not deliver. In the attempt his genius deserts him; no muse befriends; no invention, no hope.
+
+Trust thyself: every heart vibrates to that iron string. Accept the place the divine providence has found for you, the society of your contemporaries, the connection of events. Great men have always done so, and confided themselves childlike to the genius of their age, betraying their perception that the absolutely trustworthy was seated at their heart, working through their hands, predominating in all their being. And we are now men, and must accept in the highest mind the same transcendent destiny; and not minors and invalids in a protected corner, not cowards fleeing before a revolution, but guides, redeemers and benefactors, obeying the Almighty effort and advancing on Chaos and the Dark.
+
+What pretty oracles nature yields us on this text in the face and behavior of children, babes, and even brutes! That divided and rebel mind, that distrust of a sentiment because our arithmetic has computed the strength and means opposed to our purpose, these have not. Their mind being whole, their eye is as yet unconquered, and when we look in their faces we are disconcerted. Infancy conforms to nobody; all conform to it; so that one babe commonly makes four or five out of the adults who prattle and play to it. So God has armed youth and puberty and manhood no less with its own piquancy and charm, and made it enviable and gracious and its claims not to be put by, if it will stand by itself. Do not think the youth has no force, because he cannot speak to you and me. Hark! in the next room his voice is sufficiently clear and emphatic. It seems he knows how to speak to his contemporaries. Bashful or bold then, he will know how to make us seniors very unnecessary.
+
+The nonchalance of boys who are sure of a dinner, and would disdain as much as a lord to do or say aught to conciliate one, is the healthy attitude of human nature. A boy is in the parlor what the pit is in the playhouse; independent, irresponsible, looking out from his corner on such people and facts as pass by, he tries and sentences them on their merits, in the swift, summary way of boys, as good, bad, interesting, silly, eloquent, troublesome. He cumbers himself never about consequences, about interests; he gives an independent, genuine verdict. You must court him; he does not court you. But the man is as it were clapped into jail by his consciousness. As soon as he has once acted or spoken with éclat he is a committed person, watched by the sympathy or the hatred of hundreds, whose affections must now enter into his account. There is no Lethe for this. Ah, that he could pass again into his neutrality! Who can thus avoid all pledges and, having observed, observe again from the same unaffected, unbiased, unbribable, unaffrighted innocence — must always be formidable. He would utter opinions on all passing affairs, which being seen to be not private but necessary, would sink like darts into the ear of men and put them in fear.
+
+These are the voices which we hear in solitude, but they grow faint and inaudible as we enter into the world. Society everywhere is in conspiracy against the manhood of every one of its members. Society is a joint-stock company, in which the members agree, for the better securing of his bread to each shareholder, to surrender the liberty and culture of the eater. The virtue in most request is conformity. Self-reliance is its aversion. It loves not realities and creators, but names and customs.
+
+Whoso would be a man, must be a nonconformist. He who would gather immortal palms must not be hindered by the name of goodness, but must explore if it be goodness. Nothing is at last sacred but the integrity of your own mind.`;
+
 // Public domain — A Tale of Two Cities (Dickens), used by the screenshot script
 const DICKENS_DOC = `It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair.
 
@@ -179,6 +222,342 @@ function latestRevisionId(view: EditorView): number | undefined {
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
 export const scenarios: Scenario[] = [
+    // ── SHOWCASE — every annotation feature in one document ────────────────────
+
+    {
+        id: "self-reliance-showcase",
+        label: "Feature showcase (Self-Reliance)",
+        description:
+            "Every annotation feature in one pass over Emerson's Self-Reliance: comments (simple, pending, long thread, personas), suggestions (multi- and single-option), revisions (simple, verbose, linked version groups, nested editor), and a contained suggestion+revision pair",
+        category: "debug",
+        group: "Showcase",
+        doc: DOC_SELF_RELIANCE,
+        setup(view) {
+            // ── Comments ──────────────────────────────────────────────────────
+            createComment({
+                targetText:
+                    "To believe your own thought, to believe that what is true for you in your private heart is true for all men — that is genius.",
+                comment:
+                    "The whole essay's thesis in one line. Everything after this either illustrates or defends it — worth flagging as the sentence readers will remember.",
+                author: "Editor",
+                view,
+            });
+
+            // Pending comment — empty annotation waiting for user input.
+            {
+                const state = view.state;
+                const target = "envy is ignorance";
+                const from = state.doc.toString().indexOf(target);
+                if (from !== -1) {
+                    const to = from + target.length;
+                    view.dispatch(
+                        state.update({
+                            effects: [
+                                addAnnotation.of(
+                                    createNewAnnotation(
+                                        state.field(annotationField),
+                                        EditorSelection.single(from, to),
+                                        "comment",
+                                    ),
+                                ),
+                            ],
+                        }),
+                    );
+                }
+            }
+
+            // Comment with a long, multi-message thread.
+            {
+                const state = view.state;
+                const target =
+                    "Society is a joint-stock company, in which the members agree, for the better securing of his bread to each shareholder, to surrender the liberty and culture of the eater.";
+                const from = state.doc.toString().indexOf(target);
+                if (from !== -1) {
+                    const to = from + target.length;
+                    view.dispatch(
+                        state.update({
+                            effects: [
+                                addAnnotation.of({
+                                    ...createNewAnnotation(
+                                        state.field(annotationField),
+                                        EditorSelection.create([EditorSelection.range(from, to)]),
+                                        "comment",
+                                    ),
+                                    thread: [
+                                        {
+                                            message:
+                                                "The corporate metaphor is doing a lot — is 'joint-stock company' too period-specific for a modern reader?",
+                                            author: "Skeptical Editor",
+                                            time: Date.now() - 3600_000,
+                                        },
+                                        {
+                                            message:
+                                                "I think it's the point — Emerson wants the transaction to sound cold and financial. Keep it.",
+                                            author: "User",
+                                            time: Date.now() - 1800_000,
+                                        },
+                                        {
+                                            message:
+                                                "Agreed — protect it. The bluntness is doing the rhetorical work.",
+                                            author: "Editor",
+                                            time: Date.now() - 900_000,
+                                        },
+                                    ],
+                                }),
+                            ],
+                        }),
+                    );
+                }
+            }
+
+            // Persona-authored comments — different reader voices, including AI.
+            createComment({
+                targetText: "The virtue in most request is conformity.",
+                comment:
+                    "Reads as a throwaway generalization on first pass — does it earn its place, or could the essay show this instead of stating it?",
+                author: "Skeptical Editor",
+                view,
+            });
+            createComment({
+                targetText: "Self-reliance is its aversion.",
+                comment:
+                    "Sharp turn of phrase — 'aversion' personifies self-reliance nicely against the corporate metaphor above.",
+                author: "AI",
+                view,
+            });
+
+            // Adjacent annotations sharing an edge.
+            createComment({
+                targetText: "that he must take himself for better for worse as his portion",
+                comment:
+                    "Marriage-vow cadence ('for better for worse') — deliberate echo, or accidental?",
+                author: "Editor",
+                view,
+            });
+            createComment({
+                targetText: "though the wide universe is full of good",
+                comment: "Nice pivot from the personal ('his portion') back out to the universal.",
+                author: "Editor",
+                view,
+            });
+
+            // ── Suggestions ───────────────────────────────────────────────────
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText:
+                    "Do not think the youth has no force, because he cannot speak to you and me.",
+                replacements: [
+                    {
+                        text: "Don't mistake the youth's silence for a lack of force.",
+                        rationale: "Tighter, modernizes 'do not think' without losing the warning",
+                    },
+                    {
+                        text: "The youth's force isn't diminished by his silence with us.",
+                        rationale: "Reframes as a positive claim rather than a negation",
+                    },
+                ],
+                comment:
+                    "Double negative ('do not think... has no force') slows the reader right before the payoff line.",
+                author: "Copy Editor",
+            });
+
+            // Suggestion with exactly one replacement — single-option UI state.
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText: "There is no Lethe for this.",
+                replacements: [
+                    {
+                        text: "There is no forgetting this.",
+                        rationale:
+                            "'Lethe' may send modern readers to a footnote — plain language keeps the momentum",
+                    },
+                ],
+                comment: "Lovely, but consider your reader.",
+                author: "Editor",
+            });
+
+            // ── Revisions ─────────────────────────────────────────────────────
+            createRevision({
+                targetText: "A boy is in the parlor what the pit is in the playhouse;",
+                versions: [
+                    {
+                        label: "Modernize",
+                        text: "A boy in the room is what the crowd is at a show;",
+                    },
+                    {
+                        label: "Compress",
+                        text: "A boy holds a room the way an audience holds a stage;",
+                    },
+                ],
+                threadMessage:
+                    "The theatre simile is vivid but 'parlor' and 'pit' both need historical footnotes for a contemporary reader. Two directions: modernize the nouns, or compress the whole image.",
+                author: "Developmental Editor",
+                view,
+            });
+
+            // Revision with long, verbose alternatives — tests card expansion.
+            createRevision({
+                targetText:
+                    "Trust thyself: every heart vibrates to that iron string. Accept the place the divine providence has found for you, the society of your contemporaries, the connection of events. Great men have always done so, and confided themselves childlike to the genius of their age, betraying their perception that the absolutely trustworthy was seated at their heart, working through their hands, predominating in all their being. And we are now men, and must accept in the highest mind the same transcendent destiny; and not minors and invalids in a protected corner, not cowards fleeing before a revolution, but guides, redeemers and benefactors, obeying the Almighty effort and advancing on Chaos and the Dark.",
+                versions: [
+                    {
+                        label: "Academic",
+                        text: "Self-trust, in Emerson's formulation, is not mere confidence but a form of metaphysical alignment: the individual's inmost conviction is continuous with providence itself. Great men, he argues, have always recognized this continuity and acted from it rather than against it; the modern reader is invited to claim the same transcendent mandate, rejecting both the timidity of the invalid and the reactivity of the revolutionary in favor of active, generative participation in the unfolding of events.",
+                    },
+                    {
+                        label: "Essayistic",
+                        text: "Trust yourself — that's the whole instruction, repeated in every register Emerson can find. The great men he admires didn't invent this trust; they simply stopped arguing with it. We're asked to do the same: not to cower in a corner, not to burn things down out of frustration, but to build, guide, and give — to advance rather than merely react.",
+                    },
+                    {
+                        label: "Strip back",
+                        text: "Trust yourself. The people history remembers did. Be a builder, not a bystander or a wrecker.",
+                    },
+                ],
+                threadMessage:
+                    "This paragraph is the essay's engine, but it's also the densest stretch of prose in the excerpt. Three directions: academic (unpacks the argument formally), essayistic (keeps the register but shortens the sentences), or stripped back (trusts the reader to fill in the rest).",
+                author: "Editor",
+                view,
+            });
+
+            // ── Contained annotation: suggestion nested inside a revision ──────
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText: "must be a nonconformist",
+                replacements: [
+                    {
+                        text: "must refuse the crowd",
+                        rationale:
+                            "'Nonconformist' has drifted toward a fashion cliché — 'refuse the crowd' keeps the defiance without the buzzword",
+                    },
+                ],
+                comment:
+                    "Worth reconsidering this word choice on its own before touching the sentence around it.",
+                author: "Copy Editor",
+            });
+            createRevision({
+                targetText: "Whoso would be a man, must be a nonconformist.",
+                versions: [
+                    {
+                        label: "Modernize",
+                        text: "To be a man, you must refuse to conform.",
+                    },
+                    {
+                        label: "Keep archaic",
+                        text: "Whoso would be a man must be a nonconformist.",
+                    },
+                ],
+                threadMessage:
+                    "The most quoted line in the essay, and it contains an annotation of its own (see the suggestion on 'must be a nonconformist') — a good test of contained annotation ranges. 'Whoso' is archaic; decide whether that's a feature or a barrier.",
+                author: "Developmental Editor",
+                view,
+            });
+
+            // ── Linked version groups — two revisions tied by a shared pill ────
+            createRevision({
+                targetText: "Speak your latent conviction",
+                versions: [
+                    { label: "Formal", text: "Articulate your innermost conviction" },
+                    { label: "Casual", text: "Just say what you actually believe" },
+                ],
+                threadMessage: "Sets the register for the whole excerpt — formal or plainspoken?",
+                author: "Editor",
+                view,
+            });
+            const toneOpeningId = latestRevisionId(view);
+
+            createRevision({
+                targetText: "Nothing is at last sacred but the integrity of your own mind.",
+                versions: [
+                    {
+                        label: "Formal",
+                        text: "Nothing, finally, is sacred but the integrity of one's own mind.",
+                    },
+                    {
+                        label: "Casual",
+                        text: "In the end, nothing's sacred except staying true to your own mind.",
+                    },
+                ],
+                threadMessage:
+                    "The closing claim — should match whichever register you picked at the top.",
+                author: "Editor",
+                view,
+            });
+            const toneClosingId = latestRevisionId(view);
+
+            if (toneOpeningId !== undefined && toneClosingId !== undefined) {
+                const formalMembers = [
+                    memberByVersionLabel(view, toneOpeningId, "Formal"),
+                    memberByVersionLabel(view, toneClosingId, "Formal"),
+                ].filter((m): m is VersionGroupMember => m !== undefined);
+                const casualMembers = [
+                    memberByVersionLabel(view, toneOpeningId, "Casual"),
+                    memberByVersionLabel(view, toneClosingId, "Casual"),
+                ].filter((m): m is VersionGroupMember => m !== undefined);
+
+                if (formalMembers.length >= 2) {
+                    const [m0, m1, ...rest] = formalMembers;
+                    view.dispatch(createVersionGroup("Formal", [m0, m1, ...rest]).spec);
+                }
+                if (casualMembers.length >= 2) {
+                    const [m0, m1, ...rest] = casualMembers;
+                    view.dispatch(createVersionGroup("Casual", [m0, m1, ...rest]).spec);
+                }
+            }
+
+            // ── Nested editor: a revision whose version holds a nested comment ─
+            createRevision({
+                targetText: "You must court him; he does not court you.",
+                versions: [
+                    {
+                        label: "Extended",
+                        text: "You must court him, walk to his side of the room, earn his good opinion; he does not court you, and never will.",
+                    },
+                ],
+                threadMessage:
+                    "The asymmetry is the point, but the extension might over-explain it — open the nested editor and see whether the added clause earns its place.",
+                author: "Editor",
+                view,
+            });
+            const nestingRevisionId = latestRevisionId(view);
+            if (nestingRevisionId !== undefined) {
+                let revision = view.state.field(annotationField)[nestingRevisionId];
+                if (revision && isAnnotationOfType(revision, "revision")) {
+                    const extended = revision.versions.find((v) => v.label === "Extended");
+                    if (extended) {
+                        view.dispatch(
+                            setActiveRevisionVersion(view.state, revision.id, extended.id),
+                        );
+                    }
+                    revision = view.state.field(annotationField)[nestingRevisionId];
+                    if (revision && isAnnotationOfType(revision, "revision")) {
+                        const nestedHost = document.createElement("div");
+                        const nestedState = createNestedEditorState(
+                            activeVersion(revision),
+                            (update) => translateAndDispatch(update, view, nestingRevisionId),
+                            view,
+                            nestingRevisionId,
+                        );
+                        const nestedView = new EditorView({
+                            state: nestedState,
+                            parent: nestedHost,
+                        });
+                        createComment({
+                            targetText: "and never will",
+                            comment:
+                                "This closing clause pushes past where the reader needs it to go — consider cutting.",
+                            author: "Copy Editor",
+                            view: nestedView,
+                        });
+                        nestedView.destroy();
+                    }
+                }
+            }
+        },
+    },
+
     // ── DEBUG — structural and edge-case tests ─────────────────────────────────
 
     {
@@ -187,6 +566,7 @@ export const scenarios: Scenario[] = [
         description:
             "Replay-safe history containing typed, pasted, human revision, AI revision, and human-edited AI revision events — load it, then open Authorship Playback",
         category: "debug",
+        group: "Provenance & authorship",
         // Authorship Playback reconstructs the document from the event stream.
         // Starting empty ensures event one contains the complete seed text.
         doc: "",
@@ -297,6 +677,7 @@ export const scenarios: Scenario[] = [
         label: "Single comment",
         description: "One comment on a specific passage",
         category: "debug",
+        group: "Comments",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createComment({
@@ -313,6 +694,7 @@ export const scenarios: Scenario[] = [
         label: "Pending comment",
         description: "An empty comment annotation waiting for user input",
         category: "debug",
+        group: "Comments",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             const state = view.state;
@@ -340,6 +722,7 @@ export const scenarios: Scenario[] = [
         label: "Single suggestion",
         description: "One suggestion with two replacement options",
         category: "debug",
+        group: "Suggestions",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createSuggestion({
@@ -367,6 +750,7 @@ export const scenarios: Scenario[] = [
         label: "Single revision",
         description: "One revision with two alternative versions",
         category: "debug",
+        group: "Revisions",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createRevision({
@@ -394,6 +778,7 @@ export const scenarios: Scenario[] = [
         label: "Mixed annotation types",
         description: "Comment, suggestion, and revision together",
         category: "debug",
+        group: "Combinations & edge cases",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createComment({
@@ -434,6 +819,7 @@ export const scenarios: Scenario[] = [
         description:
             "Three revisions whose 'Formal' versions are linked into one group and 'Casual' into another — switch any pill and the whole tone-set follows (#268)",
         category: "demo",
+        group: "Linked versions",
         doc: DOC_ESSAY_DRAFT,
         setup(view) {
             // Three tonal revisions across the essay. Each gets an "Original"
@@ -503,6 +889,7 @@ export const scenarios: Scenario[] = [
         label: "Multiple suggestions",
         description: "Several suggestions across a passage — tests suggestion panel layout",
         category: "debug",
+        group: "Suggestions",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createSuggestion({
@@ -551,6 +938,7 @@ export const scenarios: Scenario[] = [
         description:
             "A revision whose text can hold nested annotations — open it then use Cmd+Alt+K inside",
         category: "debug",
+        group: "Revisions",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createRevision({
@@ -574,6 +962,7 @@ export const scenarios: Scenario[] = [
         label: "Adjacent annotations",
         description: "Two annotations sharing an edge — tests highlight range boundaries",
         category: "debug",
+        group: "Combinations & edge cases",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createComment({
@@ -595,6 +984,7 @@ export const scenarios: Scenario[] = [
         label: "Overlapping suggestion + revision",
         description: "Suggestion and revision whose target text overlaps — tests conflict display",
         category: "debug",
+        group: "Combinations & edge cases",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createSuggestion({
@@ -631,6 +1021,7 @@ export const scenarios: Scenario[] = [
         label: "Suggestion — one option only",
         description: "A suggestion with exactly one replacement — tests single-option UI state",
         category: "debug",
+        group: "Suggestions",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createSuggestion({
@@ -653,6 +1044,7 @@ export const scenarios: Scenario[] = [
         label: "Dense annotations",
         description: "Many annotations — tests layout, panel overflow, and highlight layering",
         category: "debug",
+        group: "Combinations & edge cases",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             const passages = [
@@ -687,6 +1079,7 @@ export const scenarios: Scenario[] = [
         description:
             "A revision with verbose alternatives — tests card expansion and text overflow",
         category: "debug",
+        group: "Revisions",
         doc: DOC_ESSAY_DRAFT,
         setup(view) {
             createRevision({
@@ -718,6 +1111,7 @@ export const scenarios: Scenario[] = [
         label: "Comment — long annotation text",
         description: "A comment with a very long message — tests card height and text wrapping",
         category: "debug",
+        group: "Comments",
         doc: DOC_NOVEL_OPENING,
         setup(view) {
             createComment({
@@ -738,6 +1132,7 @@ export const scenarios: Scenario[] = [
         description:
             "Full editorial pass on a novel's first page — structural notes, line suggestions, and two competing directions for the key beat",
         category: "demo",
+        group: "Editorial sessions",
         doc: DOC_NOVEL_OPENING,
         setup(view) {
             createComment({
@@ -815,6 +1210,7 @@ export const scenarios: Scenario[] = [
         description:
             "Editorial session on a personal essay: voice consistency, structural rhythm, and one key revision decision",
         category: "demo",
+        group: "Editorial sessions",
         doc: DOC_MEMOIR_EXCERPT,
         setup(view) {
             createComment({
@@ -899,6 +1295,7 @@ export const scenarios: Scenario[] = [
         description:
             "Line edit on a scene with difficult subtext: rhythm, what's said vs unsaid, and the closing beat",
         category: "demo",
+        group: "Editorial sessions",
         doc: DOC_FICTION_DIALOGUE,
         setup(view) {
             createComment({
@@ -981,101 +1378,12 @@ export const scenarios: Scenario[] = [
     },
 
     {
-        id: "demo-essay",
-        label: "Essay — argument structure",
-        description:
-            "Developmental edit on a personal essay: argument flow, abstract/concrete balance, and the closing claim",
-        category: "demo",
-        doc: DOC_ESSAY_DRAFT,
-        setup(view) {
-            createComment({
-                targetText: "On the Question of Forgetting",
-                comment:
-                    "Title is too broad for what the essay actually does. 'On the Question of Forgetting' signals a philosophical treatise; the essay is really a personal investigation prompted by a specific person. Something like 'What My Grandmother Kept' or 'The Residue' or even just 'Forgetting' would be closer. The title is the first thing that tells the reader what kind of essay this is — right now it's misleading.",
-                author: "Editor",
-                view,
-            });
-
-            createComment({
-                targetText:
-                    "There is a particular cruelty in the way memory works: it keeps what we would most like to lose and loses what we most want to keep.",
-                comment:
-                    "This is the right kind of opener — a claim bold enough to make the reader either agree immediately or want to argue. 'Particular cruelty' is good: it insists on precision ('not just cruelty, but a particular one') without yet specifying what that particularity is. The inversion ('keeps what we'd lose / loses what we'd keep') is controlled without being cute. The risk is that it sets an aphoristic register the rest of the essay doesn't always maintain. Watch for that.",
-                author: "Editor",
-                view,
-            });
-
-            createSuggestion({
-                state: view.state,
-                dispatch: (tr) => view.dispatch(tr),
-                targetText:
-                    "Neuroscientists would tell you this is adaptive. Negative events are encoded more strongly because they carry survival information.",
-                replacements: [
-                    {
-                        text: "Neuroscientists would say this is adaptive: negative events are encoded more strongly because they carry survival information.",
-                        rationale:
-                            "'Would say' is cleaner than 'would tell you' — loses the slightly adversarial 'you', which the essay doesn't need",
-                    },
-                    {
-                        text: "There's a name for this: negativity bias. Negative events are encoded more strongly than positive ones because, evolutionarily speaking, they carry more useful information.",
-                        rationale:
-                            "Naming the mechanism ('negativity bias') is useful if you want to use the term later or want to show you've done the reading without belaboring it",
-                    },
-                ],
-                comment:
-                    "'Would tell you' is doing something slightly uncomfortable — positioning the essayist as separate from the scientists, which is a fine stance but feels accidental here rather than deliberate. Is the distance from the scientific account part of the essay's argument? If so, lean into it. If not, lose the distancing hedge.",
-                author: "Editor",
-            });
-
-            createRevision({
-                targetText:
-                    "I have been thinking about this because of my grandmother, who is now eighty-three and who has begun, in the last two years, to forget in the ordinary way that old age sometimes brings.",
-                versions: [
-                    {
-                        label: "Direct",
-                        text: "My grandmother is eighty-three. In the last two years, she has begun to forget.",
-                    },
-                    {
-                        label: "Trim only",
-                        text: "I have been thinking about this because of my grandmother, who is eighty-three and has begun, in the last two years, to forget.",
-                    },
-                ],
-                threadMessage:
-                    "This sentence has two problems. First, 'in the ordinary way that old age sometimes brings' — this is redundant. She's eighty-three; the reader understands the forgetting is age-related. The qualifier also softens something that shouldn't be soft. Second, the sentence is doing a lot of structural work (transitioning from abstract to personal, introducing the grandmother, establishing the timeline) and it's creaking under the weight. The direct version breaks it into two sentences and loses nothing. The trimmed version keeps your voice but removes the redundancy. I'd try the direct version: it earns the intimacy of the rest of the grandmother material.",
-                author: "Editor",
-                view,
-            });
-
-            createSuggestion({
-                state: view.state,
-                dispatch: (tr) => view.dispatch(tr),
-                targetText:
-                    "I find myself wondering whether this is the truer form of memory: the residue of feeling, stripped of the brittle scaffolding of fact.",
-                replacements: [
-                    {
-                        text: "Perhaps this is the truer form of memory: feeling without scaffolding, residue without record.",
-                        rationale:
-                            "Parallel structure ('without scaffolding / without record') reinforces the stripping-away; 'brittle' is slightly overdone",
-                    },
-                    {
-                        text: "Maybe feeling is the truer memory — the residue left when the facts have gone.",
-                        rationale:
-                            "Plainer, warmer, and 'the residue left when the facts have gone' commits to the claim without hedging",
-                    },
-                ],
-                comment:
-                    "'Brittle scaffolding of fact' is the essay's best image. The problem is the container: 'I find myself wondering whether' is the most non-committal framing possible. You've spent the whole essay building to this claim — commit to it. The essay works better as an argument than as a meditation, and this sentence is where the distinction matters most.",
-                author: "Editor",
-            });
-        },
-    },
-
-    {
         id: "demo-short-story",
         label: "Short story — line edit",
         description:
             "A close line edit on a complete short story: rhythm, word-level precision, and voice consistency",
         category: "demo",
+        group: "Editorial sessions",
         doc: DOC_SHORT_STORY,
         setup(view) {
             createComment({
@@ -1174,6 +1482,7 @@ export const scenarios: Scenario[] = [
         description:
             "A comment with a multi-message back-and-forth thread — click the yellow highlight to expand",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             const state = view.state;
@@ -1191,6 +1500,7 @@ export const scenarios: Scenario[] = [
                                 selection,
                                 "comment",
                             ),
+                            status: "active",
                             thread: [
                                 {
                                     message:
@@ -1231,6 +1541,7 @@ export const scenarios: Scenario[] = [
         description:
             "A revision annotation ready to be activated — click the purple highlight in the editor",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             createRevision({
@@ -1266,6 +1577,7 @@ export const scenarios: Scenario[] = [
         label: "Video: rain revision active",
         description: "Rain micro-story with matching active and compressed alternatives",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: VIDEO_RAIN_DOC,
         setup(view) {
             createRevision({
@@ -1296,6 +1608,7 @@ export const scenarios: Scenario[] = [
         description:
             "Outer revision open in modal with an inner revision ready to expand — used by the screenshot script",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createRevision({
@@ -1328,6 +1641,7 @@ export const scenarios: Scenario[] = [
         description:
             "Revision with long version text ready for a sub-revision inside the inline nested editor — used by the screenshot script",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             createRevision({
@@ -1355,6 +1669,7 @@ export const scenarios: Scenario[] = [
         label: "Video: rain inline nested revision",
         description: "Rain micro-story with an expanded version ready for a nested revision",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: VIDEO_RAIN_DOC,
         setup(view) {
             createRevision({
@@ -1382,6 +1697,7 @@ export const scenarios: Scenario[] = [
         label: "Screenshot: annotations without AI (Dickens)",
         description: "Comment and revision only — no AI suggestion — used by the screenshot script",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             createComment({
@@ -1417,6 +1733,7 @@ export const scenarios: Scenario[] = [
         description:
             "Mixed annotations on the A Tale of Two Cities passage — used by the screenshot script",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             createComment({
@@ -1468,6 +1785,7 @@ export const scenarios: Scenario[] = [
         label: "Screenshot: dense annotations (Dickens)",
         description: "Several comments across the Dickens passage for the full-ui screenshot",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             const passages = [
@@ -1516,6 +1834,7 @@ export const scenarios: Scenario[] = [
         description:
             "AutoAI collaborator bubble with popover open — shows the feature in its active state",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             // Add a few annotations to show AutoAI already did some work
@@ -1553,6 +1872,7 @@ export const scenarios: Scenario[] = [
         description:
             "Hero screenshot — AI chat sidebar + comment, revision, and comment-with-thread on a short original passage",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: `The café had emptied out by the time she noticed the letter. It was propped against the salt shaker, her name written in handwriting she didn't recognise — careful, unhurried, like someone who had practised saying something difficult.
 
 She had been walking for hours when the rain began — gently at first, then all at once, the way grief arrives without warning or ceremony. By the time she reached the corner of Elm and Fifth, her coat was soaked through and she had stopped noticing. The city kept moving around her the way it always did, indifferent and bright.
@@ -1598,6 +1918,7 @@ Outside, a man walked his dog in the rain. The dog did not seem to mind.`,
         description:
             "Annotations authored by different reader personas — used by the screenshot script to show emoji-in-colored-circle avatars",
         category: "debug",
+        group: "Screenshot & video fixtures",
         doc: DICKENS_DOC,
         setup(view) {
             createComment({
@@ -1654,6 +1975,7 @@ Outside, a man walked his dog in the rain. The dog did not seem to mind.`,
             "A privacy-nudge toast should appear with an incident code and an 'Open Settings' button. " +
             "TODO(#191): restore shareDocumentAnalytics branch when document sharing is re-enabled.",
         category: "debug",
+        group: "Privacy & safety",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {
             // The AI returned "the way a pianist touches keys..." but the real

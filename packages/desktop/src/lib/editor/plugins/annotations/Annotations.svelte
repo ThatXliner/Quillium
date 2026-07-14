@@ -63,6 +63,7 @@ import {
     AnnotationColumnDomController,
     type ColumnSide,
     MIN_ANNOTATION_COLUMN_WIDTH,
+    annotationTopClamp,
     balanceColumns,
     idSignature,
     sidesEqual,
@@ -361,7 +362,8 @@ $effect(() => {
 });
 const pendingComment = $derived(
     sortedAnnotations.find(
-        (annotation) => isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0,
+        (annotation) =>
+            isAnnotationOfType(annotation, "comment") && annotation.status === "pending",
     ),
 );
 
@@ -614,7 +616,7 @@ function layoutColumn(col: Column) {
  * the viewport (the right edge for the right column, the left edge for
  * the left column).
  */
-function getColumnGeometry(col: Column): { left: number; width: number } {
+function getColumnGeometry(col: Column): { left: number; width: number; topClamp: number } {
     const desiredWidth = getPanelWidth();
     let leftPx = col.leftPx;
     let availableWidth: number;
@@ -629,7 +631,14 @@ function getColumnGeometry(col: Column): { left: number; width: number } {
             Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
         );
     }
-    return { left: leftPx, width: availableWidth };
+    const occluders = [...document.querySelectorAll<HTMLElement>("[data-annotation-occluder]")]
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0);
+    return {
+        left: leftPx,
+        width: availableWidth,
+        topClamp: annotationTopClamp({ left: leftPx, right: leftPx + availableWidth }, occluders),
+    };
 }
 
 // Drag gesture (pointer capture, window listeners, body style overrides,
@@ -754,6 +763,46 @@ $effect(() => {
     };
 });
 
+// Persistent chrome can appear or resize independently of editor state (for
+// example auth reconnect controls or an expanded draft tree). Observe only
+// explicitly marked occluders and schedule the same pure layout pass.
+$effect(() => {
+    if (!isFloating || typeof ResizeObserver === "undefined") return;
+
+    const resizeObserver = new ResizeObserver(annotationColumnDom.schedule);
+    let observed = new Set<Element>();
+    const refresh = () => {
+        const next = new Set(document.querySelectorAll("[data-annotation-occluder]"));
+        if (next.size === observed.size && [...next].every((element) => observed.has(element))) {
+            return;
+        }
+        resizeObserver.disconnect();
+        for (const element of next) resizeObserver.observe(element);
+        observed = next;
+        annotationColumnDom.schedule();
+    };
+    const containsOccluder = (node: Node) =>
+        node instanceof Element &&
+        (node.matches("[data-annotation-occluder]") ||
+            node.querySelector("[data-annotation-occluder]"));
+    const mutationObserver = new MutationObserver((mutations) => {
+        if (
+            mutations.some((mutation) =>
+                [...mutation.addedNodes, ...mutation.removedNodes].some(containsOccluder),
+            )
+        ) {
+            refresh();
+        }
+    });
+
+    refresh();
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
+    return () => {
+        resizeObserver.disconnect();
+        mutationObserver.disconnect();
+    };
+});
+
 onDestroy(() => annotationColumnDom.destroy());
 </script>
 
@@ -762,7 +811,7 @@ onDestroy(() => annotationColumnDom.destroy());
         {@const leftPx = getAnnotationLeft()}
         {@const hintsAtTop = hasComments || hasRevisions}
         <div
-            class="fixed z-40 flex flex-col gap-2"
+            class="fixed z-20 flex flex-col gap-2"
             style="{hintsAtTop ? 'left: 56px; top: 80px;' : `left: ${leftPx}px; top: ${selectionY}px; transform: translateY(-50%);`}"
         >
             {#if !hasComments}
@@ -953,7 +1002,7 @@ onDestroy(() => annotationColumnDom.destroy());
         overflow-x: visible;
         overscroll-behavior: contain;
         pointer-events: none;
-        z-index: 50;
+        z-index: 20;
         /* hide scrollbar visually but keep it functional */
         scrollbar-width: none;
     }

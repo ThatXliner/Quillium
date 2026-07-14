@@ -177,6 +177,7 @@ describe("listeners integration", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: { ranges: [{ anchor: 0, head: 2 }], main: 0 },
                     thread: [],

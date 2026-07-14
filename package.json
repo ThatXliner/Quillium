@@ -48,9 +48,15 @@
     "biome": "bun run format && bun run lint",
     "check:all": "bun run desktop:check && bun run landing:check && bun run relay:typecheck && bun run share:check",
     "build:all": "bun run share:check && bun run desktop:build && bun run landing:build && bun run relay:build",
-    "test:all": "bun run desktop:test:run && bun run relay:test:run && bun run share:test:run && bun run e2e:test:run"
+    "test:all": "bun run desktop:test:run && bun run relay:test:run && bun run share:test:run && bun run e2e:test:run",
+    "deps:lint": "sherif"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.4"
+    "@biomejs/biome": "1.9.4",
+    "sherif": "1.13.0"
+  },
+  "overrides": {
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6"
   }
 }

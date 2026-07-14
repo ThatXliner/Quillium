@@ -15,6 +15,7 @@ function makeComment(from: number, to: number): GenericAnnotation {
     return {
         id: 0,
         _type: "comment",
+        status: "active" as const,
         selection: EditorSelection.create([EditorSelection.range(from, to)]),
         thread: [],
     };
@@ -25,6 +26,7 @@ function makeRevision(from: number, to: number): GenericAnnotation {
     return {
         id: 0,
         _type: "revision",
+        status: "active" as const,
         selection: EditorSelection.create([EditorSelection.range(from, to)]),
         thread: [],
         activeVersionId: v0.id,

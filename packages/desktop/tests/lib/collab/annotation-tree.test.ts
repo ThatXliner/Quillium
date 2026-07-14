@@ -62,6 +62,7 @@ describe("annotation tree", () => {
         // Comment
         const comment: GenericAnnotation = {
             _type: "comment",
+            status: "active" as const,
             id: 0,
             selection: EditorSelection.single(0, 5),
             thread: [{ message: "Hi", author: "A", time: 1 }],
@@ -74,6 +75,7 @@ describe("annotation tree", () => {
         // Suggestion
         const suggestion: GenericAnnotation = {
             _type: "suggestion",
+            status: "active" as const,
             id: 1,
             selection: EditorSelection.single(0, 5),
             thread: [],
@@ -93,6 +95,7 @@ describe("annotation tree", () => {
         ];
         const revision: GenericAnnotation = {
             _type: "revision",
+            status: "active" as const,
             id: 2,
             selection: EditorSelection.single(0, 5),
             thread: [],
@@ -150,6 +153,7 @@ describe("annotation tree", () => {
             const propagationVersion = makeVersion({ doc: "Hello", label: "original" });
             const revision: GenericAnnotation = {
                 _type: "revision",
+                status: "active" as const,
                 id: 0,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
@@ -188,6 +192,7 @@ describe("annotation tree", () => {
         const host = makeHost("Hello world");
         const ann: GenericAnnotation = {
             _type: "comment",
+            status: "active" as const,
             id: 0,
             selection: EditorSelection.single(0, 5),
             thread: [
@@ -252,6 +257,7 @@ describe("annotation tree", () => {
         const nullSelVersion = makeVersion({ doc: "Hello" });
         const revision: GenericAnnotation = {
             _type: "revision",
+            status: "active" as const,
             id: 0,
             selection: EditorSelection.single(0, 5),
             thread: [],
@@ -307,6 +313,7 @@ describe("annotation tree", () => {
             // Peer A creates a comment annotation
             const comment: GenericAnnotation = {
                 _type: "comment",
+                status: "active" as const,
                 id: 0,
                 selection: EditorSelection.single(0, 5),
                 thread: [{ message: "Hi", author: "A", time: 1 }],

@@ -70,8 +70,7 @@ export function positionIntersects(position: number, selection: SelectionRange) 
 // Resolves the "active" annotation — the one the cursor is
 // currently inside. When multiple annotations overlap, the
 // narrowest range wins (sorted by ascending span width).
-// Pending annotations (empty thread for comments, empty
-// versions for revisions) are returned immediately since they
+// Pending annotations are returned immediately since they
 // need user attention regardless of cursor position.
 // Optionally filters by annotation type.
 export function getActiveAnnotation<T extends AnnotationType>(
@@ -93,16 +92,7 @@ export function getActiveAnnotation<T extends AnnotationType>(
     }[] = [];
     for (const annotation of Object.values(annotations)) {
         if (type !== undefined && !isAnnotationOfType(annotation, type)) continue;
-        if (type === undefined) {
-            // Active-state checks below use thread/version length as a proxy for
-            // "pending" state; a proper FSM would make this more explicit (see #302).
-            if (isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0)
-                return annotation;
-            if (isAnnotationOfType(annotation, "revision") && annotation.versions.length === 0) {
-                // I doubt this will ever happen though
-                return annotation;
-            }
-        }
+        if (type === undefined && annotation.status === "pending") return annotation;
         for (const range of annotation.selection.ranges)
             if (
                 positionIntersects(cursorPos, range) &&
@@ -149,11 +139,12 @@ export function canCreateSuggestion(annotations: Annotations, selection: EditorS
     return !selectionOverlapsType(annotations, selection, "suggestion");
 }
 // Returns true if a new comment can be created. Enforces
-// that at most one "pending" comment (thread.length === 0)
+// that at most one pending comment
 // exists at a time, preventing orphaned comment highlights.
 export function canCreateNewComment(annotations: Annotations) {
     return !Object.values(annotations).some(
-        (annotation) => isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0,
+        (annotation) =>
+            isAnnotationOfType(annotation, "comment") && annotation.status === "pending",
     );
 }
 // Maps an annotation's selection through a document change.

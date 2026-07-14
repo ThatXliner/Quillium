@@ -18,6 +18,21 @@
     background-color: #d8b4fe;
     text-decoration: none;
 }
+.cm-revision-empty-marker {
+    display: inline-block;
+    box-sizing: border-box;
+    width: 0.45rem;
+    height: 1.05em;
+    margin: 0 0.1rem;
+    vertical-align: -0.15em;
+    background-color: #a855f7;
+    border-radius: 2px;
+    cursor: pointer;
+}
+.cm-revision-empty-marker-active {
+    background-color: #7e22ce;
+    box-shadow: 0 0 0 2px #d8b4fe;
+}
 .cm-suggestion {
     text-decoration: underline;
     text-decoration-color: #22c55e;

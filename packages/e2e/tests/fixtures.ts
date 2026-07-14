@@ -122,6 +122,7 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
     const revA: GenericAnnotation = {
         id: 1,
         _type: "revision",
+        status: "active" as const,
         thread: [{ author: "Editor", message: "Opening claim.", time: 3 }],
         selection: EditorSelection.single(4, 9),
         activeVersionId: vAQuick.id,
@@ -133,6 +134,7 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
     const revB: GenericAnnotation = {
         id: 2,
         _type: "revision",
+        status: "active" as const,
         thread: [],
         selection: EditorSelection.single(16, 19),
         activeVersionId: vBFox.id,
@@ -142,6 +144,7 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
     const comment: GenericAnnotation = {
         id: 3,
         _type: "comment",
+        status: "active" as const,
         thread: [{ author: "Reviewer", message: "Strong opener.", time: 1 }],
         selection: EditorSelection.single(0, 3),
     };
@@ -149,6 +152,7 @@ export function buildFixtureState(): { state: EditorState; ids: FixtureIds } {
     const suggestion: GenericAnnotation = {
         id: 4,
         _type: "suggestion",
+        status: "active" as const,
         author: "AI",
         thread: [{ author: "AI", message: "Consider a more vivid color.", time: 2 }],
         selection: EditorSelection.single(10, 15),
@@ -205,6 +209,7 @@ export function buildVisualFixtureState(): VisualFixture {
         effects: addAnnotation.of({
             id: VISUAL_FIXTURE_IDS.deepestComment,
             _type: "comment",
+            status: "active" as const,
             thread: [
                 {
                     author: "Mara Chen",
@@ -235,6 +240,7 @@ export function buildVisualFixtureState(): VisualFixture {
         effects: addAnnotation.of({
             id: VISUAL_FIXTURE_IDS.deepRevision,
             _type: "revision",
+            status: "active" as const,
             thread: [],
             selection: rangeOf(deepContainer, deepestText),
             activeVersionId: deepOriginal.id,
@@ -260,6 +266,7 @@ export function buildVisualFixtureState(): VisualFixture {
         effects: addAnnotation.of({
             id: VISUAL_FIXTURE_IDS.nestedRevision,
             _type: "revision",
+            status: "active" as const,
             thread: [
                 {
                     author: "Noah Bell",
@@ -313,6 +320,7 @@ export function buildVisualFixtureState(): VisualFixture {
         {
             id: VISUAL_FIXTURE_IDS.startComment,
             _type: "comment",
+            status: "active" as const,
             selection: rangeOf(doc, startTarget),
             thread: [
                 {
@@ -335,6 +343,7 @@ export function buildVisualFixtureState(): VisualFixture {
         {
             id: VISUAL_FIXTURE_IDS.nearbyComment,
             _type: "comment",
+            status: "active" as const,
             selection: rangeOf(doc, "Salt worried the windows"),
             thread: [
                 {
@@ -347,6 +356,7 @@ export function buildVisualFixtureState(): VisualFixture {
         {
             id: VISUAL_FIXTURE_IDS.rootRevision,
             _type: "revision",
+            status: "active" as const,
             selection: rangeOf(doc, middleTarget),
             activeVersionId: rootOriginal.id,
             versions: [rootOriginal, rootAlternate],
@@ -367,6 +377,7 @@ export function buildVisualFixtureState(): VisualFixture {
         {
             id: VISUAL_FIXTURE_IDS.suggestion,
             _type: "suggestion",
+            status: "active" as const,
             author: "AI",
             selection: rangeOf(doc, suggestionTarget),
             replacements: [
@@ -405,6 +416,7 @@ export function buildVisualFixtureState(): VisualFixture {
         {
             id: VISUAL_FIXTURE_IDS.endRevision,
             _type: "revision",
+            status: "active" as const,
             selection: rangeOf(doc, endTarget),
             activeVersionId: endOriginal.id,
             versions: [endOriginal, endAlternate],
@@ -413,6 +425,7 @@ export function buildVisualFixtureState(): VisualFixture {
         {
             id: VISUAL_FIXTURE_IDS.endComment,
             _type: "comment",
+            status: "active" as const,
             selection: rangeOf(doc, "a bell counted a distance no map could show"),
             thread: [
                 {
@@ -469,6 +482,7 @@ export function buildNestedLinkedFixtureState(): EditorState {
     const outerRevision: GenericAnnotation = {
         id: 10,
         _type: "revision",
+        status: "active" as const,
         thread: [],
         selection: EditorSelection.single(0, nestedState.doc.length),
         activeVersionId: outerVersion.id,

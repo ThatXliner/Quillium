@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
     MIN_SPACING,
     TOP_CLAMP,
+    annotationTopClamp,
     balanceColumns,
     canFloatAnnotationColumn,
     columnInnerHeight,
@@ -67,6 +68,20 @@ describe("layoutColumnPositions", () => {
         expect((layout.adjustedY.active ?? 0) - layout.overhead).toBe(activeY);
     });
 
+    it("keeps active and inactive cards below a host-provided top boundary", () => {
+        const cards = [
+            { id: "earlier", viewportY: 20, height: 80 },
+            { id: "active", viewportY: 40, height: 80 },
+        ];
+
+        const inactiveLayout = layoutColumnPositions(cards, null, 132);
+        const activeLayout = layoutColumnPositions(cards, "active", 132);
+
+        expect(inactiveLayout.adjustedY.earlier).toBe(132);
+        expect(activeLayout.adjustedY.earlier).toBe(132);
+        expect(activeLayout.adjustedY.active).toBeGreaterThanOrEqual(132 + 80 + MIN_SPACING);
+    });
+
     it("never overlaps cards and always contains them for arbitrary columns", () => {
         fc.assert(
             fc.property(
@@ -106,6 +121,26 @@ describe("layoutColumnPositions", () => {
             ),
             { numRuns: 500 },
         );
+    });
+});
+
+describe("annotationTopClamp", () => {
+    it("clears only chrome that overlaps the annotation column", () => {
+        const column = { left: 900, right: 1_180 };
+        const clamp = annotationTopClamp(column, [
+            { left: 1_000, right: 1_220, bottom: 96 },
+            { left: 100, right: 300, bottom: 420 },
+        ]);
+
+        expect(clamp).toBe(96 + MIN_SPACING);
+    });
+
+    it("keeps the default clamp when chrome is outside the column", () => {
+        expect(
+            annotationTopClamp({ left: 900, right: 1_180 }, [
+                { left: 100, right: 300, bottom: 420 },
+            ]),
+        ).toBe(TOP_CLAMP);
     });
 });
 
