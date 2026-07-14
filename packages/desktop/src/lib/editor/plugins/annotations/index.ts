@@ -447,6 +447,33 @@ class PersonaDotWidget extends WidgetType {
     }
 }
 
+class EmptyRevisionMarkerWidget extends WidgetType {
+    constructor(
+        readonly revisionId: number,
+        readonly active: boolean,
+    ) {
+        super();
+    }
+
+    eq(other: EmptyRevisionMarkerWidget) {
+        return this.revisionId === other.revisionId && this.active === other.active;
+    }
+
+    toDOM() {
+        const marker = document.createElement("span");
+        marker.className = this.active
+            ? "cm-revision-empty-marker cm-revision-empty-marker-active"
+            : "cm-revision-empty-marker";
+        marker.dataset.revisionId = String(this.revisionId);
+        marker.setAttribute("aria-label", "Empty revision");
+        return marker;
+    }
+
+    ignoreEvent() {
+        return false;
+    }
+}
+
 // -------------------------------------------------------
 // annotationDecorations
 //
@@ -458,14 +485,15 @@ const annotationDecorations = EditorView.decorations.compute(
     ["doc", "selection", annotationField],
     (state) =>
         RangeSet.join([
-            getAnnotationDecorations(state, "comment", "cm-comment"),
-            getAnnotationDecorations(state, "revision", "cm-revision"),
-            getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
+            _getAnnotationDecorations(state, "comment", "cm-comment"),
+            _getAnnotationDecorations(state, "revision", "cm-revision"),
+            _getEmptyRevisionMarkers(state),
+            _getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
             getPersonaDots(state),
         ]),
 );
 
-function getAnnotationDecorations(
+export function _getAnnotationDecorations(
     state: EditorState,
     type: AnnotationType,
     classPrefix: string,
@@ -478,11 +506,17 @@ function getAnnotationDecorations(
             isAnnotationOfType(annotation, type),
         ),
         // Currently only .main is used; multi-range support tracked in #38.
-        (annotation) => annotation.selection.main,
+        (annotation) => {
+            const range = annotation.selection.main;
+            if (type === "revision" && range.from === range.to) return [];
+            return range;
+        },
     );
     // Only .main is used for active ranges; multi-range support tracked in #38.
     const activeRanges: readonly SelectionRange[] =
-        getActiveAnnotation(state, type)?.selection?.ranges ?? [];
+        getActiveAnnotation(state, type)?.selection?.ranges.filter(
+            (range) => type !== "revision" || range.from !== range.to,
+        ) ?? [];
     // If you don't add annotations in order, the plugin will crash
     annotationRanges.sort((a, b) => a.from - b.from);
 
@@ -507,6 +541,34 @@ function getAnnotationDecorations(
                 class: active ? `${classPrefix}-active` : classPrefix,
                 inclusive: true,
                 // inclusive: type === "revision",
+            }),
+        );
+    }
+    return builder.finish();
+}
+
+export function _getEmptyRevisionMarkers(state: EditorState): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>();
+    const activeRevisionId = getActiveAnnotation(state, "revision")?.id;
+    const collapsedRevisions = Object.values(state.field(annotationField))
+        .filter(
+            (annotation): annotation is Annotation<"revision"> =>
+                isAnnotationOfType(annotation, "revision") &&
+                annotation.selection.main.from === annotation.selection.main.to,
+        )
+        .sort((a, b) => a.selection.main.from - b.selection.main.from || a.id - b.id);
+
+    for (const revision of collapsedRevisions) {
+        const pos = revision.selection.main.from;
+        builder.add(
+            pos,
+            pos,
+            Decoration.widget({
+                widget: new EmptyRevisionMarkerWidget(
+                    revision.id,
+                    revision.id === activeRevisionId,
+                ),
+                side: 1,
             }),
         );
     }
@@ -988,6 +1050,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
     mousedown(event, view) {
         if (!_shouldHandleRevisionFocusMouseEvent(event)) return false;
         if (!appSettings.atomicRevisions) return false;
+        if (_handleEmptyRevisionMarkerMouseDown(event.target, view)) return false;
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (pos === null) return false;
         const annotations = view.state.field(annotationField);
@@ -1009,6 +1072,33 @@ const revisionClickHandler = EditorView.domEventHandlers({
         return false;
     },
 });
+
+export function _handleEmptyRevisionMarkerMouseDown(
+    target: EventTarget | null,
+    view: EditorView,
+): boolean {
+    const marker =
+        target instanceof Element ? target.closest<HTMLElement>(".cm-revision-empty-marker") : null;
+    if (!marker) return false;
+    const revisionId = Number(marker.dataset.revisionId);
+    const annotation = view.state.field(annotationField)[revisionId];
+    if (
+        !annotation ||
+        !isAnnotationOfType(annotation, "revision") ||
+        annotation.selection.main.from !== annotation.selection.main.to
+    )
+        return false;
+
+    const pos = annotation.selection.main.from;
+    view.dispatch({ selection: { anchor: pos }, scrollIntoView: false });
+    annotationEventBus.emit({
+        type: "revision-focus-request",
+        revisionId,
+        relativePos: 0,
+        sourceView: view,
+    });
+    return true;
+}
 
 export const annotations = () => [
     Prec.high(keymap.of(annotationKeymap)),
