@@ -401,6 +401,13 @@ describe("annotationSchema", () => {
             expect(map.getYjsId(cmId)).toBe("yjs-id-x");
         });
 
+        it("does not reuse a local CM ID for a remote annotation", () => {
+            const map = new AnnotationIdMap();
+            map.getOrCreateYjsId(0, "local-peer");
+
+            expect(map.getOrCreateCmId("remote-annotation")).toBe(1);
+        });
+
         it("can register an existing CM ID", () => {
             const map = new AnnotationIdMap();
             map.register("yjs-id", 100);

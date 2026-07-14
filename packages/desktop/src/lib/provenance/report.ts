@@ -68,7 +68,9 @@ export type ProvenanceReport = {
         typedChars: number;
         pastedChars: number;
         cutChars: number;
+        humanRevisionChars: number;
         aiRevisionChars: number;
+        mixedRevisionChars: number;
         formatChars: number;
         unknownChars: number;
         finalDocLength: number;
@@ -199,7 +201,9 @@ export function buildProvenanceReport(args: {
         typedChars: 0,
         pastedChars: 0,
         cutChars: 0,
+        humanRevisionChars: 0,
         aiRevisionChars: 0,
+        mixedRevisionChars: 0,
         formatChars: 0,
         unknownChars: 0,
         finalDocLength: args.finalDocLength,
@@ -229,6 +233,13 @@ export function buildProvenanceReport(args: {
                 break;
             case "ai-revision":
                 totals.aiRevisionChars += event.insertedChars;
+                aiRevisionEvents += 1;
+                break;
+            case "human-revision":
+                totals.humanRevisionChars += event.insertedChars;
+                break;
+            case "mixed-revision":
+                totals.mixedRevisionChars += event.insertedChars;
                 aiRevisionEvents += 1;
                 break;
             case "format":

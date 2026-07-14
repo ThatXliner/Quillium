@@ -27,6 +27,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+url = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 # Vector search (vec0 virtual table). Compiles its C source via `cc` and
@@ -56,6 +57,7 @@ textwrap = "0.16.2"
 # (issue #311), so we embed a Unicode system font instead. Already present as a
 # transitive dep (via printpdf → svg2pdf), so this adds no new crates.
 fontdb = "0.23"
+tauri-plugin-http = "2.5.9"
 
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
 # fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt

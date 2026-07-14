@@ -108,10 +108,14 @@ type SuggestionAnnotation = BaseAnnotation & {
 // versions[]. Links and the active-version pointer reference this id, never the
 // array index (which shifts on add/delete/reorder). The array stays ordered for
 // pill display and Ctrl-[ / Ctrl-] navigation; only identity moved to `id`.
+export type RevisionProvenance = "human" | "ai" | "mixed";
+
 export type VersionState = object & {
     id: string;
     doc: string;
     label?: string;
+    /** Explicit authorship of this version. Missing only on legacy persisted data. */
+    provenance?: RevisionProvenance;
 };
 
 export function versionText(version: VersionState): string {
@@ -171,7 +175,22 @@ export function activeVersion(rev: RevisionAnnotation): VersionState {
  */
 export function makeVersion(partial: Omit<VersionState, "id"> & { id?: string }): VersionState {
     const { id, ...rest } = partial;
-    return { id: id ?? newVersionId(), ...rest };
+    return { id: id ?? newVersionId(), provenance: "human", ...rest };
+}
+
+/** A human edit preserves human provenance and turns AI text into mixed text. */
+export function provenanceAfterHumanEdit(version: VersionState): RevisionProvenance {
+    return version.provenance === "ai" || version.provenance === "mixed" ? "mixed" : "human";
+}
+
+/** Collapse one or more applied version origins into one event-level origin. */
+export function combineRevisionProvenance(
+    values: Array<RevisionProvenance | undefined>,
+): RevisionProvenance | undefined {
+    const known = values.filter((value): value is RevisionProvenance => value !== undefined);
+    if (known.length === 0) return undefined;
+    if (known.includes("mixed") || new Set(known).size > 1) return "mixed";
+    return known[0];
 }
 
 /**
@@ -301,6 +320,7 @@ export const VersionStateSchema = z
         id: z.string().optional(),
         doc: z.string(),
         label: z.string().optional(),
+        provenance: z.enum(["human", "ai", "mixed"]).optional(),
     })
     .passthrough();
 const RawBaseSchema = z.object({

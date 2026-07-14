@@ -46,6 +46,7 @@ import {
     makeVersionFromSelection,
     removeAnnotation,
     revisionInternalEdit,
+    revisionProvenance,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
     updateRevisionVersionState,
@@ -488,6 +489,7 @@ function executePendingNestedCommand(
                     annotations: autoVersion
                         ? [
                               revisionInternalEdit.of(true),
+                              revisionProvenance.of("human"),
                               Transaction.addToHistory.of(true),
                               isolateHistory.of("full"),
                           ]

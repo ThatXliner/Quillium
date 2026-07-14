@@ -60,13 +60,15 @@ function build(events: EventRecord[], overrides: Partial<typeof baseArgs> = {}) 
 // ── Char buckets ──────────────────────────────────────────────────────────────
 
 describe("buildProvenanceReport — char buckets", () => {
-    it("splits typed vs pasted vs aiRevision chars across several events", () => {
+    it("splits human, AI, and mixed revision chars without conflating them", () => {
         const t0 = 1_000;
         const events = [
             makeEvent(1, t0, "type", "hello"), // 5 typed
             makeEvent(2, t0 + 100, "type", "world"), // 5 typed
             makeEvent(3, t0 + 200, "paste", "pasted-text"), // 11 pasted
             makeEvent(4, t0 + 300, "ai-revision", "from-ai"), // 7 ai-revision
+            makeEvent(5, t0 + 400, "human-revision", "mine"),
+            makeEvent(6, t0 + 500, "mixed-revision", "edited-ai"),
         ];
 
         const report = build(events);
@@ -74,8 +76,10 @@ describe("buildProvenanceReport — char buckets", () => {
         expect(report.totals.typedChars).toBe(10);
         expect(report.totals.pastedChars).toBe(11);
         expect(report.totals.aiRevisionChars).toBe(7);
+        expect(report.totals.humanRevisionChars).toBe(4);
+        expect(report.totals.mixedRevisionChars).toBe(9);
         expect(report.totals.unknownChars).toBe(0);
-        expect(report.aiAssist.aiRevisionEvents).toBe(1);
+        expect(report.aiAssist.aiRevisionEvents).toBe(2);
     });
 
     it("does not count deletes toward authored char totals", () => {

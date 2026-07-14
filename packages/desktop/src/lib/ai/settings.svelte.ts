@@ -35,6 +35,7 @@ const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 const PERSONA_MODES_KEY = "quillium-ai-persona-modes";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
+export const HAS_OPENAI_OAUTH_KEY = "quillium-has-openai-oauth";
 
 export type DocumentContext = {
     freeform: string;
@@ -203,8 +204,26 @@ export const aiSettings = $state({
     baseURL: loadBaseUrl(),
 });
 
+export const aiConnectionState = $state({
+    oauthConnected:
+        typeof localStorage !== "undefined" && !!localStorage.getItem(HAS_OPENAI_OAUTH_KEY),
+});
+
+export function setOpenAIOAuthConnected(connected: boolean) {
+    aiConnectionState.oauthConnected = connected;
+    if (typeof localStorage === "undefined") return;
+    if (connected) {
+        localStorage.setItem(HAS_OPENAI_OAUTH_KEY, "1");
+    } else {
+        localStorage.removeItem(HAS_OPENAI_OAUTH_KEY);
+    }
+}
+
 export function hasApiKey(): boolean {
-    if (aiSettings.provider === "openai-compatible") return true;
+    if (aiSettings.provider === "openai-oauth") {
+        return aiConnectionState.oauthConnected;
+    }
+    if (aiSettings.provider === "openai-compatible") return aiSettings.baseURL.trim().length > 0;
     if (aiSettings.apiKey.trim().length > 0) return true;
     // The key hasn't loaded from the keychain yet, but we know one
     // exists — avoid flashing "no API key" UI on startup.
@@ -215,6 +234,10 @@ export function hasApiKey(): boolean {
 }
 
 export async function loadApiKeyForProvider(provider: Provider) {
+    if (provider === "openai-oauth") {
+        aiSettings.apiKey = "";
+        return;
+    }
     try {
         const key = await invoke<string | null>("get_api_key", { provider });
         aiSettings.apiKey = key ?? "";
@@ -230,6 +253,10 @@ export async function loadApiKeyForProvider(provider: Provider) {
 let _apiKeyLoadPromise: Promise<void> | null = null;
 
 export function ensureApiKeyLoaded(): Promise<void> {
+    if (aiSettings.provider === "openai-oauth") {
+        aiSettings.apiKey = "";
+        return Promise.resolve();
+    }
     if (_apiKeyLoadPromise) return _apiKeyLoadPromise;
     if (typeof window === "undefined" || !localStorage.getItem(HAS_API_KEY_KEY)) {
         return Promise.resolve();

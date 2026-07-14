@@ -18,7 +18,11 @@ import {
 import type { DocumentMeta } from "$lib/db/types";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
+import {
+    appSettings,
+    getPersistUndoHistoryForNewDocuments,
+    persistSettings,
+} from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
@@ -67,12 +71,20 @@ import { loadUserDictionary } from "./harper/harperLinter";
 import "./plugins/annotations/default.css";
 import "./harper/harper.css";
 import type { EventRecord } from "$lib/db/types";
+import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 import type { ViewUpdate } from "@codemirror/view";
-import { GitBranchIcon, LockIcon } from "lucide-svelte";
+import { GitBranchIcon, LockIcon, Maximize2Icon, Minimize2Icon } from "lucide-svelte";
 import DocumentTabs from "./DocumentTabs.svelte";
 import DocumentTitleBar from "./DocumentTitleBar.svelte";
 import DraftDeleteModal from "./DraftDeleteModal.svelte";
 import DraftTreePanel from "./DraftTreePanel.svelte";
+import {
+    DRAFT_PANEL_DEFAULT_WIDTH,
+    DRAFT_PANEL_MIN_WIDTH,
+    clampDraftPanelWidth,
+    getDraftPanelMaxWidth,
+    getDraftPanelWidthFromKey,
+} from "./draftPanelResize";
 import type { ListenerOptions } from "./listeners";
 import { flushMetaDebounces, flushPersistQueue } from "./listeners";
 import { annotationField, versionGroupField } from "./plugins/annotations";
@@ -87,6 +99,66 @@ const windowLabel = getCurrentWebviewWindow().label;
 
 // ── Local UI state ──────────────────────────────────────────────
 let element = $state<HTMLDivElement>();
+let viewportWidth = $state(typeof window === "undefined" ? 1280 : window.innerWidth);
+let resizingDraftPanel = $state(false);
+let draftPanelDragStartWidth = 0;
+
+const effectiveDraftPanelWidth = $derived(
+    clampDraftPanelWidth(appSettings.draftPanelWidth, viewportWidth),
+);
+const draftPanelMaxWidth = $derived(getDraftPanelMaxWidth(viewportWidth));
+const draftPanelIsFullWidth = $derived(effectiveDraftPanelWidth === draftPanelMaxWidth);
+
+const draftPanelDragOptions: PointerDragOptions = {
+    cursor: "ew-resize",
+    onStart: () => {
+        resizingDraftPanel = true;
+        draftPanelDragStartWidth = effectiveDraftPanelWidth;
+    },
+    onMove: (dx) => {
+        appSettings.draftPanelWidth = clampDraftPanelWidth(
+            draftPanelDragStartWidth - dx,
+            viewportWidth,
+        );
+    },
+    onEnd: () => {
+        resizingDraftPanel = false;
+        persistSettings();
+    },
+};
+
+function handleDraftPanelResizeKeydown(event: KeyboardEvent): void {
+    const width = getDraftPanelWidthFromKey(
+        event.key,
+        effectiveDraftPanelWidth,
+        viewportWidth,
+        event.shiftKey,
+    );
+    if (width === null) return;
+    event.preventDefault();
+    appSettings.draftPanelWidth = width;
+    persistSettings();
+}
+
+function resetDraftPanelWidth(): void {
+    appSettings.draftPanelWidth = DRAFT_PANEL_DEFAULT_WIDTH;
+    persistSettings();
+}
+
+function toggleDraftPanelFullWidth(): void {
+    appSettings.draftPanelWidth = draftPanelIsFullWidth
+        ? DRAFT_PANEL_DEFAULT_WIDTH
+        : draftPanelMaxWidth;
+    persistSettings();
+}
+
+$effect(() => {
+    const updateViewportWidth = () => {
+        viewportWidth = window.innerWidth;
+    };
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+});
 
 // Title editing lives in DocumentTitleBar; this delegate keeps the
 // component's public API (used by +page.svelte for the Cmd+L shortcut).
@@ -528,9 +600,46 @@ onMount(() => {
         {#if drafts.tabDrafts.length > 0}
             <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
                 <div
-                    class="pointer-events-auto absolute w-48"
+                    class="pointer-events-auto absolute"
                     style="right: calc(50% + 408px + 1rem)"
+                    style:width="{effectiveDraftPanelWidth}px"
                 >
+                    <div class="draft-panel-resize-controls" class:is-resizing={resizingDraftPanel}>
+                        <div
+                            role="slider"
+                            tabindex="0"
+                            aria-label="Resize drafts panel"
+                            aria-orientation="horizontal"
+                            aria-valuemin={DRAFT_PANEL_MIN_WIDTH}
+                            aria-valuemax={draftPanelMaxWidth}
+                            aria-valuenow={effectiveDraftPanelWidth}
+                            aria-valuetext="{effectiveDraftPanelWidth} pixels"
+                            title="Drag to resize. Use arrow keys for precise control; double-click to reset."
+                            class="draft-panel-resize-handle"
+                            use:pointerDrag={draftPanelDragOptions}
+                            onkeydown={handleDraftPanelResizeKeydown}
+                            ondblclick={resetDraftPanelWidth}
+                        ></div>
+                        <button
+                            type="button"
+                            aria-label={draftPanelIsFullWidth
+                                ? "Restore default drafts panel width"
+                                : "Expand drafts panel to available width"}
+                            title={draftPanelIsFullWidth ? "Restore default width" : "Fill available width"}
+                            class="draft-panel-full-width-button"
+                            onpointerdown={(event) => event.stopPropagation()}
+                            onclick={(event) => {
+                                event.stopPropagation();
+                                toggleDraftPanelFullWidth();
+                            }}
+                        >
+                            {#if draftPanelIsFullWidth}
+                                <Minimize2Icon size={12} />
+                            {:else}
+                                <Maximize2Icon size={12} />
+                            {/if}
+                        </button>
+                    </div>
                     <DraftTreePanel
                         drafts={drafts.tabDrafts}
                         activeDraftId={$currentDraftId}
@@ -612,5 +721,80 @@ onMount(() => {
     }
     :global(.cm-content) {
         text-indent: 2em;
+    }
+    .draft-panel-resize-controls {
+        position: absolute;
+        inset-block: 0;
+        left: -10px;
+        z-index: 1;
+        width: 12px;
+        min-height: 3rem;
+    }
+    .draft-panel-resize-handle {
+        position: absolute;
+        inset: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: ew-resize;
+        touch-action: none;
+    }
+    .draft-panel-resize-handle::after {
+        position: absolute;
+        top: 50%;
+        left: 5px;
+        width: 2px;
+        height: 2.5rem;
+        border-radius: 9999px;
+        background: rgb(0 0 0 / 12%);
+        content: "";
+        transform: translateY(-50%);
+        transition:
+            width 120ms ease,
+            background-color 120ms ease;
+    }
+    .draft-panel-resize-controls:hover .draft-panel-resize-handle::after,
+    .draft-panel-resize-handle:focus-visible::after,
+    .draft-panel-resize-controls.is-resizing .draft-panel-resize-handle::after {
+        width: 3px;
+        background: rgb(217 119 6 / 65%);
+    }
+    .draft-panel-resize-handle:focus-visible {
+        outline: 2px solid rgb(245 158 11 / 55%);
+        outline-offset: 1px;
+        border-radius: 9999px;
+    }
+    .draft-panel-full-width-button {
+        position: absolute;
+        bottom: 8px;
+        left: -4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 1px solid rgb(0 0 0 / 10%);
+        border-radius: 9999px;
+        background: white;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+        color: rgb(0 0 0 / 35%);
+        cursor: pointer;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+            opacity 180ms ease,
+            color 180ms ease,
+            background 180ms ease;
+    }
+    .draft-panel-resize-controls:hover .draft-panel-full-width-button,
+    .draft-panel-resize-controls:focus-within .draft-panel-full-width-button {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .draft-panel-full-width-button:hover,
+    .draft-panel-full-width-button:focus-visible {
+        background: rgb(245 158 11 / 10%);
+        color: rgb(180 83 9 / 80%);
     }
 </style>

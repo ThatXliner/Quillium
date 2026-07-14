@@ -64,6 +64,36 @@ let sceneEl = $state<HTMLDivElement>();
 let chapterEls: HTMLDivElement[] = $state([]);
 let staticMode = $state(false); // reduced motion or WebGL failure
 
+const HEADLINE_PREFIX = "Prose for ";
+const HEADLINE_EMPHASIS = "Pros";
+const HEADLINE_TEXT = `${HEADLINE_PREFIX}${HEADLINE_EMPHASIS}.`;
+const TYPE_INTERVAL_MS = 85;
+let typedHeadlineLength = $state(0);
+let showTypingCursor = $state(true);
+
+function startHeadlineTyping(): () => void {
+    let typingTimer: ReturnType<typeof setTimeout> | undefined;
+    let cursorTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const typeNextCharacter = () => {
+        typedHeadlineLength += 1;
+        if (typedHeadlineLength < HEADLINE_TEXT.length) {
+            typingTimer = setTimeout(typeNextCharacter, TYPE_INTERVAL_MS);
+        } else {
+            cursorTimer = setTimeout(() => {
+                showTypingCursor = false;
+            }, 700);
+        }
+    };
+
+    typingTimer = setTimeout(typeNextCharacter, 250);
+
+    return () => {
+        if (typingTimer) clearTimeout(typingTimer);
+        if (cursorTimer) clearTimeout(cursorTimer);
+    };
+}
+
 // Smoke trails (curl-noise ribbons behind the planes) are ON for everyone.
 // This was once the `hero-3d-smoke` A/B (smoke vs clean flight); that test is
 // over and we just want the smoke — it looks good. `?smoke=off` still disables
@@ -147,6 +177,7 @@ onMount(() => {
 
     const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) staticMode = true;
+    const stopHeadlineTyping = reduceMotion ? () => {} : startHeadlineTyping();
 
     // Read the OS theme for the WebGL scene's colours; the DOM flips on its own
     // via tokens. Keep the matchMedia to recolour the live scene on theme change.
@@ -194,6 +225,7 @@ onMount(() => {
         destroyed = true;
         navIo.disconnect();
         darkMq.removeEventListener("change", onThemeChange);
+        stopHeadlineTyping();
         cleanupScene?.();
     };
 });
@@ -761,7 +793,20 @@ function makeMoteTexture(THREE: ThreeNS) {
 		{:else}
 			<div bind:this={chapterEls[0]} class="chapter chapter-1">
 				<p class="eyebrow">The Non-Linear Writing App</p>
-				<h1 class="headline">Prose for <span class="italic">Pros</span>.</h1>
+				<h1 class="headline" aria-label={HEADLINE_TEXT}>
+					<span aria-hidden="true">
+						{HEADLINE_PREFIX.slice(0, typedHeadlineLength)}{#if typedHeadlineLength > HEADLINE_PREFIX.length}<span
+								class="italic"
+								>{HEADLINE_EMPHASIS.slice(
+									0,
+									typedHeadlineLength - HEADLINE_PREFIX.length,
+								)}</span
+							>{/if}{#if typedHeadlineLength >= HEADLINE_TEXT.length}.{/if}{#if showTypingCursor}<span
+								class="typing-cursor"
+								>|</span
+							>{/if}
+					</span>
+				</h1>
 				<p class="subhead">Every great sentence takes flight more than one way.</p>
 				<div class="cta-row">
 					<a
@@ -1064,6 +1109,15 @@ function makeMoteTexture(THREE: ThreeNS) {
 	.headline .italic {
 		font-style: italic;
 	}
+	.typing-cursor {
+		font-weight: 300;
+		animation: typing-cursor-blink 0.65s step-end infinite;
+	}
+	@keyframes typing-cursor-blink {
+		50% {
+			opacity: 0;
+		}
+	}
 	.chapter-heading {
 		margin: 0 0 0.9rem;
 		font-family: 'Newsreader', Georgia, serif;
@@ -1099,6 +1153,9 @@ function makeMoteTexture(THREE: ThreeNS) {
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.scroll-hint {
+			animation: none;
+		}
+		.typing-cursor {
 			animation: none;
 		}
 	}

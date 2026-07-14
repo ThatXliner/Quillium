@@ -3,15 +3,36 @@ import {
     type GenericAnnotation,
     type RawAnnotation,
     clone,
+    combineRevisionProvenance,
     createNewAnnotation,
     getLastId,
     getNewId,
     isAnnotationOfType,
     normalizeAnnotation,
+    makeVersion,
+    provenanceAfterHumanEdit,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { EditorSelection } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
+
+describe("revision provenance", () => {
+    it("defaults newly created versions to explicit human provenance", () => {
+        expect(makeVersion({ doc: "draft" }).provenance).toBe("human");
+    });
+
+    it("marks a human edit to AI text as mixed without changing human text", () => {
+        expect(provenanceAfterHumanEdit(makeVersion({ doc: "AI", provenance: "ai" }))).toBe(
+            "mixed",
+        );
+        expect(provenanceAfterHumanEdit(makeVersion({ doc: "Mine" }))).toBe("human");
+    });
+
+    it("combines linked revision switches conservatively", () => {
+        expect(combineRevisionProvenance(["human", "ai"])).toBe("mixed");
+        expect(combineRevisionProvenance([undefined])).toBeUndefined();
+    });
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@ import {
     READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     normalizeReadonlyShareAutoUpdateDebounceMs,
 } from "$lib/collab/readonlyShareAutoUpdate";
+import { DRAFT_PANEL_DEFAULT_WIDTH, DRAFT_PANEL_MIN_WIDTH } from "$lib/editor/draftPanelResize";
 
 const STORAGE_KEY = "quillium-app-settings";
 
@@ -76,6 +77,7 @@ export type AppSettings = {
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
     annotationPanelWidth: number;
+    draftPanelWidth: number;
     readonlyShareAutoUpdate: boolean;
     readonlyShareAutoUpdateDebounceMs: number;
     /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
@@ -116,6 +118,7 @@ const DEFAULTS: AppSettings = {
     grammarCheckEnabled: true,
     grammarDialect: "american",
     annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH,
+    draftPanelWidth: DRAFT_PANEL_DEFAULT_WIDTH,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     persistUndoHistoryForNewDocuments: false,
@@ -145,6 +148,10 @@ function loadSettings(): AppSettings {
         );
         merged.persistUndoHistoryForNewDocuments =
             merged.persistUndoHistoryForNewDocuments === true;
+        merged.draftPanelWidth =
+            typeof merged.draftPanelWidth === "number" && Number.isFinite(merged.draftPanelWidth)
+                ? Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth))
+                : DRAFT_PANEL_DEFAULT_WIDTH;
         return merged;
     } catch {
         return { ...DEFAULTS };

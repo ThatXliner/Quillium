@@ -47,15 +47,22 @@ describe("classifyOrigin — marker precedence", () => {
     ];
 
     for (const userEvent of userEvents) {
-        it(`revision marker wins over ${JSON.stringify(userEvent)} -> "ai-revision"`, () => {
-            expect(
-                classifyOrigin({
-                    userEvent,
-                    hasRevisionInternalEdit: true,
-                    hasNestedEditorEdit: false,
-                }),
-            ).toBe("ai-revision");
-        });
+        for (const [revisionProvenance, expected] of [
+            ["human", "human-revision"],
+            ["ai", "ai-revision"],
+            ["mixed", "mixed-revision"],
+        ] as const) {
+            it(`explicit ${revisionProvenance} revision wins over ${JSON.stringify(userEvent)}`, () => {
+                expect(
+                    classifyOrigin({
+                        userEvent,
+                        hasRevisionInternalEdit: true,
+                        hasNestedEditorEdit: false,
+                        revisionProvenance,
+                    }),
+                ).toBe(expected);
+            });
+        }
 
         it(`nested marker wins over ${JSON.stringify(userEvent)} -> "nested-edit"`, () => {
             expect(
@@ -66,15 +73,37 @@ describe("classifyOrigin — marker precedence", () => {
                 }),
             ).toBe("nested-edit");
         });
+
+        it("nested AI text edited by a human is explicitly mixed", () => {
+            expect(
+                classifyOrigin({
+                    userEvent,
+                    hasRevisionInternalEdit: false,
+                    hasNestedEditorEdit: true,
+                    revisionProvenance: "mixed",
+                }),
+            ).toBe("mixed-revision");
+        });
     }
 
-    it("revision wins over nested when both markers are true", () => {
+    it("does not infer AI from a revision marker without explicit provenance", () => {
+        expect(
+            classifyOrigin({
+                userEvent: undefined,
+                hasRevisionInternalEdit: true,
+                hasNestedEditorEdit: false,
+            }),
+        ).toBe("unknown");
+    });
+
+    it("explicit revision provenance wins over nested when both markers are present", () => {
         expect(
             classifyOrigin({
                 userEvent: "input.type",
                 hasRevisionInternalEdit: true,
                 hasNestedEditorEdit: true,
+                revisionProvenance: "human",
             }),
-        ).toBe("ai-revision");
+        ).toBe("human-revision");
     });
 });

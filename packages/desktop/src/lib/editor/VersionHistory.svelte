@@ -54,7 +54,7 @@ import {
     formatTime,
     formatTimeShort,
     groupByDate,
-    reconstructStructureAsOf,
+    reconstructPreviewStructure,
     resolveDraftContentAt,
     resolveTabContentAt,
     resolveTimelineTarget,
@@ -108,8 +108,8 @@ const groups = $derived(groupByDate(timelineItems, Date.now()));
 // Structure rewound to the selected coordinate's timestamp, over the full
 // roster (incl. since-deleted nodes), with labels/existence replayed to T.
 const previewStructure = $derived.by(() => {
-    if (!selectedItem) return { tabs: [], drafts: [] };
-    return reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinateForItem(selectedItem));
+    if (!selectedItem) return { tabs: [], drafts: [], deletedTabId: null };
+    return reconstructPreviewStructure(allTabs, allDrafts, docEvents, selectedItem);
 });
 
 // What the selected coordinate concerns (for the map highlight + default tab).
@@ -122,7 +122,9 @@ const selectedTarget = $derived.by(() => {
 // change (the content shown is the viewed tab's state at that same moment).
 const bannerText = $derived(
     selectedItem?.kind === "activity"
-        ? `${describeDocEvent(selectedItem.event).text} — showing document content at this point`
+        ? previewStructure.deletedTabId
+            ? `${describeDocEvent(selectedItem.event).text} — showing its last available state`
+            : `${describeDocEvent(selectedItem.event).text} — showing document content at this point`
         : null,
 );
 
@@ -205,12 +207,7 @@ async function selectItem(item: TimelineItem) {
     // The structure computed here is threaded into loadContent so IT doesn't
     // redo the O(events) replay (the `previewStructure` derived still runs its
     // own replay for the map render).
-    const structure = reconstructStructureAsOf(
-        allTabs,
-        allDrafts,
-        docEvents,
-        coordinateForItem(item),
-    );
+    const structure = reconstructPreviewStructure(allTabs, allDrafts, docEvents, item);
     const target = resolveTimelineTarget(item, allDrafts);
     viewedTabId =
         (target.tabId && structure.tabs.some((tab) => tab.id === target.tabId)
@@ -228,12 +225,7 @@ async function selectItem(item: TimelineItem) {
 async function viewTab(tabId: string) {
     const item = selectedItem;
     if (!item || tabId === viewedTabId) return;
-    const structure = reconstructStructureAsOf(
-        allTabs,
-        allDrafts,
-        docEvents,
-        coordinateForItem(item),
-    );
+    const structure = reconstructPreviewStructure(allTabs, allDrafts, docEvents, item);
     viewedTabId = tabId;
     viewedDraftId = resolveViewedDraftId(structure, tabId, item, null);
     await loadContent(structure);
@@ -243,12 +235,7 @@ async function viewTab(tabId: string) {
 async function viewDraft(draftId: string) {
     const item = selectedItem;
     if (!item || draftId === viewedDraftId) return;
-    const structure = reconstructStructureAsOf(
-        allTabs,
-        allDrafts,
-        docEvents,
-        coordinateForItem(item),
-    );
+    const structure = reconstructPreviewStructure(allTabs, allDrafts, docEvents, item);
     const draft = structure.drafts.find((candidate) => candidate.id === draftId);
     if (!draft) return;
     if (draft.tabId) viewedTabId = draft.tabId;
@@ -282,8 +269,7 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
     previewLoading = true;
     try {
         const resolved =
-            structure ??
-            reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinateForItem(item));
+            structure ?? reconstructPreviewStructure(allTabs, allDrafts, docEvents, item);
         const draftExists = resolved.drafts.some((draft) => draft.id === draftId);
         const ref = draftExists
             ? resolveDraftContentAt(snapshots, draftId, coordinateForItem(item))
@@ -351,12 +337,7 @@ async function reconcileSelection() {
     const fresh = selectedItem ? timelineItems.find((it) => it.id === selectedItem?.id) : undefined;
     if (fresh) {
         selectedItem = fresh;
-        const structure = reconstructStructureAsOf(
-            allTabs,
-            allDrafts,
-            docEvents,
-            coordinateForItem(fresh),
-        );
+        const structure = reconstructPreviewStructure(allTabs, allDrafts, docEvents, fresh);
         const target = resolveTimelineTarget(fresh, allDrafts);
         const currentTabStillExists = structure.tabs.some((tab) => tab.id === viewedTabId);
         if (!currentTabStillExists) {
@@ -601,6 +582,7 @@ function handleKeydown(e: KeyboardEvent) {
                 drafts={previewStructure.drafts}
                 {viewedTabId}
                 {viewedDraftId}
+                deletedTabId={previewStructure.deletedTabId}
                 highlightTabId={selectedTarget.tabId}
                 highlightDraftId={selectedTarget.draftId}
                 currentStateJson={previewCurrentJson}

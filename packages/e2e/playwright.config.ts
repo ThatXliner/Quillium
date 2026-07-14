@@ -6,6 +6,8 @@ const port = Number(process.env.E2E_LANDING_PORT ?? 4174);
 const baseURL = process.env.E2E_LANDING_BASE_URL ?? `http://${host}:${port}`;
 const webPreviewEnvironment = resolveWebPreviewEnvironment(process.env);
 const ci = Boolean(process.env.CI);
+const canonicalVisualPlatform = process.platform === "linux";
+const compareNoncanonicalSnapshots = process.env.E2E_COMPARE_NONCANONICAL_SNAPSHOTS === "1";
 const supabaseUrl = webPreviewEnvironment.url || process.env.PUBLIC_SUPABASE_URL || "";
 const publishableKey =
     webPreviewEnvironment.publishableKey || process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -14,6 +16,10 @@ const devCommand = `bun run --cwd ../landing dev -- --host ${host} --port ${port
 const previewCommand =
     `bun run --cwd ../landing build && bun run --cwd ../landing preview -- --host ${host} ` +
     `--port ${port} --strictPort`;
+
+if (ci && !canonicalVisualPlatform) {
+    throw new Error("Web Preview visual CI must run on Linux, the canonical snapshot platform");
+}
 
 export default defineConfig({
     testDir: "./tests",
@@ -25,6 +31,10 @@ export default defineConfig({
     fullyParallel: false,
     forbidOnly: ci,
     failOnFlakyTests: ci,
+    // Keep semantic browser coverage active on every OS without generating or
+    // comparing noncanonical platform images. Developers can opt in when they
+    // specifically need a Darwin/Windows diagnostic snapshot.
+    ignoreSnapshots: !canonicalVisualPlatform && !compareNoncanonicalSnapshots,
     retries: ci ? 2 : 0,
     reporter: ci
         ? [

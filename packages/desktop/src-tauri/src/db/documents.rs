@@ -1,8 +1,18 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use super::{DocumentMeta, DraftMeta};
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateDraftState {
+    pub source_draft_id: String,
+    pub source_event_id: i64,
+    pub state_json: String,
+}
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -98,6 +108,235 @@ pub fn create_document_with_history(
         params![id, title, now, now, persist_history],
     )?;
     Ok(id)
+}
+
+/// Atomically duplicates the live document structure using fully materialized
+/// draft states supplied by the frontend. Event and structural history are
+/// intentionally not copied; each new draft starts from one compact snapshot.
+pub fn duplicate_document(
+    conn: &Connection,
+    source_document_id: &str,
+    draft_states: &[DuplicateDraftState],
+) -> Result<String> {
+    let tx = conn.unchecked_transaction()?;
+    let source = tx
+        .query_row(
+            "SELECT title, word_count, preview_text, tags, body_text, persist_history
+             FROM documents WHERE id = ?1 AND deleted_at IS NULL",
+            params![source_document_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, bool>(5)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+    let tabs = {
+        let mut stmt = tx.prepare(
+            "SELECT id, tab_type, label, position FROM tabs
+             WHERE document_id = ?1 AND deleted_at IS NULL
+             ORDER BY position ASC, created_at ASC",
+        )?;
+        let rows = stmt.query_map(params![source_document_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>>>()?
+    };
+    let drafts = {
+        let mut stmt = tx.prepare(
+            "SELECT id, tab_id, label, is_active, parent_draft_id, branched_from, locked
+             FROM drafts WHERE document_id = ?1 AND deleted_at IS NULL
+             ORDER BY created_at ASC",
+        )?;
+        let rows = stmt.query_map(params![source_document_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, bool>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, bool>(6)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>>>()?
+    };
+
+    let states: HashMap<&str, &DuplicateDraftState> = draft_states
+        .iter()
+        .map(|state| (state.source_draft_id.as_str(), state))
+        .collect();
+    if states.len() != draft_states.len()
+        || states.len() != drafts.len()
+        || drafts
+            .iter()
+            .any(|draft| !states.contains_key(draft.0.as_str()))
+    {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "draftStates must contain exactly one state for every live draft".to_string(),
+        ));
+    }
+    for (source_id, _, _, _, _, _, _) in &drafts {
+        let latest_event_id: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(id), -1) FROM events WHERE draft_id = ?1",
+            params![source_id],
+            |row| row.get(0),
+        )?;
+        if states[source_id.as_str()].source_event_id != latest_event_id {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "draft {source_id} changed while duplication was being prepared",
+            )));
+        }
+    }
+
+    let document_id = Uuid::new_v4().to_string();
+    let title = format!("{} — Copy", source.0);
+    let now = now_ms();
+    tx.execute(
+        "INSERT INTO documents
+         (id, title, created_at, updated_at, word_count, preview_text, tags, body_text,
+          persist_history)
+         VALUES (?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            document_id,
+            title,
+            now,
+            source.1,
+            source.2,
+            source.3,
+            source.4,
+            source.5,
+        ],
+    )?;
+
+    let tab_ids: HashMap<String, String> = tabs
+        .iter()
+        .map(|(source_id, _, _, _)| (source_id.clone(), Uuid::new_v4().to_string()))
+        .collect();
+    let draft_ids: HashMap<String, String> = drafts
+        .iter()
+        .map(|(source_id, _, _, _, _, _, _)| (source_id.clone(), Uuid::new_v4().to_string()))
+        .collect();
+
+    for (source_id, tab_type, label, position) in &tabs {
+        tx.execute(
+            "INSERT INTO tabs (id, document_id, tab_type, label, position, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                tab_ids[source_id],
+                document_id,
+                tab_type,
+                label,
+                position,
+                now
+            ],
+        )?;
+    }
+    for (source_id, tab_id, label, is_active, parent_id, branched_from, locked) in &drafts {
+        let mapped_tab_id = tab_id
+            .as_ref()
+            .and_then(|id| tab_ids.get(id))
+            .ok_or_else(|| {
+                rusqlite::Error::InvalidParameterName(format!(
+                    "draft {source_id} references a missing live tab",
+                ))
+            })?;
+        let _mapped_parent = parent_id
+            .as_ref()
+            .map(|id| {
+                draft_ids.get(id).ok_or_else(|| {
+                    rusqlite::Error::InvalidParameterName(format!(
+                        "draft {source_id} references a missing live parent",
+                    ))
+                })
+            })
+            .transpose()?;
+        let _mapped_branch = branched_from
+            .as_ref()
+            .map(|id| {
+                draft_ids.get(id).ok_or_else(|| {
+                    rusqlite::Error::InvalidParameterName(format!(
+                        "draft {source_id} references a missing live branch source",
+                    ))
+                })
+            })
+            .transpose()?;
+        let new_draft_id = &draft_ids[source_id];
+        tx.execute(
+            "INSERT INTO drafts
+             (id, document_id, tab_id, label, created_at, is_active, parent_draft_id,
+              branched_from, locked)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, ?7)",
+            params![
+                new_draft_id,
+                document_id,
+                mapped_tab_id,
+                label,
+                now,
+                is_active,
+                locked,
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
+             VALUES (?1, -1, ?2, ?3, NULL)",
+            params![new_draft_id, states[source_id.as_str()].state_json, now],
+        )?;
+    }
+    // Link the graph only after every draft row exists, so copies are valid
+    // regardless of legacy timestamps or row ordering in the source.
+    for (source_id, _, _, _, parent_id, branched_from, _) in &drafts {
+        let mapped_parent = parent_id.as_ref().and_then(|id| draft_ids.get(id));
+        let mapped_branch = branched_from.as_ref().and_then(|id| draft_ids.get(id));
+        tx.execute(
+            "UPDATE drafts SET parent_draft_id = ?1, branched_from = ?2 WHERE id = ?3",
+            params![mapped_parent, mapped_branch, draft_ids[source_id]],
+        )?;
+    }
+
+    let source_active_tab: Option<String> = tx
+        .query_row(
+            "SELECT value FROM _meta WHERE key = ?1",
+            params![format!("active_tab:{source_document_id}")],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(active_tab) = source_active_tab.and_then(|id| tab_ids.get(&id)) {
+        tx.execute(
+            "INSERT INTO _meta (key, value) VALUES (?1, ?2)",
+            params![format!("active_tab:{document_id}"), active_tab],
+        )?;
+    }
+    for (source_tab_id, new_tab_id) in &tab_ids {
+        let source_active_draft: Option<String> = tx
+            .query_row(
+                "SELECT value FROM _meta WHERE key = ?1",
+                params![format!("active_draft:{source_tab_id}")],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(active_draft) = source_active_draft.and_then(|id| draft_ids.get(&id)) {
+            tx.execute(
+                "INSERT INTO _meta (key, value) VALUES (?1, ?2)",
+                params![format!("active_draft:{new_tab_id}"), active_draft],
+            )?;
+        }
+    }
+
+    tx.commit()?;
+    Ok(document_id)
 }
 
 /// `body_text` is the full plain text used by full-text search. Pass `None`
@@ -294,6 +533,7 @@ pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<Stri
 mod tests {
     use super::*;
     use crate::db::schema::open_db;
+    use crate::db::tabs::{create_tab, set_active_draft, set_active_tab};
 
     #[test]
     fn new_document_history_policy_is_explicit() {
@@ -328,5 +568,165 @@ mod tests {
                 .unwrap()
                 .persist_history
         );
+    }
+
+    #[test]
+    fn duplicate_document_copies_live_structure_without_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+        let source_id = create_document_with_history(&conn, "Novel", true).unwrap();
+        update_document_meta(
+            &conn,
+            &source_id,
+            "Novel",
+            42,
+            "Opening words",
+            "[\"fiction\"]",
+            Some("Opening words and the rest"),
+        )
+        .unwrap();
+        let tab_a = create_tab(&conn, &source_id, "Draft").unwrap();
+        let tab_b = create_tab(&conn, &source_id, "Notes").unwrap();
+        let root_a: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab_a.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let root_b: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab_b.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let child = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO drafts
+             (id, document_id, tab_id, label, created_at, is_active, parent_draft_id, locked)
+             VALUES (?1, ?2, ?3, 'second', 2, 1, ?4, 0)",
+            params![child, source_id, tab_a.id, root_a],
+        )
+        .unwrap();
+        set_active_tab(&conn, &source_id, &tab_a.id).unwrap();
+        set_active_draft(&conn, &tab_a.id, &child).unwrap();
+        conn.execute(
+            "INSERT INTO events (draft_id, event_type, payload, created_at)
+             VALUES (?1, 'doc_change', '{}', 3)",
+            params![root_a],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO doc_events (document_id, event_type, payload, created_at)
+             VALUES (?1, 'tab_created', '{}', 3)",
+            params![source_id],
+        )
+        .unwrap();
+
+        let states = vec![
+            DuplicateDraftState {
+                source_draft_id: root_a.clone(),
+                source_event_id: 1,
+                state_json: "{\"doc\":\"root\",\"annotationField\":{}}".to_string(),
+            },
+            DuplicateDraftState {
+                source_draft_id: child.clone(),
+                source_event_id: -1,
+                state_json: "{\"doc\":\"child\",\"annotationField\":{\"900\":{\"id\":900}}}"
+                    .to_string(),
+            },
+            DuplicateDraftState {
+                source_draft_id: root_b,
+                source_event_id: -1,
+                state_json: "{\"doc\":\"notes\",\"annotationField\":{}}".to_string(),
+            },
+        ];
+        let copy_id = duplicate_document(&conn, &source_id, &states).unwrap();
+
+        let copy = get_document(&conn, &copy_id).unwrap().unwrap();
+        assert_eq!(copy.title, "Novel — Copy");
+        assert_eq!(copy.word_count, 42);
+        assert_eq!(copy.preview_text, "Opening words");
+        assert_eq!(copy.tags, "[\"fiction\"]");
+        assert!(copy.persist_history);
+        assert_ne!(copy.id, source_id);
+
+        let copied_tabs: Vec<String> = conn
+            .prepare("SELECT id FROM tabs WHERE document_id = ?1 ORDER BY position")
+            .unwrap()
+            .query_map(params![copy_id], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let copied_drafts: Vec<(String, Option<String>)> = conn
+            .prepare(
+                "SELECT id, parent_draft_id FROM drafts
+                 WHERE document_id = ?1 ORDER BY created_at, rowid",
+            )
+            .unwrap()
+            .query_map(params![copy_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(copied_tabs.len(), 2);
+        assert!(copied_tabs
+            .iter()
+            .all(|id| id != &tab_a.id && id != &tab_b.id));
+        assert_eq!(copied_drafts.len(), 3);
+        assert!(copied_drafts
+            .iter()
+            .all(|(id, _)| id != &root_a && id != &child));
+        let copied_ids: std::collections::HashSet<_> =
+            copied_drafts.iter().map(|(id, _)| id).collect();
+        assert!(copied_drafts
+            .iter()
+            .filter_map(|(_, parent)| parent.as_ref())
+            .all(|parent| copied_ids.contains(parent)));
+
+        let event_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events e JOIN drafts d ON d.id = e.draft_id
+                 WHERE d.document_id = ?1",
+                params![copy_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let doc_event_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM doc_events WHERE document_id = ?1",
+                params![copy_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let snapshot_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM snapshots s JOIN drafts d ON d.id = s.draft_id
+                 WHERE d.document_id = ?1",
+                params![copy_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_count, 0);
+        assert_eq!(doc_event_count, 0);
+        assert_eq!(snapshot_count, 3);
+    }
+
+    #[test]
+    fn failed_duplicate_leaves_no_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+        let source_id = create_document(&conn, "Source").unwrap();
+        create_draft(&conn, &source_id, "main").unwrap();
+        let before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+            .unwrap();
+
+        assert!(duplicate_document(&conn, &source_id, &[]).is_err());
+
+        let after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(after, before);
     }
 }

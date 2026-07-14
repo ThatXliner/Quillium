@@ -24,6 +24,7 @@ const {
     drafts,
     viewedTabId = null,
     viewedDraftId = null,
+    deletedTabId = null,
     highlightTabId = null,
     highlightDraftId = null,
     currentStateJson,
@@ -41,6 +42,7 @@ const {
     drafts: DraftMeta[];
     viewedTabId?: string | null;
     viewedDraftId?: string | null;
+    deletedTabId?: string | null;
     highlightTabId?: string | null;
     highlightDraftId?: string | null;
     currentStateJson: string | null;
@@ -169,6 +171,7 @@ function setDiffLayout(layout: DiffLayout): void {
                     {tabs}
                     activeTabId={viewedTabId}
                     highlightedTabId={highlightTabId}
+                    {deletedTabId}
                     {ontabselect}
                 />
             </div>

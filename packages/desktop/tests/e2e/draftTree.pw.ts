@@ -14,6 +14,88 @@ import { QuilliumPage } from "./QuilliumPage";
 test.use({ viewport: { width: 1440, height: 900 } });
 
 test.describe("Draft panel", () => {
+    test("resizes with pointer and keyboard controls and persists the preferred width", async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        const panel = page.locator('[aria-label="Draft tree"]');
+        const handle = page.getByRole("slider", { name: "Resize drafts panel" });
+        await expect(handle).toHaveAttribute("aria-valuemin", "192");
+        await expect(handle).toHaveAttribute("aria-valuemax", "280");
+        await expect(panel).toHaveCSS("width", "192px");
+
+        // The panel is anchored beside the editor, so dragging its outer
+        // (left) edge left makes it wider.
+        const handleBox = await handle.boundingBox();
+        expect(handleBox).not.toBeNull();
+        await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 24);
+        await page.mouse.down();
+        await page.mouse.move(handleBox!.x - 40, handleBox!.y + 24);
+        await page.mouse.up();
+        await expect(panel).toHaveCSS("width", "238px");
+
+        // End chooses the largest width that still preserves editor space.
+        await handle.press("End");
+        await expect(panel).toHaveCSS("width", "280px");
+        expect(
+            await page.evaluate(
+                () =>
+                    JSON.parse(localStorage.getItem("quillium-app-settings") ?? "{}")
+                        .draftPanelWidth,
+            ),
+        ).toBe(280);
+
+        // Narrowing the window clamps only the rendered width. Expanding it
+        // restores the persisted preference instead of overwriting it.
+        await page.setViewportSize({ width: 1320, height: 900 });
+        await expect(panel).toHaveCSS("width", "220px");
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await expect(panel).toHaveCSS("width", "280px");
+    });
+
+    test("offers a hover control that fills the available width", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await page.setViewportSize({ width: 2000, height: 900 });
+
+        const panel = page.locator('[aria-label="Draft tree"]');
+        const handle = page.getByRole("slider", { name: "Resize drafts panel" });
+        const expand = page.getByRole("button", {
+            name: "Expand drafts panel to available width",
+        });
+
+        const handleBox = await handle.boundingBox();
+        expect(handleBox).not.toBeNull();
+        // Enter the rail away from its center, where the hover button appears.
+        await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 4);
+        await expect(expand).toBeVisible();
+        const panelBox = await panel.boundingBox();
+        const expandBox = await expand.boundingBox();
+        expect(panelBox).not.toBeNull();
+        expect(expandBox).not.toBeNull();
+        expect(
+            Math.round(panelBox!.y + panelBox!.height - (expandBox!.y + expandBox!.height)),
+        ).toBe(8);
+        await expand.click();
+        await expect(panel).toHaveCSS("width", "560px");
+        expect(
+            await page.evaluate(
+                () =>
+                    JSON.parse(localStorage.getItem("quillium-app-settings") ?? "{}")
+                        .draftPanelWidth,
+            ),
+        ).toBe(560);
+
+        const restore = page.getByRole("button", {
+            name: "Restore default drafts panel width",
+        });
+        await expect(restore).toBeVisible();
+        await restore.click();
+        await expect(panel).toHaveCSS("width", "192px");
+    });
+
     test("panel renders the root draft on load", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();

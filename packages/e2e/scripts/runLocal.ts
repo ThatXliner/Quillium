@@ -1,5 +1,5 @@
 /**
- * runLocal.ts — Run the complete Omni Web Preview E2E stack against the
+ * runLocal.ts — Run the complete Omni E2E stack against the
  * repository's local Supabase instance.
  */
 import { spawnSync } from "node:child_process";

@@ -67,6 +67,7 @@ import {
     nestedEditorEdit,
     removeAnnotation,
     revisionInternalEdit,
+    revisionProvenance,
     updateThread,
 } from "./plugins/annotations";
 
@@ -125,6 +126,7 @@ function extractChanges(tr: Transaction): ChangeSpec[] {
  */
 function txProvenance(tr: Transaction): {
     origin: ChangeOrigin;
+    hasRevisionInternalEdit: boolean;
     userEvent: string | undefined;
     insertedChars: number;
     removedChars: number;
@@ -132,6 +134,7 @@ function txProvenance(tr: Transaction): {
     const userEvent = tr.annotation(Transaction.userEvent);
     const hasRevisionInternalEdit = !!tr.annotation(revisionInternalEdit);
     const hasNestedEditorEdit = tr.annotation(nestedEditorEdit) != null;
+    const explicitRevisionProvenance = tr.annotation(revisionProvenance);
 
     let insertedChars = 0;
     let removedChars = 0;
@@ -140,8 +143,13 @@ function txProvenance(tr: Transaction): {
         removedChars += toA - fromA;
     });
 
-    const origin = classifyOrigin({ userEvent, hasRevisionInternalEdit, hasNestedEditorEdit });
-    return { origin, userEvent, insertedChars, removedChars };
+    const origin = classifyOrigin({
+        userEvent,
+        hasRevisionInternalEdit,
+        hasNestedEditorEdit,
+        revisionProvenance: explicitRevisionProvenance,
+    });
+    return { origin, hasRevisionInternalEdit, userEvent, insertedChars, removedChars };
 }
 
 /**
@@ -261,6 +269,7 @@ function replayAnnotationsOf(tr: Transaction): TransactionReplayEntry & { kind: 
                 ? doneTopSelectionsAfter.map(serializeSelection)
                 : undefined,
         revisionInternalEdit: tr.annotation(revisionInternalEdit),
+        revisionProvenance: tr.annotation(revisionProvenance),
         nestedEditorEdit: tr.annotation(nestedEditorEdit),
         revisionCleanup: tr.annotation(_revisionCleanup),
     };
@@ -295,6 +304,9 @@ function codeMirrorAnnotationsOf(
     }
     if (entry.annotations.revisionInternalEdit !== undefined) {
         annotations.push(revisionInternalEdit.of(entry.annotations.revisionInternalEdit));
+    }
+    if (entry.annotations.revisionProvenance !== undefined) {
+        annotations.push(revisionProvenance.of(entry.annotations.revisionProvenance));
     }
     if (entry.annotations.nestedEditorEdit !== undefined) {
         annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));
@@ -395,6 +407,7 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
     //   - userEvent: the userEvent of that same last doc-changing transaction.
     //   - inserted/removedChars: summed across all doc-changing transactions.
     let anyRevisionInternal = false;
+    const revisionOrigins = new Set<ChangeOrigin>();
     let anyNestedEdit = false;
     let lastOrigin: ChangeOrigin = "unknown";
     let lastUserEvent: string | undefined;
@@ -405,7 +418,10 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
         if (tr.docChanged) {
             allDocChanges = allDocChanges.concat(extractChanges(tr));
             const prov = txProvenance(tr);
-            if (prov.origin === "ai-revision") anyRevisionInternal = true;
+            if (prov.hasRevisionInternalEdit) {
+                anyRevisionInternal = true;
+                revisionOrigins.add(prov.origin);
+            }
             if (prov.origin === "nested-edit") anyNestedEdit = true;
             lastOrigin = prov.origin;
             lastUserEvent = prov.userEvent;
@@ -436,10 +452,16 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
 
     const selection = extractSelection(update);
 
+    let revisionOrigin: ChangeOrigin = "unknown";
+    if (revisionOrigins.size === 1) revisionOrigin = [...revisionOrigins][0];
+    else if (revisionOrigins.size > 1 && !revisionOrigins.has("unknown")) {
+        revisionOrigin = "mixed-revision";
+    }
+
     const provenance: Provenance | undefined = hasDocChange
         ? {
               origin: anyRevisionInternal
-                  ? "ai-revision"
+                  ? revisionOrigin
                   : anyNestedEdit
                     ? "nested-edit"
                     : lastOrigin,

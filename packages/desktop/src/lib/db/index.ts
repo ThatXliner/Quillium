@@ -14,6 +14,7 @@ import type {
     DocumentSnapshotMeta,
     DocumentStructure,
     DraftMeta,
+    DuplicateDraftState,
     EventRecord,
     LoadResult,
     ReparentEntry,
@@ -45,6 +46,14 @@ export async function getDocumentMeta(id: string): Promise<DocumentMeta | null> 
 
 export async function createDocument(title = "Untitled", persistHistory = false): Promise<string> {
     return invoke<string>("cmd_create_document", { title, persistHistory });
+}
+
+/** Inserts a pre-materialized copy in one SQLite transaction. */
+export async function duplicateDocument(
+    sourceDocumentId: string,
+    draftStates: DuplicateDraftState[],
+): Promise<string> {
+    return invoke<string>("cmd_duplicate_document", { sourceDocumentId, draftStates });
 }
 
 /**

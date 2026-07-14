@@ -434,6 +434,9 @@ export class AnnotationIdMap {
             yjsId = generateAnnotationId(clientId);
             this.yjsToCm.set(yjsId, cmId);
             this.cmToYjs.set(cmId, yjsId);
+            if (cmId >= this.nextCmId) {
+                this.nextCmId = cmId + 1;
+            }
         }
         return yjsId;
     }

@@ -5,6 +5,7 @@ import {
     addAnnotation,
     annotationField,
     nestedEditorEdit,
+    revisionProvenance,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -193,7 +194,11 @@ describe("listeners integration", () => {
                     versionState: nestedVersion,
                 }),
             ],
-            annotations: [nestedEditorEdit.of(revision.id), Transaction.addToHistory.of(true)],
+            annotations: [
+                nestedEditorEdit.of(revision.id),
+                revisionProvenance.of("human"),
+                Transaction.addToHistory.of(true),
+            ],
         });
         await flushMicrotasks();
 
@@ -202,11 +207,13 @@ describe("listeners integration", () => {
         const payload = JSON.parse(args.payloadJson ?? "{}") as {
             type?: string;
             annotationEvents?: Array<{ type: string; annotation?: unknown }>;
+            provenance?: { origin: string };
         };
         expect(payload.type).toBe("compound");
         expect(payload.annotationEvents?.some((event) => event.type === "annotation_update")).toBe(
             true,
         );
+        expect(payload.provenance?.origin).toBe("human-revision");
     });
 
     it("sends an annotation_add payload when an annotation is added", async () => {
@@ -440,7 +447,12 @@ describe("listeners integration", () => {
         view = new EditorView({ state, parent });
 
         // Add a revision with two versions
-        const versions = [makeVersion({ doc: "hello" }), makeVersion({ doc: "hi" })];
+        const versions = [
+            makeVersion({ doc: "hello" }),
+            makeVersion({ doc: "hi" }),
+            makeVersion({ doc: "hey", provenance: "ai" }),
+            makeVersion({ doc: "greetings", provenance: "mixed" }),
+        ];
         const revision = {
             ...createNewAnnotation(
                 view.state.field(annotationField),
@@ -468,5 +480,30 @@ describe("listeners integration", () => {
         const annotationEvents = payload.annotationEvents as Array<{ type: string }>;
         // The annotation_update for the version switch should be present
         expect(annotationEvents.some((e) => e.type === "annotation_update")).toBe(true);
+        expect((payload.provenance as { origin: string }).origin).toBe("human-revision");
+
+        invoked.length = 0;
+        view.dispatch(setActiveRevisionVersion(view.state, revision.id, versions[2].id));
+        await flushMicrotasks();
+        const aiPayload = JSON.parse(
+            (
+                invoked.find((call) => call.cmd === "cmd_append_event")?.args as {
+                    payloadJson: string;
+                }
+            ).payloadJson,
+        ) as { provenance: { origin: string } };
+        expect(aiPayload.provenance.origin).toBe("ai-revision");
+
+        invoked.length = 0;
+        view.dispatch(setActiveRevisionVersion(view.state, revision.id, versions[3].id));
+        await flushMicrotasks();
+        const mixedPayload = JSON.parse(
+            (
+                invoked.find((call) => call.cmd === "cmd_append_event")?.args as {
+                    payloadJson: string;
+                }
+            ).payloadJson,
+        ) as { provenance: { origin: string } };
+        expect(mixedPayload.provenance.origin).toBe("mixed-revision");
     });
 });

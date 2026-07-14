@@ -3,5 +3,18 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": ["main", "editor-*"],
-  "permissions": ["core:default", "opener:default", "dialog:default", "fs:allow-write-text-file"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "fs:allow-write-text-file",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://chatgpt.com/backend-api/codex/*" },
+        { "url": "https://auth.openai.com/oauth/token" },
+        { "url": "https://registry.npmjs.org" }
+      ]
+    }
+  ]
 }
