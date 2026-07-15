@@ -46,6 +46,7 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import {
     maybeShowAutoSurvey,
     recordWordCount,
@@ -97,7 +98,9 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
+import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
 import posthog from "$lib/posthog";
+import WritingSprint from "$lib/sprint/WritingSprint.svelte";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
@@ -401,6 +404,11 @@ onMount(() => {
     const unsubShowLicenses = appEventBus.on("show-licenses", () => {
         licensesOpen = true;
     });
+    const unsubAchievement = appEventBus.on("achievement-unlocked", (event) => {
+        toast.success(`Achievement unlocked: ${event.achievement.title}`, {
+            description: event.achievement.description,
+        });
+    });
 
     // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
     // cumulative-words engagement signal, then check whether the user is
@@ -467,6 +475,7 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubAchievement();
         unsubSurveyLifecycle();
         unsubWordCount();
         for (const unlisten of menuUnlisteners) unlisten();
@@ -617,7 +626,10 @@ if (import.meta.env.DEV) {
 
 <!-- Stats modal -->
 {#if $statsOpen}
-    <StatsModal onclose={() => ($statsOpen = false)} />
+    <StatsModal
+        writingGoalsEnabled={$novelNovemberEnabled}
+        onclose={() => ($statsOpen = false)}
+    />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -661,10 +673,16 @@ if (import.meta.env.DEV) {
 
 <!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
 <BottomLeftStack>
+    {#if $novelNovemberEnabled}
+        <WritingSprint />
+    {/if}
     {#if appSettings.aiEnabled}
         <AutoAIWidget />
     {/if}
     <WordCountOverlay />
+    {#if $novelNovemberEnabled}
+        <WritingGoalTracker />
+    {/if}
 </BottomLeftStack>
 
 <!-- Top-right collab + account entry points -->

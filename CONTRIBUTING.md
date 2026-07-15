@@ -344,6 +344,7 @@ Feature flags are evaluated with `posthog.getFeatureFlag(flagName)` at the call 
 | Flag | Variants | Purpose | Source |
 |------|----------|---------|--------|
 | `context-generation-format` | `"control"` (default), `"structured"` | A/B test for how document context is formatted when sent to AI | `ai/clientStreams.ts` |
+| `novel-november` | boolean | Enables the seasonal writing feature suite | `featureFlags.svelte.ts` |
 
 ### Error Tracking
 
