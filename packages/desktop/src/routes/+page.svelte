@@ -401,6 +401,11 @@ onMount(() => {
     const unsubShowLicenses = appEventBus.on("show-licenses", () => {
         licensesOpen = true;
     });
+    const unsubAchievement = appEventBus.on("achievement-unlocked", (event) => {
+        toast.success(`Achievement unlocked: ${event.achievement.title}`, {
+            description: event.achievement.description,
+        });
+    });
 
     // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
     // cumulative-words engagement signal, then check whether the user is
@@ -467,6 +472,7 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubAchievement();
         unsubSurveyLifecycle();
         unsubWordCount();
         for (const unlisten of menuUnlisteners) unlisten();
