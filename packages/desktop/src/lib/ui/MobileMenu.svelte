@@ -4,9 +4,8 @@
     The native menu bar (Settings / Library / History / Export)
     is not reachable in a mobile webview, so this component surfaces the
     SAME actions behind a hamburger button. It does not own any of the
-    logic: every item just calls a callback prop that maps 1:1 to the
-    existing handlers in +page.svelte (toggle settings, goToHistory,
-    goToLibrary, toggle licenses, exportDocument).
+    logic: every item just calls a callback prop that maps to handlers in
+    +page.svelte. Feature-flagged actions are omitted entirely when disabled.
 
     Desktop is left untouched: the trigger is hidden at >=900px via the
     `max-[899px]:flex` responsive class (it is `hidden` otherwise), so the
@@ -19,17 +18,28 @@
 <script lang="ts">
 import type { ExportFormat } from "$lib/export";
 import { DropdownMenu } from "bits-ui";
-import { DownloadIcon, HistoryIcon, LibraryIcon, MenuIcon, SettingsIcon } from "lucide-svelte";
+import {
+    DownloadIcon,
+    HistoryIcon,
+    LibraryIcon,
+    LightbulbIcon,
+    MenuIcon,
+    SettingsIcon,
+} from "lucide-svelte";
 
 let {
     onsettings,
     onlibrary,
     onhistory,
+    writingPromptsEnabled,
+    onwritingprompt,
     onexport,
 }: {
     onsettings: () => void;
     onlibrary: () => void;
     onhistory: () => void;
+    writingPromptsEnabled: boolean;
+    onwritingprompt: () => void;
     onexport: (format: ExportFormat) => void;
 } = $props();
 
@@ -99,6 +109,14 @@ const itemClass =
                     <span>Version History</span>
                 </div>
             </DropdownMenu.Item>
+            {#if writingPromptsEnabled}
+                <DropdownMenu.Item class="w-full" onSelect={onwritingprompt}>
+                    <div class={itemClass}>
+                        <LightbulbIcon size={16} />
+                        <span>Writing Prompt</span>
+                    </div>
+                </DropdownMenu.Item>
+            {/if}
         </DropdownMenu.Group>
 
         <DropdownMenu.Separator class="my-1 h-px bg-black/10 mx-3" />
