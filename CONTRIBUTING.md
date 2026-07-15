@@ -279,6 +279,8 @@ Include contextual properties that make events useful for analysis:
 | Event | Properties | Source |
 |-------|-----------|--------|
 | `app_session_started` | `word_count` | `editor/Editor.svelte` |
+| `focus_mode_entered` | — | `routes/+page.svelte` |
+| `focus_mode_exited` | — | `routes/+page.svelte` |
 
 #### AI
 

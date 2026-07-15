@@ -1003,6 +1003,27 @@ fn scrap(state: tauri::State<DbState>) -> bool {
 
 // ── Native app menu (desktop only) ────────────────────────────────
 
+#[tauri::command]
+fn cmd_set_focus_mode_available(app: tauri::AppHandle, available: bool) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        let menu = app
+            .menu()
+            .ok_or_else(|| "app menu is unavailable".to_string())?;
+        let item = menu
+            .get("focus-mode")
+            .and_then(|item| item.as_menuitem().cloned())
+            .ok_or_else(|| "focus mode menu item is unavailable".to_string())?;
+        item.set_enabled(available)
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, available);
+    }
+    Ok(())
+}
+
 #[cfg(desktop)]
 fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::{
@@ -1073,6 +1094,13 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(
+            &MenuItemBuilder::with_id("focus-mode", "Focus Mode")
+                .accelerator("CmdOrCtrl+Shift+F")
+                .enabled(false)
+                .build(app)?,
+        )
+        .separator()
+        .item(
             &MenuItemBuilder::with_id("history", "Version History")
                 .accelerator("CmdOrCtrl+Shift+H")
                 .build(app)?,
@@ -1117,6 +1145,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let _ = app_log::log_event(app_handle, "info", "menu", "menu event", Some(&details));
         match id {
             "settings"
+            | "focus-mode"
             | "history"
             | "authorship"
             | "library"
@@ -1255,6 +1284,7 @@ pub fn run() {
             cmd_log_app_event,
             cmd_read_app_log,
             cmd_clear_app_log,
+            cmd_set_focus_mode_available,
             cmd_app_log_path,
             cmd_set_trash_retention,
             cmd_purge_expired_trash,

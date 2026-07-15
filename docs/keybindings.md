@@ -35,6 +35,7 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-Shift-H` | Navigate to version history |
 | `Mod-Shift-A` | Navigate to authorship report |
 | `Mod-Shift-E` | Export plain text |
+| `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
 
 ## Revision Modal Shortcuts
 
@@ -95,6 +96,8 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 | `Cmd-O` | Open library |
 | `Cmd-Shift-H` | Open version history |
 | `Cmd-Shift-A` | Open authorship report |
+| `Cmd-Shift-F` / `F11` | Toggle focus mode (`novel-november` feature flag) |
+| `Escape` | Exit focus mode |
 
 ## Shortcut Hints
 

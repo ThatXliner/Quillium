@@ -94,6 +94,14 @@ import { reconstructState } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
 import { TabDraftController } from "./tabDrafts.svelte";
 
+let {
+    focusMode = false,
+    focusControlsVisible = false,
+}: {
+    focusMode?: boolean;
+    focusControlsVisible?: boolean;
+} = $props();
+
 // ── Multi-window ────────────────────────────────────────────────
 const windowLabel = getCurrentWebviewWindow().label;
 
@@ -581,28 +589,36 @@ onMount(() => {
 });
 </script>
 
-<div class="w-full h-full overflow-y-auto relative">
-    <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
+<div class="editor-shell w-full h-full overflow-y-auto relative" class:focus-mode={focusMode}>
+    <div
+        class="focus-chrome sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none"
+        class:focus-chrome-visible={focusControlsVisible}
+    >
         <div class="pointer-events-auto">
             <DocumentTitleBar bind:this={titleBar} />
         </div>
     </div>
 
     {#await fromSave then}
-        <DocumentTabs
-            tabs={drafts.tabs}
-            activeTabId={$currentTabId}
-            ontabselect={(id) => drafts.handleTabSelect(id)}
-            ontabcreate={() => drafts.handleTabCreate()}
-            ontabrename={(id, label) => drafts.handleTabRename(id, label)}
-            ontabdelete={(id) => drafts.handleTabDelete(id)}
-            ontabreorder={(ids) => drafts.handleTabReorder(ids)}
-        />
+        <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
+            <DocumentTabs
+                tabs={drafts.tabs}
+                activeTabId={$currentTabId}
+                ontabselect={(id) => drafts.handleTabSelect(id)}
+                ontabcreate={() => drafts.handleTabCreate()}
+                ontabrename={(id, label) => drafts.handleTabRename(id, label)}
+                ontabdelete={(id) => drafts.handleTabDelete(id)}
+                ontabreorder={(ids) => drafts.handleTabReorder(ids)}
+            />
+        </div>
 
         <!-- Draft tree for the active tab — hugs the document's left edge,
              hidden on viewports too narrow to fit beside it. -->
         {#if drafts.tabDrafts.length > 0}
-            <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
+            <div
+                class="focus-chrome sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden"
+                class:focus-chrome-visible={focusControlsVisible}
+            >
                 <div
                     data-annotation-occluder
                     class="pointer-events-auto absolute"
@@ -680,7 +696,7 @@ onMount(() => {
         -->
         <div
             id="editor-document"
-            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
+            class="editor-document mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
         >
             {#if isLocked}
                 <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
@@ -707,10 +723,33 @@ onMount(() => {
     {/await}
 
 
-    <Annotations />
+    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
+        <Annotations />
+    </div>
 </div>
 
 <style>
+    .focus-chrome {
+        transition:
+            opacity 240ms ease,
+            visibility 240ms ease;
+    }
+    .focus-mode .focus-chrome:not(.focus-chrome-visible) {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .focus-mode .editor-document {
+        min-height: calc(100vh - 2rem);
+        margin-bottom: 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 8px 30px rgb(0 0 0 / 8%);
+        transition:
+            min-height 240ms ease,
+            margin 240ms ease,
+            border-radius 240ms ease,
+            box-shadow 240ms ease;
+    }
     :global(.cm-editor.cm-focused) {
         outline: none;
     }

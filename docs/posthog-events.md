@@ -11,6 +11,8 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `editor_undo` | Undo from native menu | `Editor.svelte` |
 | `editor_redo` | Redo from native menu | `Editor.svelte` |
 | `editor_select_all` | Select all from native menu | `Editor.svelte` |
+| `focus_mode_entered` | User enters distraction-free focus mode | `routes/+page.svelte` |
+| `focus_mode_exited` | User exits distraction-free focus mode | `routes/+page.svelte` |
 | `beta_terms_accepted` | First-run beta disclaimer accepted | `BetaDisclaimer.svelte` |
 
 ## AI Sidebar
