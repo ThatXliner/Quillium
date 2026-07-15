@@ -8,6 +8,7 @@
       - onclose: () => void — called when the modal is dismissed.
 -->
 <script lang="ts">
+import AchievementBadges from "$lib/achievements/AchievementBadges.svelte";
 import { type CharacterizerResult, generateCharacterization } from "$lib/ai/clientStreams";
 import {
     aiSettings,
@@ -17,14 +18,21 @@ import {
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
 import { listDraftEvents } from "$lib/db";
+import type { EventRecord } from "$lib/db/types";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import AnalyticsDashboard from "$lib/stats/AnalyticsDashboard.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
 import { type WritingAnalytics, computeWritingAnalytics } from "$lib/stats/analytics";
 import { computeStats } from "$lib/stats/compute";
-import { onWritingAnalyticsFlagChange } from "$lib/stats/featureFlag";
-import { currentDocumentTitle, currentDraftId, documentContent } from "$lib/stores";
-import { BarChart3, HelpCircle, X } from "lucide-svelte";
+import { computeWritingTime, formatWritingDuration } from "$lib/stats/writingTime";
+import {
+    currentDocumentTitle,
+    currentDraftId,
+    documentContent,
+    lastPersistedEventId,
+} from "$lib/stores";
+import { BarChart3, Clock3, HelpCircle, X } from "lucide-svelte";
 import { onMount } from "svelte";
 
 const { onclose }: { onclose: () => void } = $props();
@@ -35,10 +43,15 @@ let text = $derived($documentContent);
 let stats = $derived(computeStats(text));
 let diversity = $derived(formatDiversity(stats.vocabularyDiversity));
 let activeTab = $state<"document" | "analytics">("document");
-let analyticsEnabled = $state(false);
 let analytics = $state<WritingAnalytics | null>(null);
 let analyticsLoading = $state(false);
 let analyticsError = $state<string | null>(null);
+let writingEvents = $state<EventRecord[]>([]);
+let writingTimeLoading = $state(false);
+let writingTimeError = $state(false);
+let trackerNow = $state(Date.now());
+let writingTime = $derived(computeWritingTime(writingEvents, trackerNow));
+let writingTimeLoadGeneration = 0;
 
 // AI characterizer state
 let analyzing = $state(false);
@@ -74,14 +87,8 @@ $effect(() => {
     }
 });
 
-onMount(() =>
-    onWritingAnalyticsFlagChange((enabled) => {
-        analyticsEnabled = enabled;
-    }),
-);
-
 $effect(() => {
-    const enabled = analyticsEnabled;
+    const enabled = $novelNovemberEnabled;
     const draftId = $currentDraftId;
     if (!enabled || !draftId) {
         analytics = null;
@@ -108,6 +115,42 @@ $effect(() => {
         });
     return () => {
         cancelled = true;
+    };
+});
+
+$effect(() => {
+    const draftId = $currentDraftId;
+    $lastPersistedEventId;
+    const generation = ++writingTimeLoadGeneration;
+    if (!$novelNovemberEnabled || !draftId) {
+        writingEvents = [];
+        writingTimeLoading = false;
+        return;
+    }
+
+    writingTimeLoading = true;
+    writingTimeError = false;
+    listDraftEvents(draftId)
+        .then((events) => {
+            if (generation !== writingTimeLoadGeneration) return;
+            writingEvents = events;
+        })
+        .catch((error) => {
+            if (generation !== writingTimeLoadGeneration) return;
+            console.error("[StatsModal] Failed to load writing time", error);
+            writingTimeError = true;
+        })
+        .finally(() => {
+            if (generation === writingTimeLoadGeneration) writingTimeLoading = false;
+        });
+});
+
+onMount(() => {
+    const timer = window.setInterval(() => {
+        trackerNow = Date.now();
+    }, 1_000);
+    return () => {
+        window.clearInterval(timer);
     };
 });
 
@@ -205,7 +248,7 @@ function formatGradeLevel(grade: number): string {
             </button>
         </div>
 
-        {#if analyticsEnabled}
+        {#if $novelNovemberEnabled}
             <div class="flex gap-1 px-5 pt-2.5 border-b border-black/[0.06] shrink-0">
                 <button
                     class:active-tab={activeTab === "document"}
@@ -222,7 +265,7 @@ function formatGradeLevel(grade: number): string {
 
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5 max-h-[80vh]">
-            {#if activeTab === "analytics" && analyticsEnabled && $currentDraftId}
+            {#if activeTab === "analytics" && $novelNovemberEnabled && $currentDraftId}
                 <AnalyticsDashboard
                     {analytics}
                     currentWords={stats.words}
@@ -275,6 +318,75 @@ function formatGradeLevel(grade: number): string {
                     </div>
                 </button>
             </div>
+
+            {#if $novelNovemberEnabled}
+                <!-- Writing time tracker — PostHog `novel-november` feature flag -->
+                <div class="border-t border-black/[0.06]"></div>
+                <section class="flex flex-col gap-3" aria-label="Writing time">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <Clock3 size={14} class="text-black/30" />
+                            <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wider">Writing Time</span>
+                        </div>
+                        {#if writingTime.latestSession}
+                            <span
+                                class="text-[10px] font-medium {writingTime.latestSession.isActive
+                                    ? 'text-emerald-600'
+                                    : 'text-black/30'}"
+                            >
+                                {writingTime.latestSession.isActive ? 'Writing now' : 'Idle'}
+                            </span>
+                        {/if}
+                    </div>
+
+                    {#if writingTimeLoading && writingEvents.length === 0}
+                        <div class="py-5 text-center text-xs text-black/30 animate-pulse">Loading writing time...</div>
+                    {:else if writingTimeError}
+                        <div class="py-5 text-center text-xs text-red-500/70">Writing time is unavailable.</div>
+                    {:else}
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div class="stat-card">
+                                <div class="stat-value">{formatWritingDuration(writingTime.today.activeWritingMs)}</div>
+                                <div class="stat-label">Active Today</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">
+                                    {formatWritingDuration(writingTime.latestSession?.durationMs ?? 0)}
+                                </div>
+                                <div class="stat-label">
+                                    {writingTime.latestSession?.isActive ? 'Current Session' : 'Last Session'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="writing-time-summary">
+                            <div class="writing-time-row">
+                                <span>Today</span>
+                                <span>{formatWritingDuration(writingTime.today.activeWritingMs)}</span>
+                                <span>{writingTime.today.sessionCount} {writingTime.today.sessionCount === 1 ? 'session' : 'sessions'}</span>
+                            </div>
+                            <div class="writing-time-row">
+                                <span>This week</span>
+                                <span>{formatWritingDuration(writingTime.week.activeWritingMs)}</span>
+                                <span>{writingTime.week.sessionCount} {writingTime.week.sessionCount === 1 ? 'session' : 'sessions'}</span>
+                            </div>
+                            <div class="writing-time-row">
+                                <span>This month</span>
+                                <span>{formatWritingDuration(writingTime.month.activeWritingMs)}</span>
+                                <span>{writingTime.month.sessionCount} {writingTime.month.sessionCount === 1 ? 'session' : 'sessions'}</span>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-black/25 text-center">
+                            Pauses automatically after 2 minutes without an edit.
+                        </p>
+                    {/if}
+                </section>
+            {/if}
+
+            {#if $novelNovemberEnabled}
+                <div class="border-t border-black/[0.06]"></div>
+                <AchievementBadges />
+            {/if}
 
             {#if appSettings.aiEnabled}
                 <!-- Divider -->
@@ -454,5 +566,35 @@ function formatGradeLevel(grade: number): string {
         align-items: center;
         justify-content: center;
         gap: 0.25rem;
+    }
+
+    .writing-time-summary {
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 0.75rem;
+        overflow: hidden;
+    }
+
+    .writing-time-row {
+        display: grid;
+        grid-template-columns: 1fr auto 5.5rem;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.625rem 0.75rem;
+        font-size: 0.75rem;
+        color: rgba(0, 0, 0, 0.45);
+    }
+
+    .writing-time-row + .writing-time-row {
+        border-top: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .writing-time-row span:nth-child(2) {
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.65);
+    }
+
+    .writing-time-row span:last-child {
+        text-align: right;
+        color: rgba(0, 0, 0, 0.3);
     }
 </style>
