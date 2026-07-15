@@ -18,6 +18,10 @@ export type AppEvent =
     | { type: "show-licenses" }
     | { type: "show-update-banner"; version: string; mas: boolean }
     | { type: "show-auth-modal" }
+    | {
+          type: "achievement-unlocked";
+          achievement: { id: string; title: string; description: string };
+      }
     | { type: "caret-moved"; x: number; y: number }
     | { type: "stop-ai" };
 

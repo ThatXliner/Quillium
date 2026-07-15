@@ -46,6 +46,7 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { novelNovemberEnabled } from "$lib/featureFlags";
 import {
     maybeShowAutoSurvey,
     recordWordCount,
@@ -98,8 +99,8 @@ import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
 import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
-import { NOVEL_NOVEMBER_FEATURE_FLAG, isNovelNovemberFlagEnabled } from "$lib/goals/featureFlag";
 import posthog from "$lib/posthog";
+import WritingSprint from "$lib/sprint/WritingSprint.svelte";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
@@ -132,7 +133,6 @@ let updateReady = $state(false);
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 let authReconnecting = $state(false);
-let novelNovemberEnabled = $state(false);
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
@@ -343,14 +343,6 @@ onMount(() => {
 
     showTutorialOnFirstVisit();
 
-    // Feature flags are evaluated at the call site, matching the existing
-    // PostHog convention. Stay hidden until PostHog explicitly enables it.
-    const unsubNovelNovember = posthog.onFeatureFlags(() => {
-        novelNovemberEnabled = isNovelNovemberFlagEnabled(
-            posthog.getFeatureFlag(NOVEL_NOVEMBER_FEATURE_FLAG),
-        );
-    });
-
     // Check for updates silently in the background.
     // On MAS builds the banner redirects to the App Store instead of self-updating.
     // On mobile the updater plugin isn't registered, so skip entirely.
@@ -411,6 +403,11 @@ onMount(() => {
     const unsubShowAuthModal = appEventBus.on("show-auth-modal", handleShowAuthModal);
     const unsubShowLicenses = appEventBus.on("show-licenses", () => {
         licensesOpen = true;
+    });
+    const unsubAchievement = appEventBus.on("achievement-unlocked", (event) => {
+        toast.success(`Achievement unlocked: ${event.achievement.title}`, {
+            description: event.achievement.description,
+        });
     });
 
     // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
@@ -478,9 +475,9 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubAchievement();
         unsubSurveyLifecycle();
         unsubWordCount();
-        unsubNovelNovember();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -630,7 +627,7 @@ if (import.meta.env.DEV) {
 <!-- Stats modal -->
 {#if $statsOpen}
     <StatsModal
-        writingGoalsEnabled={novelNovemberEnabled}
+        writingGoalsEnabled={$novelNovemberEnabled}
         onclose={() => ($statsOpen = false)}
     />
 {/if}
@@ -676,11 +673,14 @@ if (import.meta.env.DEV) {
 
 <!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
 <BottomLeftStack>
+    {#if $novelNovemberEnabled}
+        <WritingSprint />
+    {/if}
     {#if appSettings.aiEnabled}
         <AutoAIWidget />
     {/if}
     <WordCountOverlay />
-    {#if novelNovemberEnabled}
+    {#if $novelNovemberEnabled}
         <WritingGoalTracker />
     {/if}
 </BottomLeftStack>
