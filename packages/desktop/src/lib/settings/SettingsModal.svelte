@@ -32,6 +32,7 @@ import {
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
 import { appEventBus } from "$lib/events/appEventBus";
+import { featureFlags } from "$lib/featureFlags.svelte";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
@@ -50,6 +51,7 @@ import PrivacySection from "./sections/PrivacySection.svelte";
 import QuickActionsSection from "./sections/QuickActionsSection.svelte";
 import SearchSection from "./sections/SearchSection.svelte";
 import TitleSection from "./sections/TitleSection.svelte";
+import WritingRemindersSection from "./sections/WritingRemindersSection.svelte";
 import WritingSection from "./sections/WritingSection.svelte";
 
 const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
@@ -257,6 +259,10 @@ function save() {
         // share_document_analytics: draft.shareDocumentAnalytics,
         check_for_updates: draft.checkForUpdates,
         persist_undo_history_for_new_documents: draft.persistUndoHistoryForNewDocuments,
+        writing_reminders_enabled: featureFlags.novelNovember && draft.writingRemindersEnabled,
+        writing_reminder_times_count: featureFlags.novelNovember
+            ? draft.writingReminderTimes.length
+            : 0,
     });
     onclose();
 }
@@ -388,6 +394,12 @@ function handleKeydown(e: KeyboardEvent) {
             <WritingSection {draft} onchange={handleChange} advanced={activeTab === "advanced"} />
 
             <div class="section-divider"></div>
+
+            {#if featureFlags.novelNovember}
+                <WritingRemindersSection {draft} onchange={handleChange} />
+
+                <div class="section-divider"></div>
+            {/if}
 
             <DictionarySection bind:words={dictionaryWords} />
 

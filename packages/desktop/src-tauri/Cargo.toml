@@ -58,6 +58,7 @@ textwrap = "0.16.2"
 # transitive dep (via printpdf → svg2pdf), so this adds no new crates.
 fontdb = "0.23"
 tauri-plugin-http = "2.5.9"
+tauri-plugin-notification = "2"
 
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
 # fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt

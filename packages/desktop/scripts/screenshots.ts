@@ -40,6 +40,8 @@
  *   29-tutorial.png         — tutorial overlay welcome step
  *   30-error-banner.png     — crash recovery error banner
  *   31-share-omni-waitlist.png — Share modal open on the Omni waitlist surface
+ *   32-writing-reminders-settings.png — feature-flagged reminder schedule settings
+ *   33-writing-reminder-active.png — streak-aware reminder with snooze/dismiss actions
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -54,6 +56,7 @@ import { PNG } from "pngjs";
 const noServer = process.argv.includes("--no-server");
 const force = process.argv.includes("--force");
 const videoRain = process.argv.includes("--video-rain");
+const remindersOnly = process.argv.includes("--reminders-only");
 const SCREENSHOT_PORT = Number(process.env.SCREENSHOT_PORT) || 4173;
 const BASE_URL = noServer ? "http://localhost:1420" : `http://localhost:${SCREENSHOT_PORT}`;
 const OUT_DIR = videoRain ? "../../videos/quillium-reel/capture/rain" : "screenshots";
@@ -251,6 +254,7 @@ type TauriMockOptions = {
     showTutorial: boolean;
     /** When true, cmd_list_draft_events returns the AUTHORSHIP_EVENTS stream. */
     authorshipEvents: boolean;
+    writingReminders: boolean;
 };
 
 async function installTauriMock(
@@ -264,6 +268,7 @@ async function installTauriMock(
     const snapshots = options.snapshots ?? false;
     const showTutorial = options.showTutorial ?? false;
     const authorshipEvents = options.authorshipEvents ?? false;
+    const writingReminders = options.writingReminders ?? false;
 
     await page.addInitScript(
         (payload: {
@@ -274,6 +279,7 @@ async function installTauriMock(
             snapshots: boolean;
             showTutorial: boolean;
             authorshipEvents: boolean;
+            writingReminders: boolean;
             libraryDocs: typeof LIBRARY_DOCUMENTS;
             trashedDocs: typeof TRASHED_DOCUMENTS;
             mockSnapshots: typeof MOCK_SNAPSHOTS;
@@ -311,6 +317,13 @@ async function installTauriMock(
                     docFontFamily: "Georgia, serif",
                     docFontSize: 18,
                     ...(payload.fakeApiKey ? { aiEnabled: true } : {}),
+                    ...(payload.writingReminders
+                        ? {
+                              writingRemindersEnabled: true,
+                              writingReminderTimes: ["08:30", "18:00"],
+                              writingReminderDays: [1, 2, 3, 4, 5],
+                          }
+                        : {}),
                 }),
             );
 
@@ -471,6 +484,7 @@ async function installTauriMock(
             snapshots,
             showTutorial,
             authorshipEvents,
+            writingReminders,
             libraryDocs: LIBRARY_DOCUMENTS,
             trashedDocs: TRASHED_DOCUMENTS,
             mockSnapshots: MOCK_SNAPSHOTS,
@@ -482,10 +496,10 @@ async function installTauriMock(
 // ── Editor helpers ────────────────────────────────────────────────────────────
 
 async function waitForEditor(page: Page): Promise<void> {
-    await page.locator("#editor-document").waitFor({ state: "attached", timeout: 15_000 });
+    await page.locator("#editor-document").waitFor({ state: "attached", timeout: 60_000 });
     await page
         .locator("#editor-document .cm-editor")
-        .waitFor({ state: "visible", timeout: 15_000 });
+        .waitFor({ state: "visible", timeout: 60_000 });
     await page.waitForTimeout(200);
 }
 
@@ -1537,6 +1551,53 @@ async function scenarioShareOmniWaitlist(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * 32. writing-reminders-settings — The PostHog-gated schedule controls with
+ * reminders enabled, two preferred times, and a weekday writing rhythm.
+ */
+async function scenarioWritingReminders(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { writingReminders: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await page.evaluate(async () => {
+        const { featureFlags } = await import("/src/lib/featureFlags.svelte.ts");
+        featureFlags.novelNovember = true;
+    });
+    await page.locator("#status-bar").hover();
+    await page.locator('[aria-label="Open settings"]').click({ timeout: 5_000 });
+    await page.getByText("Writing reminders", { exact: true }).waitFor({ timeout: 5_000 });
+    await page.locator('[data-setting-id="writing-reminders"]').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await shot(page, "32-writing-reminders-settings");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await setEditorText(page, PROSE_SHORT);
+    await page.evaluate(async () => {
+        const reminders = await import("/src/lib/writingReminders.ts");
+        const { appSettings } = await import("/src/lib/settings.svelte.ts");
+        const now = new Date();
+        const days: string[] = [];
+        for (let offset = 1; offset <= 5; offset += 1) {
+            const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+            days.push(reminders.dateKey(day));
+        }
+        localStorage.setItem("quillium-writing-activity-days", JSON.stringify(days));
+        localStorage.removeItem("quillium-writing-reminder-state");
+        appSettings.writingRemindersEnabled = true;
+        appSettings.writingReminderDays = [now.getDay()];
+        appSettings.writingReminderTimes = [
+            `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+        ];
+        reminders.setWritingReminderFeatureEnabled(true);
+        await reminders.checkWritingReminders(now);
+    });
+    await page.getByText("Snooze 1 hour", { exact: true }).waitFor({ timeout: 5_000 });
+    await page.waitForTimeout(400);
+    await shot(page, "33-writing-reminder-active");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -1589,7 +1650,9 @@ async function main(): Promise<void> {
 
     try {
         console.log("\nCapturing screenshots…\n");
-        if (videoRain) {
+        if (remindersOnly) {
+            await scenarioWritingReminders(context);
+        } else if (videoRain) {
             await scenarioRevisionActive(context);
             await scenarioInlineNestedRevision(context);
         } else {
@@ -1625,6 +1688,7 @@ async function main(): Promise<void> {
             await scenarioTutorial(context);
             await scenarioErrorBanner(context);
             await scenarioShareOmniWaitlist(context);
+            await scenarioWritingReminders(context);
         }
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);

@@ -29,7 +29,7 @@ import {
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { type ExportFormat, exportDocument } from "$lib/export";
-import { novelNovemberEnabled } from "$lib/featureFlags";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";

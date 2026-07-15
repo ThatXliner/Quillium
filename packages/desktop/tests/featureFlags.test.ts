@@ -3,14 +3,7 @@ import {
     isBooleanFeatureEnabled,
     resolveFeatureGate,
 } from "$lib/featureFlags";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("posthog-js", () => ({
-    default: {
-        onFeatureFlags: vi.fn(() => vi.fn()),
-        getFeatureFlag: vi.fn(),
-    },
-}));
+import { describe, expect, it } from "vitest";
 
 describe("PostHog feature gates", () => {
     it("uses the shared novel-november flag key", () => {
