@@ -98,6 +98,7 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
+import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
 import posthog from "$lib/posthog";
 import WritingSprint from "$lib/sprint/WritingSprint.svelte";
 import StatsModal from "$lib/stats/StatsModal.svelte";
@@ -625,7 +626,10 @@ if (import.meta.env.DEV) {
 
 <!-- Stats modal -->
 {#if $statsOpen}
-    <StatsModal onclose={() => ($statsOpen = false)} />
+    <StatsModal
+        writingGoalsEnabled={$novelNovemberEnabled}
+        onclose={() => ($statsOpen = false)}
+    />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -676,6 +680,9 @@ if (import.meta.env.DEV) {
         <AutoAIWidget />
     {/if}
     <WordCountOverlay />
+    {#if $novelNovemberEnabled}
+        <WritingGoalTracker />
+    {/if}
 </BottomLeftStack>
 <Toaster position="bottom-right" />
 

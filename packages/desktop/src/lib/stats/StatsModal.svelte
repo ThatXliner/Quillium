@@ -20,6 +20,7 @@ import {
 import { listDraftEvents } from "$lib/db";
 import type { EventRecord } from "$lib/db/types";
 import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
+import WritingGoalsPanel from "$lib/goals/WritingGoalsPanel.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import AnalyticsDashboard from "$lib/stats/AnalyticsDashboard.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
@@ -35,7 +36,10 @@ import {
 import { BarChart3, Clock3, HelpCircle, X } from "lucide-svelte";
 import { onMount } from "svelte";
 
-const { onclose }: { onclose: () => void } = $props();
+const {
+    onclose,
+    writingGoalsEnabled = false,
+}: { onclose: () => void; writingGoalsEnabled?: boolean } = $props();
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 
@@ -318,6 +322,11 @@ function formatGradeLevel(grade: number): string {
                     </div>
                 </button>
             </div>
+
+            {#if writingGoalsEnabled}
+                <div class="border-t border-black/[0.06]"></div>
+                <WritingGoalsPanel />
+            {/if}
 
             {#if $novelNovemberEnabled}
                 <!-- Writing time tracker — PostHog `novel-november` feature flag -->
