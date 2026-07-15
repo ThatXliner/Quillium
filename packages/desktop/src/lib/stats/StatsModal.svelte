@@ -8,6 +8,7 @@
       - onclose: () => void — called when the modal is dismissed.
 -->
 <script lang="ts">
+import AchievementBadges from "$lib/achievements/AchievementBadges.svelte";
 import { type CharacterizerResult, generateCharacterization } from "$lib/ai/clientStreams";
 import {
     aiSettings,
@@ -18,14 +19,13 @@ import {
 } from "$lib/ai/settings.svelte";
 import { listDraftEvents } from "$lib/db";
 import type { EventRecord } from "$lib/db/types";
-import posthog from "$lib/posthog";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
 import { computeStats } from "$lib/stats/compute";
 import {
     computeWritingTime,
     formatWritingDuration,
-    isNovelNovemberEnabled,
 } from "$lib/stats/writingTime";
 import { currentDraftId, documentContent, lastPersistedEventId } from "$lib/stores";
 import { BarChart3, Clock3, HelpCircle, X } from "lucide-svelte";
@@ -39,7 +39,6 @@ let text = $derived($documentContent);
 let stats = $derived(computeStats(text));
 let diversity = $derived(formatDiversity(stats.vocabularyDiversity));
 let writingEvents = $state<EventRecord[]>([]);
-let novelNovemberEnabled = $state(false);
 let writingTimeLoading = $state(false);
 let writingTimeError = $state(false);
 let trackerNow = $state(Date.now());
@@ -84,7 +83,7 @@ $effect(() => {
     const draftId = $currentDraftId;
     $lastPersistedEventId;
     const generation = ++writingTimeLoadGeneration;
-    if (!novelNovemberEnabled || !draftId) {
+    if (!$novelNovemberEnabled || !draftId) {
         writingEvents = [];
         writingTimeLoading = false;
         return;
@@ -108,16 +107,10 @@ $effect(() => {
 });
 
 onMount(() => {
-    const updateNovelNovemberFlag = () => {
-        novelNovemberEnabled = isNovelNovemberEnabled(posthog.getFeatureFlag("novel-november"));
-    };
-    updateNovelNovemberFlag();
-    const unsubscribeFlags = posthog.onFeatureFlags(updateNovelNovemberFlag);
     const timer = window.setInterval(() => {
         trackerNow = Date.now();
     }, 1_000);
     return () => {
-        unsubscribeFlags();
         window.clearInterval(timer);
     };
 });
@@ -262,7 +255,7 @@ function formatGradeLevel(grade: number): string {
                 </button>
             </div>
 
-            {#if novelNovemberEnabled}
+            {#if $novelNovemberEnabled}
                 <!-- Writing time tracker — PostHog `novel-november` feature flag -->
                 <div class="border-t border-black/[0.06]"></div>
                 <section class="flex flex-col gap-3" aria-label="Writing time">
@@ -324,6 +317,11 @@ function formatGradeLevel(grade: number): string {
                         </p>
                     {/if}
                 </section>
+            {/if}
+
+            {#if $novelNovemberEnabled}
+                <div class="border-t border-black/[0.06]"></div>
+                <AchievementBadges />
             {/if}
 
             {#if appSettings.aiEnabled}
