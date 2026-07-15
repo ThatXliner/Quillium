@@ -47,11 +47,11 @@ vi.mock("$lib/settings.svelte", () => ({
     appSettings: mockSettings,
 }));
 
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import {
     DOCUMENT_CONTENT_SELECTOR,
     REDACTED_KEYS,
     capture,
-    novelNovemberEnabled,
     // TODO(#191): re-enable when syncShareDocumentAnalytics is restored
     // syncShareDocumentAnalytics,
 } from "$lib/posthog";

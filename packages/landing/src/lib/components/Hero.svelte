@@ -1,8 +1,9 @@
-	<script lang="ts">
+<script lang="ts">
 import { Lock, Pen, ShieldCheck } from "@lucide/svelte";
 import { onMount } from "svelte";
 
 import posthog from "posthog-js";
+import BranchDemo from "./BranchDemo.svelte";
 
 const REPO = "ThatXliner/quillium-releases";
 
@@ -22,12 +23,6 @@ let downloadUrl = $derived.by(() => {
     return "#download";
 });
 
-let displayedText = $state("");
-const fullText = "Prose for ";
-const typingSpeed = 100;
-let showPros = $state(false);
-let showPeriod = $state(false);
-let showCursor = $state(true);
 let downloadCount = $state(0);
 
 onMount(() => {
@@ -35,22 +30,6 @@ onMount(() => {
     if (ua.includes("mac")) detected = "mac";
     else if (ua.includes("win")) detected = "windows";
     else if (ua.includes("linux")) detected = "linux";
-    let i = 0;
-    const interval = setInterval(() => {
-        if (i < fullText.length) {
-            displayedText = fullText.slice(0, i + 1);
-            i++;
-        } else {
-            showPros = true;
-            clearInterval(interval);
-            setTimeout(() => {
-                showPeriod = true;
-                setTimeout(() => {
-                    showCursor = false;
-                }, 600);
-            }, typingSpeed);
-        }
-    }, typingSpeed);
 
     fetch("/api/download-count")
         .then((res) => res.json())
@@ -58,8 +37,6 @@ onMount(() => {
             downloadCount = data.count ?? 0;
         })
         .catch(() => {});
-
-    return () => clearInterval(interval);
 });
 </script>
 
@@ -76,23 +53,22 @@ onMount(() => {
 		<p
 			class="reveal mb-4 text-[0.75rem] font-semibold tracking-[0.15em] text-[color:var(--text-faint)] uppercase contrast-more:text-[color:var(--text-soft)]"
 		>
-			The Non-Linear Writing App
+			The writing app for people who rewrite
 		</p>
 
 		<h1
 			class="reveal reveal-delay-1 mb-6 max-w-[700px] font-[Newsreader,Georgia,serif] text-[clamp(2.8rem,6vw,4.5rem)] leading-[1.15] font-normal tracking-[-0.03em] text-[color:var(--text-strong)]"
 		>
-			{displayedText}{#if showPros}<span class="italic">Pros</span>{/if}{#if showPeriod}.{/if}<span
-				class="typing-cursor"
-				class:hidden={!showCursor}>|</span
-			>
+			Write in <span class="italic">branches</span>.
 		</h1>
 
 		<p
-			class="reveal reveal-delay-2 mb-12 max-w-[520px] text-[1.1rem] leading-[1.7] text-[color:var(--text-soft)] contrast-more:text-[color:var(--text-soft)]"
+			class="reveal reveal-delay-2 mb-10 max-w-[520px] text-[1.1rem] leading-[1.7] text-[color:var(--text-soft)] contrast-more:text-[color:var(--text-soft)]"
 		>
-			Write a sentence three different ways, and decide which to pick later. Branch any phrase without
-			losing a single word.
+			Draft a sentence three different ways and decide later. Every version stays in your
+			document — not in a folder full of <span class="whitespace-nowrap italic"
+				>final_v2_FINAL.docx</span
+			> copies.
 		</p>
 
 		{#if downloadCount > 100}
@@ -106,7 +82,7 @@ onMount(() => {
 				<a
 					href={downloadUrl}
 					class="btn-primary inline-flex items-center gap-2"
-					onclick={() => posthog.capture('cta_clicked', { cta: 'download', location: 'hero' })}
+					onclick={() => posthog.capture("cta_clicked", { cta: "download", location: "hero" })}
 				>
 					Download Now
 				</a>
@@ -126,6 +102,10 @@ onMount(() => {
 			</p>
 		</div>
 
+		<div class="reveal reveal-delay-4 mt-16">
+			<BranchDemo />
+		</div>
+
 		<div
 			class="reveal reveal-delay-4 mt-24 flex flex-col items-center gap-4 pt-4 max-md:gap-3"
 			style="border-top: 2px solid; border-image: linear-gradient(90deg, transparent, #3b82f6, #a855f7, #22c55e, #fcbc05, transparent) 1;"
@@ -136,33 +116,18 @@ onMount(() => {
 				<a
 					href="/blog/quillium-is-not-an-ai-app"
 					class="inline-flex items-center gap-1 text-[color:var(--text-soft)] underline transition-colors duration-300 hover:text-[color:var(--text)]"
-					><Pen size={15} strokeWidth={2} class="opacity-50" />Write every word (No AI bs).</a
+					><Pen size={15} strokeWidth={2} class="opacity-50" />Not an AI app — you write every word.</a
 				>
 				<a
 					href="/blog/quillium-privacy"
 					class="inline-flex items-center gap-1 text-[color:var(--text-soft)] underline transition-colors duration-300 hover:text-[color:var(--text)]"
-					><Lock size={15} strokeWidth={2} class="opacity-50" />Fully private.</a
+					><Lock size={15} strokeWidth={2} class="opacity-50" />Your work stays on your device.</a
 				>
 				<a
 					href="/blog/how-quillium-keeps-your-writing-safe"
 					class="inline-flex items-center gap-1 text-[color:var(--text-soft)] underline transition-colors duration-300 hover:text-[color:var(--text)]"
-					><ShieldCheck size={15} strokeWidth={2} class="opacity-50" />Safe and secure.</a
+					><ShieldCheck size={15} strokeWidth={2} class="opacity-50" />Crash-safe autosave.</a
 				>
 			</p>
 		</div>
 	</section>
-
-	<style>
-		.typing-cursor {
-			font-weight: 300;
-			animation: blink 0.6s step-end infinite;
-		}
-		.typing-cursor.hidden {
-			display: none;
-		}
-		@keyframes blink {
-			50% {
-				opacity: 0;
-			}
-		}
-	</style>

@@ -22,7 +22,7 @@ onMount(() => {
 <section id="features" class="features-section">
 	<div class="reveal features-header">
 		<p class="section-eyebrow">What makes it different</p>
-		<h2 class="section-heading">The tools your writing actually needs.</h2>
+		<h2 class="section-heading">Built for the messy middle of a draft.</h2>
 	</div>
 
 	<!-- Feature 1: Branches / Revisions -->
@@ -72,13 +72,34 @@ onMount(() => {
 			</div>
 			<h3 class="feature-heading">Write in Branches</h3>
 			<p class="feature-lead">
-				Fork any sentence. Keep every version. Navigate your creative decisions freely and try what
-				might work.
+				Fork any sentence without duplicating the document. Every take stays in place, side by
+				side, until you know which one lands.
 			</p>
 		</div>
 	</div>
 
-	<!-- Feature 2: Annotations -->
+	<!-- Feature 2: Offline-First — right after branches so the "keep every
+	     version" promise is immediately backed by "and none of it can vanish". -->
+	<div class="reveal feature-row feature-row--full">
+		<div class="feature-text">
+			<div class="feature-icon-wrap" style="background:rgba(59,130,246,0.08);">
+				<CircleCheck size={24} strokeWidth={1.5} color="#3b82f6" />
+			</div>
+			<h3 class="feature-heading">Never Lose Your Work</h3>
+			<p class="feature-lead">
+				Your work is saved locally. It's durable, reliable, instant, and no internet connection is
+				required. A database with 25+ years of experience means even if your computer crashes
+				mid-sentence, nothing is lost.
+			</p>
+			<div class="tag-list">
+				<span class="tag tag--blue">Offline-first</span>
+				<span class="tag tag--blue">SQLite-backed</span>
+				<span class="tag tag--blue">Crash-resistant</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Feature 3: Annotations -->
 	<div class="reveal feature-row feature-row--reversed">
 		<div class="feature-text">
 			<div class="feature-icon-wrap" style="background:rgba(252,188,5,0.1);">
@@ -101,12 +122,14 @@ onMount(() => {
 		/>
 	</div>
 
-	<!-- Feature 3: A Second Voice -->
+	<!-- Feature 4: A Second Set of Eyes — deliberately LAST. It's the feature
+	     most easily misread as "this is an AI app", so it never leads; the copy
+	     frames it as margin notes from a reader, never as a co-writer. -->
 	{#if showAiSection}
 		<div class="reveal feature-row">
 			<img
 				src={aiAnnotationsImg}
-				alt="Quillium AI annotation panel providing inline writing feedback"
+				alt="Quillium feedback panel leaving margin comments beside the text"
 				class="feature-screenshot"
 				loading="lazy"
 			/>
@@ -117,38 +140,18 @@ onMount(() => {
 				</div>
 				<h3 class="feature-heading">A Second Set of Eyes</h3>
 				<p class="feature-lead">
-					Not everyone is free to review your work. Now, you don't have to wait. Ask for feedback,
-					find the right word, get clarity — all without leaving your flow.
+					No writing group awake at 2 a.m.? Ask Quillium for margin notes. Feedback arrives as
+					comments beside your text — never as edits to it. You accept, ignore, or argue back.
+					The words stay yours.
 				</p>
 				<div class="tag-list">
-					<span class="tag tag--green">Review &amp; revise</span>
-					<span class="tag tag--green">Find the right word</span>
-					<span class="tag tag--green">Tone feedback</span>
-					<span class="tag tag--green">Clarity &amp; conciseness</span>
+					<span class="tag tag--green">Opt-in</span>
+					<span class="tag tag--green">Comments, not rewrites</span>
+					<span class="tag tag--green">You keep the pen</span>
 				</div>
 			</div>
 		</div>
 	{/if}
-
-	<!-- Feature 4: Offline-First -->
-	<div class="reveal feature-row feature-row--full">
-		<div class="feature-text">
-			<div class="feature-icon-wrap" style="background:rgba(59,130,246,0.08);">
-				<CircleCheck size={24} strokeWidth={1.5} color="#3b82f6" />
-			</div>
-			<h3 class="feature-heading">Never Lose Your Work</h3>
-			<p class="feature-lead">
-				Your work is saved locally. It's durable, reliable, instant, and no internet connection is
-				required. A database with 25+ years of experience means even if your computer crashes
-				mid-sentence, nothing is lost.
-			</p>
-			<div class="tag-list">
-				<span class="tag tag--blue">Offline-first</span>
-				<span class="tag tag--blue">SQLite-backed</span>
-				<span class="tag tag--blue">Crash-resistant</span>
-			</div>
-		</div>
-	</div>
 </section>
 
 <style>
