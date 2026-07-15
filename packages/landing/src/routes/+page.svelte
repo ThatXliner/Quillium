@@ -6,6 +6,7 @@ import Footer from "$lib/components/Footer.svelte";
 import Hero from "$lib/components/Hero.svelte";
 import Hero3DV2 from "$lib/components/Hero3DV2.svelte";
 import Nav from "$lib/components/Nav.svelte";
+import NotAiStatement from "$lib/components/NotAiStatement.svelte";
 import VideoOrCarousel from "$lib/components/VideoOrCarousel.svelte";
 import { initReveal } from "$lib/reveal";
 import posthog from "posthog-js";
@@ -75,7 +76,7 @@ onMount(() => {
 </script>
 
 <svelte:head>
-	<title>Quillium — The Non-Linear Writing App</title>
+	<title>Quillium — Write in Branches. Keep Every Draft.</title>
 	<meta name="msvalidate.01" content="64D60FCC52EFEF1A4B0D43527C8FB4C3" />
 	<meta
 		name="keywords"
@@ -90,7 +91,7 @@ onMount(() => {
 	<!-- Open Graph -->
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content="https://quillium.bryanhu.com/" />
-	<meta property="og:title" content="Quillium — The Non-Linear Writing App" />
+	<meta property="og:title" content="Quillium — Write in Branches. Keep Every Draft." />
 	<meta
 		property="og:description"
 		content="A writing app that lets you write in branches. Fork any sentence, keep every version, and never lose a draft."
@@ -103,7 +104,7 @@ onMount(() => {
 	<!-- Twitter Card -->
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:site" content="@quillium" />
-	<meta name="twitter:title" content="Quillium — The Non-Linear Writing App" />
+	<meta name="twitter:title" content="Quillium — Write in Branches. Keep Every Draft." />
 	<meta
 		name="twitter:description"
 		content="A writing app that lets you write in branches. Fork any sentence, keep every version, and never lose a draft."
@@ -156,11 +157,17 @@ onMount(() => {
 		<Hero release={data.release} />
 	{/if}
 
-	<!-- 2. Desktop only: the marketing video (→ Showcase carousel on spotty links).
+	<!-- 2. The "not an AI app" declaration comes FIRST after the hero: the
+	        misconception forms at first glance, so it gets corrected before the
+	        video or features can be misread through an AI lens.
+	     3. Desktop only: the marketing video (→ Showcase carousel on spotty links).
 	        Mobile skips it — a video embed is a poor mobile experience.
-	     3. Then for both: the feature list, then the closing Download CTA.
+	     4. Then for both: the feature list, then the closing Download CTA.
 	     A divider precedes any section that follows another. -->
 	<div class="post-hero">
+		<div class="warm-divider section-divider"></div>
+		<NotAiStatement />
+
 		{#if showFlight}
 			<div class="warm-divider section-divider"></div>
 			<VideoOrCarousel videoId={HERO_VIDEO_ID} location="hero-video" />

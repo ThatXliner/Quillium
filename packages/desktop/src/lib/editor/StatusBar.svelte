@@ -29,11 +29,30 @@ import {
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { type ExportFormat, exportDocument } from "$lib/export";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Play, Settings, X } from "lucide-svelte";
+import { activeSprint, sprintOpen } from "$lib/sprint/state";
+import {
+    editorView,
+    saveStatus,
+    settingsOpen,
+    statsOpen,
+    tutorialActive,
+    writingPromptOpen,
+} from "$lib/stores";
+import {
+    BarChart3,
+    Download,
+    History,
+    LayoutGrid,
+    Lightbulb,
+    Play,
+    Settings,
+    Timer,
+    X,
+} from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -359,6 +378,31 @@ $effect(() => {
             >
                 <BarChart3 size={20} />
             </button>
+            {#if $novelNovemberEnabled}
+                <button
+                    onclick={() => ($writingPromptOpen = true)}
+                    aria-label="Give me a writing prompt"
+                    title="Writing Prompt ({modKey}Shift+P)"
+                    class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                        {$writingPromptOpen ? 'text-orange-600' : 'text-orange-400 hover:text-orange-600'}"
+                >
+                    <Lightbulb size={20} />
+                </button>
+            {/if}
+            {#if $novelNovemberEnabled}
+                <button
+                    onclick={() => ($sprintOpen = true)}
+                    aria-label={$activeSprint ? "Open active writing sprint" : "Start writing sprint"}
+                    title={$activeSprint ? "Writing Sprint (active)" : "Writing Sprint"}
+                    class="relative w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                        {$sprintOpen || $activeSprint ? 'text-violet-600' : 'text-violet-400 hover:text-violet-600'}"
+                >
+                    <Timer size={20} />
+                    {#if $activeSprint}
+                        <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-violet-500 ring-2 ring-white/70"></span>
+                    {/if}
+                </button>
+            {/if}
             <button
                 onclick={() => (exportOpen = true)}
                 aria-label="Export document"

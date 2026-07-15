@@ -82,6 +82,12 @@ export type AppSettings = {
     readonlyShareAutoUpdateDebounceMs: number;
     /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
     persistUndoHistoryForNewDocuments: boolean;
+    /** NanoWriMo writing reminders, gated at runtime by the `novel-november` flag. */
+    writingRemindersEnabled: boolean;
+    /** Local wall-clock times in 24-hour HH:mm format. */
+    writingReminderTimes: string[];
+    /** JavaScript weekday numbers (Sunday = 0). */
+    writingReminderDays: number[];
     // Where annotation cards are placed when the AI sidebar is hidden (AI off):
     //   "visual-split" — balance cards across a left and right column
     //   "by-type"      — comments on the left, revisions/suggestions on the right
@@ -122,6 +128,9 @@ const DEFAULTS: AppSettings = {
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     persistUndoHistoryForNewDocuments: false,
+    writingRemindersEnabled: false,
+    writingReminderTimes: ["09:00"],
+    writingReminderDays: [0, 1, 2, 3, 4, 5, 6],
     annotationLayout: "visual-split",
 };
 
@@ -148,6 +157,32 @@ function loadSettings(): AppSettings {
         );
         merged.persistUndoHistoryForNewDocuments =
             merged.persistUndoHistoryForNewDocuments === true;
+        merged.writingRemindersEnabled = merged.writingRemindersEnabled === true;
+        merged.writingReminderTimes = Array.isArray(merged.writingReminderTimes)
+            ? [
+                  ...new Set(
+                      merged.writingReminderTimes.filter(
+                          (time: unknown) =>
+                              typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time),
+                      ),
+                  ),
+              ].sort()
+            : [...DEFAULTS.writingReminderTimes];
+        if (merged.writingReminderTimes.length === 0) {
+            merged.writingReminderTimes = [...DEFAULTS.writingReminderTimes];
+        }
+        if (Array.isArray(merged.writingReminderDays)) {
+            const reminderDays = (merged.writingReminderDays as unknown[]).filter(
+                (day): day is number =>
+                    Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6,
+            );
+            merged.writingReminderDays = [...new Set(reminderDays)].sort((a, b) => a - b);
+        } else {
+            merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
+        }
+        if (merged.writingReminderDays.length === 0) {
+            merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
+        }
         merged.draftPanelWidth =
             typeof merged.draftPanelWidth === "number" && Number.isFinite(merged.draftPanelWidth)
                 ? Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth))

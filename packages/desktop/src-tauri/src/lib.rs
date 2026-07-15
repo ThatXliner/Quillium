@@ -1187,6 +1187,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_fs::init());
 
     // Dev-only MCP automation bridge. Double-gated: the `mcp-bridge` feature keeps

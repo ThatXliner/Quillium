@@ -46,17 +46,13 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import {
     maybeShowAutoSurvey,
     recordWordCount,
     registerSurveyLifecycleListeners,
 } from "$lib/feedback/autoSurvey";
-import {
-    FOCUS_CONTROLS_HIDE_DELAY_MS,
-    FOCUS_MODE_FEATURE_FLAG,
-    isFocusModeFeatureEnabled,
-    isFocusModeShortcut,
-} from "$lib/focusMode";
+import { FOCUS_CONTROLS_HIDE_DELAY_MS, isFocusModeShortcut } from "$lib/focusMode";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import {
@@ -72,6 +68,7 @@ import {
     settingsOpen,
     statsOpen,
     tutorialActive,
+    writingPromptOpen,
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
@@ -105,7 +102,9 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
+import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
 import posthog from "$lib/posthog";
+import WritingSprint from "$lib/sprint/WritingSprint.svelte";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
@@ -116,7 +115,8 @@ import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
-import { Toaster, toast } from "svelte-sonner";
+import WritingPromptModal from "$lib/writingPrompts/WritingPromptModal.svelte";
+import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
 // set it immediately so Editor.svelte's fromSave picks it up on mount.
@@ -149,6 +149,21 @@ const authConnectionState = $derived(getConnectionState());
 // in-memory user before landing offline, but the persisted session is
 // still there and the stuck user needs the Sign out escape hatch.
 const authCanReset = $derived(hasAuthStateToReset());
+
+$effect(() => {
+    if (!$novelNovemberEnabled) $writingPromptOpen = false;
+});
+
+$effect(() => {
+    const available = $novelNovemberEnabled;
+    focusModeAvailable = available;
+    if (!available && focusMode) void setFocusMode(false);
+    if (typeof window !== "undefined" && !IS_MOBILE && "__TAURI_INTERNALS__" in window) {
+        invoke("cmd_set_focus_mode_available", { available }).catch((error) => {
+            console.warn("[focusMode] Unable to update native menu availability", error);
+        });
+    }
+});
 
 let editorComponent = $state<{
     reload: () => Promise<void>;
@@ -288,6 +303,11 @@ function handleKeydown(e: KeyboardEvent) {
         void setFocusMode(false);
         return;
     }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        if (!$novelNovemberEnabled) return;
+        e.preventDefault();
+        $writingPromptOpen = true;
+    }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         void editorComponent?.createNewTab();
@@ -398,24 +418,6 @@ onMount(() => {
 
     showTutorialOnFirstVisit();
 
-    function updateFocusModeAvailability() {
-        const available = isFocusModeFeatureEnabled(
-            posthog.getFeatureFlag(FOCUS_MODE_FEATURE_FLAG),
-        );
-        focusModeAvailable = available;
-        if (!available && focusMode) void setFocusMode(false);
-        if (!IS_MOBILE && "__TAURI_INTERNALS__" in window) {
-            invoke("cmd_set_focus_mode_available", { available }).catch((error) => {
-                console.warn("[focusMode] Unable to update native menu availability", error);
-            });
-        }
-    }
-
-    // Disabled until PostHog resolves the shared flag. The callback also runs
-    // when flags are reloaded, allowing a remote kill-switch to exit focus mode.
-    updateFocusModeAvailability();
-    const unsubscribeFeatureFlags = posthog.onFeatureFlags(updateFocusModeAvailability);
-
     // Check for updates silently in the background.
     // On MAS builds the banner redirects to the App Store instead of self-updating.
     // On mobile the updater plugin isn't registered, so skip entirely.
@@ -476,6 +478,11 @@ onMount(() => {
     const unsubShowAuthModal = appEventBus.on("show-auth-modal", handleShowAuthModal);
     const unsubShowLicenses = appEventBus.on("show-licenses", () => {
         licensesOpen = true;
+    });
+    const unsubAchievement = appEventBus.on("achievement-unlocked", (event) => {
+        toast.success(`Achievement unlocked: ${event.achievement.title}`, {
+            description: event.achievement.description,
+        });
     });
 
     // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
@@ -546,9 +553,9 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubAchievement();
         unsubSurveyLifecycle();
         unsubWordCount();
-        unsubscribeFeatureFlags();
         clearTimeout(focusControlsTimer);
         for (const unlisten of menuUnlisteners) unlisten();
     };
@@ -669,13 +676,14 @@ if (import.meta.env.DEV) {
 <HarperTooltip />
 
 <!-- In-app overflow menu — only visible on small/touch viewports (<900px).
-     Reaches Settings / Library / History / Licenses / Export, the same
-     actions the desktop-only native menu bar triggers. -->
+     Reaches Settings / Library / History / Export plus gated mobile actions. -->
 <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
     <MobileMenu
         onsettings={() => ($settingsOpen = !$settingsOpen)}
         onlibrary={goToLibrary}
         onhistory={goToHistory}
+        writingPromptsEnabled={$novelNovemberEnabled}
+        onwritingprompt={() => ($writingPromptOpen = true)}
         onexport={handleMobileExport}
     />
 </div>
@@ -725,7 +733,14 @@ if (import.meta.env.DEV) {
 
 <!-- Stats modal -->
 {#if $statsOpen}
-    <StatsModal onclose={() => ($statsOpen = false)} />
+    <StatsModal
+        writingGoalsEnabled={$novelNovemberEnabled}
+        onclose={() => ($statsOpen = false)}
+    />
+{/if}
+
+{#if $writingPromptOpen && $novelNovemberEnabled}
+    <WritingPromptModal onclose={() => ($writingPromptOpen = false)} />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -770,13 +785,18 @@ if (import.meta.env.DEV) {
 <!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
 <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
     <BottomLeftStack>
+        {#if $novelNovemberEnabled}
+            <WritingSprint />
+        {/if}
         {#if appSettings.aiEnabled}
             <AutoAIWidget />
         {/if}
         <WordCountOverlay />
+        {#if $novelNovemberEnabled}
+            <WritingGoalTracker />
+        {/if}
     </BottomLeftStack>
 </div>
-<Toaster position="bottom-right" />
 
 <!-- Top-right collab + account entry points -->
 <div

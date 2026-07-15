@@ -1,3 +1,4 @@
+import { recordWritingActivity } from "$lib/achievements/store";
 import { isCollabJoiner } from "$lib/collab/store";
 import { appendEvent, createNamedSnapshot, createSnapshot, updateDocumentMeta } from "$lib/db";
 import { replayHistoryIsolationOf } from "$lib/db/events";
@@ -29,6 +30,7 @@ import {
     lastSavedAt,
     saveStatus,
 } from "$lib/stores";
+import { recordWritingActivity as recordReminderWritingActivity } from "$lib/writingReminders";
 import { historyField, isolateHistory } from "@codemirror/commands";
 import { type Annotation, ChangeSet, EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
@@ -748,6 +750,7 @@ async function doAppend(
     // the time the 500 ms fires.
     const docText = update.state.doc.toString();
     const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
+    if (update.docChanged) recordWritingActivity(wordCount);
     const previewText = docText.slice(0, 200);
     const prev = metaDebounceTimers.get(docId);
     if (prev !== undefined) clearTimeout(prev.timer);
@@ -834,6 +837,7 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
 
 // ── Auto-save listener ────────────────────────────────────────────
 const save = EditorView.updateListener.of((update: ViewUpdate) => {
+    if (update.docChanged) recordReminderWritingActivity();
     if (update.transactions.some(changesPersistedState)) {
         persistTransaction(update);
     }
