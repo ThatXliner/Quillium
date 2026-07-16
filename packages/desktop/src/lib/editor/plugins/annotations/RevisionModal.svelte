@@ -715,6 +715,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       view={controller.editor}
       annotationsData={modalAnnotations}
       activeAnnotationData={modalActiveAnnotation ?? null}
+      nested
       layout="inline"
     />
   {/if}

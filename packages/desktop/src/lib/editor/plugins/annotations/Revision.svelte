@@ -32,8 +32,10 @@ import {
     type RevisionVersionView,
     groupColor as sharedGroupColor,
 } from "@quillium/share";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronUp, Link2, PlusIcon, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
+import { toast } from "svelte-sonner";
 import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import {
@@ -63,11 +65,13 @@ const {
     revision,
     isActive,
     view,
+    nested = false,
     updateThread,
 }: {
     revision: Annotation<"revision">;
     isActive: boolean;
     view: EditorView;
+    nested?: boolean;
     updateThread: (thread: ThreadType) => void;
 } = $props();
 
@@ -175,7 +179,7 @@ function groupColor(groupId: string): string {
     return sharedGroupColor(groupId);
 }
 
-const allGroups = $derived($versionGroups ?? {});
+const allGroups = $derived(nested ? {} : ($versionGroups ?? {}));
 function memberOf(versionId: string): VersionGroupMember {
     return { revisionId: revision.id, versionId };
 }
@@ -234,10 +238,12 @@ function joinableGroups(versionId: string) {
 }
 
 function linkToExistingGroup(versionId: string, groupId: string) {
+    if (nested) return;
     view.dispatch(addVersionToGroup(view.state, groupId, memberOf(versionId)));
     openLinkMenu = null;
 }
 function unlinkVersion(versionId: string) {
+    if (nested) return;
     view.dispatch(removeVersionFromGroup(view.state, memberOf(versionId)));
     openLinkMenu = null;
 }
@@ -247,6 +253,7 @@ function unlinkVersion(versionId: string) {
 // store: pick an anchor version on one revision, then pick a partner version on
 // ANOTHER revision to complete the link. The anchor persists across cards.
 function startLink(versionId: string) {
+    if (nested) return;
     const existing = groupForVersion(versionId);
     // Picking an already-grouped version anchors on its group (so the next pick
     // joins that group); otherwise anchor on the bare member.
@@ -254,6 +261,7 @@ function startLink(versionId: string) {
     openLinkMenu = null;
 }
 function completeLink(versionId: string) {
+    if (nested) return;
     const anchor = $linkAnchor;
     if (!anchor || anchor.member.revisionId === revision.id) return;
     const partner = memberOf(versionId);
@@ -273,8 +281,24 @@ function cancelLink() {
 }
 // True for this card's versions while an anchor on ANOTHER revision is waiting.
 const linkTargetable = $derived(
-    $linkAnchor !== null && $linkAnchor.member.revisionId !== revision.id,
+    !nested && $linkAnchor !== null && $linkAnchor.member.revisionId !== revision.id,
 );
+
+const NESTED_LINK_REQUEST_URL = "https://github.com/ThatXliner/Quillium/issues/314";
+
+function showNestedLinkUnsupported(): void {
+    posthog.capture("nested_version_link_unsupported_clicked");
+    toast.info("Nested linked revisions are currently not supported.", {
+        description: "Want us to prioritize this?",
+        action: {
+            label: "Request it",
+            onClick: () => {
+                posthog.capture("nested_version_link_request_opened");
+                void openUrl(NESTED_LINK_REQUEST_URL);
+            },
+        },
+    });
+}
 
 $effect(() => {
     return annotationEventBus.on("revision-boundary-nudge", (event) => {
@@ -645,6 +669,10 @@ function selectRevisionVersion(version: RevisionVersionView) {
             {versionGroup ? 'text-blue-600' : ''}"
         onclick={() => {
             focusThisRevision();
+            if (nested) {
+                showNestedLinkUnsupported();
+                return;
+            }
             openLinkMenu = openLinkMenu === versionView.index ? null : versionView.index;
         }}
         title="Link to a version of another revision"

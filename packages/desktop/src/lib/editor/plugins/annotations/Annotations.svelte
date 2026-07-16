@@ -77,11 +77,13 @@ const {
     view = undefined,
     annotationsData = undefined,
     activeAnnotationData = undefined,
+    nested = false,
     layout = "floating",
 }: {
     view?: EditorView;
     annotationsData?: AnnotationMap;
     activeAnnotationData?: GenericAnnotation | null;
+    nested?: boolean;
     layout?: "floating" | "inline";
 } = $props();
 
@@ -863,6 +865,7 @@ onDestroy(() => annotationColumnDom.destroy());
             <Revision
                 revision={c}
                 view={resolvedView}
+                {nested}
                 {isActive}
                 updateThread={dispatchUpdateThread.bind(null, i)}
             />
