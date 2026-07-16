@@ -42,6 +42,7 @@ import {
     type Thread as ThreadType,
     annotationField,
     annotationsChanged,
+    collapseRevision,
     createNewRevision,
     deleteRevisionVersion,
     isAnnotationOfType,
@@ -62,13 +63,11 @@ const {
     revision,
     isActive,
     view,
-    remove,
     updateThread,
 }: {
     revision: Annotation<"revision">;
     isActive: boolean;
     view: EditorView;
-    remove: () => void;
     updateThread: (thread: ThreadType) => void;
 } = $props();
 
@@ -606,12 +605,14 @@ function openRevisionModal() {
     });
 }
 
-function deleteEntireRevision() {
+function collapseEntireRevision() {
     posthog.capture("annotation_deleted", {
         type: "revision",
         version_count: revision.versions.length,
+        nested_annotations_preserved: true,
     });
-    remove();
+    controller.flushCurrentStateToParent(false);
+    view.dispatch(collapseRevision(view.state, revision.id));
 }
 
 function selectRevisionVersion(version: RevisionVersionView) {
@@ -840,7 +841,7 @@ function selectRevisionVersion(version: RevisionVersionView) {
     onRenameVersion={(version) => startLabelEdit(version.index)}
     onSelectVersion={selectRevisionVersion}
     onOpen={openRevisionModal}
-    onDelete={deleteEntireRevision}
+    onDelete={collapseEntireRevision}
     {versionControls}
     {versionMenu}
     {afterVersions}

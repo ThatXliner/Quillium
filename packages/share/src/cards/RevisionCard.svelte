@@ -86,7 +86,8 @@ $effect(() => {
                     <button
                         class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
                         onclick={onDelete}
-                        title="Delete entire revision"
+                        title="Collapse revision and preserve nested annotations"
+                        aria-label="Collapse revision and preserve nested annotations"
                     ><Trash2 size={16} /></button>
                 {/if}
             </div>

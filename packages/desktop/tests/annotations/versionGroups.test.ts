@@ -17,6 +17,7 @@ import { annotations as annotationExtensions } from "$lib/editor/plugins/annotat
 import {
     addAnnotation,
     annotationField,
+    collapseRevision,
     deleteRevisionVersion,
     removeAnnotation,
     setActiveRevisionVersion,
@@ -245,6 +246,23 @@ describe("one version per revision per group", () => {
 });
 
 describe("referential integrity", () => {
+    it("collapsing a revision unlinks its versions and undo restores the groups", () => {
+        const { v, b, formalId, casualId } = setupLinkedDoc();
+        view = v;
+
+        v.dispatch(collapseRevision(v.state, b.id));
+
+        expect(groups(v)[formalId]).toBeUndefined();
+        expect(groups(v)[casualId]).toBeUndefined();
+        expect(v.state.field(annotationField)[b.id]).toBeUndefined();
+
+        undo(v);
+
+        expect(rev(v, b.id)).toBeDefined();
+        expect(groups(v)[formalId]?.members).toHaveLength(2);
+        expect(groups(v)[casualId]?.members).toHaveLength(2);
+    });
+
     it("removing a revision prunes its members and dissolves the group", () => {
         const { v, a, b, formalId, casualId } = setupLinkedDoc();
         view = v;

@@ -568,7 +568,7 @@ export function setActiveRevisionVersion(
     annotationId: number,
     toId: string,
     options: { moveCursor?: boolean } = {},
-) {
+): Transaction {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
@@ -605,7 +605,6 @@ export function setActiveRevisionVersion(
             insert: versionText(v),
         });
     }
-
     const changes = state.changes(changeSpecs);
     const combinedProvenance = combineRevisionProvenance(appliedProvenance);
     // Move the EDITOR cursor into the primary switched revision so it becomes the
@@ -627,6 +626,86 @@ export function setActiveRevisionVersion(
         spec.selection = EditorSelection.cursor(caret);
     }
     return state.update(spec);
+}
+
+function annotationsFromVersion(version: VersionState): GenericAnnotation[] | undefined {
+    const serializedAnnotationField = (version as Record<string, unknown>).annotationField;
+    if (!serializedAnnotationField || typeof serializedAnnotationField !== "object") return [];
+
+    const parsedAnnotationField = RawAnnotationsSchema.safeParse(serializedAnnotationField);
+    if (!parsedAnnotationField.success) {
+        console.warn(
+            "[annotationField] refused to collapse revision with invalid nested annotations",
+            parsedAnnotationField.error,
+        );
+        return undefined;
+    }
+
+    try {
+        const nestedState = EditorState.fromJSON(
+            {
+                doc: versionText(version),
+                selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                annotationField: parsedAnnotationField.data,
+            },
+            { extensions: [annotationField] },
+            { annotationField },
+        );
+        return Object.values(nestedState.field(annotationField));
+    } catch (error) {
+        console.warn("[annotationField] failed to preserve nested annotations on collapse", error);
+        return undefined;
+    }
+}
+
+function rebaseNestedAnnotation(
+    annotation: GenericAnnotation,
+    offset: number,
+    id: number,
+): GenericAnnotation {
+    const selection = EditorSelection.create(
+        annotation.selection.ranges.map((range) =>
+            EditorSelection.range(range.anchor + offset, range.head + offset),
+        ),
+        annotation.selection.mainIndex,
+    );
+    return { ...annotation, id, selection };
+}
+
+/**
+ * Remove a revision wrapper while lifting the active version's direct child
+ * annotations into the parent document. Child ranges are stored relative to
+ * the revision, so they are rebased and assigned collision-free parent IDs.
+ * Deeper annotation trees remain intact inside any lifted child revisions.
+ */
+export function collapseRevision(state: EditorState, annotationId: number): Transaction {
+    const annotations = state.field(annotationField);
+    const revision = annotations[annotationId];
+    if (!isAnnotationOfType(revision, "revision")) {
+        throw new Error("Annotation is not a revision");
+    }
+
+    const active = versionById(revision, revision.activeVersionId);
+    const nestedAnnotations = active ? annotationsFromVersion(active) : [];
+    // Preserving the wrapper is safer than silently discarding nested data that
+    // cannot be decoded. The warning above leaves a diagnostic for recovery.
+    if (!nestedAnnotations) return state.update({});
+    let nextId = getNewId(annotations);
+    const liftedAnnotations = nestedAnnotations.map((annotation) =>
+        rebaseNestedAnnotation(annotation, revision.selection.main.from, nextId++),
+    );
+
+    return state.update({
+        effects: [
+            removeAnnotation.of(revision),
+            ...liftedAnnotations.map((annotation) => addAnnotation.of(annotation)),
+        ],
+        annotations: [
+            revisionInternalEdit.of(true),
+            Transaction.addToHistory.of(true),
+            isolateHistory.of("full"),
+        ],
+    });
 }
 
 /**

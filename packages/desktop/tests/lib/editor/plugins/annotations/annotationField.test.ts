@@ -7,6 +7,7 @@ import {
     addAnnotation,
     annotationField,
     applySuggestion,
+    collapseRevision,
     createNewRevision,
     deserializeAnnotationHistoryEffect,
     invertedAnnotationFieldEffects,
@@ -286,6 +287,126 @@ describe("setActiveRevisionVersion", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions[0].doc).toBe("");
         expect(rev.versions[1].doc).toBe("filled");
+    });
+});
+
+describe("collapseRevision", () => {
+    const nestedComment = {
+        id: 0,
+        _type: "comment",
+        selection: { ranges: [{ anchor: 1, head: 4 }], main: 0 },
+        thread: [{ message: "Nested note", author: "User", time: 1 }],
+    };
+
+    it("removes the wrapper and lifts active-version annotations into the parent", () => {
+        let state = makeState("prefix hello suffix");
+        state = addRevision(state, 7, 12, [
+            { doc: "hello", annotationField: { 0: nestedComment } },
+            {
+                doc: "other",
+                annotationField: {
+                    0: {
+                        ...nestedComment,
+                        thread: [{ message: "Inactive note", author: "User", time: 2 }],
+                    },
+                },
+            },
+        ]);
+
+        state = state.update(collapseRevision(state, 0)).state;
+
+        expect(state.doc.toString()).toBe("prefix hello suffix");
+        const annotations = Object.values(getAnnotations(state));
+        expect(annotations).toHaveLength(1);
+        expect(annotations[0].id).toBe(1);
+        expect(annotations[0].selection.main.from).toBe(8);
+        expect(annotations[0].selection.main.to).toBe(11);
+        expect(annotations[0].thread[0]?.message).toBe("Nested note");
+    });
+
+    it("keeps deeper annotation trees inside lifted child revisions", () => {
+        const grandchild = {
+            ...nestedComment,
+            selection: { ranges: [{ anchor: 0, head: 2 }], main: 0 },
+        };
+        const nestedRevision = {
+            id: 0,
+            _type: "revision",
+            selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+            thread: [],
+            activeVersionId: "nested-version",
+            versions: [
+                {
+                    id: "nested-version",
+                    doc: "hello",
+                    annotationField: { 0: grandchild },
+                },
+            ],
+        };
+        let state = makeState("prefix hello");
+        state = addRevision(state, 7, 12, [
+            { doc: "hello", annotationField: { 0: nestedRevision } },
+        ]);
+
+        state = state.update(collapseRevision(state, 0)).state;
+
+        const lifted = Object.values(getAnnotations(state))[0];
+        expect(isAnnotationOfType(lifted, "revision")).toBe(true);
+        if (isAnnotationOfType(lifted, "revision")) {
+            expect(lifted.selection.main.from).toBe(7);
+            expect(lifted.selection.main.to).toBe(12);
+            expect(lifted.versions[0]).toMatchObject({ annotationField: { 0: grandchild } });
+        }
+    });
+
+    it("keeps the wrapper when nested annotations cannot be decoded", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, [
+            { doc: "hello", annotationField: { 0: { invalid: true } } },
+        ]);
+
+        state = state.update(collapseRevision(state, 0)).state;
+
+        expect(getRevision(state, 0).versions[0]).toMatchObject({
+            annotationField: { 0: { invalid: true } },
+        });
+        expect(Object.values(getAnnotations(state))).toHaveLength(1);
+    });
+
+    it("undoes and redoes the wrapper collapse and lifted annotations in one step", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, [{ doc: "hello", annotationField: { 0: nestedComment } }]);
+        const depthBefore = undoDepth(state);
+
+        state = state.update(collapseRevision(state, 0)).state;
+        expect(undoDepth(state)).toBe(depthBefore + 1);
+        expect(getAnnotations(state)[0]).toBeUndefined();
+        expect(Object.values(getAnnotations(state))).toHaveLength(1);
+
+        undo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("hello");
+        expect(getRevision(state, 0).versions[0]).toMatchObject({
+            annotationField: { 0: nestedComment },
+        });
+        expect(Object.values(getAnnotations(state))).toHaveLength(1);
+
+        redo({
+            state,
+            dispatch: (transaction) => {
+                state = transaction.state;
+            },
+        });
+        expect(state.doc.toString()).toBe("hello");
+        expect(getAnnotations(state)[0]).toBeUndefined();
+        const lifted = Object.values(getAnnotations(state));
+        expect(lifted).toHaveLength(1);
+        expect(lifted[0].selection.main.from).toBe(1);
+        expect(lifted[0].selection.main.to).toBe(4);
     });
 });
 
