@@ -5,8 +5,24 @@
  * Initializes via initAuth() on app mount, subscribes to auth changes.
  */
 import { logAppEvent } from "$lib/appLog";
+import posthog from "$lib/posthog";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabase } from "./supabase";
+
+/**
+ * Links the anonymous PostHog identifier to the account when a real
+ * (non-anonymous) session is active, so we can help troubleshoot issues
+ * for signed-in accounts. See the Privacy Policy's account-linking carve-out.
+ * Never identifies anonymous Supabase sessions; resets on sign-out so the
+ * device reverts to an unlinked identifier.
+ */
+function syncPostHogIdentity(nextUser: User | null): void {
+    if (nextUser && !nextUser.is_anonymous) {
+        posthog.identify(nextUser.id);
+    } else if (!nextUser) {
+        posthog.reset();
+    }
+}
 
 type AuthConnectionState = "idle" | "connecting" | "online" | "offline";
 
@@ -156,6 +172,7 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
         session = existingSession;
         user = existingSession?.user ?? null;
         persistedSessionPresent = readPersistedSessionPresence();
+        syncPostHogIdentity(user);
         void logAppEvent("info", "auth", "session loaded", {
             hasSession: !!existingSession,
         });
@@ -221,6 +238,7 @@ export async function initAuth(): Promise<void> {
         session = newSession;
         user = newSession?.user ?? null;
         persistedSessionPresent = !!newSession;
+        syncPostHogIdentity(user);
         connectionState = "online";
         loading = false;
     });
@@ -367,6 +385,7 @@ export async function signOut() {
     initRun++;
     session = null;
     user = null;
+    syncPostHogIdentity(null);
     loading = false;
 }
 
