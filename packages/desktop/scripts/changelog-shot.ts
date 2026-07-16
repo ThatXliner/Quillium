@@ -127,7 +127,54 @@ type TauriMockOptions = {
     fakeApiKey: boolean;
     /** When true, cmd_list_draft_events returns the AUTHORSHIP_EVENTS stream. */
     authorshipEvents: boolean;
+    /** When true, cmd_list_tab_drafts/cmd_list_drafts return a multi-draft
+     *  run + branch (0.22 resizable drafts panel demo) instead of one draft,
+     *  and the panel opens pre-widened to its full-rail width. */
+    draftPanelDemo: boolean;
 };
+
+/** A short iteration run plus one branch, with long enough labels to show
+ *  why widening the drafts panel matters. Mirrors the shape layoutDraftRows
+ *  expects: parentDraftId chains iterations flat, branchedFrom indents. */
+function buildDraftPanelDemoDrafts(documentId: string, tabId: string) {
+    const base = Date.now() - 1000 * 60 * 60;
+    return [
+        {
+            id: "draft-0",
+            documentId,
+            label: "Café opening",
+            createdAt: base,
+            isActive: false,
+            tabId,
+            parentDraftId: null,
+            branchedFrom: null,
+            locked: false,
+        },
+        {
+            // Kept as "draft-1" so it matches the mock's fixed cmd_get_active_draft return.
+            id: "draft-1",
+            documentId,
+            label: "After Elena's edit",
+            createdAt: base + 1000 * 60 * 20,
+            isActive: true,
+            tabId,
+            parentDraftId: "draft-0",
+            branchedFrom: null,
+            locked: false,
+        },
+        {
+            id: "draft-2",
+            documentId,
+            label: "Dog walker's take",
+            createdAt: base + 1000 * 60 * 40,
+            isActive: false,
+            tabId,
+            parentDraftId: null,
+            branchedFrom: "draft-0",
+            locked: false,
+        },
+    ];
+}
 
 async function installTauriMock(
     page: Page,
@@ -135,12 +182,17 @@ async function installTauriMock(
 ): Promise<void> {
     const fakeApiKey = options.fakeApiKey ?? false;
     const authorshipEvents = options.authorshipEvents ?? false;
+    const draftPanelDemo = options.draftPanelDemo ?? false;
+    const draftPanelDemoDrafts = draftPanelDemo
+        ? buildDraftPanelDemoDrafts("doc-1", "tab-1")
+        : null;
 
     await page.addInitScript(
         (payload: {
             fakeApiKey: boolean;
             authorshipEvents: boolean;
             authorshipEventsData: typeof AUTHORSHIP_EVENTS;
+            draftPanelDemoDrafts: ReturnType<typeof buildDraftPanelDemoDrafts> | null;
         }) => {
             (window as unknown as Record<string, unknown>).__QUILLIUM_SCREENSHOT_AUTH_ONLINE__ =
                 true;
@@ -160,6 +212,9 @@ async function installTauriMock(
                     docFontFamily: "Georgia, serif",
                     docFontSize: 18,
                     ...(payload.fakeApiKey ? { aiEnabled: true } : {}),
+                    // Pre-widen the drafts panel toward its full-rail max (0.22 demo)
+                    // so the resize handle and full-width toggle read clearly.
+                    ...(payload.draftPanelDemoDrafts ? { draftPanelWidth: 280 } : {}),
                 }),
             );
 
@@ -198,19 +253,21 @@ async function installTauriMock(
                     if (cmd === "cmd_register_open_doc") return null;
                     if (cmd === "cmd_deregister_open_doc") return null;
                     if (cmd === "cmd_list_drafts")
-                        return [
-                            {
-                                id: "draft-1",
-                                documentId: (args as { documentId: string }).documentId,
-                                label: "Main",
-                                createdAt: Date.now(),
-                                isActive: true,
-                                tabId: "tab-1",
-                                parentDraftId: null,
-                                branchedFrom: null,
-                                locked: false,
-                            },
-                        ];
+                        return (
+                            payload.draftPanelDemoDrafts ?? [
+                                {
+                                    id: "draft-1",
+                                    documentId: (args as { documentId: string }).documentId,
+                                    label: "Main",
+                                    createdAt: Date.now(),
+                                    isActive: true,
+                                    tabId: "tab-1",
+                                    parentDraftId: null,
+                                    branchedFrom: null,
+                                    locked: false,
+                                },
+                            ]
+                        );
                     if (cmd === "cmd_create_draft") return "draft-1";
                     if (cmd === "cmd_list_tabs")
                         return [
@@ -236,19 +293,21 @@ async function installTauriMock(
                     if (cmd === "cmd_set_active_tab") return null;
                     if (cmd === "cmd_reorder_tabs") return null;
                     if (cmd === "cmd_list_tab_drafts")
-                        return [
-                            {
-                                id: "draft-1",
-                                documentId: "doc-1",
-                                label: "Main",
-                                createdAt: Date.now(),
-                                isActive: true,
-                                tabId: (args as { tabId: string }).tabId,
-                                parentDraftId: null,
-                                branchedFrom: null,
-                                locked: false,
-                            },
-                        ];
+                        return (
+                            payload.draftPanelDemoDrafts ?? [
+                                {
+                                    id: "draft-1",
+                                    documentId: "doc-1",
+                                    label: "Main",
+                                    createdAt: Date.now(),
+                                    isActive: true,
+                                    tabId: (args as { tabId: string }).tabId,
+                                    parentDraftId: null,
+                                    branchedFrom: null,
+                                    locked: false,
+                                },
+                            ]
+                        );
                     if (cmd === "cmd_get_active_draft") return "draft-1";
                     if (cmd === "cmd_set_active_draft") return null;
                     if (cmd === "cmd_list_doc_events") return [];
@@ -283,7 +342,12 @@ async function installTauriMock(
                 unregisterListener: () => {},
             };
         },
-        { fakeApiKey, authorshipEvents, authorshipEventsData: AUTHORSHIP_EVENTS },
+        {
+            fakeApiKey,
+            authorshipEvents,
+            authorshipEventsData: AUTHORSHIP_EVENTS,
+            draftPanelDemoDrafts,
+        },
     );
 }
 
@@ -341,6 +405,7 @@ export type BootOptions = {
     noServer?: boolean;
     fakeApiKey?: boolean;
     authorshipEvents?: boolean;
+    draftPanelDemo?: boolean;
     /**
      * Viewport size. Defaults to 1440×900. Full-screen scenes (e.g. the
      * authorship viewer) render to fill the viewport, so a shorter height
@@ -378,6 +443,7 @@ export async function boot(options: BootOptions = {}): Promise<Harness> {
     await installTauriMock(page, {
         fakeApiKey: options.fakeApiKey,
         authorshipEvents: options.authorshipEvents,
+        draftPanelDemo: options.draftPanelDemo,
     });
     await page.goto(baseUrl);
     return { page, context, browser, server, baseUrl };
@@ -506,6 +572,23 @@ const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
             const ok = await applyDebugScenario(page, "screenshot-revision-active");
             if (!ok) await setEditorText(page, PROSE_SHORT);
             await page.waitForTimeout(600);
+        },
+    },
+
+    /** The resizable drafts panel (0.22): a run + branch with long labels,
+        pre-widened toward its full-rail max so the drag handle and
+        full-width toggle read clearly. Crop with:
+          --crop "div:has(> .draft-panel-resize-controls)" --pad 16 */
+    "drafts-panel-resize": {
+        needs: { draftPanelDemo: true, viewport: { width: 1440, height: 700 } },
+        run: async (page) => {
+            await waitForEditor(page);
+            await setEditorText(page, PROSE_SHORT);
+            const controls = page.locator(".draft-panel-resize-controls");
+            await controls.waitFor({ timeout: 10_000 });
+            // The resize handle and full-width toggle only reveal on hover/focus.
+            await controls.hover();
+            await page.waitForTimeout(400);
         },
     },
 };

@@ -87,8 +87,64 @@ function dismiss() {
     .changelog-content :global(p:last-child) {
         margin-bottom: 0;
     }
+    /* Section headers (`# `, `## `, `### `) for grouping a release's changes.
+       `h1` is a bold black section title; `h2`/`h3` are smaller panel-title-style
+       labels (see BRANDING.md) for subsections within one. */
+    .changelog-content :global(h1),
+    .changelog-content :global(h2),
+    .changelog-content :global(h3) {
+        font-weight: 600;
+        line-height: 1.3;
+        margin: 28px 0 10px 0;
+    }
+    .changelog-content :global(h1:first-child),
+    .changelog-content :global(h2:first-child),
+    .changelog-content :global(h3:first-child) {
+        margin-top: 0;
+    }
+    .changelog-content :global(h1) {
+        font-size: 20px;
+        font-weight: 700;
+        color: rgba(0, 0, 0, 0.85);
+    }
+    .changelog-content :global(h2) {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+    }
+    .changelog-content :global(h3) {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+    }
     .changelog-content :global(strong) {
         color: rgba(0, 0, 0, 0.7);
+    }
+    .changelog-content :global(ul),
+    .changelog-content :global(ol) {
+        margin: 0 0 16px 0;
+        padding-left: 22px;
+    }
+    .changelog-content :global(ul:last-child),
+    .changelog-content :global(ol:last-child) {
+        margin-bottom: 0;
+    }
+    .changelog-content :global(ul) {
+        list-style: disc;
+    }
+    .changelog-content :global(ol) {
+        list-style: decimal;
+    }
+    .changelog-content :global(li) {
+        margin: 0 0 8px 0;
+        line-height: 1.75;
+    }
+    .changelog-content :global(li:last-child) {
+        margin-bottom: 0;
+    }
+    .changelog-content :global(li) :global(p) {
+        margin-bottom: 8px;
+    }
+    .changelog-content :global(li) :global(p:last-child) {
+        margin-bottom: 0;
     }
     .changelog-content :global(a) {
         color: #3b82f6;
