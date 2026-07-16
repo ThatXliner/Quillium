@@ -14,6 +14,7 @@
 <script lang="ts">
 import { renderMarkdown } from "$lib/ai/utils";
 import { capture } from "$lib/posthog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { X } from "lucide-svelte";
 
 const {
@@ -39,6 +40,17 @@ $effect(() => {
 function dismiss() {
     capture("changelog_viewed", { version });
     ondismiss();
+}
+
+// Links come from raw markdown HTML ({@html}), so they're plain anchors —
+// left alone, clicking one would navigate the app's own webview away.
+// Intercept at the container and hand off to the OS default browser instead.
+function handleContentClick(event: MouseEvent) {
+    const anchor = (event.target as HTMLElement).closest("a");
+    const href = anchor?.getAttribute("href");
+    if (!href) return;
+    event.preventDefault();
+    void openUrl(href);
 }
 </script>
 
@@ -72,7 +84,11 @@ function dismiss() {
 
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto px-9 pt-6 pb-9">
-            <div class="changelog-content text-[15px] text-black/55 leading-relaxed">
+            <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+            <div
+                class="changelog-content text-[15px] text-black/55 leading-relaxed"
+                onclick={handleContentClick}
+            >
                 {@html html}
             </div>
         </div>
