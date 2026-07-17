@@ -68,7 +68,6 @@ import {
     settingsOpen,
     statsOpen,
     tutorialActive,
-    writingPromptOpen,
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
@@ -115,7 +114,6 @@ import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
-import WritingPromptModal from "$lib/writingPrompts/WritingPromptModal.svelte";
 import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
@@ -149,10 +147,6 @@ const authConnectionState = $derived(getConnectionState());
 // in-memory user before landing offline, but the persisted session is
 // still there and the stuck user needs the Sign out escape hatch.
 const authCanReset = $derived(hasAuthStateToReset());
-
-$effect(() => {
-    if (!$novelNovemberEnabled) $writingPromptOpen = false;
-});
 
 $effect(() => {
     const available = $novelNovemberEnabled;
@@ -302,11 +296,6 @@ function handleKeydown(e: KeyboardEvent) {
         e.preventDefault();
         void setFocusMode(false);
         return;
-    }
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
-        if (!$novelNovemberEnabled) return;
-        e.preventDefault();
-        $writingPromptOpen = true;
     }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
@@ -682,8 +671,6 @@ if (import.meta.env.DEV) {
         onsettings={() => ($settingsOpen = !$settingsOpen)}
         onlibrary={goToLibrary}
         onhistory={goToHistory}
-        writingPromptsEnabled={$novelNovemberEnabled}
-        onwritingprompt={() => ($writingPromptOpen = true)}
         onexport={handleMobileExport}
     />
 </div>
@@ -737,10 +724,6 @@ if (import.meta.env.DEV) {
         writingGoalsEnabled={$novelNovemberEnabled}
         onclose={() => ($statsOpen = false)}
     />
-{/if}
-
-{#if $writingPromptOpen && $novelNovemberEnabled}
-    <WritingPromptModal onclose={() => ($writingPromptOpen = false)} />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->

@@ -18,28 +18,17 @@
 <script lang="ts">
 import type { ExportFormat } from "$lib/export";
 import { DropdownMenu } from "bits-ui";
-import {
-    DownloadIcon,
-    HistoryIcon,
-    LibraryIcon,
-    LightbulbIcon,
-    MenuIcon,
-    SettingsIcon,
-} from "lucide-svelte";
+import { DownloadIcon, HistoryIcon, LibraryIcon, MenuIcon, SettingsIcon } from "lucide-svelte";
 
 let {
     onsettings,
     onlibrary,
     onhistory,
-    writingPromptsEnabled,
-    onwritingprompt,
     onexport,
 }: {
     onsettings: () => void;
     onlibrary: () => void;
     onhistory: () => void;
-    writingPromptsEnabled: boolean;
-    onwritingprompt: () => void;
     onexport: (format: ExportFormat) => void;
 } = $props();
 
@@ -109,14 +98,6 @@ const itemClass =
                     <span>Version History</span>
                 </div>
             </DropdownMenu.Item>
-            {#if writingPromptsEnabled}
-                <DropdownMenu.Item class="w-full" onSelect={onwritingprompt}>
-                    <div class={itemClass}>
-                        <LightbulbIcon size={16} />
-                        <span>Writing Prompt</span>
-                    </div>
-                </DropdownMenu.Item>
-            {/if}
         </DropdownMenu.Group>
 
         <DropdownMenu.Separator class="my-1 h-px bg-black/10 mx-3" />
