@@ -6,7 +6,9 @@
 -->
 <script lang="ts">
 import { appLogPath, clearAppLog, logAppEvent, readAppLog } from "$lib/appLog";
-import { Check, Copy, RefreshCw, Trash2, X } from "lucide-svelte";
+import { FEEDBACK_FORM_URL } from "$lib/constants";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Bug, Check, Copy, RefreshCw, Trash2, X } from "lucide-svelte";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 
@@ -16,6 +18,23 @@ let loading = $state(false);
 let copied = $state(false);
 let logText = $state("");
 let logPath = $state("");
+let logSize = $derived(new TextEncoder().encode(logText).byteLength);
+
+function formatBytes(bytes: number): string {
+    if (bytes < 1_000) return `${bytes} B`;
+    if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+    return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function diagnosticReport(): string {
+    return [
+        "Quillium diagnostic log",
+        `Generated: ${new Date().toISOString()}`,
+        `Log path: ${logPath || "Unavailable"}`,
+        "",
+        logText.trim() || "No app log entries were available.",
+    ].join("\n");
+}
 
 async function refreshLogs(): Promise<void> {
     loading = true;
@@ -33,17 +52,31 @@ async function refreshLogs(): Promise<void> {
     }
 }
 
-async function copyLogs(): Promise<void> {
-    const content = logText.trim() ? logText : `Log path: ${logPath}`;
+async function copyLogs(): Promise<boolean> {
     try {
-        await navigator.clipboard.writeText(content);
+        await navigator.clipboard.writeText(diagnosticReport());
         copied = true;
         window.setTimeout(() => {
             copied = false;
         }, 1400);
+        return true;
     } catch (error) {
         console.error("[appLogs] failed to copy app log", error);
         toast.error("Could not copy app logs");
+        return false;
+    }
+}
+
+async function reportIssue(): Promise<void> {
+    if (!(await copyLogs())) return;
+    toast.success("Diagnostic log copied", {
+        description: "Paste it into the bug report after reviewing it.",
+    });
+    try {
+        await openUrl(FEEDBACK_FORM_URL);
+    } catch (error) {
+        console.error("[appLogs] failed to open bug report", error);
+        toast.error("Could not open the bug report form");
     }
 }
 
@@ -87,7 +120,9 @@ onMount(() => {
         <div class="flex items-start justify-between gap-5 px-7 pt-7 pb-4 shrink-0">
             <div class="min-w-0">
                 <h3 class="text-xl font-bold text-black/85 leading-tight">App Logs</h3>
-                <p class="text-xs text-black/35 mt-1 truncate">{logPath || "Loading log path"}</p>
+                <p class="text-xs text-black/35 mt-1 truncate">
+                    {logPath || "Loading log path"}{logText ? ` · ${formatBytes(logSize)}` : ""}
+                </p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
                 <button
@@ -146,6 +181,23 @@ onMount(() => {
                     border border-black/[0.08] bg-neutral-950 text-neutral-100 p-4
                     text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono"
             >{logText.trim() || (loading ? "Loading logs..." : "No app log entries yet.")}</pre>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
+                <p class="text-[11px] leading-relaxed text-black/40 max-w-[470px]">
+                    Includes console output, errors, app lifecycle events, and the previous rotated
+                    log. It may contain file paths or values printed during a failure, so review it
+                    before sharing.
+                </p>
+                <button
+                    type="button"
+                    onclick={reportIssue}
+                    class="shrink-0 inline-flex items-center justify-center gap-2 rounded-lg
+                        bg-rose-500 px-3.5 py-2 text-xs font-semibold text-white
+                        hover:bg-rose-600 transition-colors"
+                >
+                    <Bug size={14} />
+                    Copy & report bug
+                </button>
+            </div>
         </div>
     </div>
 </div>
