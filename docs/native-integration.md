@@ -115,7 +115,11 @@ stateDiagram-v2
     CheckOnLaunch --> Available: Update found
     CheckOnLaunch --> [*]: No update
     Available --> Downloading: User clicks Update
+    Available --> Blocked: Running from a mounted DMG
     Downloading --> Ready: Download complete
+    Downloading --> Failed: Download or install error
+    Blocked --> Available: Reopen from Applications
+    Failed --> Downloading: User retries
     Ready --> [*]: User relaunches
 ```
 
@@ -125,9 +129,17 @@ stateDiagram-v2
 |-------|-----|
 | Available | Banner with version + "Update" button |
 | Downloading | "Downloading…" (disabled) |
+| Blocked | Persistent instructions to move the app from the DMG to Applications |
+| Failed | Persistent failure message + retry and manual-download options |
 | Ready | "is ready — relaunch to finish" + "Relaunch" button |
 
 Uses `downloadAndInstall()` for reliable updates, `relaunch()` from `@tauri-apps/plugin-process`.
+The orchestration in `updater/install.ts` checks the executable location before downloading,
+classifies install failures, and returns explicit outcomes for the page to render and log.
+
+The release workflow validates the final macOS updater archive after `tauri-action` completes. It
+checks the embedded version, Apple code signature, Gatekeeper assessment, notarization ticket, and
+Tauri Minisign signature. Public release publication is skipped if any validation fails.
 
 ### Rate Limiting (`updater/schedule.ts`)
 

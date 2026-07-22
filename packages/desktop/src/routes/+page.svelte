@@ -21,6 +21,7 @@
 <script lang="ts">
 import { page } from "$app/state";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
+import { logAppEvent } from "$lib/appLog";
 import {
     getConnectionState,
     hasAuthStateToReset,
@@ -33,7 +34,7 @@ import {
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
-import { APP_STORE_URL } from "$lib/constants";
+import { APP_STORE_URL, LATEST_DESKTOP_RELEASE_URL } from "$lib/constants";
 import type { EventPayload } from "$lib/db/events";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
@@ -113,7 +114,9 @@ import MobileFormatBar from "$lib/ui/MobileFormatBar.svelte";
 import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
+import { performUpdateInstall, updateFailureDescription } from "$lib/updater/install";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
+import { executableDir } from "@tauri-apps/api/path";
 import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
@@ -132,6 +135,7 @@ let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
+let updateError = $state("");
 // DEV only: allows the debug panel to simulate the banner in either mode.
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
@@ -354,26 +358,51 @@ async function installUpdate() {
         await openUrl(APP_STORE_URL);
         return;
     }
+
     updateInstalling = true;
-    try {
-        if (updateReady) {
-            posthog.capture("update_relaunched", { version: updateVersion });
-            await relaunch();
-        } else {
-            posthog.capture("update_started", { version: updateVersion });
-            const update = await check();
-            if (update) {
-                await update.downloadAndInstall();
-                updateReady = true;
-                posthog.capture("update_ready", { version: updateVersion });
-            }
-            updateInstalling = false;
-        }
-    } catch (e) {
-        console.error("Update install failed:", e);
-        posthog.capture("update_failed", { version: updateVersion, error: String(e) });
-        updateInstalling = false;
+    updateError = "";
+    const wasReady = updateReady;
+    posthog.capture(wasReady ? "update_relaunched" : "update_started", {
+        version: updateVersion,
+    });
+
+    const result = await performUpdateInstall({
+        ready: wasReady,
+        checkForUpdate: check,
+        relaunchApp: relaunch,
+        getExecutableDir: executableDir,
+    });
+
+    if (result.status === "ready") {
+        updateReady = true;
+        posthog.capture("update_ready", { version: updateVersion });
+    } else if (result.status === "not-available") {
+        updateAvailable = false;
+        toast.info("Quillium is already up to date");
+    } else if (result.status === "failed") {
+        const description = updateFailureDescription(result.failure);
+        updateError = description;
+        console.error("[updater] update install failed", result.failure);
+        void logAppEvent("error", "updater", "update install failed", {
+            version: updateVersion,
+            kind: result.failure.kind,
+            error: result.failure.technicalMessage,
+        });
+        posthog.capture("update_failed", {
+            version: updateVersion,
+            kind: result.failure.kind,
+            error: result.failure.technicalMessage,
+        });
+        toast.error("Update couldn’t be installed", {
+            description,
+            action: {
+                label: "Manual Download",
+                onClick: () => void openUrl(LATEST_DESKTOP_RELEASE_URL),
+            },
+        });
     }
+
+    updateInstalling = false;
 }
 
 async function handleAuthReconnect() {
@@ -418,6 +447,7 @@ onMount(() => {
                     if (skipped === update.version) return;
                     updateAvailable = true;
                     updateVersion = update.version;
+                    updateError = "";
                     posthog.capture("update_available", { version: update.version });
                 }
             })
@@ -449,6 +479,7 @@ onMount(() => {
         updateAvailable = true;
         updateReady = false;
         updateInstalling = false;
+        updateError = "";
         debugMasMode = mas;
     }
 
@@ -706,12 +737,14 @@ if (import.meta.env.DEV) {
             version={updateVersion}
             installing={updateInstalling}
             ready={updateReady}
+            error={updateError}
             masMode={effectiveMasMode}
             oninstall={installUpdate}
             ondismiss={() => {
                 posthog.capture("update_dismissed", { version: updateVersion });
                 localStorage.setItem("quillium_skipped_update", updateVersion);
                 updateAvailable = false;
+                updateError = "";
                 debugMasMode = null;
             }}
         />
