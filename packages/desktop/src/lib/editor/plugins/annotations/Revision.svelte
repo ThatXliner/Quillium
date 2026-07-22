@@ -1,6 +1,7 @@
 <script lang="ts">
+import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import posthog from "$lib/posthog";
+import { capture, showFeedbackSurvey } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import { linkAnchor, versionGroups } from "$lib/stores";
 import { modalStack } from "$lib/stores";
@@ -284,17 +285,18 @@ const linkTargetable = $derived(
     !nested && $linkAnchor !== null && $linkAnchor.member.revisionId !== revision.id,
 );
 
-const NESTED_LINK_REQUEST_URL = "https://github.com/ThatXliner/Quillium/issues/314";
-
 function showNestedLinkUnsupported(): void {
-    posthog.capture("nested_version_link_unsupported_clicked");
+    capture("nested_version_link_unsupported_clicked");
     toast.info("Nested linked revisions are currently not supported.", {
         description: "Want us to prioritize this?",
         action: {
-            label: "Request it",
+            label: "Share feedback",
             onClick: () => {
-                posthog.capture("nested_version_link_request_opened");
-                void openUrl(NESTED_LINK_REQUEST_URL);
+                const surveyShown = showFeedbackSurvey("nested_revision_link");
+                capture("nested_version_link_feedback_opened", {
+                    destination: surveyShown ? "posthog_survey" : "fallback_form",
+                });
+                if (!surveyShown) void openUrl(FEEDBACK_FORM_URL);
             },
         },
     });
