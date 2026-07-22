@@ -38,6 +38,38 @@ if (typeof window !== "undefined") {
         relayUrl: PUBLIC_RELAY_URL || "(missing)",
         posthogConfigured: Boolean(PUBLIC_POSTHOG_KEY),
         userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        languages: navigator.languages,
+        online: navigator.onLine,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        locale: Intl.DateTimeFormat().resolvedOptions().locale,
+        viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            devicePixelRatio: window.devicePixelRatio,
+        },
+        screen: {
+            width: window.screen.width,
+            height: window.screen.height,
+        },
+    });
+
+    window.addEventListener("online", () => {
+        void logAppEvent("info", "lifecycle", "network became available");
+    });
+    window.addEventListener("offline", () => {
+        void logAppEvent("warn", "lifecycle", "network became unavailable");
+    });
+    window.addEventListener("visibilitychange", () => {
+        void logAppEvent("debug", "lifecycle", "visibility changed", {
+            visibilityState: document.visibilityState,
+        });
+    });
+    window.addEventListener("pagehide", (event) => {
+        void logAppEvent("info", "lifecycle", "page hidden", {
+            persisted: event.persisted,
+        });
     });
 
     window.addEventListener("error", (event) => {

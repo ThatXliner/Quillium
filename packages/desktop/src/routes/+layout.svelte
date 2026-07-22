@@ -10,6 +10,7 @@
 import "../app.css";
 import { onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
+import { logAppEvent } from "$lib/appLog";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
 import { featureFlags, startFeatureFlagSync } from "$lib/featureFlags.svelte";
 import posthog from "$lib/posthog";
@@ -38,7 +39,10 @@ onMount(() => {
     /** @type {(() => void) | undefined} */
     let unlisten;
     listen("menu:app-logs", () => {
-        if (!destroyed) appLogsOpen = true;
+        if (!destroyed) {
+            void logAppEvent("info", "diagnostics", "app log viewer opened");
+            appLogsOpen = true;
+        }
     }).then((u) => {
         if (destroyed) u();
         else unlisten = u;
@@ -59,6 +63,11 @@ onMount(() => {
 });
 
 onNavigate((navigation) => {
+    void logAppEvent("info", "navigation", "navigation started", {
+        from: navigation.from?.url.pathname,
+        to: navigation.to?.url.pathname,
+        type: navigation.type,
+    });
     if (!document.startViewTransition) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     return new Promise((resolve) => {
@@ -95,6 +104,11 @@ onNavigate((navigation) => {
         const err = error instanceof Error ? error : new Error(String(error));
         const stack = err.stack ?? err.message;
         const details = stack.startsWith(err.name) ? stack : `${err.name}: ${err.message}\n${stack}`;
+        void logAppEvent("error", "frontend", "svelte component boundary error", {
+            name: err.name,
+            message: err.message,
+            stack: details,
+        });
         errorBanner.set({
             message: hasCrashBackup
                 ? "Something went wrong. Your work has been backed up."
