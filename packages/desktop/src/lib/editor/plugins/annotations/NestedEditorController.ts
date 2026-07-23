@@ -13,6 +13,7 @@
  * on the transaction itself, which is always in scope and timing-safe.
  */
 
+import { logAppEvent } from "$lib/appLog";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
@@ -35,7 +36,7 @@ import {
 } from "./annotationField";
 import type { Annotation as AnnotationType, Annotations, VersionState } from "./models";
 import type { GenericAnnotation } from "./models";
-import { isAnnotationOfType, versionById } from "./models";
+import { isAnnotationOfType, versionById, versionText } from "./models";
 import {
     createNestedEditorState,
     mergeNestedVersionState,
@@ -208,19 +209,48 @@ export class NestedEditorController {
      */
     syncFromParent(externalDoc: string): void {
         if (!this._editor) return;
-        if (externalDoc === this._lastDispatchedDoc) return;
+
+        // Svelte store updates trail the synchronous parent CodeMirror
+        // dispatch. Never let a stale reactive snapshot overwrite a newer
+        // parent state; resolve the mounted version directly from the parent
+        // before applying the incoming text.
+        let authoritativeDoc = externalDoc;
+        const revision = this.parentRevision();
+        const parentVersion = revision ? versionById(revision, this._editorVersionId) : undefined;
+        if (
+            revision?.activeVersionId === this._editorVersionId &&
+            parentVersion &&
+            versionText(parentVersion) !== externalDoc
+        ) {
+            authoritativeDoc = versionText(parentVersion);
+            void logAppEvent(
+                "warn",
+                "nested-editor-sync",
+                "Ignored stale parent snapshot during nested editor sync",
+                {
+                    revisionId: this.revisionId,
+                    mountedVersionId: this._editorVersionId,
+                    incomingDocLength: externalDoc.length,
+                    authoritativeDocLength: authoritativeDoc.length,
+                    editorDocLength: this._editor.state.doc.length,
+                    lastDispatchedDocLength: this._lastDispatchedDoc.length,
+                },
+            );
+        }
+
+        if (authoritativeDoc === this._lastDispatchedDoc) return;
 
         const current = this._editor.state.doc.toString();
-        if (current !== externalDoc) {
+        if (current !== authoritativeDoc) {
             // Compute a minimal diff via common prefix/suffix matching.
             // This preserves nested annotation positions through small,
             // localized changes instead of destroying them with a
             // full-document replacement.
-            const minLen = Math.min(current.length, externalDoc.length);
+            const minLen = Math.min(current.length, authoritativeDoc.length);
             let prefix = 0;
             while (
                 prefix < minLen &&
-                current.charCodeAt(prefix) === externalDoc.charCodeAt(prefix)
+                current.charCodeAt(prefix) === authoritativeDoc.charCodeAt(prefix)
             ) {
                 prefix++;
             }
@@ -228,20 +258,20 @@ export class NestedEditorController {
             while (
                 suffix < minLen - prefix &&
                 current.charCodeAt(current.length - 1 - suffix) ===
-                    externalDoc.charCodeAt(externalDoc.length - 1 - suffix)
+                    authoritativeDoc.charCodeAt(authoritativeDoc.length - 1 - suffix)
             ) {
                 suffix++;
             }
             const from = prefix;
             const to = current.length - suffix;
-            const insert = externalDoc.slice(prefix, externalDoc.length - suffix);
+            const insert = authoritativeDoc.slice(prefix, authoritativeDoc.length - suffix);
 
             this._editor.dispatch({
                 changes: { from, to, insert },
                 annotations: [Transaction.addToHistory.of(false), parentSyncEdit.of(true)],
             });
         }
-        this._lastDispatchedDoc = externalDoc;
+        this._lastDispatchedDoc = authoritativeDoc;
     }
 
     /** Whether a version switch is needed (compared by stable version id). */
@@ -328,7 +358,7 @@ export class NestedEditorController {
             ? this.buildNestedVersionState(update.state)
             : undefined;
 
-        if (
+        const dispatched =
             !isParentSync &&
             translateAndDispatch(
                 update,
@@ -337,8 +367,8 @@ export class NestedEditorController {
                 atomicVersionState
                     ? { versionId: this._editorVersionId, versionState: atomicVersionState }
                     : undefined,
-            )
-        ) {
+            );
+        if (dispatched) {
             // The parent dispatch runs synchronously and its side effects
             // (e.g. a version switch) may destroy this controller — re-check
             // before touching the editor.
@@ -347,6 +377,22 @@ export class NestedEditorController {
             if (atomicVersionState) {
                 this._lastMountedBlob = serializedNestedAnnotationSnapshot(atomicVersionState);
             }
+        } else if (!isParentSync && update.docChanged) {
+            const revision = this.parentRevision();
+            void logAppEvent(
+                "error",
+                "nested-editor-sync",
+                "Nested editor change could not be dispatched to its parent",
+                {
+                    revisionId: this.revisionId,
+                    mountedVersionId: this._editorVersionId,
+                    parentRevisionExists: revision !== undefined,
+                    parentActiveVersionId: revision?.activeVersionId,
+                    nestedDocLength: update.state.doc.length,
+                    parentDocLength: this.parentView.state.doc.length,
+                    transactionCount: update.transactions.length,
+                },
+            );
         }
 
         // Detect annotation mutations and propagate them to the parent's

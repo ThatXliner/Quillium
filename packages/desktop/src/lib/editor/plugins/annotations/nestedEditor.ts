@@ -608,6 +608,11 @@ export function translateAndDispatch(
                 versionId: currentVersion.id,
                 versionState: {
                     ...currentVersion,
+                    // This explicit effect makes annotationField Phase 3 skip
+                    // the revision, so it must carry the post-edit text itself.
+                    // Keeping the pre-edit doc here makes the reactive parent →
+                    // nested sync immediately undo every inline keystroke.
+                    doc: update.state.doc.toString(),
                     provenance: humanEditProvenance,
                 },
             }),

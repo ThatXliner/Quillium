@@ -612,6 +612,27 @@ describe("nested annotation creation enters parent undo history via version stat
 // ── NestedEditorController sync gap regressions ─────────────────────────────
 
 describe("NestedEditorController annotation flush regressions", () => {
+    it("keeps a plain inline edit in the active version instead of syncing stale text back", () => {
+        const revId = addRevision(view, 0, 11, "hello world");
+        const mounted = mountNestedController(view, revId);
+
+        try {
+            mounted.editor.dispatch({ changes: { from: 5, to: 11, insert: "!" } });
+
+            expect(view.state.doc.toString()).toBe("hello!");
+            expect(getVersionDoc(view, revId)).toBe("hello!");
+
+            // Mirror a lagging Revision.svelte reactive parent → nested pass.
+            // Before the fix the version itself still contained this pre-edit
+            // text, and the sync restored it, making typing and Backspace look
+            // inert. The controller now also rejects stale snapshots.
+            mounted.controller.syncFromParent("hello world");
+            expect(mounted.editor.state.doc.toString()).toBe("hello!");
+        } finally {
+            mounted.destroy();
+        }
+    });
+
     it("keeps nested annotation remaps atomic across repeated undo and redo", () => {
         const revId = addRevision(view, 0, 11, {
             doc: "hello world",
