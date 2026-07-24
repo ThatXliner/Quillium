@@ -125,6 +125,60 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # tauri-action has previously repackaged .app.tar.gz after the Tauri
+      # signer ran, leaving a valid-looking release whose updater signature no
+      # longer matched. Validate the exact final files the action uploaded.
+      - name: Validate macOS release artifacts
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set -euo pipefail
+
+          UPDATER_BUNDLE_DIR="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle"
+          UPDATER_ARCHIVE=$(find "$UPDATER_BUNDLE_DIR" -type f -name '*.app.tar.gz' -print -quit)
+          if [ -z "$UPDATER_ARCHIVE" ]; then
+            echo "::error::macOS updater archive was not generated"
+            exit 1
+          fi
+
+          UPDATER_SIGNATURE="$UPDATER_ARCHIVE.sig"
+          if [ ! -f "$UPDATER_SIGNATURE" ]; then
+            echo "::error::macOS updater signature was not generated"
+            exit 1
+          fi
+
+          UPDATER_VERIFY_DIR=$(mktemp -d "$RUNNER_TEMP/quillium-updater.XXXXXX")
+          tar -xzf "$UPDATER_ARCHIVE" -C "$UPDATER_VERIFY_DIR"
+          UPDATER_APP=$(find "$UPDATER_VERIFY_DIR" -type d -name '*.app' -print -quit)
+          if [ -z "$UPDATER_APP" ]; then
+            echo "::error::macOS updater archive does not contain an app bundle"
+            exit 1
+          fi
+
+          UPDATER_VERSION=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleShortVersionString' \
+            "$UPDATER_APP/Contents/Info.plist")
+          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$UPDATER_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Updater contains $UPDATER_VERSION, expected $EXPECTED_VERSION"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=4 "$UPDATER_APP"
+          spctl --assess --type execute --verbose=4 "$UPDATER_APP"
+          xcrun stapler validate "$UPDATER_APP"
+
+          brew install minisign
+          UPDATER_PUBLIC_KEY=$(jq -r '.plugins.updater.pubkey' \
+            packages/desktop/src-tauri/tauri.conf.json)
+          printf '%s' "$UPDATER_PUBLIC_KEY" \
+            | base64 --decode > "$UPDATER_VERIFY_DIR/updater.pub"
+          base64 --decode \
+            -i "$UPDATER_SIGNATURE" \
+            -o "$UPDATER_VERIFY_DIR/update.minisig"
+          minisign -Vm "$UPDATER_ARCHIVE" \
+            -p "$UPDATER_VERIFY_DIR/updater.pub" \
+            -x "$UPDATER_VERIFY_DIR/update.minisig"
+
   build-mas:
     runs-on: macos-latest
     permissions:
@@ -240,7 +294,8 @@ jobs:
 
   publish-release:
     needs: build-tauri
-    if: always() && needs.build-tauri.result != 'cancelled'
+    # Never copy a partial or unverified release into the public repository.
+    if: needs.build-tauri.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read

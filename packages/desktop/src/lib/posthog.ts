@@ -58,6 +58,11 @@ function patchStylesheetCORS() {
 
 let posthogInitialised = false;
 
+/** Whether the PostHog client has been initialized and can serve feature flags. */
+export function isPostHogInitialised(): boolean {
+    return posthogInitialised;
+}
+
 function getPostHogEnv(): { key: string; host: string } | null {
     // $env/static/public, NOT import.meta.env — see supabase.ts for why.
     const key = PUBLIC_POSTHOG_KEY;
@@ -153,7 +158,9 @@ export function syncAnalyticsOptOut(enabled: boolean) {
  * with no margin, overlapping the editor's side panels. Centering reads as a
  * deliberate modal instead.
  */
-export function showFeedbackSurvey(source: "menu" | "settings" | "auto"): boolean {
+export function showFeedbackSurvey(
+    source: "menu" | "settings" | "auto" | "nested_revision_link",
+): boolean {
     if (!getPostHogEnv()) return false;
     if (dev) {
         if (!get(debugForceSurvey)) return false;

@@ -167,6 +167,10 @@ Public builders: `createVersionGroup(label, members)` → `{ spec, groupId }`,
 `renameVersionGroup`. Both group switches and the document-level group structure
 sync through Yjs collaboration.
 
+The desktop manager currently supports root-level revisions only. Nested
+revision cards keep the link affordance for discoverability, but clicking it
+shows a request toast instead of reading or mutating the root version-group map.
+
 ## The annotationField StateField
 
 `annotationField` is the single source of truth for all annotation data. Its `update()` function runs on **every** CodeMirror transaction in three phases:

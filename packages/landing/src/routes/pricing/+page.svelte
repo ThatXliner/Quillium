@@ -1,7 +1,13 @@
 <script lang="ts">
 import Footer from "$lib/components/Footer.svelte";
 import Nav from "$lib/components/Nav.svelte";
+import { initReveal } from "$lib/reveal";
 import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@lucide/svelte";
+import { onMount } from "svelte";
+
+onMount(() => {
+    initReveal();
+});
 </script>
 
 <svelte:head>
@@ -68,37 +74,45 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 
 <Nav />
 
-<main class="min-h-screen px-6 pt-32 pb-20">
-	<div class="mx-auto max-w-2xl">
+<main class="min-h-screen px-6 pt-36 pb-24">
+	<div class="mx-auto max-w-4xl">
 		<!-- Header -->
-		<header class="mb-16">
+		<header class="reveal mb-24 text-center">
+			<p class="section-eyebrow section-eyebrow--centered">Pricing</p>
 			<h1
-				class="mb-4 font-[Newsreader,Georgia,serif] text-[clamp(2.5rem,6vw,3.75rem)] leading-[1.05] font-normal tracking-[-0.03em] text-[color:var(--text-strong)]"
+				class="mb-6 font-[Newsreader,Georgia,serif] text-[clamp(2.8rem,6vw,4.25rem)] leading-[1.05] font-normal tracking-[-0.03em] text-[color:var(--text-strong)]"
 			>
 				Quillium is <span class="italic">free</span>.
 			</h1>
-			<p class="max-w-xl text-[0.95rem] leading-relaxed text-[color:var(--text-soft)]">
+			<p class="mx-auto max-w-xl text-[1.1rem] leading-[1.7] text-[color:var(--text-soft)]">
 				No tiers. No locked features. One optional add-on, someday, if you want it.
 			</p>
 		</header>
 
+		<div class="warm-divider section-divider"></div>
+
 		<!-- Promises: 2×2 grid -->
-		<section class="mb-20">
-			<p
-				class="mb-6 text-[0.7rem] font-semibold tracking-[0.1em] text-[color:var(--text-faint)] uppercase"
-			>
-				What will always be free
-			</p>
-			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-				<div class="promise-cell">
-					<PenLine class="promise-icon" size={24} strokeWidth={1.5} color="var(--text-faint)" />
+		<section class="py-16 sm:py-20">
+			<div class="reveal mb-12">
+				<p class="section-eyebrow">What will always be free</p>
+				<h2 class="section-heading">Free means the whole thing.</h2>
+			</div>
+			<div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+				<div class="reveal promise-cell">
+					<div class="promise-icon-wrap" style="background:rgba(168,85,247,0.08);">
+						<PenLine size={22} strokeWidth={1.5} color="#a855f7" />
+					</div>
 					<div>
 						<p class="promise-title">The full editor</p>
-						<p class="promise-body">Branches, annotations—everything. We don't gate features.</p>
+						<p class="promise-body">
+							Branches, annotations — everything. We don't gate features.
+						</p>
 					</div>
 				</div>
-				<div class="promise-cell">
-					<WifiOff class="promise-icon" size={24} strokeWidth={1.5} color="var(--text-faint)" />
+				<div class="reveal promise-cell">
+					<div class="promise-icon-wrap" style="background:rgba(59,130,246,0.08);">
+						<WifiOff size={22} strokeWidth={1.5} color="#3b82f6" />
+					</div>
 					<div>
 						<p class="promise-title">Local-first &amp; offline</p>
 						<p class="promise-body">
@@ -109,8 +123,10 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 						</p>
 					</div>
 				</div>
-				<div class="promise-cell">
-					<ExternalLink class="promise-icon" size={24} strokeWidth={1.5} color="var(--text-faint)" />
+				<div class="reveal promise-cell">
+					<div class="promise-icon-wrap" style="background:rgba(34,197,94,0.08);">
+						<ExternalLink size={22} strokeWidth={1.5} color="#22c55e" />
+					</div>
 					<div>
 						<p class="promise-title">Your data, your exit</p>
 						<p class="promise-body">
@@ -118,13 +134,10 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 						</p>
 					</div>
 				</div>
-				<div class="promise-cell">
-					<CircleDollarSign
-						class="promise-icon"
-						size={24}
-						strokeWidth={1.5}
-						color="var(--text-faint)"
-					/>
+				<div class="reveal promise-cell">
+					<div class="promise-icon-wrap" style="background:rgba(252,188,5,0.1);">
+						<CircleDollarSign size={22} strokeWidth={1.5} color="#d97706" />
+					</div>
 					<div>
 						<p class="promise-title">Everything that matters</p>
 						<p class="promise-body">
@@ -138,91 +151,73 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 			</div>
 		</section>
 
+		<div class="warm-divider section-divider"></div>
+
 		<!-- Paid options -->
-		<section id="paid" class="scroll-mt-28">
+		<section id="paid" class="scroll-mt-28 py-16 sm:py-20">
+			<div class="reveal mb-8">
+				<p class="section-eyebrow">
+					What you can pay for, eventually
+					<span
+						class="ml-2 rounded-full border border-[color:var(--border)] px-2 py-0.5 text-[0.6rem] font-medium tracking-normal text-[color:var(--text-faint)] normal-case"
+						>Coming later</span
+					>
+				</p>
+				<h2 class="section-heading">Two things worth paying for.</h2>
+			</div>
+
 			<!-- Notice -->
 			<div
-				class="mb-8 flex items-center gap-3 rounded-lg border border-amber-400/20 bg-amber-400/6 px-4 py-3"
+				class="reveal mb-10 flex items-center gap-3 rounded-lg border border-amber-400/20 bg-amber-400/6 px-4 py-3"
 			>
 				<span
 					class="shrink-0 rounded bg-amber-400/15 px-2 py-0.5 text-[0.6rem] font-bold tracking-[0.08em] text-[color:var(--accent-amber-text)] uppercase"
 					>Note</span
 				>
-				<p class="m-0 text-[0.8rem] text-[color:var(--text-soft)]">
+				<p class="m-0 text-[0.85rem] text-[color:var(--text-soft)]">
 					These are <strong class="text-[color:var(--text)]">future plans</strong>. Right now
 					everything is simply free, no strings attached.
 				</p>
 			</div>
 
-			<div class="mb-6 flex items-baseline gap-2">
-				<p class="text-[0.7rem] font-semibold tracking-[0.1em] text-[color:var(--text-faint)] uppercase">
-					What you can pay for, eventually
-				</p>
-				<span
-					class="rounded-full border border-[color:var(--border)] px-2 py-0.5 text-[0.6rem] font-medium text-[color:var(--text-faint)]"
-					>Coming later</span
-				>
-			</div>
-
-			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+			<div class="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:items-stretch">
 				<!-- Omni card -->
-				<div
-					class="flex h-full flex-col overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)]"
-				>
-					<div class="border-b border-[color:var(--border)] px-5 py-4">
-						<p
-							class="mb-1 text-[0.65rem] font-semibold tracking-[0.08em] text-[color:var(--text-faint)] uppercase"
-						>
-							Quillium Omni
+				<div class="reveal price-card price-card--blue">
+					<div class="price-card-header">
+						<p class="price-card-eyebrow" style="color:#3b82f6;">Quillium Omni</p>
+						<p class="price-card-price">
+							~$20<span class="price-card-unit">/month</span>
 						</p>
-						<p
-							class="font-[Newsreader,Georgia,serif] text-[1.4rem] leading-none text-[color:var(--text-soft)] italic"
-						>
-							~$20<span class="text-[0.85rem] text-[color:var(--text-faint)]">/month</span>
-						</p>
-						<p class="mt-1 text-[0.7rem] text-[color:var(--text-faint)]">
-							The more users we have, the cheaper we can make it.
-						</p>
+						<p class="price-card-note">The more users we have, the cheaper we can make it.</p>
 					</div>
-					<div class="flex flex-1 flex-col px-5 py-4">
-						<ul class="space-y-2">
+					<div class="price-card-body">
+						<ul class="space-y-3">
 							<li class="check-item">Sync your documents everywhere, including mobile</li>
 							<li class="check-item">
 								Real-time collaboration. Invite anyone, even non-paying users
 							</li>
 							<li class="check-item">Cancel anytime; local data unaffected</li>
 						</ul>
-						<p class="mt-auto pt-3 text-[0.7rem] text-[color:var(--text-faint)]">
+						<p class="price-card-fine mt-auto pt-5">
 							Mobile is free for everyone: sync just works better with a plan.
 						</p>
-						<a
-							href="/omni"
-							class="mt-3 inline-flex items-center gap-1 text-[0.8rem] font-medium text-[#3b82f6] no-underline hover:underline"
-						>
+						<a href="/omni" class="price-card-cta">
 							Join the waitlist <span aria-hidden="true">→</span>
 						</a>
 					</div>
 				</div>
 
 				<!-- Custom build card -->
-				<div
-					class="flex h-full flex-col overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)]"
-				>
-					<div class="border-b border-[color:var(--border)] px-5 py-4">
-						<p
-							class="mb-1 text-[0.65rem] font-semibold tracking-[0.08em] text-[color:var(--text-faint)] uppercase"
-						>
-							Custom Build
+				<div class="reveal price-card price-card--purple">
+					<div class="price-card-header">
+						<p class="price-card-eyebrow" style="color:#a855f7;">Custom Build</p>
+						<p class="price-card-price">
+							~$1k<span class="price-card-unit"> one-time</span>
 						</p>
-						<p
-							class="font-[Newsreader,Georgia,serif] text-[1.4rem] leading-none text-[color:var(--text-soft)] italic"
-						>
-							~$1k <span class="text-[0.85rem] text-[color:var(--text-faint)]"> one-time</span>
-						</p>
-						<p class="mt-1 text-[0.7rem] text-[color:var(--text-faint)]">Rough estimate. Depends on scope.</p>
+						<p class="price-card-note">Rough estimate. Depends on scope.</p>
 					</div>
-					<div class="flex flex-1 flex-col px-5 py-4">
-						<ul class="space-y-2">
+					<div class="price-card-body">
+						<ul class="space-y-3">
 							<li class="check-item">Quillium tuned to your exact workflow</li>
 							<li class="check-item">For studios, publishers, writing programs</li>
 							<li class="check-item">Custom features, branding, integrations</li>
@@ -233,7 +228,12 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 								> to discuss
 							</li>
 						</ul>
-						<p class="mt-auto pt-3 text-[0.7rem] text-[color:var(--text-faint)]">
+						<p
+							class="mt-auto pt-5 font-[Newsreader,Georgia,serif] text-[1.15rem] text-[color:var(--text)] italic"
+						>
+							Prose for Pros.
+						</p>
+						<p class="price-card-fine pt-1">
 							Not sure if this fits? Just ask — we'll tell you honestly.
 						</p>
 					</div>
@@ -241,34 +241,35 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 			</div>
 		</section>
 
+		<div class="warm-divider section-divider"></div>
+
 		<!-- Why this model -->
-		<section class="mt-20 mb-16">
-			<p
-				class="mb-5 text-[0.7rem] font-semibold tracking-[0.1em] text-[color:var(--text-faint)] uppercase"
-			>
-				Why this model
-			</p>
-			<div class="space-y-5">
-				<div class="why-row">
+		<section class="py-16 sm:py-20">
+			<div class="reveal mb-12">
+				<p class="section-eyebrow">Why this model</p>
+				<h2 class="section-heading">Built to stay honest.</h2>
+			</div>
+			<div class="space-y-7">
+				<div class="reveal why-row">
 					<p class="why-label">No VC pressure</p>
 					<p class="why-text">
 						We're not funded. No one can pressure us to add paywalls or sell your data.
 					</p>
 				</div>
-				<div class="why-row">
+				<div class="reveal why-row">
 					<p class="why-label">Survives us shutting down</p>
 					<p class="why-text">
 						The app works whether or not we exist. Your writing doesn't depend on our servers.
 					</p>
 				</div>
-				<div class="why-row">
+				<div class="reveal why-row">
 					<p class="why-label">Omni is the right trade</p>
 					<p class="why-text">
 						It's an extra service, not a toll on things you already have. Skip it entirely if you
 						want.
 					</p>
 				</div>
-				<div class="why-row">
+				<div class="reveal why-row">
 					<p class="why-label">Have a better idea?</p>
 					<p class="why-text">
 						Genuinely, <a
@@ -281,8 +282,13 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 		</section>
 
 		<!-- CTA -->
-		<div class="border-t border-[color:var(--border)] pt-10 text-center">
-			<p class="mb-4 font-[Newsreader,Georgia,serif] text-[1.5rem] text-[color:var(--text)] italic">
+		<div
+			class="reveal pt-14 pb-4 text-center"
+			style="border-top: 2px solid; border-image: linear-gradient(90deg, transparent, #3b82f6, #a855f7, #22c55e, #fcbc05, transparent) 1;"
+		>
+			<p
+				class="mb-6 font-[Newsreader,Georgia,serif] text-[clamp(1.75rem,4vw,2.25rem)] text-[color:var(--text-strong)] italic"
+			>
 				Ready to write?
 			</p>
 			<a href="/#download" class="btn-primary inline-flex items-center gap-2">
@@ -296,48 +302,152 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 <Footer />
 
 <style>
-	/* Promise grid */
+	/* Promise grid — mirrors the homepage feature-icon-wrap pattern */
 	.promise-cell {
 		display: flex;
 		align-items: flex-start;
-		gap: 12px;
-		padding: 16px 18px;
-		border-radius: 12px;
+		gap: 16px;
+		padding: 24px;
+		border-radius: 14px;
 		border: 1px solid var(--border);
 		background: var(--surface);
+		transition:
+			transform 300ms ease,
+			box-shadow 300ms ease;
 	}
-	.promise-icon {
-		color: var(--text-faint);
-		margin-top: 1px;
+	.promise-cell:hover {
+		transform: translateY(-2px);
+		box-shadow:
+			0 8px 32px rgba(var(--shadow-color), 0.1),
+			0 2px 8px rgba(var(--shadow-color), 0.06);
+	}
+	.promise-icon-wrap {
+		width: 44px;
+		height: 44px;
+		border-radius: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		flex-shrink: 0;
 	}
 	.promise-title {
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		font-weight: 600;
 		color: var(--text);
-		margin: 0 0 4px 0;
+		margin: 0 0 5px 0;
 	}
 	.promise-body {
-		font-size: 0.8rem;
+		font-size: 0.875rem;
 		color: var(--text-soft);
-		line-height: 1.6;
+		line-height: 1.65;
 		margin: 0;
+	}
+
+	/* Price cards */
+	.price-card {
+		display: flex;
+		height: 100%;
+		flex-direction: column;
+		overflow: hidden;
+		border-radius: 16px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		transition:
+			transform 300ms ease,
+			box-shadow 300ms ease;
+	}
+	.price-card:hover {
+		transform: translateY(-2px);
+		box-shadow:
+			0 12px 40px rgba(var(--shadow-color), 0.12),
+			0 3px 10px rgba(var(--shadow-color), 0.06);
+	}
+	.price-card--blue {
+		border-top: 3px solid var(--accent-blue);
+	}
+	.price-card--purple {
+		border-top: 3px solid var(--accent-purple);
+	}
+	.price-card-header {
+		border-bottom: 1px solid var(--border);
+		padding: 24px 28px 20px;
+	}
+	.price-card-eyebrow {
+		margin: 0 0 8px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.price-card-price {
+		margin: 0;
+		font-family: "Newsreader", Georgia, serif;
+		font-size: 2.1rem;
+		line-height: 1;
+		font-style: italic;
+		color: var(--text-strong);
+	}
+	.price-card-unit {
+		font-size: 0.95rem;
+		color: var(--text-faint);
+		margin-left: 0.3em;
+	}
+	.price-card-note {
+		margin: 8px 0 0;
+		font-size: 0.75rem;
+		color: var(--text-faint);
+	}
+	.price-card-body {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		padding: 24px 28px;
+	}
+	.price-card-fine {
+		margin: 0;
+		font-size: 0.75rem;
+		line-height: 1.6;
+		color: var(--text-faint);
+	}
+	.price-card-cta {
+		margin-top: 16px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		align-self: flex-start;
+		padding: 8px 18px;
+		border-radius: 10px;
+		border: 1px solid var(--border);
+		background: color-mix(in srgb, var(--surface) 50%, transparent);
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--text-strong);
+		text-decoration: none;
+		box-shadow: 0 2px 8px rgba(var(--shadow-color), 0.08);
+		transition:
+			transform 300ms ease,
+			background 300ms ease;
+	}
+	.price-card-cta:hover {
+		transform: translateY(-1px);
+		background: var(--surface-2);
 	}
 
 	/* Check items */
 	.check-item {
 		display: flex;
 		align-items: flex-start;
-		gap: 8px;
-		font-size: 0.8rem;
+		gap: 10px;
+		font-size: 0.875rem;
+		line-height: 1.6;
 		color: var(--text-soft);
 	}
 	.check-item::before {
-		content: '';
+		content: "";
 		display: block;
-		width: 12px;
-		height: 12px;
-		margin-top: 3px;
+		width: 13px;
+		height: 13px;
+		margin-top: 4px;
 		flex-shrink: 0;
 		background: url("data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 14 14' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2.5 7l3 3 6-6' stroke='%2316a34a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
 			no-repeat center;
@@ -347,26 +457,26 @@ import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@luc
 	/* Why rows */
 	.why-row {
 		display: grid;
-		grid-template-columns: 160px 1fr;
-		gap: 16px;
+		grid-template-columns: 200px 1fr;
+		gap: 24px;
 		align-items: baseline;
 	}
 	@media (max-width: 480px) {
 		.why-row {
 			grid-template-columns: 1fr;
-			gap: 2px;
+			gap: 3px;
 		}
 	}
 	.why-label {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		font-weight: 600;
-		color: var(--text-soft);
+		color: var(--text);
 		margin: 0;
 	}
 	.why-text {
-		font-size: 0.825rem;
+		font-size: 0.925rem;
 		color: var(--text-soft);
-		line-height: 1.65;
+		line-height: 1.7;
 		margin: 0;
 	}
 	.why-text a {

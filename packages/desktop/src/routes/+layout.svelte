@@ -10,12 +10,19 @@
 import "../app.css";
 import { onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
+import { logAppEvent } from "$lib/appLog";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
+import { featureFlags, startFeatureFlagSync } from "$lib/featureFlags.svelte";
 import posthog from "$lib/posthog";
 import { editorView, errorBanner } from "$lib/stores";
 import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
+import {
+    setWritingReminderFeatureEnabled,
+    startWritingReminderService,
+} from "$lib/writingReminders";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
+import { Toaster } from "svelte-sonner";
 
 const { children } = $props();
 
@@ -25,12 +32,17 @@ const { children } = $props();
 // needed to diagnose a broken state.
 let appLogsOpen = $state(false);
 
+$effect(() => setWritingReminderFeatureEnabled(featureFlags.novelNovember));
+
 onMount(() => {
     let destroyed = false;
     /** @type {(() => void) | undefined} */
     let unlisten;
     listen("menu:app-logs", () => {
-        if (!destroyed) appLogsOpen = true;
+        if (!destroyed) {
+            void logAppEvent("info", "diagnostics", "app log viewer opened");
+            appLogsOpen = true;
+        }
     }).then((u) => {
         if (destroyed) u();
         else unlisten = u;
@@ -41,7 +53,21 @@ onMount(() => {
     };
 });
 
+onMount(() => {
+    const stopReminders = startWritingReminderService();
+    const stopFlags = startFeatureFlagSync();
+    return () => {
+        stopFlags();
+        stopReminders();
+    };
+});
+
 onNavigate((navigation) => {
+    void logAppEvent("info", "navigation", "navigation started", {
+        from: navigation.from?.url.pathname,
+        to: navigation.to?.url.pathname,
+        type: navigation.type,
+    });
     if (!document.startViewTransition) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     return new Promise((resolve) => {
@@ -56,6 +82,7 @@ onNavigate((navigation) => {
 
 <!-- Banner lives outside the boundary so it survives component tree errors -->
 <ErrorBanner />
+<Toaster position="bottom-right" />
 
 <!-- Logs viewer also outside the boundary: it must stay reachable when a
      page has crashed — that's precisely when the logs matter. -->
@@ -77,6 +104,11 @@ onNavigate((navigation) => {
         const err = error instanceof Error ? error : new Error(String(error));
         const stack = err.stack ?? err.message;
         const details = stack.startsWith(err.name) ? stack : `${err.name}: ${err.message}\n${stack}`;
+        void logAppEvent("error", "frontend", "svelte component boundary error", {
+            name: err.name,
+            message: err.message,
+            stack: details,
+        });
         errorBanner.set({
             message: hasCrashBackup
                 ? "Something went wrong. Your work has been backed up."

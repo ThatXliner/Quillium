@@ -41,6 +41,7 @@ import {
     type Thread as ThreadType,
     addAnnotation,
     annotationField,
+    collapseRevision,
     createNewRevision,
     deleteRevisionVersion,
     makeVersionFromSelection,
@@ -599,11 +600,8 @@ function addVersion() {
 }
 
 /**
- * Delete the entire revision (parity with the inline card's trash icon).
- * The removeAnnotation dispatch makes the revision disappear from the
- * parent view; the modal then closes. destroyEditor's flush is safely
- * skipped because flushAnnotationStateToParent no-ops when the revision
- * no longer exists in the parent state.
+ * Collapse the revision wrapper while preserving the active version's nested
+ * annotations in the parent document (parity with the inline trash action).
  */
 function deleteRevision() {
     const revision = readRevision();
@@ -612,8 +610,10 @@ function deleteRevision() {
         type: "revision",
         version_count: revision.versions.length,
         from_modal: true,
+        nested_annotations_preserved: true,
     });
-    view.dispatch(view.state.update({ effects: [removeAnnotation.of(revision)] }));
+    controller.flushCurrentStateToParent(false);
+    view.dispatch(collapseRevision(view.state, revisionId));
     close();
 }
 
@@ -715,6 +715,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       view={controller.editor}
       annotationsData={modalAnnotations}
       activeAnnotationData={modalActiveAnnotation ?? null}
+      nested
       layout="inline"
     />
   {/if}
@@ -770,8 +771,8 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   <button
     class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
     onclick={deleteRevision}
-    title="Delete entire revision"
-    aria-label="Delete entire revision"
+    title="Collapse revision and preserve nested annotations"
+    aria-label="Collapse revision and preserve nested annotations"
   >
     <Trash2 size={16} />
   </button>

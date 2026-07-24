@@ -21,6 +21,7 @@
 <script lang="ts">
 import { page } from "$app/state";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
+import { logAppEvent } from "$lib/appLog";
 import {
     getConnectionState,
     hasAuthStateToReset,
@@ -33,7 +34,7 @@ import {
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
-import { APP_STORE_URL } from "$lib/constants";
+import { APP_STORE_URL, LATEST_DESKTOP_RELEASE_URL } from "$lib/constants";
 import type { EventPayload } from "$lib/db/events";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
@@ -46,11 +47,13 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import {
     maybeShowAutoSurvey,
     recordWordCount,
     registerSurveyLifecycleListeners,
 } from "$lib/feedback/autoSurvey";
+import { FOCUS_CONTROLS_HIDE_DELAY_MS, isFocusModeShortcut } from "$lib/focusMode";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import {
@@ -69,7 +72,9 @@ import {
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { invoke } from "@tauri-apps/api/core";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
@@ -97,7 +102,9 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
+import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
 import posthog from "$lib/posthog";
+import WritingSprint from "$lib/sprint/WritingSprint.svelte";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
@@ -107,8 +114,10 @@ import MobileFormatBar from "$lib/ui/MobileFormatBar.svelte";
 import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
+import { performUpdateInstall, updateFailureDescription } from "$lib/updater/install";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
-import { Toaster, toast } from "svelte-sonner";
+import { executableDir } from "@tauri-apps/api/path";
+import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
 // set it immediately so Editor.svelte's fromSave picks it up on mount.
@@ -126,10 +135,15 @@ let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
+let updateError = $state("");
 // DEV only: allows the debug panel to simulate the banner in either mode.
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 let authReconnecting = $state(false);
+let focusModeAvailable = $state(false);
+let focusMode = $state(false);
+let focusControlsVisible = $state(false);
+let focusControlsTimer: ReturnType<typeof setTimeout> | undefined;
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
@@ -137,6 +151,17 @@ const authConnectionState = $derived(getConnectionState());
 // in-memory user before landing offline, but the persisted session is
 // still there and the stuck user needs the Sign out escape hatch.
 const authCanReset = $derived(hasAuthStateToReset());
+
+$effect(() => {
+    const available = $novelNovemberEnabled;
+    focusModeAvailable = available;
+    if (!available && focusMode) void setFocusMode(false);
+    if (typeof window !== "undefined" && !IS_MOBILE && "__TAURI_INTERNALS__" in window) {
+        invoke("cmd_set_focus_mode_available", { available }).catch((error) => {
+            console.warn("[focusMode] Unable to update native menu availability", error);
+        });
+    }
+});
 
 let editorComponent = $state<{
     reload: () => Promise<void>;
@@ -229,7 +254,53 @@ function handleChangelogDismiss() {
     $editorView?.focus();
 }
 
+function revealFocusControls() {
+    if (!focusMode) return;
+    focusControlsVisible = true;
+    clearTimeout(focusControlsTimer);
+    focusControlsTimer = setTimeout(() => {
+        focusControlsVisible = false;
+    }, FOCUS_CONTROLS_HIDE_DELAY_MS);
+}
+
+async function setFocusMode(enabled: boolean) {
+    if (enabled && !focusModeAvailable) return;
+    focusMode = enabled;
+    clearTimeout(focusControlsTimer);
+    focusControlsVisible = enabled;
+
+    try {
+        await getCurrentWindow().setFullscreen(enabled);
+    } catch (error) {
+        // Browser-only development and component tests have no Tauri window.
+        // Keep the distraction-free layout useful even without native fullscreen.
+        if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+            console.warn("[focusMode] Unable to change native fullscreen state", error);
+        }
+    }
+
+    if (enabled) revealFocusControls();
+    $editorView?.focus();
+    posthog.capture(enabled ? "focus_mode_entered" : "focus_mode_exited");
+}
+
+function toggleFocusMode() {
+    void setFocusMode(!focusMode);
+}
+
 function handleKeydown(e: KeyboardEvent) {
+    if (focusMode && e.key === "Tab") revealFocusControls();
+    if (isFocusModeShortcut(e)) {
+        if (!focusModeAvailable) return;
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+    }
+    if (focusMode && e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        void setFocusMode(false);
+        return;
+    }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         void editorComponent?.createNewTab();
@@ -287,26 +358,51 @@ async function installUpdate() {
         await openUrl(APP_STORE_URL);
         return;
     }
+
     updateInstalling = true;
-    try {
-        if (updateReady) {
-            posthog.capture("update_relaunched", { version: updateVersion });
-            await relaunch();
-        } else {
-            posthog.capture("update_started", { version: updateVersion });
-            const update = await check();
-            if (update) {
-                await update.downloadAndInstall();
-                updateReady = true;
-                posthog.capture("update_ready", { version: updateVersion });
-            }
-            updateInstalling = false;
-        }
-    } catch (e) {
-        console.error("Update install failed:", e);
-        posthog.capture("update_failed", { version: updateVersion, error: String(e) });
-        updateInstalling = false;
+    updateError = "";
+    const wasReady = updateReady;
+    posthog.capture(wasReady ? "update_relaunched" : "update_started", {
+        version: updateVersion,
+    });
+
+    const result = await performUpdateInstall({
+        ready: wasReady,
+        checkForUpdate: check,
+        relaunchApp: relaunch,
+        getExecutableDir: executableDir,
+    });
+
+    if (result.status === "ready") {
+        updateReady = true;
+        posthog.capture("update_ready", { version: updateVersion });
+    } else if (result.status === "not-available") {
+        updateAvailable = false;
+        toast.info("Quillium is already up to date");
+    } else if (result.status === "failed") {
+        const description = updateFailureDescription(result.failure);
+        updateError = description;
+        console.error("[updater] update install failed", result.failure);
+        void logAppEvent("error", "updater", "update install failed", {
+            version: updateVersion,
+            kind: result.failure.kind,
+            error: result.failure.technicalMessage,
+        });
+        posthog.capture("update_failed", {
+            version: updateVersion,
+            kind: result.failure.kind,
+            error: result.failure.technicalMessage,
+        });
+        toast.error("Update couldn’t be installed", {
+            description,
+            action: {
+                label: "Manual Download",
+                onClick: () => void openUrl(LATEST_DESKTOP_RELEASE_URL),
+            },
+        });
     }
+
+    updateInstalling = false;
 }
 
 async function handleAuthReconnect() {
@@ -351,6 +447,7 @@ onMount(() => {
                     if (skipped === update.version) return;
                     updateAvailable = true;
                     updateVersion = update.version;
+                    updateError = "";
                     posthog.capture("update_available", { version: update.version });
                 }
             })
@@ -382,6 +479,7 @@ onMount(() => {
         updateAvailable = true;
         updateReady = false;
         updateInstalling = false;
+        updateError = "";
         debugMasMode = mas;
     }
 
@@ -400,6 +498,11 @@ onMount(() => {
     const unsubShowAuthModal = appEventBus.on("show-auth-modal", handleShowAuthModal);
     const unsubShowLicenses = appEventBus.on("show-licenses", () => {
         licensesOpen = true;
+    });
+    const unsubAchievement = appEventBus.on("achievement-unlocked", (event) => {
+        toast.success(`Achievement unlocked: ${event.achievement.title}`, {
+            description: event.achievement.description,
+        });
     });
 
     // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
@@ -420,6 +523,9 @@ onMount(() => {
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:authorship", () => {
         if (!destroyed) goToAuthorship();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:focus-mode", () => {
+        if (!destroyed && focusModeAvailable) toggleFocusMode();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:library", () => {
         if (!destroyed) goToLibrary();
@@ -467,8 +573,10 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubAchievement();
         unsubSurveyLifecycle();
         unsubWordCount();
+        clearTimeout(focusControlsTimer);
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -571,53 +679,84 @@ if (import.meta.env.DEV) {
 }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window
+    onkeydown={handleKeydown}
+    onpointermove={revealFocusControls}
+    onfocus={revealFocusControls}
+/>
+
+<div class="app-shell">
 
 {#if appSettings.aiEnabled}
-    <AiSidebar />
+    <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+        <AiSidebar />
+    </div>
 {/if}
 <DictionaryPopover />
 <HarperTooltip />
 
 <!-- In-app overflow menu — only visible on small/touch viewports (<900px).
-     Reaches Settings / Library / History / Licenses / Export, the same
-     actions the desktop-only native menu bar triggers. -->
-<MobileMenu
-    onsettings={() => ($settingsOpen = !$settingsOpen)}
-    onlibrary={goToLibrary}
-    onhistory={goToHistory}
-    onexport={handleMobileExport}
-/>
+     Reaches Settings / Library / History / Export plus gated mobile actions. -->
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <MobileMenu
+        onsettings={() => ($settingsOpen = !$settingsOpen)}
+        onlibrary={goToLibrary}
+        onhistory={goToHistory}
+        onexport={handleMobileExport}
+    />
+</div>
 
 <!-- Keyboard accessory toolbar — floats on top of the on-screen keyboard so
      formatting + annotation commands are reachable without a hardware keyboard.
      Only active on mobile; hides itself when the keyboard is closed. -->
-<MobileFormatBar enabled={IS_MOBILE} />
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <MobileFormatBar enabled={IS_MOBILE} />
+</div>
 
 <div class="h-screen w-full">
-    <Editor bind:this={editorComponent} />
+    <Editor bind:this={editorComponent} {focusMode} {focusControlsVisible} />
 </div>
+
+{#if focusMode}
+    <button
+        type="button"
+        class="focus-exit fixed top-7 right-7 z-[60] rounded-full bg-white/75 px-4 py-2 text-xs font-medium text-black/55 shadow-lg ring-1 ring-black/[0.06] backdrop-blur-md hover:bg-white hover:text-black/75 focus-visible:opacity-100"
+        class:focus-exit-visible={focusControlsVisible}
+        onclick={() => setFocusMode(false)}
+        aria-label="Exit focus mode"
+        title="Exit focus mode (Esc or Command/Ctrl+Shift+F)"
+    >
+        Exit focus mode
+    </button>
+{/if}
 
 <!-- Update banner — shown when a new version is available -->
 {#if updateAvailable}
-    <UpdateBanner
-        version={updateVersion}
-        installing={updateInstalling}
-        ready={updateReady}
-        masMode={effectiveMasMode}
-        oninstall={installUpdate}
-        ondismiss={() => {
-            posthog.capture("update_dismissed", { version: updateVersion });
-            localStorage.setItem("quillium_skipped_update", updateVersion);
-            updateAvailable = false;
-            debugMasMode = null;
-        }}
-    />
+    <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+        <UpdateBanner
+            version={updateVersion}
+            installing={updateInstalling}
+            ready={updateReady}
+            error={updateError}
+            masMode={effectiveMasMode}
+            oninstall={installUpdate}
+            ondismiss={() => {
+                posthog.capture("update_dismissed", { version: updateVersion });
+                localStorage.setItem("quillium_skipped_update", updateVersion);
+                updateAvailable = false;
+                updateError = "";
+                debugMasMode = null;
+            }}
+        />
+    </div>
 {/if}
 
 <!-- Stats modal -->
 {#if $statsOpen}
-    <StatsModal onclose={() => ($statsOpen = false)} />
+    <StatsModal
+        writingGoalsEnabled={$novelNovemberEnabled}
+        onclose={() => ($statsOpen = false)}
+    />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -660,16 +799,27 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
-<BottomLeftStack>
-    {#if appSettings.aiEnabled}
-        <AutoAIWidget />
-    {/if}
-    <WordCountOverlay />
-</BottomLeftStack>
-<Toaster position="bottom-right" />
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <BottomLeftStack>
+        {#if $novelNovemberEnabled}
+            <WritingSprint />
+        {/if}
+        {#if appSettings.aiEnabled}
+            <AutoAIWidget />
+        {/if}
+        <WordCountOverlay />
+        {#if $novelNovemberEnabled}
+            <WritingGoalTracker />
+        {/if}
+    </BottomLeftStack>
+</div>
 
 <!-- Top-right collab + account entry points -->
-<div data-annotation-occluder class="fixed top-8 right-8 z-40 flex items-center gap-3">
+<div
+    data-annotation-occluder
+    class="focus-chrome fixed top-8 right-8 z-40 flex items-center gap-3"
+    class:focus-chrome-hidden={focusMode && !focusControlsVisible}
+>
     {#if authLoading && authConnectionState === "connecting" && authReconnecting}
         <button
             disabled
@@ -742,8 +892,31 @@ if (import.meta.env.DEV) {
         />
     {/if}
 {/each}
+</div>
 
 <style>
+    .app-shell {
+        min-height: 100vh;
+    }
+    .focus-chrome {
+        transition:
+            opacity 240ms ease,
+            visibility 240ms ease;
+    }
+    .focus-chrome-hidden {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .focus-exit {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 240ms ease;
+    }
+    .focus-exit-visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
     :global(html) {
         background-color: #e5e7eb; /* gray-200 */
     }

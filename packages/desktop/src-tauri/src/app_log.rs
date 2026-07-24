@@ -70,6 +70,14 @@ fn rotate_if_needed(path: &Path) {
     let _ = fs::rename(path, rotated);
 }
 
+fn read_file(path: &Path) -> Result<String, String> {
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(content),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
 fn write_record(
     path: &Path,
     level: &str,
@@ -88,6 +96,7 @@ fn write_record(
         "level": level,
         "target": target,
         "message": message,
+        "pid": std::process::id(),
     });
     if let Some(details) = details {
         record["details"] = serde_json::from_str(details).unwrap_or_else(|_| json!(details));
@@ -154,15 +163,26 @@ pub fn log_event(
 
 pub fn read(app: &tauri::AppHandle) -> Result<String, String> {
     let path = path_from_handle(app)?;
-    match fs::read_to_string(path) {
-        Ok(content) => Ok(content),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(err) => Err(err.to_string()),
+    let _guard = LOG_LOCK.lock().map_err(|err| err.to_string())?;
+    let rotated = path.with_file_name(ROTATED_LOG_FILE_NAME);
+    let mut content = read_file(&rotated)?;
+    let current = read_file(&path)?;
+    if !content.is_empty() && !content.ends_with('\n') && !current.is_empty() {
+        content.push('\n');
     }
+    content.push_str(&current);
+    Ok(content)
 }
 
 pub fn clear(app: &tauri::AppHandle) -> Result<(), String> {
     let path = path_from_handle(app)?;
+    let _guard = LOG_LOCK.lock().map_err(|err| err.to_string())?;
+    let rotated = path.with_file_name(ROTATED_LOG_FILE_NAME);
+    match fs::remove_file(rotated) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err.to_string()),
+    }
     fs::write(path, "").map_err(|err| err.to_string())
 }
 
