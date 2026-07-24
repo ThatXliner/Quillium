@@ -33,17 +33,17 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
-import { history, redo, undo } from "@codemirror/commands";
+import { history, redo, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function createParentView(doc: string) {
+function createParentView(doc: string, newGroupDelay = 0) {
     const state = EditorState.create({
         doc,
-        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
+        extensions: [history({ newGroupDelay }), annotationExtensions()],
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
@@ -371,6 +371,37 @@ describe("syncingFromParent guard prevents feedback loop", () => {
         expect(parentView.state.doc.toString()).toBe("hello world");
         // Nested editor should show the reverted text
         expect(nestedEditor.state.doc.toString()).toBe("hello");
+
+        nestedEditor.destroy();
+    });
+
+    it("groups repeated nested deletions into one parent undo step", () => {
+        parentView.destroy();
+        parentView = createParentView("hello my b world", 500);
+        const revId = addRevision(parentView, 0, parentView.state.doc.length, "hello my b world");
+
+        const nestedEditor = createNestedView("hello my b world", (update: ViewUpdate) => {
+            translateAndDispatch(update, parentView, revId);
+        });
+        const depthBeforeDeletion = undoDepth(parentView.state);
+
+        for (let index = 0; index < 5; index++) {
+            const cursor = 10 - index;
+            nestedEditor.dispatch({
+                changes: { from: cursor - 1, to: cursor },
+                annotations: Transaction.userEvent.of("delete.backward"),
+            });
+        }
+
+        expect(parentView.state.doc.toString()).toBe("hello world");
+        expect(undoDepth(parentView.state)).toBe(depthBeforeDeletion + 1);
+
+        expect(undo(parentView)).toBe(true);
+        expect(parentView.state.doc.toString()).toBe("hello my b world");
+        const revision = parentView.state.field(annotationField)[revId];
+        expect(
+            isAnnotationOfType(revision, "revision") && versionText(activeVersion(revision)),
+        ).toBe("hello my b world");
 
         nestedEditor.destroy();
     });

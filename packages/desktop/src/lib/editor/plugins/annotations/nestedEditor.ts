@@ -619,6 +619,10 @@ export function translateAndDispatch(
         );
     }
 
+    const userEvent = update.transactions
+        .map((transaction) => transaction.annotation(Transaction.userEvent))
+        .find((event) => event !== undefined);
+
     parentView.dispatch({
         changes: parentChanges,
         selection: EditorSelection.cursor(offset),
@@ -627,6 +631,7 @@ export function translateAndDispatch(
             nestedEditorEdit.of(revisionId),
             revisionProvenance.of(humanEditProvenance),
             Transaction.addToHistory.of(true),
+            ...(userEvent ? [Transaction.userEvent.of(userEvent)] : []),
         ],
     });
     return true;

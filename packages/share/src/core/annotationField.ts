@@ -1719,9 +1719,14 @@ function needsRestoreHistoryIsolation(transaction: Transaction): boolean {
     if (transaction.annotation(isolateHistory) !== undefined) return false;
     if (transaction.isUserEvent("undo") || transaction.isUserEvent("redo")) return false;
 
+    const nestedTargetIds = nestedRevisionTargetIds(transaction);
+
     // These effects always store an exact annotation snapshot in their inverse.
     // Prevent a later adjacent edit from joining and leaving that snapshot's
-    // coordinate transform shorter than the now-combined history event.
+    // coordinate transform shorter than the now-combined history event. Nested
+    // text edits are the exception: their marker carries the exact range restore,
+    // and isolating their atomic version update would make every typed/deleted
+    // character require a separate undo.
     if (
         transaction.effects.some(
             (effect) =>
@@ -1730,7 +1735,8 @@ function needsRestoreHistoryIsolation(transaction: Transaction): boolean {
                 effect.is(_addVersionToRevision) ||
                 effect.is(_deleteVersionFromRevision) ||
                 effect.is(_updateActiveRevisionVersion) ||
-                effect.is(_updateRevisionVersionState),
+                (effect.is(_updateRevisionVersionState) &&
+                    !nestedTargetIds.has(effect.value.annotationId)),
         )
     ) {
         return true;
@@ -1738,7 +1744,6 @@ function needsRestoreHistoryIsolation(transaction: Transaction): boolean {
 
     const oldAnnotations = transaction.startState.field(annotationField);
     const newAnnotations = transaction.state.field(annotationField);
-    const nestedTargetIds = nestedRevisionTargetIds(transaction);
     const explicitlyManagedAnnotationIds = new Set(nestedTargetIds);
     for (const effect of transaction.effects) {
         if (effect.is(addAnnotation)) explicitlyManagedAnnotationIds.add(effect.value.id);
