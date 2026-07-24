@@ -1,7 +1,7 @@
 <script lang="ts">
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { capture, showFeedbackSurvey } from "$lib/posthog";
+import posthog, { capture, showFeedbackSurvey } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import { linkAnchor, versionGroups } from "$lib/stores";
 import { modalStack } from "$lib/stores";
