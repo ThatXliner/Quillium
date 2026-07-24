@@ -33,6 +33,7 @@ import type { Annotation, Thread as ThreadType } from ".";
 import { annotationField } from ".";
 import Thread from "./Thread.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
+import { type CommentEditorPosition, captureCommentEditorPosition } from "./commentFocus";
 
 const {
     comment,
@@ -54,6 +55,8 @@ const thread = $derived(comment.thread);
 const selectedText = $derived(
     view.state.sliceDoc(comment.selection.main.from, comment.selection.main.to),
 );
+
+let replyOrigin = $state<CommentEditorPosition | undefined>();
 
 async function aiSuggestion() {
     posthog.capture("comment_ai_suggestion_requested", {
@@ -88,6 +91,7 @@ function openComment() {
         commentId: comment.id,
         parentView: view,
         label: selectedText.slice(0, 40) || "Comment",
+        originSelection: captureCommentEditorPosition(view),
     });
 }
 
@@ -100,6 +104,7 @@ function deleteComment() {
 }
 
 function selectCommentText() {
+    replyOrigin = captureCommentEditorPosition(view);
     view.dispatch({
         selection: EditorSelection.cursor(comment.selection.main.from),
         scrollIntoView: true,
@@ -114,6 +119,8 @@ function selectCommentText() {
             {view}
             annotationId={comment.id}
             previewOnly={!isActive}
+            originPosition={replyOrigin}
+            onRestoreOrigin={() => (replyOrigin = undefined)}
             onAiSuggest={isActive && appSettings.aiEnabled ? aiSuggestion : undefined}
             aiSuggestDisabled={!hasApiKey()}
             onDisabledAiSuggest={() => appEventBus.emit({ type: "ai-open-settings" })}

@@ -246,7 +246,13 @@ export type ModalEntry =
           label: string;
           pendingNestedCommand?: PendingNestedCommand;
       }
-    | { type: "comment"; commentId: number; parentView: EditorView; label: string };
+    | {
+          type: "comment";
+          commentId: number;
+          parentView: EditorView;
+          label: string;
+          originSelection?: { anchor: number; head: number };
+      };
 
 // ── Modal stack store ────────────────────────────────────────
 

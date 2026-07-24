@@ -33,17 +33,33 @@ import {
  * Children: Thread.svelte
  */
 import { ChevronRight, MessageSquare, SparklesIcon, Trash2 } from "lucide-svelte";
+import { tick, untrack } from "svelte";
 import { type Annotation, type Thread as ThreadType, isAnnotationOfType } from ".";
 import Thread from "./Thread.svelte";
 import { annotationField, removeAnnotation, updateThread } from "./annotationField";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
+import {
+    type CommentEditorPosition,
+    captureCommentEditorPosition,
+    restoreCommentEditorPosition,
+} from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 
 const {
     commentId,
     parentView,
     stackIndex,
-}: { commentId: number; parentView: EditorView; stackIndex: number } = $props();
+    originSelection = undefined,
+}: {
+    commentId: number;
+    parentView: EditorView;
+    stackIndex: number;
+    originSelection?: CommentEditorPosition;
+} = $props();
+
+const selectionToRestore = untrack(
+    () => originSelection ?? captureCommentEditorPosition(parentView),
+);
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 const isTop = $derived(stackIndex === $modalStack.length - 1);
@@ -115,8 +131,15 @@ function autoResize(el: HTMLTextAreaElement) {
 }
 
 // ── Dialog open/close ────────────────────────────────────────
-function close() {
+async function close() {
     modalStack.pop();
+    // A nested editor's parent dialog is reopened by its reactive modal-stack effect.
+    // Wait for that render before focusing, otherwise the browser can reject focus on
+    // the temporarily hidden editor.
+    await tick();
+    requestAnimationFrame(() => {
+        restoreCommentEditorPosition(parentView, selectionToRestore);
+    });
 }
 
 $effect(() => {
@@ -267,7 +290,8 @@ async function aiSuggestion() {
                                         send();
                                     } else if (e.key === "Escape") {
                                         e.preventDefault();
-                                        textareaEl?.blur();
+                                        e.stopPropagation();
+                                        void close();
                                     }
                                 }}
                             ></textarea>

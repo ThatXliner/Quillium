@@ -30,6 +30,11 @@ import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
 import ThreadMessage from "./ThreadMessage.svelte";
+import {
+    type CommentEditorPosition,
+    captureCommentEditorPosition,
+    restoreCommentEditorPosition,
+} from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 
 let {
@@ -52,6 +57,8 @@ let {
     // When true, hides the reply input so the caller can render it
     // separately (e.g. anchored to the bottom of a modal column)
     hideReply = false,
+    originPosition = undefined,
+    onRestoreOrigin = undefined,
 }: {
     thread: ThreadType;
     updateThread: (thread: ThreadType) => void;
@@ -65,6 +72,8 @@ let {
     sendPillClass?: string;
     focusRingClass?: string;
     hideReply?: boolean;
+    originPosition?: CommentEditorPosition;
+    onRestoreOrigin?: () => void;
 } = $props();
 
 // Reply draft lives in the shared drafts store (keyed by annotation id) so
@@ -73,17 +82,29 @@ let {
 const newMessage = $derived(getDraft(annotationId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
+let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 const hasText = $derived(!!newMessage.trim());
 const sendActive = $derived(hasText);
 function blurToEditor() {
     textareaEl?.blur();
-    (view ?? $editorView)?.focus();
+    const owningView = view ?? $editorView;
+    const position = originPosition ?? originSelection;
+    if (!owningView || !position) return;
+    restoreCommentEditorPosition(owningView, position);
+    onRestoreOrigin?.();
+}
+
+function captureOrigin() {
+    const owningView = view ?? $editorView;
+    if (!owningView) return;
+    originSelection = originPosition ?? captureCommentEditorPosition(owningView);
 }
 
 $effect(() => {
     return annotationEventBus.on("annotation-focus-reply", (event) => {
         if (event.annotationId !== annotationId) return;
+        captureOrigin();
         textareaEl?.focus();
     });
 });
@@ -121,7 +142,10 @@ function send() {
             rows="2"
             class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
                 text-black/70 placeholder:text-black/30"
-            onfocus={() => (isFocused = true)}
+            onfocus={() => {
+                captureOrigin();
+                isFocused = true;
+            }}
             onblur={() => (isFocused = false)}
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -129,6 +153,7 @@ function send() {
                     send();
                 } else if (e.key === "Escape") {
                     e.preventDefault();
+                    e.stopPropagation();
                     blurToEditor();
                 }
             }}
