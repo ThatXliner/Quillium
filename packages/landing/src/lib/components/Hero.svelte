@@ -50,12 +50,6 @@ onMount(() => {
 			<img src="/logo.svg" alt="Quillium mark" width="96" height="96" />
 		</div>
 
-		<p
-			class="reveal mb-4 text-[0.75rem] font-semibold tracking-[0.15em] text-[color:var(--text-faint)] uppercase contrast-more:text-[color:var(--text-soft)]"
-		>
-			The writing app for people who rewrite
-		</p>
-
 		<h1
 			class="reveal reveal-delay-1 mb-6 max-w-[700px] font-[Newsreader,Georgia,serif] text-[clamp(2.8rem,6vw,4.5rem)] leading-[1.15] font-normal tracking-[-0.03em] text-[color:var(--text-strong)]"
 		>
