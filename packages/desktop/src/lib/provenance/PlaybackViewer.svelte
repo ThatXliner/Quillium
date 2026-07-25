@@ -15,13 +15,14 @@
  *
  * Owned by the authorship-proof feature; rendered by /authorship.
  */
-import { listDraftEvents, resolveActiveDraftId } from "$lib/db";
+import { listDraftEvents, listSnapshots, loadSnapshotState, resolveActiveDraftId } from "$lib/db";
 import type { ChangeSpec, EventPayload, Provenance } from "$lib/db/events";
 import type { EventRecord } from "$lib/db/types";
 import { getExtensions } from "$lib/editor/extensions";
-import { replayEvents } from "$lib/editor/replay";
+import { reconstructState } from "$lib/editor/replay";
 import { goToEditor } from "$lib/navigation";
 import { type ProvenanceReport, generateProvenanceReport } from "$lib/provenance/report";
+import { selectPlaybackBaseline } from "$lib/provenance/timeline";
 import { currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { EditorState, RangeSetBuilder } from "@codemirror/state";
@@ -130,6 +131,9 @@ let events = $state<EventRecord[]>([]);
 let loading = $state(true);
 let draftId = $state<string | null>(null);
 let report = $state<ProvenanceReport | null>(null);
+let baselineStateJson = $state<string | null>(null);
+let usingSnapshotBaseline = $state(false);
+let loadError = $state(false);
 
 let position = $state(0); // number of events applied (0..events.length)
 let playing = $state(false);
@@ -252,6 +256,7 @@ $effect(() => {
     // Track reactive deps explicitly so the effect re-runs on every step.
     void position;
     void events;
+    void baselineStateJson;
 
     previewView?.destroy();
 
@@ -259,10 +264,7 @@ $effect(() => {
 
     // Pass 1: reconstruct just to learn the inserted range of the current event
     // against the final document (positions depend on the rebuilt doc length).
-    const probe =
-        slice.length > 0
-            ? replayEvents(EditorState.create({ extensions: probeExtensions }), slice)
-            : EditorState.create({ extensions: probeExtensions });
+    const probe = reconstructState(baselineStateJson, slice, probeExtensions);
     const deco = currentEditDecorations(probe);
 
     // Pass 2: rebuild the real state with the static decoration facet included
@@ -274,10 +276,7 @@ $effect(() => {
         currentEditTheme,
         EditorView.decorations.of(deco),
     ];
-    const state =
-        slice.length > 0
-            ? replayEvents(EditorState.create({ extensions: liveExtensions }), slice)
-            : EditorState.create({ extensions: liveExtensions });
+    const state = reconstructState(baselineStateJson, slice, liveExtensions);
 
     previewView = new EditorView({ state, parent: previewEl });
     // Tint color follows the current origin.
@@ -370,9 +369,24 @@ onMount(async () => {
     try {
         draftId = await resolveDraftId();
         if (!draftId) return;
-        events = await listDraftEvents(draftId);
+        const [allEvents, snapshots] = await Promise.all([
+            listDraftEvents(draftId),
+            listSnapshots(draftId),
+        ]);
+        const baseline = selectPlaybackBaseline(allEvents, snapshots);
+        if (baseline) {
+            baselineStateJson = await loadSnapshotState(baseline.id);
+            usingSnapshotBaseline = baselineStateJson !== null;
+        }
+        events =
+            baseline && usingSnapshotBaseline
+                ? allEvents.filter((event) => event.id > baseline.upToEventId)
+                : allEvents;
         position = events.length; // Open showing the finished document.
         report = await generateProvenanceReport(draftId, get(currentDocumentTitle));
+    } catch (error) {
+        console.error("[provenance] Could not load authorship playback", error);
+        loadError = true;
     } finally {
         loading = false;
     }
@@ -478,7 +492,16 @@ function handleKeydown(e: KeyboardEvent) {
                 <div class="flex items-center justify-center w-full text-black/30 text-sm">
                     Loading…
                 </div>
-            {:else if total === 0}
+            {:else if loadError}
+                <div class="flex flex-col items-center justify-center w-full gap-3 text-center">
+                    <FileText size={36} class="text-black/15" />
+                    <p class="text-sm text-black/45">Couldn’t load writing history.</p>
+                    <p class="text-xs text-black/30 leading-relaxed max-w-xs">
+                        Your document is unchanged. Return to the editor and try opening Authorship
+                        Playback again.
+                    </p>
+                </div>
+            {:else if total === 0 && !baselineStateJson}
                 <div class="flex flex-col items-center justify-center w-full gap-3 text-center">
                     <FileText size={36} class="text-black/15" />
                     <p class="text-sm text-black/45">No writing history yet.</p>
@@ -581,6 +604,12 @@ function handleKeydown(e: KeyboardEvent) {
 
                     <!-- Legend -->
                     <div class="flex items-center gap-3 flex-1 min-w-0">
+                        {#if usingSnapshotBaseline}
+                            <span class="text-[11px] text-black/35">
+                                Starts at earliest saved baseline
+                            </span>
+                            <div class="w-px h-3 bg-black/10"></div>
+                        {/if}
                         {#each LEGEND_ORDER as key}
                             {@const style = ORIGIN_STYLES[key]}
                             <span class="flex items-center gap-1.5 text-[11px] text-black/45">

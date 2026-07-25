@@ -347,19 +347,31 @@ export async function generateProvenanceReport(
     draftId: string,
     documentTitle: string,
 ): Promise<ProvenanceReport> {
-    const { listDraftEvents } = await import("$lib/db");
-    const { replayEvents } = await import("$lib/editor/replay");
-    const { history } = await import("@codemirror/commands");
-    const { EditorState } = await import("@codemirror/state");
-    const { annotationField } = await import("$lib/editor/plugins/annotations");
+    const { listDraftEvents, listSnapshots, loadSnapshotState } = await import("$lib/db");
+    const { getExtensions } = await import("$lib/editor/extensions");
+    const { reconstructState } = await import("$lib/editor/replay");
 
-    const events = await listDraftEvents(draftId);
+    const [events, snapshots] = await Promise.all([
+        listDraftEvents(draftId),
+        listSnapshots(draftId),
+    ]);
+    const latestSnapshot = snapshots.reduce<(typeof snapshots)[number] | undefined>(
+        (latest, snapshot) => {
+            if (!latest || snapshot.upToEventId > latest.upToEventId) return snapshot;
+            return latest;
+        },
+        undefined,
+    );
+    const snapshotStateJson = latestSnapshot ? await loadSnapshotState(latestSnapshot.id) : null;
+    const eventsSinceSnapshot = latestSnapshot
+        ? events.filter((event) => event.id > latestSnapshot.upToEventId)
+        : events;
 
-    const extensions = [history(), annotationField];
-    let state = EditorState.create({ extensions });
-    if (events.length > 0) {
-        state = replayEvents(state, events);
-    }
+    const state = reconstructState(
+        snapshotStateJson,
+        eventsSinceSnapshot,
+        getExtensions({ persist: false }),
+    );
 
     return buildProvenanceReport({
         events,
