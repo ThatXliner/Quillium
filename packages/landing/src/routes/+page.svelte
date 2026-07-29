@@ -27,9 +27,11 @@ let { data } = $props();
 //     No flight (the 520vh sticky scene is desktop-pointer territory) and NO
 //     video — watching a video embed on mobile is a poor experience, so the
 //     static hero takes its place.
-// `isMobile` defaults true so SSR renders the lightweight static-hero path; on
-// mount the real value resolves and desktop swaps in the flight + video.
-let isMobile = $state(true);
+// The landing page is prerendered, so it cannot know the visitor's viewport at
+// build time. Render the current desktop hero first; defaulting to the legacy
+// mobile hero made its feather layout flash on every desktop visit before
+// hydration could read the viewport width.
+let isMobile = $state(false);
 
 // Desktop gets the flight + video; mobile gets the static hero and skips both.
 // The flight already carries its own finale download CTA, but we still render
