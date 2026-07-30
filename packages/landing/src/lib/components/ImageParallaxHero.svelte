@@ -103,9 +103,6 @@ onMount(() => {
     </div>
 
     <div class="hero-copy">
-        <div class="brand-mark">
-            <img src="/logo.svg" alt="Quillium mark" width="56" height="56" />
-        </div>
         <p class="eyebrow">The writing app for people who rewrite</p>
         <h1>Write in <em>branches</em>.</h1>
         <p class="subhead">
@@ -317,25 +314,6 @@ onMount(() => {
         align-items: flex-start;
         justify-content: center;
         text-align: left;
-    }
-
-    .brand-mark {
-        display: grid;
-        width: 72px;
-        height: 72px;
-        margin-bottom: 2rem;
-        place-items: center;
-        border: 1px solid rgba(247, 241, 227, 0.18);
-        border-radius: 20px;
-        background: rgba(247, 241, 227, 0.08);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.16),
-            0 18px 60px rgba(0, 0, 0, 0.22);
-        backdrop-filter: blur(14px);
-    }
-
-    .brand-mark img {
-        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.24));
     }
 
     .eyebrow {
