@@ -4,7 +4,7 @@ import Download from "$lib/components/Download.svelte";
 import Features from "$lib/components/Features.svelte";
 import Footer from "$lib/components/Footer.svelte";
 import Hero from "$lib/components/Hero.svelte";
-import Hero3DV2 from "$lib/components/Hero3DV2.svelte";
+import ImageParallaxHero from "$lib/components/ImageParallaxHero.svelte";
 import Nav from "$lib/components/Nav.svelte";
 import NotAiStatement from "$lib/components/NotAiStatement.svelte";
 import VideoOrCarousel from "$lib/components/VideoOrCarousel.svelte";
@@ -20,34 +20,28 @@ let { data } = $props();
 // Single landing layout (the hero-layout A/B test ended 2026-06-13; PostHog
 // experiment 376508 stopped, flag `hero-layout` kept only as a dormant QA
 // override). The page is now one fixed composition that diverges by device:
-//   DESKTOP: Hero3DV2 scroll-driven flight (the "airplane" intro) → the
-//     marketing video (VideoOrCarousel, → Showcase carousel on spotty links) →
-//     Features → Download.
+//   DESKTOP: ImageParallaxHero layered cinematic intro → the marketing video
+//     (VideoOrCarousel, → Showcase carousel on spotty links) → Features → Download.
 //   MOBILE: the plain static Hero (logo + headline + CTA) → Features → Download.
-//     No flight (the 520vh sticky scene is desktop-pointer territory) and NO
-//     video — watching a video embed on mobile is a poor experience, so the
-//     static hero takes its place.
+//     No image parallax and NO video — the static hero stays fast and compact.
 // The landing page is prerendered, so it cannot know the visitor's viewport at
 // build time. Render the current desktop hero first; defaulting to the legacy
 // mobile hero made its feather layout flash on every desktop visit before
 // hydration could read the viewport width.
 let isMobile = $state(false);
 
-// Desktop gets the flight + video; mobile gets the static hero and skips both.
-// The flight already carries its own finale download CTA, but we still render
-// the standalone Download section at the very bottom so there's a closing
-// call-to-action after the feature list for everyone.
-let showFlight = $derived(!isMobile);
+// Desktop gets the image hero + video; mobile gets the static hero and skips both.
+let showImageHero = $derived(!isMobile);
 
-// isMobile resolves on the client and swaps the desktop (flight + video) and
+// isMobile resolves on the client and swaps the desktop (image hero + video) and
 // mobile (static hero) paths, which changes the DOM *after* SSR. Re-run the
 // reveal animations once the new DOM has flushed so freshly-rendered `.reveal`
 // sections (the static Hero's copy, Features, etc.) fade in instead of staying
 // stuck at opacity:0. initReveal() is idempotent.
 $effect(() => {
-    // Read showFlight so the effect re-runs when the layout flips; JSON.stringify
+    // Read showImageHero so the effect re-runs when the layout flips; JSON.stringify
     // keeps the read from being dead-code-eliminated.
-    JSON.stringify([showFlight]);
+    JSON.stringify([showImageHero]);
     tick().then(() => initReveal());
 });
 
@@ -151,10 +145,10 @@ onMount(() => {
 
 <Nav />
 <main>
-	<!-- 1. Top hero, by device: desktop gets the scroll-driven paper-plane flight,
+	<!-- 1. Top hero, by device: desktop gets the layered image experiment,
 	     mobile gets the plain static hero. -->
-	{#if showFlight}
-		<Hero3DV2 release={data.release} />
+	{#if showImageHero}
+		<ImageParallaxHero release={data.release} />
 	{:else}
 		<Hero release={data.release} />
 	{/if}
@@ -167,10 +161,9 @@ onMount(() => {
 	     4. Then for both: the feature list, then the closing Download CTA.
 	     A divider precedes any section that follows another. -->
 	<div class="post-hero">
-		<div class="warm-divider section-divider"></div>
 		<NotAiStatement />
 
-		{#if showFlight}
+		{#if showImageHero}
 			<div class="warm-divider section-divider"></div>
 			<VideoOrCarousel videoId={HERO_VIDEO_ID} location="hero-video" />
 		{/if}

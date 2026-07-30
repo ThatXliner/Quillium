@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1672" height="941" viewBox="0 0 1672 941">
+    <rect width="1672" height="941" fill="black" />
+    <path
+        fill="white"
+        d="M292 651 C443 612 557 610 697 592 C824 576 912 562 1039 584
+           C1163 607 1252 622 1373 640 C1497 658 1579 671 1672 677
+           L1672 941 L272 941 C278 831 275 734 292 651 Z"
+    />
+    <path fill="black" d="M303 760 L485 760 L480 874 L298 874 Z" />
+</svg>
