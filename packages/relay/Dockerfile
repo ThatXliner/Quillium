@@ -2,7 +2,11 @@ FROM oven/bun:1 AS deps
 
 WORKDIR /app
 COPY package.json bun.lock ./
+# Every workspace member in packages/* must be present or bun treats the
+# lockfile as changed and --frozen-lockfile fails, even for members the relay
+# does not depend on.
 COPY packages/desktop/package.json packages/desktop/package.json
+COPY packages/e2e/package.json packages/e2e/package.json
 COPY packages/landing/package.json packages/landing/package.json
 COPY packages/relay/package.json packages/relay/package.json
 COPY packages/share/package.json packages/share/package.json
@@ -12,7 +16,10 @@ FROM deps AS build
 
 COPY packages/relay/tsconfig.json packages/relay/tsconfig.json
 COPY packages/relay/src packages/relay/src
-RUN bun --cwd packages/relay run build
+# NOT `bun --cwd packages/relay run build`: bun >=1.3 rejects a global --cwd
+# before `run`, prints usage, and exits 0 — a silent no-op that produces no
+# dist/ and only surfaces later as a missing COPY source.
+RUN bun run --filter @quillium/relay build
 
 FROM oven/bun:1-slim AS runtime
 
@@ -23,6 +30,7 @@ ENV PORT=3001
 
 COPY package.json bun.lock ./
 COPY packages/desktop/package.json packages/desktop/package.json
+COPY packages/e2e/package.json packages/e2e/package.json
 COPY packages/landing/package.json packages/landing/package.json
 COPY packages/relay/package.json packages/relay/package.json
 COPY packages/share/package.json packages/share/package.json
