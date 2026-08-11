@@ -63,6 +63,7 @@ let wrapperEl = $state<HTMLDivElement>();
 let sceneEl = $state<HTMLDivElement>();
 let chapterEls: HTMLDivElement[] = $state([]);
 let staticMode = $state(false); // reduced motion or WebGL failure
+let sceneReady = $state(false);
 
 // The headline is deliberately static — a typewriter/blinking-cursor effect is
 // the visual signature of AI chat products, which is exactly the association
@@ -188,6 +189,7 @@ onMount(() => {
             else {
                 cleanupScene = cleanup;
                 recolorScene = recolor;
+                sceneReady = true;
             }
         })
         .catch(() => {
@@ -732,7 +734,12 @@ function makeMoteTexture(THREE: ThreeNS) {
 {/snippet}
 
 <!-- ==================== HERO (3D v2 — the flight IS the page) ==================== -->
-<div bind:this={wrapperEl} class="hero-flight" class:static-mode={staticMode}>
+<div
+	bind:this={wrapperEl}
+	class="hero-flight"
+	class:static-mode={staticMode}
+	class:scene-ready={sceneReady}
+>
 	<div class="stage">
 		<div bind:this={sceneEl} class="scene-host" aria-hidden="true"></div>
 
@@ -966,6 +973,14 @@ function makeMoteTexture(THREE: ThreeNS) {
 		opacity: 0;
 		pointer-events: none;
 		will-change: opacity, transform;
+	}
+	/* Chapter one is prerendered content, so show it before hydration and
+	   while Three.js initializes. initScene writes the same first-frame styles
+	   before scene-ready removes this fallback, making the handoff invisible. */
+	.hero-flight:not(.scene-ready):not(.static-mode) .chapter-1 {
+		opacity: 1;
+		--off: 0px;
+		pointer-events: auto;
 	}
 	/* Soft scrim so copy stays readable where it crosses an ink trail */
 	.chapter::before {
