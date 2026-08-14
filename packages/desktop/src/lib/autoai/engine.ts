@@ -31,7 +31,7 @@ import { annotations, documentContent, editorView } from "$lib/stores";
 import { generateObject } from "ai";
 import { toast } from "svelte-sonner";
 import { get, writable } from "svelte/store";
-import { z } from "zod";
+import { type AutoAIReviewOutput, AutoAIReviewSchema, normalizeAutoAIReview } from "./reviewSchema";
 import { type AutoAIConservativeness, autoAISettings } from "./settings.svelte";
 
 export type AutoAIPhase = "idle" | "thinking" | "reviewing";
@@ -51,33 +51,6 @@ const conservativenessPrompts: Record<AutoAIConservativeness, string> = {
         "Provide detailed feedback on structure, clarity, voice, pacing, word choice, and potential improvements. Be comprehensive but constructive.",
 };
 
-const AnnotationSchema = z.object({
-    annotations: z.array(
-        z.discriminatedUnion("type", [
-            z.object({
-                type: z.literal("comment"),
-                targetText: z.string(),
-                comment: z.string(),
-            }),
-            z.object({
-                type: z.literal("suggestion"),
-                targetText: z.string(),
-                replacement: z.string(),
-                rationale: z.string(),
-            }),
-            z.object({
-                type: z.literal("revision"),
-                targetText: z.string(),
-                versionLabel: z.string(),
-                versionText: z.string(),
-                threadMessage: z.string(),
-            }),
-        ]),
-    ),
-});
-
-type ReviewResult = z.infer<typeof AnnotationSchema>;
-
 function buildSystemPrompt(): string {
     const { conservativeness, annotationTypes, persona } = autoAISettings;
     const allowed = annotationTypes.join(", ");
@@ -87,6 +60,11 @@ Annotation types you may use: ${allowed}.
 - comment: A note pointing out an issue or observation.
 - suggestion: A replacement for a specific phrase (provide the exact original text and a better alternative).
 - revision: Multiple named versions of a passage for the writer to compare.
+
+Use these fields:
+- comment: type, targetText, comment
+- suggestion: type, targetText, replacement, rationale
+- revision: type, targetText, versionLabel, versionText, threadMessage
 
 ${conservativenessPrompts[conservativeness]}
 ${buildDocumentContextPrompt(documentContext)}
@@ -106,7 +84,7 @@ let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
 let unsubStopAi: (() => void) | null = null;
 
-function applyAnnotations(result: ReviewResult): number {
+function applyAnnotations(result: AutoAIReviewOutput): number {
     const view = get(editorView);
     if (!view) return 0;
 
@@ -117,7 +95,7 @@ function applyAnnotations(result: ReviewResult): number {
     const allowed = new Set(autoAISettings.annotationTypes);
     let applied = 0;
 
-    for (const ann of result.annotations) {
+    for (const ann of normalizeAutoAIReview(result)) {
         // Skip annotation types the user disabled.
         if (!allowed.has(ann.type)) continue;
         // Verify the targetText actually exists in the current doc.
@@ -159,7 +137,7 @@ function applyAnnotations(result: ReviewResult): number {
             } else if (ann.type === "revision") {
                 const created = createRevision({
                     targetText: ann.targetText,
-                    versions: [{ label: ann.versionLabel, text: ann.versionText }],
+                    versions: ann.versions,
                     threadMessage: ann.threadMessage,
                     author: autoAISettings.persona,
                     view,
@@ -174,7 +152,7 @@ function applyAnnotations(result: ReviewResult): number {
                     );
                     createComment({
                         targetText: ann.targetText,
-                        comment: `${ann.threadMessage} (suggested version: "${ann.versionLabel}" — ${ann.versionText})`,
+                        comment: `${ann.threadMessage} (suggested version: "${ann.versions[0].label}" — ${ann.versions[0].text})`,
                         author: autoAISettings.persona,
                         view,
                     });
@@ -222,7 +200,7 @@ async function runReview(content: string, manual = false) {
         });
         const { object } = await generateObject({
             model,
-            schema: AnnotationSchema,
+            schema: AutoAIReviewSchema,
             system: buildSystemPrompt(),
             prompt: `Review this context packet. Only create annotations for exact targetText substrings that appear in the included document text.\n\n${contextPacketToPrompt(contextPacket)}`,
             abortSignal,
