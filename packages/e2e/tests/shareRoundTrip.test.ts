@@ -25,7 +25,14 @@ import { buildFixtureState, serializeFixtureWire } from "./fixtures";
 
 /** Mirror the landing restore path (ReadonlyDocument.onMount). */
 function restoreFromWire(wire: Record<string, unknown>): EditorState {
-    return EditorState.fromJSON(wire, { extensions: getReadonlyExtensions() }, readonlySavedFields);
+    return EditorState.fromJSON(
+        {
+            selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+            ...wire,
+        },
+        { extensions: getReadonlyExtensions() },
+        readonlySavedFields,
+    );
 }
 
 describe("Omni share round-trip (desktop → wire → landing)", () => {
@@ -34,9 +41,10 @@ describe("Omni share round-trip (desktop → wire → landing)", () => {
         const wire = serializeFixtureWire(state);
 
         // Guards against the desktop producer and the share restorer drifting on
-        // which fields are persisted. `toJSON` also emits doc + selection.
+        // which fields are persisted. The author's transient selection must
+        // stay off the wire; the read-only host supplies its own cursor.
         expect(Object.keys(wire).sort()).toEqual(
-            ["annotationField", "doc", "selection", "versionGroupField"].sort(),
+            ["annotationField", "doc", "versionGroupField"].sort(),
         );
         expect(Object.keys(readonlySavedFields).sort()).toEqual(
             ["annotationField", "versionGroupField"].sort(),

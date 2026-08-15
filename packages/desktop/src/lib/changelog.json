@@ -1,4 +1,8 @@
 {
+  "0.24": {
+    "date": "2026-08-15",
+    "content": "Revision drafts are now easier to tell apart. When two neighboring versions contain the **same writing**—even if their Markdown formatting differs—Quillium marks the duplicate with a quiet dot beside its version label.\n\nIf you try to continue from an identical draft, Quillium now **checks before creating another one**. You can continue immediately, hide the warning for an hour, or turn it off until you re-enable it under **Settings → Editor**."
+  },
   "0.23": {
     "date": "2026-07-16",
     "content": "If you sign in with a **Quillium account**, we now link your anonymous analytics identifier to that account so we can better help troubleshoot issues you report. This only kicks in once you deliberately create an account — the anonymous experience for everyone else is unchanged, and nothing about past analytics is affected. See the updated [Privacy Policy](https://quillium.bryanhu.com/privacy) for details."
