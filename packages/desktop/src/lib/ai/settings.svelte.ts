@@ -199,7 +199,7 @@ function loadBaseUrl(): string {
 
 export const aiSettings = $state({
     provider: loadString(PROVIDER_KEY, "openai") as Provider,
-    model: loadString(MODEL_KEY, "gpt-5.5"),
+    model: loadString(MODEL_KEY, "gpt-5.6-sol"),
     apiKey: "",
     baseURL: loadBaseUrl(),
 });

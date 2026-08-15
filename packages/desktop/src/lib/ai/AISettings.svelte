@@ -65,19 +65,27 @@ let showModelGuide = $state(false);
 
 const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; description: string }[]> = {
     openai: [
-        { id: "gpt-5.5", label: "GPT-5.5", description: "Most capable" },
         {
-            id: "gpt-5.4-mini",
-            label: "GPT-5.4 Mini",
-            description: "Fast and efficient",
+            id: "gpt-5.6-sol",
+            label: "GPT-5.6 Sol",
+            description: "Best OpenAI quality",
         },
-        { id: "gpt-5.4-nano", label: "GPT-5.4 Nano", description: "Fastest, most cost-efficient" },
+        {
+            id: "gpt-5.6-luna",
+            label: "GPT-5.6 Luna",
+            description: "Fast and economical",
+        },
+        {
+            id: "gpt-5.6-terra",
+            label: "GPT-5.6 Terra",
+            description: "Balanced intelligence and cost",
+        },
     ],
     anthropic: [
         {
-            id: "claude-opus-4-8",
-            label: "Claude Opus 4.8",
-            description: "Most capable",
+            id: "claude-opus-4-6",
+            label: "Claude Opus 4.6",
+            description: "Best for prose and nuanced editing",
         },
         {
             id: "claude-sonnet-4-6",
@@ -148,14 +156,22 @@ function loadUseChatGPT(): boolean {
 }
 
 function loadModel(): string {
-    if (typeof localStorage === "undefined") return "gpt-5.5";
-    return localStorage.getItem(MODEL_KEY) ?? "gpt-5.5";
+    if (typeof localStorage === "undefined") return "gpt-5.6-sol";
+    return localStorage.getItem(MODEL_KEY) ?? "gpt-5.6-sol";
 }
 
-let selectedTab = $state<TabProvider>(loadTabProvider());
+function isCuratedModel(provider: TabProvider, model: string): boolean {
+    return MODEL_OPTIONS[provider].some((option) => option.id === model);
+}
+
+const initialTab = loadTabProvider();
+const initialModel = loadModel();
+
+let selectedTab = $state<TabProvider>(initialTab);
 let useCustomEndpoint = $state(loadUseCustomEndpoint());
 let useChatGPT = $state(loadUseChatGPT());
-let selectedModel = $state(loadModel());
+let selectedModel = $state(initialModel);
+let useCustomModel = $state(!isCuratedModel(initialTab, initialModel));
 let baseUrl = $state(aiSettings.baseURL);
 
 let apiKey = $state(aiSettings.apiKey);
@@ -277,6 +293,7 @@ $effect(() => {
 
 function selectTab(id: TabProvider) {
     selectedTab = id;
+    useCustomModel = false;
     if (id !== "openai") {
         useCustomEndpoint = false;
         useChatGPT = false;
@@ -293,12 +310,13 @@ function selectOpenAIConnection(connection: "api" | "endpoint" | "chatgpt") {
     useChatGPT = connection === "chatgpt";
     if (connection === "api") {
         // Reset to first OpenAI model.
+        useCustomModel = false;
         const first = MODEL_OPTIONS.openai[0];
         selectedModel = first.id;
         localStorage.setItem(MODEL_KEY, first.id);
         aiSettings.model = first.id;
     }
-    if (useChatGPT && !selectedModel.trim()) selectModel("gpt-5.4-mini");
+    if (useChatGPT && !selectedModel.trim()) selectModel("gpt-5.6-luna");
     const provider =
         connection === "api" ? "openai" : useChatGPT ? "openai-oauth" : "openai-compatible";
     posthog.capture("ai_settings_provider_changed", { provider });
@@ -335,6 +353,11 @@ function selectModel(id: string) {
         provider: effectiveProvider,
         model: id,
     });
+}
+
+function selectCuratedModel(id: string) {
+    useCustomModel = false;
+    selectModel(id);
 }
 
 function updateBaseUrl(url: string) {
@@ -552,9 +575,9 @@ async function saveApiKey() {
             <div class="flex flex-col gap-1">
                 {#each MODEL_OPTIONS[selectedTab] as option}
                     <button
-                        onclick={() => selectModel(option.id)}
+                        onclick={() => selectCuratedModel(option.id)}
                         class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors
-                            {selectedModel === option.id
+                            {!useCustomModel && selectedModel === option.id
                             ? 'bg-white/70 shadow-sm border border-black/8'
                             : 'hover:bg-white/40 border border-transparent'}"
                     >
@@ -564,12 +587,42 @@ async function saveApiKey() {
                             </div>
                             <div class="text-xs text-black/40 mt-0.5">{option.description}</div>
                         </div>
-                        {#if selectedModel === option.id}
+                        {#if !useCustomModel && selectedModel === option.id}
                             <div class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></div>
                         {/if}
                     </button>
                 {/each}
             </div>
+            {#if useCustomModel}
+                <div class="mt-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.035] p-2.5">
+                    <label
+                        for="custom-model-id"
+                        class="block text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1.5"
+                    >Custom model ID</label>
+                    <div class="flex items-center gap-1.5 rounded-lg bg-white/70 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                        <input
+                            id="custom-model-id"
+                            type="text"
+                            bind:value={selectedModel}
+                            oninput={() => selectModel(selectedModel)}
+                            placeholder="Enter the provider's model ID"
+                            class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                        />
+                    </div>
+                    <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                        Quillium will send this ID directly to {PROVIDERS.find((provider) => provider.id === selectedTab)?.label}.
+                    </p>
+                </div>
+            {:else}
+                <button
+                    onclick={() => (useCustomModel = true)}
+                    class="mt-2 text-[10px] text-black/35 underline underline-offset-2 hover:text-black/60 transition-colors"
+                >Use a custom model ID</button>
+            {/if}
+            <button
+                onclick={() => (showModelGuide = true)}
+                class="block mt-2 text-[10px] text-black/28 hover:text-black/50 transition-colors"
+            >Why aren't these the latest models?</button>
         {/if}
     </div>
     {/if}

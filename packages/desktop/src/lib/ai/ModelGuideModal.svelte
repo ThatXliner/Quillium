@@ -28,14 +28,14 @@ type Recommendation = {
 
 const RECOMMENDATIONS: Recommendation[] = [
     {
-        provider: "Anthropic (Claude Opus)",
-        tag: "Best for knowledge work",
-        desc: "The latest Opus model is, hands down, the best model for serious knowledge work. The only downside is that it's expensive.",
+        provider: "Anthropic (Claude Opus 4.6)",
+        tag: "Best for prose",
+        desc: "Opus 4.6 is our pick for drafting and nuanced editing. Newer Claude releases are stronger at coding and agentic work, but often produce more literal, structured prose. Opus is expensive, so it is best reserved for writing where voice matters.",
     },
     {
         provider: "DeepSeek (V4 Flash)",
         tag: "Best value",
-        desc: "By far the cheapest model that's still genuinely competent. We suspect it's distilled from Anthropic's models, so it carries similar mannerisms to Claude at a fraction of the cost. Flash is so competent that I wouldn't recommend Pro",
+        desc: "Our recommended DeepSeek model for everyday feedback and revision. V4 Flash is capable, fast, and economical, and is usually enough for routine writing work.",
     },
     {
         provider: "Google (3.5 Flash)",
@@ -43,9 +43,9 @@ const RECOMMENDATIONS: Recommendation[] = [
         desc: "Gemini has a free tier. If you know how to grab a Gemini API key, you can drop it in here and start writing without paying anything.",
     },
     {
-        provider: "OpenAI (5.5)",
+        provider: "OpenAI (5.6 Sol or Luna)",
         tag: "Most flexible",
-        desc: "Mainly here because so many local LLMs and other services expose an OpenAI-compatible API—point Quillium at those through the custom endpoint. You can also use plain OpenAI API key.",
+        desc: "Choose Sol when quality matters most, or Luna for fast, economical everyday writing work. Quillium also accepts OpenAI-compatible local endpoints, making this the easiest route to Ollama, LM Studio, and other model hosts.",
     },
 ];
 </script>
@@ -92,6 +92,20 @@ const RECOMMENDATIONS: Recommendation[] = [
                     <p class="model-desc">{rec.desc}</p>
                 </div>
             {/each}
+
+            <div class="mt-4 px-3.5 py-3 rounded-xl bg-black/[0.025] border border-black/[0.05]">
+                <h3 class="text-[11px] font-semibold text-black/60 mb-1.5">
+                    Why aren't these always the latest models?
+                </h3>
+                <p class="text-[11px] text-black/45 leading-relaxed">
+                    Quillium is a writing app, not a general model leaderboard. New releases often
+                    improve coding, tool use, and benchmark scores without improving voice, rhythm,
+                    or editorial judgment. We keep a small set of models whose behavior fits writing
+                    well, then update it selectively. If you prefer a newer release—or any model the
+                    provider supports—choose <strong class="font-medium text-black/55">Use a custom model ID</strong>
+                    in AI Settings.
+                </p>
+            </div>
         </div>
     </div>
 </dialog>
