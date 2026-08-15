@@ -28,7 +28,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 - [Tabs & Drafts](./tabs-and-drafts.md) — Document tabs, draft trees, forking, locks
 - [Collaboration](./collaboration.md) — Yjs sync, real-time collab
 - [AutoAI](./autoai.md) — Background AI review system
-- [AI Sidebar](./ai-sidebar.md) — Chat, Feedback, Revise modes
+- [AI Features and Request Pipeline](./ai-sidebar.md) — End-to-end context, provider, streaming, tools, and cancellation flow
 - [Auth](./auth.md) — Supabase Auth, account UI, guest collaborators
 - [Provenance](./provenance.md) — Authorship report and playback
 
@@ -58,7 +58,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 | [Provenance](./provenance.md) | Authorship report, provenance classification, playback/export |
 | [AutoAI](./autoai.md) | Review engine, widget UI, face state machine |
 | [Reader Personas](./reader-personas.md) | Multi-persona parallel feedback system |
-| [AI Sidebar](./ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |
+| [AI Features and Request Pipeline](./ai-sidebar.md) | End-to-end AI flow, providers, models, context, streaming, tools, and other AI surfaces |
 | [Settings](./settings.md) | App preferences, fonts, localStorage vs SQLite |
 | [Library](./library.md) | Document management, trash, navigation |
 | [Search](./search.md) | FTS5 + semantic search, schema migrations |

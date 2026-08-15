@@ -76,23 +76,39 @@ Sub-modal with:
 
 ## AI Settings (`ai/settings.svelte.ts`)
 
-Separate from app settings. Stored in localStorage under `"quillium-ai-settings"`:
+AI connection state is separate from general app settings. Non-secret values
+use individual localStorage keys:
 
-| Setting | Type | Description |
-|---------|------|-------------|
-| `provider` | enum | OpenAI, OpenAI-compatible, Anthropic, Google, DeepSeek |
-| `model` | string | Model ID within provider |
-| `baseURL` | string | OpenAI-compatible endpoint URL |
+| Runtime field | Storage key | Description |
+|---------------|-------------|-------------|
+| `aiSettings.provider` | `quillium-ai-provider` | OpenAI API, ChatGPT OAuth, OpenAI-compatible, Anthropic, Google, or DeepSeek |
+| `aiSettings.model` | `quillium-ai-model` | Curated or custom provider model ID; defaults to `gpt-5.6-sol` |
+| `aiSettings.baseURL` | `quillium-ai-base-url` | OpenAI-compatible endpoint URL |
+| `documentContext.freeform` | `quillium-document-context` | Writer brief injected into AI requests |
+| `personaModes` | `quillium-ai-persona-modes` | Per-mode reader-persona opt-in for Feedback and Revise |
 
-API keys stored in OS keychain, not localStorage.
+`aiSettings.apiKey` is memory-only. Provider API keys are lazy-loaded from the
+OS keychain when an AI feature is first used, avoiding a keychain permission
+prompt during ordinary startup. `quillium-has-api-key` is only a non-secret
+presence hint used to prevent UI flicker before the key loads.
+
+ChatGPT OAuth sessions are stored in the same OS keychain under the
+`openai-oauth` provider name. `quillium-has-openai-oauth` is a non-secret
+connection-status hint; it does not contain tokens. The optional key for a local
+OpenAI-compatible endpoint is held in memory and is not persisted.
 
 The same module also owns:
 
 | State | Storage | Purpose |
 |-------|---------|---------|
-| `documentContext.freeform` | localStorage | Writer-provided context injected into AI calls |
-| `personaModes` | localStorage | Per-mode reader-persona opt-in for Feedback/Revise |
-| `aiProcessing` | memory | Sidebar glow / stop-all coordination |
+| `aiConnectionState` | localStorage presence hint + keychain session | ChatGPT connection status |
+| `aiProcessing` | memory | Derived sidebar processing indicator |
+| active AI task set | memory | Keeps processing active until overlapping operations finish |
+| shared abort controller | memory | Cancels non-chat, AutoAI, characterization, and persona requests |
+
+`stopAllAi()` aborts the shared controller, tells mounted chat instances to
+stop, cancels pending AutoAI work through the event bus, and resets processing
+state. See [AI Features and Request Pipeline](./ai-sidebar.md) for the full flow.
 
 ## AutoAI Settings (`autoai/settings.svelte.ts`)
 

@@ -79,6 +79,7 @@ sequenceDiagram
     User->>Feedback: Click feedback button
     Feedback->>Factory: sendWithPersonas()
     Factory->>Factory: getEnabledPersonas()
+    Factory->>Factory: Snapshot document ID and AI context
     
     par Parallel execution
         Factory->>AI: Persona 1 stream
@@ -86,18 +87,29 @@ sequenceDiagram
         Factory->>AI: Persona N stream
     end
     
-    AI-->>Factory: Results with tool calls
+    AI-->>Factory: Streamed tool calls
+    Factory->>Factory: Confirm document is still active
     Factory->>Factory: Attribute annotations to persona name
 ```
 
 When feedback is triggered:
 1. The panel checks the **per-mode opt-in** (`personaModes[mode]`). If the mode is OFF, it uses a single plain stream and stops here.
 2. If ON, it reads `getEnabledPersonas()`; if any exist, it calls `runMultiPersonaStreams()`
-3. Each persona runs **in parallel** (`Promise.all`)
-4. Each stream uses `buildPersonaPrompt(persona)` prepended to system prompt
-5. Tool-call handlers attribute annotations to persona's name
+3. The factory snapshots the document ID, draft, selection and range, open
+   annotations, active annotation, writer brief, and provider settings once.
+4. Each persona runs **in parallel** (`Promise.all`) with the shared abort signal.
+5. Each stream uses `buildPersonaPrompt(persona)` prepended to the mode system prompt.
+6. Tool-call handlers attribute annotations to the persona's name.
+7. A tool call is applied only while the document that started the review is
+   still active; late output cannot land in a different draft.
 
 If the mode is OFF, or it is ON but no personas are enabled, it falls back to standard single-stream.
+
+Persona streams consume tool-call chunks directly instead of rendering each
+persona's conversational text in the panel. Feedback personas can create
+comments and revisions; Revise personas can create suggestions and comments.
+The global AI stop control cancels every persona stream through the shared abort
+signal.
 
 ## Per-Mode Opt-In
 
@@ -130,4 +142,7 @@ Layout:
 - **Feedback.svelte / Revise.svelte**: Gate sends on `personaModes[mode]`, then route through the persona check; render the per-mode toggle
 - **ai/settings.svelte.ts**: Owns `personaModes` and `setPersonasForMode()`
 - **chatFactory.ts**: `runMultiPersonaStreams()` handles parallel execution
+- **context.ts / annotationContext.ts**: Build the same budgeted, annotation-aware
+  context used by ordinary Feedback and Revise requests
+- **settings.svelte.ts**: Supplies the shared abort signal and global stop behavior
 - **AI sidebar**: Tab index 5 in `AISidebar.svelte`

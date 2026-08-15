@@ -8,6 +8,7 @@ AutoAI is a background AI review system that watches document content and create
 |------|---------|
 | `settings.svelte.ts` | Settings store, localStorage persistence |
 | `engine.ts` | Review orchestration, AI calls, annotation dispatch |
+| `reviewSchema.ts` | Provider-tolerant structured schema and strict result normalization |
 | `AutoAIWidget.svelte` | Bubble + expanded panel UI |
 | `AutoAIFace.svelte` | Animated face SVG component |
 | `faceAnimation.svelte.ts` | Eye tracking + sleep/wake state |
@@ -29,17 +30,19 @@ Stored in localStorage under `"quillium-autoai-settings"`:
 
 ```mermaid
 flowchart TD
-    Change["documentContent changed<br/>(≥ 20 chars)"]
-    Debounce["Debounce (debounceMs)"]
-    Thinking["autoAIThinking = true<br/>Face shows >_<"]
+    Change["documentContent changed<br/>(≥ 20-character length delta)"]
+    Guard["Enabled, continuous, and draft is writable"]
+    Debounce["Wait for 70% of debounceMs"]
+    Thinking["autoAIPhase = thinking<br/>Final 30% warning"]
     LoadKey["ensureApiKeyLoaded()"]
-    Reviewing["autoAIReviewing = true<br/>Face shows scanning squint"]
-    Context["Build shared context packet<br/>(writer context + budgeted draft)"]
+    Reviewing["autoAIPhase = reviewing<br/>Face shows scanning squint"]
+    Context["Build shared context packet<br/>(brief + budgeted draft + annotations)"]
     Generate["generateObject()<br/>Single non-streaming call"]
-    Apply["applyAnnotations()<br/>For each result"]
-    Done["autoAIReviewing = false"]
+    Normalize["Normalize provider field variants<br/>Drop malformed items individually"]
+    Apply["Validate against live draft<br/>Apply allowed annotations"]
+    Done["autoAIPhase = idle"]
 
-    Change --> Debounce --> Thinking --> LoadKey --> Reviewing --> Context --> Generate --> Apply --> Done
+    Change --> Guard --> Debounce --> Thinking --> LoadKey --> Reviewing --> Context --> Generate --> Normalize --> Apply --> Done
 ```
 
 ### Engine API
@@ -48,6 +51,7 @@ flowchart TD
 |----------|---------|
 | `startAutoAI()` | Subscribe to `documentContent`, schedule reviews |
 | `stopAutoAI()` | Unsubscribe, cancel pending timer |
+| `cancelPendingReview()` | Clear the debounce without disabling the engine |
 | `triggerManualReview()` | Cancel debounce, run immediately |
 
 ### Annotation Application
@@ -55,16 +59,30 @@ flowchart TD
 Before review, AutoAI builds the same context packet used by the sidebar:
 
 1. Writer-provided document context is included as guidance.
-2. Long drafts are clipped with an explicit omission marker.
-3. The model is instructed to annotate only exact substrings present in the
+2. Long drafts are clipped to the AutoAI budget with an explicit omission marker.
+3. Open annotations are included as editorial state so the model can avoid duplicates.
+4. The model is instructed to annotate only exact substrings present in the
    included document text.
 
 This keeps background review aligned with the visible sidebar context model and
 prevents unbounded prompt growth on long drafts.
 
-For each AI result:
-1. Find `targetText` in current document
-2. Dispatch `createComment` / `createSuggestion` / `createRevision`
+The generation schema intentionally accepts common provider field aliases.
+`normalizeAutoAIReview()` converts each item to Quillium's strict comment,
+suggestion, or revision shape and discards only malformed items rather than
+rejecting an otherwise useful review.
+
+For each normalized result:
+
+1. Check that the annotation type is still enabled.
+2. Verify `targetText` against the live editor document, not the reviewed snapshot.
+3. Dispatch `createComment`, `createSuggestion`, or `createRevision`.
+4. If a suggestion or revision overlaps an existing one, preserve the feedback
+   as a comment and show a warning instead of silently dropping it.
+
+Continuous review is skipped for read-only drafts. Manual review runs immediately
+when the document is non-empty and shows a “No issues found” toast when the model
+returns no applicable annotations.
 
 ## Widget UI
 
@@ -97,8 +115,8 @@ stateDiagram-v2
     waking --> idle: 1600ms elapsed
     idle --> tracking: Sustained typing (1s)
     tracking --> idle: 2s after last edit
-    idle --> thinking: autoAIThinking
-    thinking --> reviewing: autoAIReviewing
+    idle --> thinking: Final 30% of debounce
+    thinking --> reviewing: Request starts
     reviewing --> idle: Review complete
     
     note right of disabled: No API key
@@ -107,8 +125,8 @@ stateDiagram-v2
 | State | Appearance | Trigger |
 |-------|------------|---------|
 | `disabled` | × eyes | No API key |
-| `reviewing` | Narrow squint, scanning | `autoAIReviewing` true |
-| `thinking` | `>_<` with head bob | `autoAIThinking` true |
+| `reviewing` | Narrow squint, scanning | `autoAIPhase === "reviewing"` |
+| `thinking` | `>_<` with head bob | `autoAIPhase === "thinking"` |
 | `waking` | Eyes stretch open | Within 1600ms of wake |
 | `sleeping` | Horizontal bars + zzz | 30s idle |
 | `tracking` | Eyes follow caret/cursor | Sustained typing |
@@ -136,5 +154,8 @@ After 30s of no `keydown` or caret events, the face sleeps. Any interaction trig
 
 - **Document content**: Engine subscribes to `documentContent` store
 - **Annotation creation**: Uses same factory functions as AI sidebar
-- **AI settings**: Shares provider config via `createModel()`
+- **Context**: Shares the budgeted draft, writer brief, and annotation context builder
+- **AI settings**: Shares provider config, lazy credential loading, and `createModel()`
+- **Processing/cancellation**: Registers an AI task, uses the shared abort signal,
+  and cancels a pending debounce on the global `stop-ai` event
 - **+page.svelte**: Renders widget, handles manual review event

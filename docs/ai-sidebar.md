@@ -1,165 +1,296 @@
-# AI Sidebar
+# AI Features and Request Pipeline
 
-The AI sidebar provides multiple modes for AI-assisted writing. Each mode has its own tab with specialized functionality.
+Quillium's AI features run in the desktop client using the writer's selected
+provider and credentials. There is no Quillium inference server in the request
+path: prompts are assembled locally and sent directly to the selected provider,
+ChatGPT connection, or OpenAI-compatible endpoint.
 
-## Tabs
+The AI sidebar is the main entry point, but the same provider, context, and
+cancellation infrastructure also powers AutoAI, document-context generation,
+the dictionary assistant, annotation-thread suggestions, title suggestions, and
+the writing characterizer.
 
-| Tab | Key | Component | Purpose |
-|-----|-----|-----------|---------|
-| Chat | 1 | `Chat.svelte` | General AI conversation |
-| Feedback | 2 | `Feedback.svelte` | AI feedback on document/selection |
-| Revise | 3 | `Revise.svelte` | AI-powered revision generation |
-| Context | 4 | `DocumentContext.svelte` | Document context reference |
-| Readers | 5 | `Readers.svelte` | Reader persona configuration |
-| Settings | 6 | `AISettings.svelte` | Provider/model configuration |
-
-## Chat Mode
-
-General-purpose AI chat for writing assistance:
-- Uses the shared AI context packet before the user's prompt
-- Shows a context lens with the active scope and included sources
-- Offers context-aware action cards based on selection/document state
-- "Open in Chat" from dictionary popover
-- Message history within session
-
-## Feedback Mode
-
-AI feedback on the document or selected text:
-- Uses the context lens instead of generic built-in prompt pills
-- Routes through enabled reader personas (parallel execution)
-- Creates comments, suggestions, revisions
-- Keeps user-defined custom actions from settings
-- Falls back to single-stream if no personas enabled
-
-## Revise Mode
-
-AI-powered text revision:
-- Uses context-aware action cards for selection-level vs document-wide revision
-- Takes selection or full document
-- Generates alternative versions
-- Creates revision annotations with AI-suggested text
-- Keeps user-defined custom actions from settings
-
-## Context Mode
-
-Shows writer-provided context that will be sent to AI:
-- Freeform document-context textarea persisted to localStorage
-- Optional prompt/brief input that can generate context with the selected model
-- "Clear" button to remove stored context
-- Same context appears as the `writer-context` source in the context lens
-
-## Readers Mode
-
-See [Reader Personas](./reader-personas.md) for full documentation.
-
-## Settings Mode
-
-AI provider configuration:
-- Provider selection (OpenAI, OpenAI-compatible, Anthropic, Google, DeepSeek)
-- Model selection per provider
-- Custom base URL + freeform model id for OpenAI-compatible endpoints
-- API key management (stored in OS keychain)
-- Custom quick actions configuration
-
-## Dictionary Popover
-
-Triggered by `Mod-D` when a single word is selected:
+## End-to-End Pipeline
 
 ```mermaid
-flowchart TD
-    Select["User selects word"]
-    Key["Mod-D pressed"]
-    Validate["Validate: single word, ≤60 chars"]
-    Store["Write to dictionaryTrigger store"]
-    Popover["DictionaryPopover opens"]
-    Fetch["Fetch Free Dictionary API"]
-    Display["Show definitions, synonyms, antonyms"]
-    
-    Select --> Key --> Validate --> Store --> Popover --> Fetch --> Display
+flowchart LR
+    UI["Chat, Feedback, Revise, or another AI surface"]
+    Snapshot["Snapshot draft, selection, annotations, brief, and settings"]
+    Context["Build a budgeted context packet"]
+    Transport["Choose provider and model"]
+    Generate{"Generation style"}
+    Stream["streamText → UI message chunks"]
+    Structured["generateObject / generateText"]
+    Tools["Validate tool input"]
+    Editor["Dispatch CodeMirror annotations"]
+    Display["Render text or structured result"]
+
+    UI --> Snapshot --> Context --> Transport --> Generate
+    Generate --> Stream --> Display
+    Stream --> Tools --> Editor
+    Generate --> Structured --> Display
+    Structured --> Editor
 ```
 
-Features:
-- Definitions from Free Dictionary API
-- Synonym chips (click to replace word)
-- Antonym chips (click to look up)
-- "Describe → find word" AI mode
-- "Open in Chat" button
+For sidebar conversations, `createAiChat()` creates an AI SDK `Chat` with a
+custom transport. At send time the transport snapshots the current draft,
+selection and range, open annotations, active annotation, writer brief, and
+provider settings. `clientStreams.ts` then builds the mode-specific system
+prompt, prepends the context packet as a user message, and calls `streamText()`.
 
-### Integration
+Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
+with Zod and routed by `chatFactory.ts` to the annotation commands. A tool call
+whose exact target can no longer be found is skipped with a warning instead of
+failing the entire stream.
 
-- `dictionaryPlugin.ts` — keymap and validation
-- `dictionaryUtils.ts` — pure helper functions
-- `DictionaryPopover.svelte` — floating UI
-- `streamDictionary` in `clientStreams.ts` — AI mode
-
-## Provider Abstraction
-
-### Files
+### Core Files
 
 | File | Purpose |
 |------|---------|
-| `provider.ts` | Provider-agnostic client setup |
-| `context.ts` | Context packet assembly, budgeting, UI action suggestions |
-| `chatFactory.ts` | Request builders, streaming helpers |
-| `clientStreams.ts` | Mode-specific stream handlers |
-| `settings.svelte.ts` | AI settings store |
+| `AISidebar.svelte` | Panel navigation, resize behavior, context summary, global stop button |
+| `AISettings.svelte` | Connection, provider, model, and API-key UI |
+| `settings.svelte.ts` | Shared settings, lazy key loading, task tracking, and cancellation |
+| `provider.ts` | Converts the selected provider and model ID into an AI SDK `LanguageModel` |
+| `openaiOAuth.ts` | Beta ChatGPT PKCE sign-in, token refresh, model discovery, and keychain session storage |
+| `context.ts` | Context budgeting, source metadata, selection focus, and context-aware actions |
+| `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
+| `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
+| `clientStreams.ts` | Mode prompts, tools, streaming, context generation, and characterization |
 
-### Context Packets
+## Sidebar Tabs
 
-AI calls use a shared context packet instead of sending an unbounded raw
-document blob. The packet:
+| Tab | Key | Component | Purpose |
+|-----|-----|-----------|---------|
+| Chat | 1 | `Chat.svelte` | General writing conversation |
+| Feedback | 2 | `Feedback.svelte` | Big-picture editorial feedback and passage annotations |
+| Revise | 3 | `Revise.svelte` | Line-level suggestions and comments |
+| Context | 4 | `DocumentContext.svelte` | Writer-provided brief sent with AI requests |
+| Readers | 5 | `Readers.svelte` | Reader-persona configuration |
+| Settings | 6 | `AISettings.svelte` | Provider, connection, model, and credential configuration |
 
-- prioritizes selected text when present
-- includes nearby passage context around selections
-- clips long drafts with an explicit omission marker
-- keeps writer-provided document context labeled separately from document text
-- is inserted before the user's actual prompt, so the prompt remains the latest
-  user instruction
+### Chat
 
-The sidebar mirrors this same packet through the context lens, which displays
-the active scope (`Selection lens`, `Document lens`, or `Blank draft`) and the
-sources currently in play.
+- Conversational writing help with session-local message history.
+- Uses the shared context packet before the writer's latest prompt.
+- Shows a context lens for selection, nearby text, draft, annotations, and brief.
+- Offers context-aware action cards based on selection, draft length, brief, and
+  open annotations.
+- Does not expose annotation-creation tools; its response is conversational text.
 
-### Supported Providers
+### Feedback
 
-| Provider | Models |
-|----------|--------|
-| OpenAI | gpt-5.5, gpt-5.4-mini, gpt-5.4-nano |
-| OpenAI-compatible | User-provided model id and base URL |
-| Anthropic | claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5 |
-| Google | gemini-3.5-flash, gemini-3.1-pro-preview, gemini-3-flash-preview |
-| DeepSeek | deepseek-v4-pro, deepseek-v4-flash |
+- Focuses on structure, voice, argument, scope, pacing, and style.
+- Uses `createComment` for passage-level observations and `createRevision` for
+  two or three meaningfully different versions of a passage.
+- Keeps the overall response conversational while requiring concrete passage
+  feedback to go through tools.
+- Includes user-defined Feedback quick actions from general app settings.
+- Can fan out through enabled reader personas when Feedback's persona toggle is on.
 
-### API Key Storage
+### Revise
 
-Keys stored in OS keychain via `packages/desktop/src-tauri/src/keychain.rs`:
-- macOS: Keychain
-- Windows: Credential Manager
-- Linux: Secret Service
+- Works as a line editor for words and short phrases.
+- Uses `createSuggestion` for replacement options and can use `createComment`
+  for explanation or clarification.
+- Instructs the model to target the smallest useful span, include sentence or
+  clause context for disambiguation, and provide at least two alternatives.
+- Includes user-defined Revise quick actions from general app settings.
+- Can fan out through enabled reader personas when Revise's persona toggle is on.
 
-Not stored in localStorage (security).
+### Context
 
-OpenAI-compatible endpoints can run without a stored API key; `createModel()`
-passes a placeholder key and uses the configured `baseURL`.
+- Stores one freeform writer brief in localStorage.
+- Can generate a brief from a prompt with a non-streaming `generateText()` call.
+- Uses the `context-generation-format` feature flag to choose freeform or
+  structured output.
+- The brief is shown separately in the context lens and appended to the
+  mode-specific system prompt.
+
+### Readers
+
+See [Reader Personas](./reader-personas.md) for persona configuration, parallel
+execution, attribution, and cost behavior.
+
+## Context Packets
+
+AI calls do not send an unbounded raw document. `buildAiContextPacket()` creates
+a deterministic, mode-specific packet with these possible sources:
+
+| Source | Behavior |
+|--------|----------|
+| Selection | Included verbatim when text is selected |
+| Nearby passage | Paragraph-aware context around a selection; falls back to a character window |
+| Draft | Full text up to the mode budget, otherwise a head/tail excerpt with an omission marker |
+| Annotations | Up to six relevant open comments, suggestions, or revisions within a separate character budget |
+| Brief | Writer-provided context, kept logically separate from draft text |
+
+Open annotations include their target, nearby context, recent thread messages,
+and a limited number of suggestion replacements or revision versions. They are
+ranked with the active annotation first, then by distance from the selection,
+then by recency. The prompt tells the model to treat them as existing editorial
+state and avoid duplicating the same concern.
+
+Document character budgets are currently:
+
+| Mode | Maximum draft characters |
+|------|--------------------------|
+| Chat | 18,000 |
+| Feedback | 24,000 |
+| Revise | 16,000 |
+| Dictionary | 0 |
+| AutoAI | 26,000 |
+
+When a selection is active, the draft portion is capped at 9,000 characters.
+Annotation context is separately capped at six items and approximately 4,800
+characters. These are character budgets, not provider token limits.
+
+The context message is inserted before the conversation messages, leaving the
+writer's latest prompt as the most recent instruction. The context lens uses the
+same packet metadata, so its source list reflects what the request builder sees.
+
+## Providers, Connections, and Models
+
+`createModel()` is the only layer that imports provider SDKs. The rest of the AI
+pipeline consumes a provider-agnostic `LanguageModel`.
+
+### OpenAI Connections
+
+The OpenAI tab has three connection methods:
+
+| Connection | Implementation |
+|------------|----------------|
+| API key | Direct OpenAI API through `@ai-sdk/openai`; key stored in the OS keychain |
+| Local | User-provided OpenAI-compatible base URL and model ID; API key is optional and held only in memory |
+| ChatGPT | Beta PKCE OAuth flow through `@openai-oauth`; session stored in the OS keychain |
+
+ChatGPT sign-in opens the browser, validates the callback state, refreshes
+expiring tokens, and loads the model IDs available to that account. Requests use
+Tauri's native HTTP plugin because the Codex endpoints reject browser/WebView
+origins. The OAuth provider instance is reused across turns so its in-memory
+response replay state remains available for multi-turn chats. Disconnecting
+clears both the keychain session and that cached provider.
+
+The ChatGPT connection is explicitly beta and uses an unofficial integration;
+the settings UI tells users to review OpenAI's terms and privacy policy.
+
+### Curated API-Key Models
+
+| Provider | Curated models |
+|----------|----------------|
+| OpenAI | `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra` |
+| Anthropic | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001` |
+| Google | `gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-3-flash-preview` |
+| DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
+
+Quillium deliberately curates for writing behavior rather than always selecting
+the newest benchmark leader. Current recommendations are Claude Opus 4.6 for
+prose, DeepSeek V4 Flash for value, and OpenAI GPT-5.6 Sol or Luna depending on
+whether quality or economy matters more. The model guide in AI Settings explains
+this policy.
+
+Every API-key provider also offers **Use a custom model ID**. Quillium passes
+that string directly to the selected provider SDK. OpenAI-compatible endpoints
+always use a freeform model ID. Existing custom IDs are preserved when settings
+reload.
+
+## Credentials and Privacy
+
+- Provider API keys are stored by `keychain.rs` in macOS Keychain, Windows
+  Credential Manager, or Linux Secret Service.
+- Keys are lazy-loaded on first AI use so the macOS permission prompt does not
+  appear at ordinary app startup.
+- localStorage contains only presence flags and non-secret preferences, not
+  provider API keys or OAuth tokens.
+- ChatGPT OAuth sessions are serialized in the OS keychain under the
+  `openai-oauth` provider name.
+- A local/custom endpoint's optional key is held in memory and is not persisted.
+- Writing and prompts are sent directly to the selected third party. Users are
+  shown a provider-specific privacy notice in AI Settings.
+
+## Tools and Annotation Dispatch
+
+| Tool | Used by | Result |
+|------|---------|--------|
+| `createComment` | Feedback, Revise | Comment thread anchored to exact text |
+| `createRevision` | Feedback | Two or three named passage versions plus a thread message |
+| `createSuggestion` | Revise | One or more replacement options for a short target |
+
+Tool schemas require exact `targetText` and accept surrounding `context` to
+disambiguate repeated phrases. `chatFactory.ts` dispatches valid calls through
+the same CodeMirror annotation commands used by the rest of the app and records
+annotation analytics. Reader-persona tool calls attach the persona name as the
+annotation author.
+
+AutoAI does not consume streamed tool calls. It uses a structured Zod response
+and applies the normalized results itself; see [AutoAI](./autoai.md).
+
+## Parallel Personas and Document Safety
+
+Feedback and Revise default to one stream. If personas are enabled for that
+specific mode, `runMultiPersonaStreams()` starts one stream per enabled persona
+with `Promise.all()`.
+
+The fan-out path snapshots the document ID and editor context once. Tool calls
+are only applied if the user is still on that document, preventing a late
+persona result from landing in a different draft. See
+[Reader Personas](./reader-personas.md) for the full behavior.
+
+## Processing State and Cancellation
+
+`beginAiTask()` and `endAiTask()` maintain a set of active operations, so the
+sidebar processing glow stays active until overlapping work finishes. Standard
+Svelte Chat instances register their submitted/streaming state through
+`useAiChatEffects()`.
+
+The global stop control calls `stopAllAi()`, which:
+
+1. aborts the shared `AbortController` used by non-chat and persona operations,
+2. emits `stop-ai` so each mounted Chat instance calls `chat.stop()`,
+3. cancels a pending AutoAI debounce, and
+4. clears task and processing indicators.
+
+New work receives a fresh abort signal after a stop.
+
+## Other AI-Powered Surfaces
+
+### Title Suggestions
+
+The sparkle action in `DocumentTitleBar.svelte` sends at most the first 1,000
+characters of the current draft to `generateText()` and asks for one short title.
+The result is trimmed to 40 characters, written to the document metadata, and
+uses the shared provider, lazy credential loading, task indicator, and abort
+signal.
+
+### Annotation-Thread Suggestions
+
+Comment cards and comment modals can ask AI to respond to the current thread.
+`commentAi.ts` builds a prompt from the thread messages and anchored document
+text, calls `streamChat()`, collects text deltas, and appends the result as an
+`AI` thread message. This path sends no additional draft context, but it does
+include the writer brief through the normal Chat system prompt. If stopped, it
+keeps any text that streamed before cancellation rather than adding an error.
+
+### Dictionary and Thesaurus
+
+`Mod-D` opens the dictionary popover for a single selected word. Definitions,
+synonyms, and antonyms come from the Free Dictionary API. Its AI mode uses
+`streamDictionary()` for nuanced lookup and word-finding; it intentionally sends
+the selected word or phrase without draft text.
+
+### Writing Characterizer
+
+The Statistics modal can call `generateCharacterization()` on the current
+document. It uses `generateObject()` with a Zod schema to return seven 1–10 style
+dimensions, tone descriptors, and a short style summary. It shares the selected
+provider, model, credential loading, task indicator, and global abort signal.
 
 ## Event Bus Integration
 
-`appEventBus` handles cross-component events:
+`appEventBus` handles cross-component AI actions:
 
-| Event | Emitter | Consumer |
-|-------|---------|----------|
-| `dictionary-open` | dictionaryPlugin | DictionaryPopover |
-| `ai-open-chat` | DictionaryPopover | Chat, AISidebar |
-| `ai-open-settings` | AutoAIWidget | AISidebar |
-
-## Tool Calls
-
-AI responses can include tool calls for annotation creation:
-
-| Tool | Action |
-|------|--------|
-| `createComment` | Create comment annotation |
-| `createSuggestion` | Create suggestion annotation |
-| `createRevision` | Create revision annotation |
-
-Tool handlers dispatch directly to CodeMirror via annotation factory functions.
+| Event | Typical emitter | Consumer |
+|-------|-----------------|----------|
+| `dictionary-open` | Dictionary keymap/plugin | Dictionary popover |
+| `ai-open-chat` | Dictionary popover | Chat and AI sidebar |
+| `ai-open-settings` | AutoAI widget | AI sidebar |
+| `stop-ai` | Global stop control | Chat panels and AutoAI |

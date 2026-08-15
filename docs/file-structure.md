@@ -10,17 +10,26 @@ src/
 ├── lib/
 │   ├── ai/
 │   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise / Context / Readers / Settings)
-│   │   ├── AISettings.svelte  # Provider/model configuration
+│   │   ├── AISettings.svelte  # Connection, provider, model, and credential configuration
 │   │   ├── Chat.svelte        # General AI chat
-│   │   ├── DocumentContext.svelte # Context reference display
+│   │   ├── ContextInfoButton.svelte # Compact context-source popover trigger
+│   │   ├── ContextLens.svelte # Context summary and context-aware action cards
+│   │   ├── CustomQuickActions.svelte # User-defined Feedback/Revise actions
+│   │   ├── DocumentContext.svelte # Writer brief editor and generator
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
+│   │   ├── ModelGuideModal.svelte # Curated model rationale and recommendations
+│   │   ├── PersonaInfoModal.svelte # Reader-persona explanation
 │   │   ├── Readers.svelte     # Reader persona configuration panel
-│   │   ├── Revise.svelte      # AI-powered revision generation
-│   │   ├── chatFactory.ts     # Shared AI request/streaming helpers
-│   │   ├── clientStreams.ts   # Streaming response handling
-│   │   ├── provider.ts        # Provider-agnostic client setup
-│   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
-│   │   └── utils.ts           # Shared AI utilities
+│   │   ├── Revise.svelte      # Line-edit suggestions and comments
+│   │   ├── annotationContext.ts # Convert open annotations into AI context
+│   │   ├── chatFactory.ts     # Chat transport, persona fan-out, and tool dispatch
+│   │   ├── clientStreams.ts   # Mode prompts, streaming, tools, and structured generation
+│   │   ├── context.ts         # Context packet budgeting and source metadata
+│   │   ├── openaiOAuth.ts     # ChatGPT PKCE session, refresh, and model discovery
+│   │   ├── panelResize.svelte.ts # AI sidebar resize controller
+│   │   ├── provider.ts        # Provider-agnostic LanguageModel creation
+│   │   ├── settings.svelte.ts # AI settings, credentials, tasks, and cancellation
+│   │   └── utils.ts           # Context injection and shared prompt helpers
 │   ├── auth/
 │   │   ├── AuthButton.svelte    # Top-right auth/profile button
 │   │   ├── AuthModal.svelte     # Sign in modal
@@ -37,6 +46,7 @@ src/
 │   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI
 │   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state
 │   │   ├── engine.ts            # Review orchestration, AI calls
+│   │   ├── reviewSchema.ts       # Structured response normalization
 │   │   └── settings.svelte.ts   # AutoAI settings store
 │   ├── collab/
 │   │   ├── GoLiveButton.svelte    # Top-right Share button + modal

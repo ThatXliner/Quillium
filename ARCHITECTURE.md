@@ -42,7 +42,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | [Provenance](./docs/provenance.md) | Authorship report, edit provenance, playback/export |
 | [AutoAI](./docs/autoai.md) | Review engine, widget, face FSM |
 | [Reader Personas](./docs/reader-personas.md) | Multi-persona feedback |
-| [AI Sidebar](./docs/ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |
+| [AI Features and Request Pipeline](./docs/ai-sidebar.md) | Providers, context, streaming, tools, AutoAI integration, cancellation |
 | [Settings](./docs/settings.md) | App preferences, fonts |
 | [Library](./docs/library.md) | Document management, trash |
 | [Search](./docs/search.md) | FTS5 + semantic search, schema migrations |
