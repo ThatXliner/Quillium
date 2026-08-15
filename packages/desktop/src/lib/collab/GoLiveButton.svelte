@@ -35,6 +35,7 @@ import {
     serializeAnnotations,
     serializeShareState,
 } from "$lib/collab/sharePayload";
+import { withoutTransientShareSelection } from "$lib/collab/shareState";
 import { getActiveDraft, listTabDrafts, listTabs, loadDocumentState } from "$lib/db";
 import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
@@ -273,7 +274,7 @@ function openAuth() {
 }
 
 function fingerprintPayload(title: string, state: Record<string, unknown> | null): string {
-    return buildShareFingerprint(title, JSON.stringify(state), []);
+    return buildShareFingerprint(title, JSON.stringify(withoutTransientShareSelection(state)), []);
 }
 
 async function buildPublishPayload(scope: ReadonlyShareScope = shareScope) {
