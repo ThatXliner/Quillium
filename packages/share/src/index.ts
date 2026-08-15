@@ -20,6 +20,11 @@ export { default as SuggestionModalContent } from "./modals/SuggestionModalConte
 export { avatarColor, initials } from "./cards/avatar";
 export type * from "./cards/types";
 export { groupColor } from "./groupColor";
+export {
+    hasIdenticalPreviousVersion,
+    hasIdenticalTextContent,
+    markdownTextContent,
+} from "./versionComparison";
 export * from "./diff";
 export * from "./rendering";
 export * from "./types";

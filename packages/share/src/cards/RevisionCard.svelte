@@ -134,10 +134,14 @@ $effect(() => {
                         />
                     {:else}
                         <button
-                            aria-label={version.group
-                                ? `${version.label ?? (version.text.slice(0, 28) || "(empty)")}, linked in ${version.group.label} with ${version.group.memberCount - 1} other version${version.group.memberCount === 2 ? "" : "s"}`
-                                : undefined}
-                            class="max-w-[120px] {version.group ? 'pl-1' : 'pl-2'} pr-2 py-1 text-[11px] font-medium truncate transition-colors
+                            aria-label={`${version.label ?? (version.text.slice(0, 28) || "(empty)")}${
+                                version.group
+                                    ? `, linked in ${version.group.label} with ${version.group.memberCount - 1} other version${version.group.memberCount === 2 ? "" : "s"}`
+                                    : ""
+                            }${version.identicalToPrevious ? `, identical to version ${version.index}` : ""}`}
+                            class="max-w-[120px] {version.group ? 'pl-1' : 'pl-2'} {version.identicalToPrevious
+                                ? 'pr-1'
+                                : 'pr-2'} py-1 text-[11px] font-medium truncate transition-colors
                                 {version.active ? 'text-white' : 'text-black/65 hover:text-black/85'}"
                             disabled={version.active && !linkTargetable}
                             title={linkTargetable
@@ -152,6 +156,15 @@ $effect(() => {
                         >
                             {version.label ?? (version.text.slice(0, 28) || "(empty)")}
                         </button>
+                    {/if}
+                    {#if version.identicalToPrevious}
+                        <span
+                            class="flex self-stretch items-center pr-1.5 {version.active
+                                ? 'text-white/55'
+                                : 'text-purple-500/45'}"
+                            title={`Identical to version ${version.index}`}
+                            aria-hidden="true"
+                        ><span class="h-1 w-1 rounded-full bg-current"></span></span>
                     {/if}
                     {#if versionControls}
                         {@render versionControls(version)}

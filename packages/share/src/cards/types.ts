@@ -35,6 +35,7 @@ export type RevisionVersionView = {
     label?: string;
     text: string;
     active: boolean;
+    identicalToPrevious?: boolean;
     group?: RevisionVersionGroupView;
 };
 

@@ -63,6 +63,18 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
 />
 
 <SettingToggle
+    title="Warn about duplicate drafts"
+    description="Confirm before creating another draft when the current one matches the previous draft"
+    checked={draft.warnBeforeDraftAfterIdenticalVersion}
+    defaultChecked={true}
+    ariaLabel="Warn before creating another draft after an identical draft"
+    onchange={(checked) => {
+        draft.warnBeforeDraftAfterIdenticalVersion = checked;
+        onchange();
+    }}
+/>
+
+<SettingToggle
     title="Undo after restart for new documents"
     description="Store undo history when Quillium closes. Documents created before July 14, 2026 keep their current behavior."
     checked={draft.persistUndoHistoryForNewDocuments}

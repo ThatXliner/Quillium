@@ -2,7 +2,7 @@
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog, { capture, showFeedbackSurvey } from "$lib/posthog";
-import { appSettings } from "$lib/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { linkAnchor, versionGroups } from "$lib/stores";
 import { modalStack } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -31,6 +31,8 @@ import { EditorView } from "@codemirror/view";
 import {
     RevisionCard,
     type RevisionVersionView,
+    hasIdenticalPreviousVersion,
+    hasIdenticalTextContent,
     groupColor as sharedGroupColor,
 } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -52,6 +54,7 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
 } from ".";
+import DuplicateDraftWarning from "./DuplicateDraftWarning.svelte";
 import { NestedEditorController } from "./NestedEditorController";
 import Thread from "./Thread.svelte";
 import { type VersionState, activeVersionIndex, versionById, versionText } from "./models";
@@ -100,6 +103,7 @@ function openEditor() {
 
 let nestedEditorHost = $state<HTMLDivElement>();
 let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
+let duplicateDraftWarningOpen = $state(false);
 
 const controller = new NestedEditorController(
     view,
@@ -115,6 +119,46 @@ const controller = new NestedEditorController(
 function readCurrentRevision(): Annotation<"revision"> | undefined {
     const current = view.state.field(annotationField)[revision.id];
     return current && isAnnotationOfType(current, "revision") ? current : undefined;
+}
+
+function currentVersionMatchesPrevious(current: Annotation<"revision">): boolean {
+    return hasIdenticalPreviousVersion(
+        current.versions.map(versionText),
+        activeVersionIndex(current),
+    );
+}
+
+function neverShowDuplicateDraftWarning(): void {
+    appSettings.warnBeforeDraftAfterIdenticalVersion = false;
+    persistSettings();
+}
+
+async function createVersion(): Promise<void> {
+    const current = readCurrentRevision();
+    if (!current) return;
+    posthog.capture("revision_version_created", { version_count: current.versions.length });
+    view.dispatch(createNewRevision(view.state, revision.id));
+    await tick();
+    if (appSettings.showNestedEditor) {
+        userClosedEditor = false;
+        isEditorOpen = true;
+    } else {
+        openRevisionModal();
+    }
+}
+
+function requestCreateVersion(): void {
+    controller.flushCurrentStateToParent(false);
+    const current = readCurrentRevision();
+    if (!current) return;
+    if (
+        appSettings.warnBeforeDraftAfterIdenticalVersion &&
+        currentVersionMatchesPrevious(current)
+    ) {
+        duplicateDraftWarningOpen = true;
+        return;
+    }
+    void createVersion();
 }
 
 function readCurrentActiveVersion(): { version: VersionState; versionIndex: number } | undefined {
@@ -213,6 +257,12 @@ const revisionVersionViews = $derived(
             label: version.label ?? previewVersionText(version),
             text: versionText(version),
             active: index === activeVersionIndex(revision),
+            identicalToPrevious:
+                index > 0 &&
+                hasIdenticalTextContent(
+                    versionText(version),
+                    versionText(revision.versions[index - 1]),
+                ),
             group: group
                 ? {
                       id: group.id,
@@ -574,15 +624,7 @@ $effect(() => {
                 entry.parentView === view,
         );
         if (modalOpen) return;
-        posthog.capture("revision_version_created", { version_count: revision.versions.length });
-        controller.flushCurrentStateToParent(false);
-        view.dispatch(createNewRevision(view.state, revision.id));
-        tick().then(() => {
-            if (appSettings.showNestedEditor) {
-                userClosedEditor = false;
-                isEditorOpen = true;
-            }
-        });
+        requestCreateVersion();
     });
 });
 
@@ -751,20 +793,7 @@ function selectRevisionVersion(version: RevisionVersionView) {
         <button
             class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
-            onclick={async () => {
-                posthog.capture("revision_version_created", {
-                    version_count: revision.versions.length,
-                });
-                controller.flushCurrentStateToParent(false);
-                view.dispatch(createNewRevision(view.state, revision.id));
-                await tick();
-                if (appSettings.showNestedEditor) {
-                    userClosedEditor = false;
-                    isEditorOpen = true;
-                } else {
-                    openRevisionModal();
-                }
-            }}
+            onclick={requestCreateVersion}
             title="Create a new version ({modKey}↵)"
         >
             <PlusIcon size={14} />
@@ -878,6 +907,12 @@ function selectRevisionVersion(version: RevisionVersionView) {
     {actions}
     editor={editorContent}
     thread={thread.length > 0 || isActive ? threadContent : undefined}
+/>
+
+<DuplicateDraftWarning
+    bind:open={duplicateDraftWarningOpen}
+    onConfirm={() => void createVersion()}
+    onNeverShowAgain={neverShowDuplicateDraftWarning}
 />
 
 

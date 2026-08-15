@@ -1,12 +1,13 @@
 <script lang="ts">
-import ThreadList from "./cards/ThreadList.svelte";
 import CommentCard from "./cards/CommentCard.svelte";
 import RevisionCard from "./cards/RevisionCard.svelte";
 import SuggestionCard from "./cards/SuggestionCard.svelte";
+import ThreadList from "./cards/ThreadList.svelte";
 import type { RevisionVersionView } from "./cards/types";
 import { wordDiff } from "./diff";
 import { type AnnotationId, type RevisionVersionSelections, previewVersionText } from "./rendering";
 import type { SerializedAnnotation } from "./types";
+import { hasIdenticalTextContent } from "./versionComparison";
 
 let {
     annotation,
@@ -36,12 +37,15 @@ const revisionVersions = $derived.by((): RevisionVersionView[] => {
         annotation.versions.find((version) => version.index === selectedRevisionVersionIndex) ??
         annotation.versions[annotation.activeVersionIndex] ??
         annotation.versions[0];
-    return annotation.versions.map((version) => ({
+    return annotation.versions.map((version, index) => ({
         id: version.versionId ?? `${annotation.id}:${version.index}`,
         index: version.index,
         label: version.label ?? previewVersionText(version),
         text: version.text,
         active: version.index === selected?.index,
+        identicalToPrevious:
+            index > 0 &&
+            hasIdenticalTextContent(version.text, annotation.versions[index - 1]?.text ?? ""),
         group: version.group,
     }));
 });

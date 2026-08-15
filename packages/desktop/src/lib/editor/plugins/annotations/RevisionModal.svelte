@@ -31,7 +31,12 @@ import { isolateHistory } from "@codemirror/commands";
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView } from "@codemirror/view";
-import { AnnotationModalFrame, AnnotationModalHeader, AnnotationPanel } from "@quillium/share";
+import {
+    AnnotationModalFrame,
+    AnnotationModalHeader,
+    AnnotationPanel,
+    hasIdenticalPreviousVersion,
+} from "@quillium/share";
 import { PlusIcon, Trash2 } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import {
@@ -56,7 +61,7 @@ import {
 
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { appSettings } from "$lib/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
     type ModalEntry,
     annotations as annotationsStore,
@@ -66,6 +71,7 @@ import {
 import Kbd from "$lib/ui/Kbd.svelte";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import Annotations from "./Annotations.svelte";
+import DuplicateDraftWarning from "./DuplicateDraftWarning.svelte";
 import { NestedEditorController } from "./NestedEditorController";
 import RevisionBreadcrumbs from "./RevisionBreadcrumbs.svelte";
 import RevisionContextPanel from "./RevisionContextPanel.svelte";
@@ -89,6 +95,8 @@ import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./u
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 const opt = isMac ? "⌥" : "Alt";
+
+let duplicateDraftWarningOpen = $state(false);
 
 const {
     revisionId,
@@ -511,15 +519,15 @@ function executePendingNestedCommand(
 
 // ─── Sensor Effect C-0: ⌘Enter add-version from nested editor ─────
 // When the nested editor's keymap fires annotation-add-version, handle
-// it here synchronously so the FSM transitions to "rebuilding" in the
-// same microtask as the dispatch — matching what addVersion() does.
+// it here so the duplicate guard runs before the FSM transitions to
+// "rebuilding" — matching the header button's requestAddVersion() path.
 // Without this, Revision.svelte handles the event and the modal relies
 // on Sensor Effect B to detect the version change reactively, which
 // races with other Svelte effects and can read stale state.
 $effect(() => {
     return annotationEventBus.on("annotation-add-version", (event) => {
         if (event.annotationId !== revisionId || !isTop) return;
-        addVersion();
+        requestAddVersion();
     });
 });
 
@@ -590,13 +598,33 @@ function commitVersionLabel(trimmed: string) {
     );
 }
 
-function addVersion() {
+function neverShowDuplicateDraftWarning(): void {
+    appSettings.warnBeforeDraftAfterIdenticalVersion = false;
+    persistSettings();
+}
+
+function addVersion(): void {
     const revision = readRevision();
     if (!revision) return;
     posthog.capture("revision_version_created", { version_count: revision.versions.length });
     view.dispatch(createNewRevision(view.state, revisionId));
     // FSM handles destroyEditor + popTo + tick + createEditor
     send({ type: "VERSION_SWITCHED" });
+}
+
+function requestAddVersion(): void {
+    controller.flushCurrentStateToParent(false);
+    const revision = readRevision();
+    if (!revision) return;
+    const isDuplicate = hasIdenticalPreviousVersion(
+        revision.versions.map(versionText),
+        activeVersionIndex(revision),
+    );
+    if (appSettings.warnBeforeDraftAfterIdenticalVersion && isDuplicate) {
+        duplicateDraftWarningOpen = true;
+        return;
+    }
+    addVersion();
 }
 
 /**
@@ -761,7 +789,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   <button
     class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
         bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
-    onclick={addVersion}
+    onclick={requestAddVersion}
     title="New version ({modKey}↵)"
   >
     <PlusIcon size={10} />
@@ -855,6 +883,12 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     </div>
   </AnnotationModalFrame>
 </dialog>
+
+<DuplicateDraftWarning
+  bind:open={duplicateDraftWarningOpen}
+  onConfirm={addVersion}
+  onNeverShowAgain={neverShowDuplicateDraftWarning}
+/>
 
 <style>
   .revision-modal {
