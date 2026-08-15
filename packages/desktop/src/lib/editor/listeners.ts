@@ -35,7 +35,13 @@ import { historyField, isolateHistory } from "@codemirror/commands";
 import { type Annotation, ChangeSet, EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { isEqual } from "lodash-es";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
+import {
+    type DeletionAmount,
+    DeletionBurstTracker,
+    shouldSaveBeforeDeletion,
+} from "./deletionHistory";
 /**
  * listeners.ts — CodeMirror update listeners for event-log persistence.
  *
@@ -98,6 +104,7 @@ let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 // DB completion order, and that saveStatus reflects the last write.
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
+const deletionBurstTracker = new DeletionBurstTracker();
 
 function serializeSelection(sel: EditorSelection): SelectionJSON {
     return {
@@ -565,6 +572,40 @@ function isUndoRedoUpdate(update: ViewUpdate): boolean {
 }
 
 /**
+ * Counts removed text that should receive a history checkpoint. Replacements count because
+ * the old passage should remain recoverable; restores and revision-internal swaps already
+ * preserve their content elsewhere and must not create redundant snapshots.
+ */
+function deletionAmount(update: ViewUpdate, directUserEditsOnly = false): DeletionAmount {
+    let chars = 0;
+    let words = 0;
+
+    for (const tr of update.transactions) {
+        if (!tr.docChanged) continue;
+        if (tr.isUserEvent("undo") || tr.isUserEvent("redo") || tr.isUserEvent("input.restore")) {
+            continue;
+        }
+        if (tr.annotation(revisionInternalEdit)) continue;
+        if (
+            directUserEditsOnly &&
+            ((!tr.isUserEvent("delete") && !tr.isUserEvent("input")) ||
+                tr.annotation(nestedEditorEdit) !== undefined)
+        ) {
+            continue;
+        }
+
+        tr.changes.iterChanges((fromA, toA) => {
+            if (toA <= fromA) return;
+            const removedText = tr.startState.doc.sliceString(fromA, toA);
+            chars += removedText.length;
+            words += removedText.match(/\p{L}[\p{L}\p{N}'’-]*/gu)?.length ?? 0;
+        });
+    }
+
+    return { chars, words };
+}
+
+/**
  * Suspicious-change guard action: write a named recovery snapshot of the
  * pre-change state (fire-and-forget) and surface a banner pointing the user
  * at version history. Shared by the deletion/annotation-loss guards below.
@@ -618,6 +659,9 @@ async function doAppend(
         !isUndoRedo && payloadAddsAnnotationOfType(payload, "revision");
     const shouldSnapshotAfterComment =
         !isUndoRedo && payloadAddsAnnotationOfType(payload, "comment");
+    const removedText = deletionAmount(update);
+    const directUserRemovedText = deletionAmount(update, true);
+    const shouldSnapshotBeforeDeletion = shouldSaveBeforeDeletion(removedText);
 
     if (shouldSnapshotBeforeRevision) {
         await createAutosaveSnapshot(
@@ -626,6 +670,26 @@ async function doAppend(
             get(lastPersistedEventId),
             "Before revision creation (auto)",
         );
+    }
+
+    if (shouldSnapshotBeforeDeletion && !shouldSnapshotBeforeRevision) {
+        await createSnapshot(
+            draftId,
+            JSON.stringify(update.startState.toJSON(savedFields)),
+            get(lastPersistedEventId),
+        ).catch((e) => {
+            console.error("[listeners] pre-deletion snapshot failed", e);
+            captureException(e);
+        });
+    }
+
+    if (deletionBurstTracker.record(draftId, directUserRemovedText)) {
+        toast.info("Deleting a lot of text?", {
+            description:
+                "Try a revision to keep alternate passages close at hand instead of digging through version history.",
+            duration: 12_000,
+            closeButton: true,
+        });
     }
 
     // Guard: check for suspiciously large deletions before writing to DB.

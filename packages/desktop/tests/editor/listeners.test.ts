@@ -25,9 +25,9 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-function makeView(options: Parameters<typeof listeners>[0] = {}) {
+function makeView(options: Parameters<typeof listeners>[0] = {}, doc = "Hello world") {
     const state = EditorState.create({
-        doc: "Hello world",
+        doc,
         extensions: [annotationField, versionGroupField, listeners(options)],
     });
     const parent = document.createElement("div");
@@ -323,6 +323,71 @@ describe("listeners integration", () => {
             annotationField?: Record<string, unknown>;
         };
         expect(snapshotState.annotationField?.[comment.id]).toBeDefined();
+    });
+
+    it("creates an autosave from the pre-change state before a sentence-sized deletion", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        lastPersistedEventId.set(31);
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 32, needsSnapshot: false };
+            return null;
+        });
+
+        const original = "A sentence worth keeping lives here. The rest remains.";
+        view = makeView({}, original);
+        view.dispatch({
+            changes: { from: 0, to: 36 },
+            annotations: Transaction.userEvent.of("delete.selection"),
+        });
+        await flushMicrotasks();
+
+        const snapshotIndex = invoked.findIndex((call) => call.cmd === "cmd_create_snapshot");
+        const appendIndex = invoked.findIndex((call) => call.cmd === "cmd_append_event");
+        expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+        expect(snapshotIndex).toBeLessThan(appendIndex);
+
+        const args = invoked[snapshotIndex]?.args as {
+            draftId: string;
+            stateJson: string;
+            upToEventId: number;
+        };
+        expect(args.draftId).toBe("draft-1");
+        expect(args.upToEventId).toBe(31);
+        expect((JSON.parse(args.stateJson) as { doc: string }).doc).toBe(original);
+    });
+
+    it("does not create a history snapshot for a single-character backspace", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({
+            changes: { from: 10, to: 11 },
+            annotations: Transaction.userEvent.of("delete.backward"),
+        });
+        await flushMicrotasks();
+
+        expect(invoked.some((call) => call.cmd === "cmd_create_snapshot")).toBe(false);
+    });
+
+    it("also checkpoints sentence-sized deletions without a user-event annotation", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
+            return null;
+        });
+
+        view = makeView({}, "Programmatic changes can remove meaningful passages too.");
+        view.dispatch({ changes: { from: 0, to: 37 } });
+        await flushMicrotasks();
+
+        expect(invoked.some((call) => call.cmd === "cmd_create_snapshot")).toBe(true);
     });
 
     it("does not invoke cmd_append_event on selection-only updates", async () => {
