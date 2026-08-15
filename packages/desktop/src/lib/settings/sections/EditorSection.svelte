@@ -70,6 +70,7 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
     ariaLabel="Warn before creating another draft after an identical draft"
     onchange={(checked) => {
         draft.warnBeforeDraftAfterIdenticalVersion = checked;
+        if (checked) draft.duplicateDraftWarningHiddenUntil = 0;
         onchange();
     }}
 />

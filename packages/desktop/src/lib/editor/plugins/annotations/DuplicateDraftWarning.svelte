@@ -8,21 +8,23 @@ import { tick } from "svelte";
 let {
     open = $bindable(false),
     onConfirm,
+    onHideForOneHour,
     onNeverShowAgain,
 }: {
     open: boolean;
     onConfirm: () => void;
+    onHideForOneHour: () => void;
     onNeverShowAgain: () => void;
 } = $props();
 
 let dialogEl = $state<HTMLDialogElement>();
 let confirmButton = $state<HTMLButtonElement>();
-let neverShowAgain = $state(false);
+let dismissalChoice = $state<"none" | "hour" | "never">("none");
 
 $effect(() => {
     if (!dialogEl) return;
     if (open && !dialogEl.open) {
-        neverShowAgain = false;
+        dismissalChoice = "none";
         dialogEl.showModal();
         void tick().then(() => confirmButton?.focus());
     } else if (!open && dialogEl.open) {
@@ -36,14 +38,15 @@ function cancel(): void {
 
 function confirm(): void {
     open = false;
-    if (neverShowAgain) onNeverShowAgain();
+    if (dismissalChoice === "hour") onHideForOneHour();
+    if (dismissalChoice === "never") onNeverShowAgain();
     onConfirm();
 }
 </script>
 
 <dialog
     bind:this={dialogEl}
-    class="duplicate-draft-warning m-auto w-[min(420px,calc(100vw-2rem))] rounded-2xl border
+    class="duplicate-draft-warning m-auto w-[min(500px,calc(100vw-2rem))] rounded-2xl border
         border-purple-200/70 bg-[#fdfaff] p-0 text-black shadow-2xl"
     onclick={(event) => {
         if (event.target === dialogEl) cancel();
@@ -60,14 +63,28 @@ function confirm(): void {
             formatting is ignored. Are you sure you want to create a new draft?
         </p>
 
-        <label class="mt-4 flex cursor-pointer items-center gap-2 text-[12px] text-black/55">
-            <input
-                type="checkbox"
-                bind:checked={neverShowAgain}
-                class="size-3.5 accent-purple-500"
-            />
-            <span>Never show this warning again</span>
-        </label>
+        <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <label class="flex cursor-pointer items-center gap-2 text-[12px] text-black/55">
+                <input
+                    type="radio"
+                    name="duplicate-draft-dismissal"
+                    checked={dismissalChoice === "hour"}
+                    onchange={() => (dismissalChoice = "hour")}
+                    class="size-3.5 accent-purple-500"
+                />
+                <span>Hide warnings for one hour</span>
+            </label>
+            <label class="flex cursor-pointer items-center gap-2 text-[12px] text-black/55">
+                <input
+                    type="radio"
+                    name="duplicate-draft-dismissal"
+                    checked={dismissalChoice === "never"}
+                    onchange={() => (dismissalChoice = "never")}
+                    class="size-3.5 accent-purple-500"
+                />
+                <span>Never show this warning again</span>
+            </label>
+        </div>
     </div>
 
     <div class="flex justify-end gap-2 border-t border-black/[0.07] bg-white/45 px-5 py-3">

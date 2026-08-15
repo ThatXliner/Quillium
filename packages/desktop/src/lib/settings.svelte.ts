@@ -70,6 +70,7 @@ export type AppSettings = {
     wordCountDisplayMode: "words" | "chars" | "both";
     autoVersionOnRevisionCreate: boolean;
     warnBeforeDraftAfterIdenticalVersion: boolean;
+    duplicateDraftWarningHiddenUntil: number;
     showAiSuggestions: boolean;
     // When true, the AI panels hide the "AI can see your selection" context
     // summary card and tuck it into the header info (ℹ) icon instead.
@@ -120,6 +121,7 @@ const DEFAULTS: AppSettings = {
     wordCountDisplayMode: "both",
     autoVersionOnRevisionCreate: true,
     warnBeforeDraftAfterIdenticalVersion: true,
+    duplicateDraftWarningHiddenUntil: 0,
     showAiSuggestions: true,
     collapseContextSummary: false,
     checkForUpdates: true,
@@ -161,6 +163,12 @@ function loadSettings(): AppSettings {
             merged.persistUndoHistoryForNewDocuments === true;
         merged.warnBeforeDraftAfterIdenticalVersion =
             merged.warnBeforeDraftAfterIdenticalVersion !== false;
+        merged.duplicateDraftWarningHiddenUntil =
+            typeof merged.duplicateDraftWarningHiddenUntil === "number" &&
+            Number.isFinite(merged.duplicateDraftWarningHiddenUntil) &&
+            merged.duplicateDraftWarningHiddenUntil > 0
+                ? merged.duplicateDraftWarningHiddenUntil
+                : 0;
         merged.writingRemindersEnabled = merged.writingRemindersEnabled === true;
         merged.writingReminderTimes = Array.isArray(merged.writingReminderTimes)
             ? [

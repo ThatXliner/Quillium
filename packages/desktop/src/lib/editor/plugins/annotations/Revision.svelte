@@ -57,6 +57,10 @@ import {
 import DuplicateDraftWarning from "./DuplicateDraftWarning.svelte";
 import { NestedEditorController } from "./NestedEditorController";
 import Thread from "./Thread.svelte";
+import {
+    duplicateDraftWarningIsEnabled,
+    duplicateDraftWarningSnoozeUntil,
+} from "./duplicateDraftWarning";
 import { type VersionState, activeVersionIndex, versionById, versionText } from "./models";
 import { type VersionGroupMember, canAddMemberToGroup, groupOfMember } from "./models";
 import { previewVersionText } from "./nestedEditor";
@@ -133,6 +137,11 @@ function neverShowDuplicateDraftWarning(): void {
     persistSettings();
 }
 
+function hideDuplicateDraftWarningForOneHour(): void {
+    appSettings.duplicateDraftWarningHiddenUntil = duplicateDraftWarningSnoozeUntil();
+    persistSettings();
+}
+
 async function createVersion(): Promise<void> {
     const current = readCurrentRevision();
     if (!current) return;
@@ -152,7 +161,10 @@ function requestCreateVersion(): void {
     const current = readCurrentRevision();
     if (!current) return;
     if (
-        appSettings.warnBeforeDraftAfterIdenticalVersion &&
+        duplicateDraftWarningIsEnabled(
+            appSettings.warnBeforeDraftAfterIdenticalVersion,
+            appSettings.duplicateDraftWarningHiddenUntil,
+        ) &&
         currentVersionMatchesPrevious(current)
     ) {
         duplicateDraftWarningOpen = true;
@@ -912,6 +924,7 @@ function selectRevisionVersion(version: RevisionVersionView) {
 <DuplicateDraftWarning
     bind:open={duplicateDraftWarningOpen}
     onConfirm={() => void createVersion()}
+    onHideForOneHour={hideDuplicateDraftWarningForOneHour}
     onNeverShowAgain={neverShowDuplicateDraftWarning}
 />
 

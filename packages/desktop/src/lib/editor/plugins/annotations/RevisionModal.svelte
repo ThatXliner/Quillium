@@ -78,6 +78,10 @@ import RevisionContextPanel from "./RevisionContextPanel.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
 import {
+    duplicateDraftWarningIsEnabled,
+    duplicateDraftWarningSnoozeUntil,
+} from "./duplicateDraftWarning";
+import {
     type VersionState,
     activeVersion,
     activeVersionIndex,
@@ -603,6 +607,11 @@ function neverShowDuplicateDraftWarning(): void {
     persistSettings();
 }
 
+function hideDuplicateDraftWarningForOneHour(): void {
+    appSettings.duplicateDraftWarningHiddenUntil = duplicateDraftWarningSnoozeUntil();
+    persistSettings();
+}
+
 function addVersion(): void {
     const revision = readRevision();
     if (!revision) return;
@@ -620,7 +629,13 @@ function requestAddVersion(): void {
         revision.versions.map(versionText),
         activeVersionIndex(revision),
     );
-    if (appSettings.warnBeforeDraftAfterIdenticalVersion && isDuplicate) {
+    if (
+        duplicateDraftWarningIsEnabled(
+            appSettings.warnBeforeDraftAfterIdenticalVersion,
+            appSettings.duplicateDraftWarningHiddenUntil,
+        ) &&
+        isDuplicate
+    ) {
         duplicateDraftWarningOpen = true;
         return;
     }
@@ -887,6 +902,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 <DuplicateDraftWarning
   bind:open={duplicateDraftWarningOpen}
   onConfirm={addVersion}
+  onHideForOneHour={hideDuplicateDraftWarningForOneHour}
   onNeverShowAgain={neverShowDuplicateDraftWarning}
 />
 
