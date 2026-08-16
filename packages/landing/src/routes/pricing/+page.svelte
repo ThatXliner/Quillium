@@ -2,7 +2,18 @@
 import Footer from "$lib/components/Footer.svelte";
 import Nav from "$lib/components/Nav.svelte";
 import { initReveal } from "$lib/reveal";
-import { CircleDollarSign, Download, ExternalLink, PenLine, WifiOff } from "@lucide/svelte";
+import {
+    Building2,
+    CircleDollarSign,
+    Download,
+    ExternalLink,
+    GraduationCap,
+    History,
+    PenLine,
+    ShieldCheck,
+    Sparkles,
+    WifiOff,
+} from "@lucide/svelte";
 import { onMount } from "svelte";
 
 onMount(() => {
@@ -14,7 +25,7 @@ onMount(() => {
 	<title>Pricing – Quillium</title>
 	<meta
 		name="description"
-		content="Quillium is free. With no tiers and no paywalls, here's how we plan to sustain this."
+		content="Quillium stays free for individual writers. Omni adds sync and collaboration, while schools and organizations can pay for managed, accountable writing infrastructure."
 	/>
 	<link rel="canonical" href="https://quillium.bryanhu.com/pricing" />
 	<meta property="og:type" content="website" />
@@ -22,14 +33,14 @@ onMount(() => {
 	<meta property="og:title" content="Pricing – Quillium" />
 	<meta
 		property="og:description"
-		content="Quillium is free. With no tiers and no paywalls, here's how we plan to sustain this."
+		content="Free for individual writers. Paid sync for people, and accountable writing infrastructure for institutions."
 	/>
 	<meta property="og:site_name" content="Quillium" />
 	<meta name="twitter:card" content="summary" />
 	<meta name="twitter:title" content="Pricing – Quillium" />
 	<meta
 		name="twitter:description"
-		content="Quillium is free. With no tiers and no paywalls, here's how we plan to sustain this."
+		content="Free for individual writers. Paid sync for people, and accountable writing infrastructure for institutions."
 	/>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
@@ -82,10 +93,11 @@ onMount(() => {
 			<h1
 				class="mb-6 font-[Newsreader,Georgia,serif] text-[clamp(2.8rem,6vw,4.25rem)] leading-[1.05] font-normal tracking-[-0.03em] text-[color:var(--text-strong)]"
 			>
-				Quillium is <span class="italic">free</span>.
+				Writers stay <span class="italic">free</span>.
 			</h1>
 			<p class="mx-auto max-w-xl text-[1.1rem] leading-[1.7] text-[color:var(--text-soft)]">
-				No tiers. No locked features. One optional add-on, someday, if you want it.
+				The whole local-first editor stays free. People can pay for Omni. Schools and
+				organizations can pay for the infrastructure around the writing.
 			</p>
 		</header>
 
@@ -157,13 +169,13 @@ onMount(() => {
 		<section id="paid" class="scroll-mt-28 py-16 sm:py-20">
 			<div class="reveal mb-8">
 				<p class="section-eyebrow">
-					What you can pay for, eventually
+					How Quillium sustains itself
 					<span
 						class="ml-2 rounded-full border border-[color:var(--border)] px-2 py-0.5 text-[0.6rem] font-medium tracking-normal text-[color:var(--text-faint)] normal-case"
 						>Coming later</span
 					>
 				</p>
-				<h2 class="section-heading">Two things worth paying for.</h2>
+				<h2 class="section-heading">Services for people. Infrastructure for institutions.</h2>
 			</div>
 
 			<!-- Notice -->
@@ -175,8 +187,8 @@ onMount(() => {
 					>Note</span
 				>
 				<p class="m-0 text-[0.85rem] text-[color:var(--text-soft)]">
-					These are <strong class="text-[color:var(--text)]">future plans</strong>. Right now
-					everything is simply free, no strings attached.
+					These are <strong class="text-[color:var(--text)]">planned offerings</strong>. Right
+					now, the Quillium editor is simply free, no strings attached.
 				</p>
 			</div>
 
@@ -207,36 +219,81 @@ onMount(() => {
 					</div>
 				</div>
 
-				<!-- Custom build card -->
+				<!-- Institutions card -->
 				<div class="reveal price-card price-card--purple">
 					<div class="price-card-header">
-						<p class="price-card-eyebrow" style="color:#a855f7;">Custom Build</p>
+						<div class="mb-3 flex items-center gap-2 text-[#a855f7]">
+							<GraduationCap size={20} strokeWidth={1.5} />
+							<Building2 size={19} strokeWidth={1.5} />
+						</div>
+						<p class="price-card-eyebrow" style="color:#a855f7;">Education &amp; Organizations</p>
 						<p class="price-card-price">
-							~$1k<span class="price-card-unit"> one-time</span>
+							Let's talk<span class="price-card-unit">annual plans</span>
 						</p>
-						<p class="price-card-note">Rough estimate. Depends on scope.</p>
+						<p class="price-card-note">Based on seats, support, and infrastructure needs.</p>
 					</div>
 					<div class="price-card-body">
 						<ul class="space-y-3">
-							<li class="check-item">Quillium tuned to your exact workflow</li>
-							<li class="check-item">For studios, publishers, writing programs</li>
-							<li class="check-item">Custom features, branding, integrations</li>
-							<li class="check-item">
-								<a
-									href="mailto:support@quillium.bryanhu.com"
-									class="text-[#3b82f6] no-underline hover:underline">Email us</a
-								> to discuss
-							</li>
+							<li class="check-item">A reviewable record of how writing developed</li>
+							<li class="check-item">AI assistance inside one approved writing environment</li>
+							<li class="check-item">Shared workspaces, collaboration, and managed access</li>
+							<li class="check-item">Institutional support, controls, and exportable reports</li>
 						</ul>
-						<p
-							class="mt-auto pt-5 font-[Newsreader,Georgia,serif] text-[1.15rem] text-[color:var(--text)] italic"
+						<p class="price-card-fine mt-auto pt-5">
+							For schools, writing programs, publishers, studios, and teams where the process
+							matters as much as the final document.
+						</p>
+						<a
+							href="mailto:support@quillium.bryanhu.com?subject=Quillium%20for%20our%20organization"
+							class="price-card-cta"
 						>
-							Prose for Pros.
-						</p>
-						<p class="price-card-fine pt-1">
-							Not sure if this fits? Just ask — we'll tell you honestly.
-						</p>
+							Talk to us <span aria-hidden="true">→</span>
+						</a>
 					</div>
+				</div>
+			</div>
+		</section>
+
+		<div class="warm-divider section-divider"></div>
+
+		<!-- Institutional value -->
+		<section class="py-16 sm:py-20">
+			<div class="reveal mb-12 max-w-2xl">
+				<p class="section-eyebrow">Accountable, not invasive</p>
+				<h2 class="section-heading">See the process. Don't guess at it.</h2>
+				<p class="mt-4 text-[0.95rem] leading-[1.75] text-[color:var(--text-soft)]">
+					AI detectors make a prediction about a finished document. Quillium can preserve the
+					actual writing process: meaningful revisions, pasted material, feedback, and AI
+					assistance used inside the app.
+				</p>
+			</div>
+			<div class="institution-grid">
+				<div class="reveal institution-item">
+					<div class="institution-icon" style="background:rgba(59,130,246,0.08);">
+						<History size={21} strokeWidth={1.5} color="#3b82f6" />
+					</div>
+					<p class="institution-title">Authorship, with context</p>
+					<p class="institution-body">
+						Review how a piece evolved instead of reducing authorship to a score.
+					</p>
+				</div>
+				<div class="reveal institution-item">
+					<div class="institution-icon" style="background:rgba(168,85,247,0.08);">
+						<Sparkles size={21} strokeWidth={1.5} color="#a855f7" />
+					</div>
+					<p class="institution-title">AI in the open</p>
+					<p class="institution-body">
+						Offer useful AI tools in one environment where their contribution can be disclosed.
+					</p>
+				</div>
+				<div class="reveal institution-item">
+					<div class="institution-icon" style="background:rgba(34,197,94,0.08);">
+						<ShieldCheck size={21} strokeWidth={1.5} color="#22c55e" />
+					</div>
+					<p class="institution-title">Trust goes both ways</p>
+					<p class="institution-body">
+						Writers should know what is recorded and exactly what gets shared before submission.
+					</p>
 				</div>
 			</div>
 		</section>
@@ -251,9 +308,10 @@ onMount(() => {
 			</div>
 			<div class="space-y-7">
 				<div class="reveal why-row">
-					<p class="why-label">No VC pressure</p>
+					<p class="why-label">Writers come first</p>
 					<p class="why-text">
-						We're not funded. No one can pressure us to add paywalls or sell your data.
+						The editor remains useful on its own. Institutions pay for coordination, oversight,
+						and service — not access to the act of writing.
 					</p>
 				</div>
 				<div class="reveal why-row">
@@ -267,6 +325,13 @@ onMount(() => {
 					<p class="why-text">
 						It's an extra service, not a toll on things you already have. Skip it entirely if you
 						want.
+					</p>
+				</div>
+				<div class="reveal why-row">
+					<p class="why-label">Organizations fund the cloud</p>
+					<p class="why-text">
+						Recurring institutional plans help cover the real cost of sync, collaboration, secure
+						administration, and long-term support.
 					</p>
 				</div>
 				<div class="reveal why-row">
@@ -289,12 +354,20 @@ onMount(() => {
 			<p
 				class="mb-6 font-[Newsreader,Georgia,serif] text-[clamp(1.75rem,4vw,2.25rem)] text-[color:var(--text-strong)] italic"
 			>
-				Ready to write?
+				For one writer or a whole institution.
 			</p>
-			<a href="/#download" class="btn-primary inline-flex items-center gap-2">
-				<Download size={18} strokeWidth={1.5} class="shrink-0" />
-				Download Quillium
-			</a>
+			<div class="flex flex-wrap justify-center gap-3">
+				<a href="/#download" class="btn-primary inline-flex items-center gap-2">
+					<Download size={18} strokeWidth={1.5} class="shrink-0" />
+					Download Quillium
+				</a>
+				<a
+					href="mailto:support@quillium.bryanhu.com?subject=Quillium%20for%20our%20organization"
+					class="organization-cta"
+				>
+					Bring Quillium to your organization
+				</a>
+			</div>
 		</div>
 	</div>
 </main>
@@ -431,6 +504,65 @@ onMount(() => {
 	.price-card-cta:hover {
 		transform: translateY(-1px);
 		background: var(--surface-2);
+	}
+
+	/* Institutional value */
+	.institution-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 20px;
+	}
+	.institution-item {
+		padding: 24px;
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		background: var(--surface);
+	}
+	.institution-icon {
+		display: flex;
+		width: 42px;
+		height: 42px;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 18px;
+		border-radius: 11px;
+	}
+	.institution-title {
+		margin: 0 0 7px;
+		font-size: 0.925rem;
+		font-weight: 600;
+		color: var(--text);
+	}
+	.institution-body {
+		margin: 0;
+		font-size: 0.825rem;
+		line-height: 1.65;
+		color: var(--text-soft);
+	}
+	.organization-cta {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 10px 20px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: var(--surface);
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-strong);
+		text-decoration: none;
+		transition:
+			transform 300ms ease,
+			background 300ms ease;
+	}
+	.organization-cta:hover {
+		transform: translateY(-1px);
+		background: var(--surface-2);
+	}
+	@media (max-width: 700px) {
+		.institution-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	/* Check items */
