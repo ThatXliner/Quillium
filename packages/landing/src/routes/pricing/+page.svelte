@@ -228,7 +228,7 @@ onMount(() => {
 						</div>
 						<p class="price-card-eyebrow" style="color:#a855f7;">Education &amp; Organizations</p>
 						<p class="price-card-price">
-							Let's talk<span class="price-card-unit">annual plans</span>
+							Let's talk <span class="price-card-unit">annual plans</span>
 						</p>
 						<p class="price-card-note">Based on seats, support, and infrastructure needs.</p>
 					</div>
