@@ -38,6 +38,7 @@ RUN bun install --frozen-lockfile --production --filter @quillium/relay
 COPY --from=build /app/packages/relay/dist packages/relay/dist
 
 EXPOSE 3001
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD bun -e "const port = process.env.PORT || 3001; fetch(`http://127.0.0.1:${port}/health`).then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["bun", "-e", "const port = process.env.PORT || 3001; fetch(`http://127.0.0.1:${port}/health`).then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 CMD ["bun", "packages/relay/dist/index.js"]
