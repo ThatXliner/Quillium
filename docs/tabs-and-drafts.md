@@ -5,6 +5,10 @@ container of **tabs**, and each draft-type tab holds drafts related by two
 distinct moves — **iterate** (the next version) and **branch** (a different
 take).
 
+Architecture decisions: [iteration and alternate-run lineage](./adr/0002-separate-iteration-and-branch-lineage.md),
+[activity and content history](./adr/0003-separate-activity-from-content-history.md),
+[Web Preview identity](./adr/0010-document-keyed-web-preview.md).
+
 ```
 Document (one card in Library)
 └── Tabs (top bar, horizontal)
@@ -25,7 +29,7 @@ draft is created by one of *two* moves, stored as two separate links:
   renders **flat** — same indent, oldest→newest — so a hundred iterations
   stay a readable list, never a hundred-deep tree. Iterating **locks the
   source** (it's superseded); only the newest live draft in a run (the
-  **tip**) is editable.
+  **head**) is editable.
 - **Branch** — "a different take on the same idea." The rarer action. Linked
   by `branched_from`. A branch renders **indented** one level under its
   source and starts its own run. Branching **locks nothing** — the source
@@ -95,7 +99,7 @@ adds `branched_from` and reinterprets any old fork-as-child link as a branch
 They differ only in the link and the lock side effect:
 
 - **iterate** sets `parent_draft_id = source` and relocks the run so only the
-  new tip is editable (the source, now superseded, locks).
+  new head is editable (the source, now superseded, locks).
 - **branch** sets `branched_from = source` and locks nothing. Any live draft
   can be the source, including the storyline root (`main`) and branch roots.
 
@@ -133,10 +137,10 @@ A draft is locked when either is true:
 
 - **Superseded** — it has a newer live iteration in its run. `relock_run`
   re-derives this on every iterate/delete/restore: each run locks all live
-  members except the tip. Runs are independent, so each branch line has its
-  own editable tip.
+  members except the head. Runs are independent, so each alternate run has its
+  own editable head.
 - **Manual** — locked from its row in the panel. (Edge: the run re-derivation
-  on delete/restore also clears a manual lock if that draft becomes the tip;
+  on delete/restore also clears a manual lock if that draft becomes the head;
   re-lock from the panel if needed.)
 
 While locked, the editor state is built with `EditorState.readOnly.of(true)`.
@@ -189,24 +193,17 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
 | `src/lib/editor/Editor.svelte` | Tab/draft switching, iterate/branch/delete, lock banner |
 
-## Omni (web preview) and the single view
+## Omni Web Preview identity
 
-Omni renders a **single view** per document. The read-only web preview /
-public share is therefore keyed by **document id**, not draft id: one share
-link per document. Pressing **Update now** publishes whatever tab+draft is
-*currently active* in the editor — the last one you clicked into — so updating
-from a different draft simply replaces what the single shared view shows. (The
-live "Go Live" relay room still keys on draft id; that's a separate, per-view
-mechanism, and not functional yet — #260 tracks bringing it in line with the
-tabs/drafts model.) The share key lives in `GoLiveButton.svelte` as `shareId`
-(document) vs `currentId` (draft). Keying on the document — rather than baking
-a multi-draft payload into the share — is what keeps the door open for Omni
-rendering multiple tabs later without changing the share identity.
+The read-only Web Preview is keyed by **document id**, not draft id, so one
+public link follows the document. Its versioned payload can publish the current
+draft tab or all draft tabs, with the selected draft state for each included
+tab. Publishing from another tab or run replaces the document snapshot without
+changing the link. Live Rooms remain a separate mechanism and currently key on
+the active draft; #260 tracks bringing them in line with the tabs/drafts model.
 
 ## Out of scope (follow-ups)
 
-- Omni rendering **multiple tabs** in one preview (#261) — today it's a single
-  view of the last active tab+draft; the share is already document-keyed for this
 - Omni **live relay room** on the tabs/drafts model (#260) — still per-draft and
   not functional yet
 - Canvas tabs (#197) — `tab_type` column is ready, no implementation yet

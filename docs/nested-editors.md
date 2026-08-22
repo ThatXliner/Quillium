@@ -2,6 +2,8 @@
 
 Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline editor inside the revision card and a full-screen modal. Both are full `CodeMirror EditorView` instances. The parent document remains the **single source of truth**.
 
+Architecture decision: [nested editors use parent authority](./adr/0004-nested-editors-use-parent-authority.md).
+
 ## Architecture: Direct Parent Dispatch
 
 Nested editors are intentional viewports that never own their document. When the user types inside a nested editor:

@@ -106,7 +106,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 ### Constraints
 
 - **Auth**: Supabase Auth (email/password) — decided over license keys for collab identity
-- **Relay location**: Lives in quillium-landing repo
+- **Relay location**: Lives in `packages/relay`
 - **Timeline**: A few weeks, no hard deadline
 - **Quality bar**: Dogfoodable — stable enough to use for real writing across devices
 - **Dependencies**: Supabase (Auth + Postgres), Fly.io for relay (~$7/mo)
@@ -433,4 +433,13 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 | `src/lib/editor/replay.ts` | Event log replay with error handling |
 | `src/lib/errorGuard.ts` | Suspicious deletion detection before persistence |
 
+## Agent skills
 
+### Issue tracker
+
+Issues and specs live in `ThatXliner/Quillium` GitHub Issues. See
+`docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Quillium uses one root glossary and system-wide ADRs. See `docs/agents/domain.md`.

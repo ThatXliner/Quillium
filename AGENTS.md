@@ -444,3 +444,14 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 | `src/lib/autoai/engine.ts` | AutoAI review orchestration and annotation dispatch |
 | `src/lib/editor/replay.ts` | Event log replay with error handling |
 | `src/lib/errorGuard.ts` | Suspicious deletion detection before persistence |
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in `ThatXliner/Quillium` GitHub Issues. See
+`docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Quillium uses one root glossary and system-wide ADRs. See `docs/agents/domain.md`.

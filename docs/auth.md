@@ -5,6 +5,8 @@ rooms, collaborator display names, and per-user collaboration metadata. Local
 writing remains usable without auth; auth-dependent UI degrades to sign-in or
 offline states.
 
+Architecture decision: [Supabase collaboration identity](./adr/0007-supabase-collaboration-identity.md).
+
 ## Files
 
 | File | Purpose |

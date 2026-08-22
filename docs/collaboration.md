@@ -2,12 +2,14 @@
 
 Quillium Omni has two sharing surfaces:
 
-- **Web Preview** — a read-only public page generated from the currently
-  active tab+draft snapshot.
+- **Web Preview** — a read-only public page generated from a versioned document
+  snapshot containing the current draft tab or all draft tabs.
 - **Live Room** — an owner-led real-time session between Quillium instances.
 
 The Live Room editor remains CodeMirror locally, while live document state is
 mirrored through Yjs CRDTs.
+
+Architecture decision: [owner-led Yjs Live Rooms](./adr/0008-owner-led-yjs-live-rooms.md).
 
 ## Architecture Overview
 
@@ -190,8 +192,7 @@ sequenceDiagram
 
 The share row is keyed by **document id**, not draft id. Publishing from a
 different tab or draft replaces the single public view for that document. See
-[Tabs & Drafts](./tabs-and-drafts.md#omni-web-preview-and-the-single-view) for
-why that keeps the door open for a future multi-tab public renderer.
+[ADR-0010](./adr/0010-document-keyed-web-preview.md) for the identity decision.
 
 | Action | Function | Notes |
 |--------|----------|-------|
@@ -317,5 +318,5 @@ If `PUBLIC_RELAY_URL` is not configured, GoLiveButton is hidden.
   invite links or room permissions yet
 - **No local persistence for joiners** — restored to prior state after leaving
 - **No offline queue** — if reconnects exhaust, must restart session
-- **Single-view public preview** — read-only shares publish one active tab+draft
-  snapshot, not the whole document tab set
+- **One draft per published tab** — Web Preview publishes the selected draft
+  state for each included draft tab, not every run and draft in the document

@@ -2,6 +2,8 @@
 
 The annotation system is the core of Quillium's non-linear editing model. It enables comments, suggestions, and revisions anchored to document ranges.
 
+Architecture decision: [stable revision-version identities](./adr/0005-stable-revision-version-identities.md).
+
 ## Architecture Layers
 
 ```
@@ -122,9 +124,9 @@ absent — use it at every construction site), `versionById(rev, id)`,
 (number) and id-less versions. `normalizeRevision()` heals them at the load
 boundary (`annotationField.fromJSON` and the collab read path): it mints
 position-stable ids and derives `activeVersionId` from the clamped legacy index.
-It's idempotent, so already-migrated data passes through untouched. The collab
-Yjs wire schema is still index-based (read-tolerant) pending an id-native rewrite;
-see issue #269.
+It's idempotent, so already-migrated data passes through untouched. Collaboration
+uses the id-native Yjs schema; the relay migrates legacy rooms to schema v2, and
+the desktop read path remains tolerant of the old index-based shape.
 
 ### Version groups (linking versions across revisions)
 

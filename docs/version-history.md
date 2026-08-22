@@ -2,6 +2,8 @@
 
 `src/lib/editor/VersionHistory.svelte` is a full-screen snapshot browser. The route `routes/history/+page.svelte` is a thin wrapper.
 
+Architecture decision: [document activity and draft content history](./adr/0003-separate-activity-from-content-history.md).
+
 ## Layout
 
 Two-panel layout:

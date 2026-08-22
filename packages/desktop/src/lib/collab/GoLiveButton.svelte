@@ -84,11 +84,9 @@ const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured || shouldShowForScreenshot());
 // Live-collab room key: still per-draft (the live room mirrors one editor view).
 const currentId = $derived($currentDraftId ?? "");
-// Web-preview / read-only share key: one share per *document*. Omni renders a
-// single view today, so the preview always reflects the last active tab+draft
-// the user published from — not a separate link per draft. Re-keying on the
-// document id (rather than adding a multi-tab payload) keeps the door open for
-// Omni rendering multiple tabs later without changing the share identity.
+// Web Preview key: one stable share per document. The versioned payload chooses
+// the current tab or all tabs, so republishing can change the visible draft set
+// without minting a new link.
 const shareId = $derived($currentDocumentId ?? "");
 const readonlyShare = $derived(publisher.share);
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");

@@ -27,7 +27,7 @@ Current gaps and technical debt.
 | **Manual Live Room IDs** | Joiners paste a draft UUID manually. Invite links and room permissions are deferred. |
 | **No local persistence for joiners** | Joiners restored to prior local draft/library after leaving. |
 | **No offline queue** | If reconnect attempts exhausted, session enters `error` and must restart. |
-| **Single-view Web Preview** | Read-only public links publish the active tab+draft snapshot, not all tabs/drafts. |
+| **One draft per Web Preview tab** | Public links can include all draft tabs, but publish one selected draft state per tab rather than every run and draft. |
 
 ## Persistence
 

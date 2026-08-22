@@ -2,6 +2,9 @@
 
 Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodic snapshots. All database operations run in Rust via Tauri commands.
 
+Architecture decisions: [event log and snapshots](./adr/0001-event-log-with-snapshots.md),
+[lossless persisted undo](./adr/0006-lossless-persisted-undo.md).
+
 ## Schema Overview
 
 | Table | Purpose |

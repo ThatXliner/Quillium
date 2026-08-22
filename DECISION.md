@@ -1,6 +1,8 @@
 # Decisions Index
 
-This file consolidates the live `D-*` decision markers still referenced in the active codebase.
+This historical index consolidates phase-local `D-*` markers still referenced in
+the codebase. Canonical architecture decisions live in
+[`docs/adr/`](./docs/adr/README.md); entries here can describe superseded work.
 
 ## Notes
 
@@ -119,7 +121,7 @@ This file consolidates the live `D-*` decision markers still referenced in the a
 
 | Marker | Decision | Live references |
 | --- | --- | --- |
-| D-83 | Use a single unified undo stack for text plus annotations | `ARCHITECTURE.md:1799`<br>`src/lib/collab/index.ts:229`<br>`src/lib/collab/yjsUndo.ts:29`<br>`src/lib/collab/yjsUndo.ts:32`<br>`src/lib/collab/yjsUndo.ts:42`<br>`tests/lib/collab/yjsUndo.test.ts:214` |
+| D-83 | Use a single unified undo stack for text plus annotations | `docs/adr/0004-nested-editors-use-parent-authority.md`<br>`src/lib/collab/index.ts:229`<br>`src/lib/collab/yjsUndo.ts:29`<br>`src/lib/collab/yjsUndo.ts:32`<br>`src/lib/collab/yjsUndo.ts:42`<br>`tests/lib/collab/yjsUndo.test.ts:214` |
 
 ## Phase 8.5 CRDT Subtrees For Nested Editors
 
@@ -128,7 +130,7 @@ This file consolidates the live `D-*` decision markers still referenced in the a
 | D-90 | Annotations become recursive `Y.Map` nodes with Yjs children | `src/lib/collab/annotationSchema.ts:4`<br>`src/lib/collab/types.ts:8`<br>`src/lib/collab/yjsAnnotations.ts:53`<br>`tests/lib/collab/annotation-tree.test.ts:2`<br>`tests/lib/collab/annotationSchema.test.ts:4`<br>`tests/lib/collab/types.test.ts:4`<br>`tests/lib/collab/yjsAnnotations.test.ts:7` |
 | D-92 | Nested annotations reuse the same recursive shape at arbitrary depth | `src/lib/collab/annotationSchema.ts:4`<br>`src/lib/collab/types.ts:8`<br>`src/lib/collab/yjsAnnotations.ts:53`<br>`tests/lib/collab/annotation-tree.test.ts:2`<br>`tests/lib/collab/annotationSchema.test.ts:4`<br>`tests/lib/collab/types.test.ts:4`<br>`tests/lib/collab/yjsAnnotations.test.ts:7` |
 | D-93 | Comment threads are append-only `Y.Array<MessageObject>` values | `src/lib/collab/annotationSchema.ts:5`<br>`src/lib/collab/types.ts:9`<br>`src/lib/collab/types.ts:36`<br>`src/lib/collab/yjsAnnotations.ts:56`<br>`tests/lib/collab/thread-append.test.ts:2`<br>`tests/lib/collab/thread-append.test.ts:211`<br>`tests/lib/collab/yjsAnnotations.test.ts:479` |
-| D-94 | No migration or backwards-compat path for the old Phase 8 wire format | `src/lib/collab/annotationSchema.ts:6`<br>`src/lib/collab/yjsAnnotations.ts:58` |
+| D-94 | **Superseded by ADR-0005:** schema v2 migrates the old wire format and readers tolerate legacy data | `docs/adr/0005-stable-revision-version-identities.md`<br>`packages/relay/src/yjs/migrations.ts`<br>`packages/desktop/src/lib/collab/annotationSchema.ts` |
 | D-96 | Undo should auto-navigate to a non-focused nested editor when that is where the change lands | `tests/e2e/undoAutoNavigate.pw.ts:2` |
 | D-97 | New subtree `Y.Text` instances are added to the UndoManager tracked scope | `src/lib/collab/yjsUndo.ts:125` |
 

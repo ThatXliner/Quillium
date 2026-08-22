@@ -4,6 +4,8 @@ Quillium is a Bun workspace monorepo. All packages live under `packages/*`; the
 repository root owns dependency installation, shared tooling, Supabase migrations,
 and cross-package scripts.
 
+Architecture decision: [app-neutral editor capabilities](./adr/0009-app-neutral-editor-capabilities.md).
+
 ## Package Layout
 
 | Path | Package | Purpose |

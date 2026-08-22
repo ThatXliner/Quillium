@@ -33,6 +33,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 - [Provenance](./provenance.md) — Authorship report and playback
 
 ### Reference (look up when needed)
+- [Architecture Decision Records](./adr/README.md) — Durable architectural choices and their rationale
 - [File Structure](./file-structure.md) — "Where is X?"
 - [Visual Regression and CI](./visual-regression.md) — Required checks, artifacts, and baseline policy
 - [Keybindings](./keybindings.md) — All shortcuts
@@ -43,6 +44,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 
 | Document | Description |
 |----------|-------------|
+| [Architecture Decision Records](./adr/README.md) | Durable architectural choices and their rationale |
 | [Monorepo Guide](./monorepo.md) | Package layout, workspace commands, deployment boundaries |
 | [Architecture Overview](./architecture-overview.md) | Core technologies, layers, data flow |
 | [File Structure](./file-structure.md) | Complete source tree with descriptions |
