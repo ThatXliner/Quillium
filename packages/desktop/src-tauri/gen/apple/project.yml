@@ -55,8 +55,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 0.24.0
-        CFBundleVersion: "0.24.0"
+        CFBundleShortVersionString: 0.24.1
+        CFBundleVersion: "0.24.1"
         # Skip the App Store export-compliance prompt (no non-exempt crypto) and
         # categorize the app. Kept here so xcodegen regen doesn't drop them.
         ITSAppUsesNonExemptEncryption: false
