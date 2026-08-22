@@ -29,7 +29,7 @@ import {
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { type ExportFormat, exportDocument } from "$lib/export";
-import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
+import { authorshipEnabled, novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
@@ -384,14 +384,16 @@ $effect(() => {
             >
                 <Download size={20} />
             </button>
-            <button
-                onclick={goToAuthorship}
-                aria-label="Authorship playback"
-                title="Authorship Report ({modKey}Shift+A)"
-                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
-            >
-                <Play size={20} />
-            </button>
+            {#if $authorshipEnabled}
+                <button
+                    onclick={goToAuthorship}
+                    aria-label="Authorship playback"
+                    title="Authorship Report ({modKey}Shift+A)"
+                    class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
+                >
+                    <Play size={20} />
+                </button>
+            {/if}
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Right side (pinned) -->

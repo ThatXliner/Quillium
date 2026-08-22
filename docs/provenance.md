@@ -5,6 +5,27 @@ log. It is evidence of the writing process, not cryptographic proof: it records
 timestamped edits captured on this device and classifies where document-changing
 events came from.
 
+## Feature gate
+
+The whole feature is behind the `authorship-provenance` PostHog flag, which
+fails closed. Until the flag is on for a user:
+
+- the `Authorship Report…` menu item is built disabled, so its
+  `CmdOrCtrl+Shift+A` accelerator does nothing;
+- the `menu:authorship` handler in `routes/+page.svelte` ignores the event;
+- the status bar's authorship playback button (`editor/StatusBar.svelte`) is
+  not rendered;
+- `/authorship` renders an unavailable state instead of `PlaybackViewer`.
+
+Capture is deliberately not gated. `listeners.ts` keeps stamping provenance on
+every `doc_change`, so turning the flag on later gives a user a report covering
+their whole writing history rather than only the period since the flag flipped.
+
+The gate is here because the classifier and report builder have not had a
+review pass, and a report about who wrote what is only worth shipping if it is
+right. Screenshot runs override the flag (`scripts/screenshots.ts`,
+`scripts/changelog-shot.ts`).
+
 ## Files
 
 | File | Purpose |

@@ -510,6 +510,24 @@ export async function cropShot(page: Page, options: CropShotOptions): Promise<st
 
 type Scene = (page: Page) => Promise<void>;
 
+/**
+ * Turn on a gated feature for this page. Flags fail closed in the app, so a
+ * scene behind one captures the unavailable state without this.
+ */
+async function enableFeatureFlag(page: Page, flag: string): Promise<void> {
+    const enabled = await page.evaluate(async (key) => {
+        const { default: posthog } = await import("/src/lib/posthog.ts");
+        posthog.init("phc_changelog_shot", {
+            api_host: "http://127.0.0.1:9",
+            disable_session_recording: true,
+        });
+        posthog.featureFlags.override({ [key]: true }, true);
+        return posthog.getFeatureFlag(key) === true;
+    }, flag);
+    if (!enabled) throw new Error(`Unable to enable the ${flag} changelog-shot flag`);
+    await page.waitForTimeout(500);
+}
+
 const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
     /** The writing-provenance playback viewer mid-scrub (0.20 authorship feature). */
     "authorship-playback": {
@@ -522,6 +540,7 @@ const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
             // Seed currentDocumentId/currentDraftId via the real scenario flow,
             // then client-navigate so those stores survive (goto would reset them).
             await applyDebugScenario(page, "screenshot-full-ui");
+            await enableFeatureFlag(page, "authorship-provenance");
             await page.evaluate(() => {
                 (window as unknown as { __goToAuthorship__?: () => void }).__goToAuthorship__?.();
             });

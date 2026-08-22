@@ -16,8 +16,12 @@ vi.mock("$lib/posthog", () => ({
 }));
 
 import {
+    AUTHORSHIP_FEATURE_FLAG,
+    authorshipEnabled,
+    isAuthorshipEnabled,
     isNovelNovemberEnabled,
     novelNovemberEnabled,
+    refreshAuthorshipFlag,
     refreshNovelNovemberFlag,
 } from "$lib/featureFlags.svelte";
 
@@ -38,5 +42,29 @@ describe("novel-november feature flag", () => {
 
         expect(isNovelNovemberEnabled()).toBe(true);
         expect(get(novelNovemberEnabled)).toBe(true);
+    });
+});
+
+describe("authorship-provenance feature flag", () => {
+    beforeEach(() => {
+        mocks.enabled = false;
+        refreshAuthorshipFlag();
+    });
+
+    it("uses the shared authorship-provenance flag key", () => {
+        expect(AUTHORSHIP_FEATURE_FLAG).toBe("authorship-provenance");
+    });
+
+    it("fails closed when the shared PostHog flag is disabled", () => {
+        expect(isAuthorshipEnabled()).toBe(false);
+        expect(get(authorshipEnabled)).toBe(false);
+    });
+
+    it("reacts when PostHog loads an enabled flag value", () => {
+        mocks.enabled = true;
+        mocks.callback?.();
+
+        expect(isAuthorshipEnabled()).toBe(true);
+        expect(get(authorshipEnabled)).toBe(true);
     });
 });

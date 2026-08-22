@@ -565,18 +565,31 @@ async function activateAnnotation(page: Page, targetText: string): Promise<void>
     await page.waitForTimeout(400);
 }
 
-async function enableFocusModeFlag(page: Page): Promise<void> {
-    const enabled = await page.evaluate(async () => {
+/**
+ * Turn on a gated feature for the current page so its screenshot renders.
+ * Flags fail closed in the app, so anything behind one is invisible to the
+ * screenshot run until it is overridden here.
+ */
+async function enableFeatureFlag(page: Page, flag: string): Promise<void> {
+    const enabled = await page.evaluate(async (key) => {
         const { default: posthog } = await import("/src/lib/posthog.ts");
         posthog.init("phc_screenshot", {
             api_host: "http://127.0.0.1:9",
             disable_session_recording: true,
         });
-        posthog.featureFlags.override({ "novel-november": true }, true);
-        return posthog.getFeatureFlag("novel-november") === true;
-    });
-    if (!enabled) throw new Error("Unable to enable the novel-november screenshot flag");
+        posthog.featureFlags.override({ [key]: true }, true);
+        return posthog.getFeatureFlag(key) === true;
+    }, flag);
+    if (!enabled) throw new Error(`Unable to enable the ${flag} screenshot flag`);
     await page.waitForTimeout(500);
+}
+
+async function enableFocusModeFlag(page: Page): Promise<void> {
+    await enableFeatureFlag(page, "novel-november");
+}
+
+async function enableAuthorshipFlag(page: Page): Promise<void> {
+    await enableFeatureFlag(page, "authorship-provenance");
 }
 
 // ── Server lifecycle ──────────────────────────────────────────────────────────
@@ -1334,6 +1347,7 @@ async function scenarioAuthorshipPlayback(ctx: BrowserContext): Promise<void> {
     // Seed currentDocumentId / currentDraftId via the real scenario flow, then
     // client-navigate so those stores survive (a page.goto would reset them).
     await applyDebugScenario(page, "screenshot-full-ui");
+    await enableAuthorshipFlag(page);
     await page.evaluate(() => {
         (window as unknown as { __goToAuthorship__?: () => void }).__goToAuthorship__?.();
     });

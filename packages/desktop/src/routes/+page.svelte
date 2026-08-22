@@ -47,7 +47,7 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
-import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
+import { authorshipEnabled, novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import {
     maybeShowAutoSurvey,
     recordWordCount,
@@ -141,6 +141,7 @@ let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 let authReconnecting = $state(false);
 let focusModeAvailable = $state(false);
+let authorshipAvailable = $state(false);
 let focusMode = $state(false);
 let focusControlsVisible = $state(false);
 let focusControlsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -159,6 +160,17 @@ $effect(() => {
     if (typeof window !== "undefined" && !IS_MOBILE && "__TAURI_INTERNALS__" in window) {
         invoke("cmd_set_focus_mode_available", { available }).catch((error) => {
             console.warn("[focusMode] Unable to update native menu availability", error);
+        });
+    }
+});
+
+// The Authorship Report menu item ships disabled; the flag turns it on.
+$effect(() => {
+    const available = $authorshipEnabled;
+    authorshipAvailable = available;
+    if (typeof window !== "undefined" && !IS_MOBILE && "__TAURI_INTERNALS__" in window) {
+        invoke("cmd_set_authorship_available", { available }).catch((error) => {
+            console.warn("[authorship] Unable to update native menu availability", error);
         });
     }
 });
@@ -522,7 +534,7 @@ onMount(() => {
         if (!destroyed) goToHistory();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:authorship", () => {
-        if (!destroyed) goToAuthorship();
+        if (!destroyed && authorshipAvailable) goToAuthorship();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:focus-mode", () => {
         if (!destroyed && focusModeAvailable) toggleFocusMode();

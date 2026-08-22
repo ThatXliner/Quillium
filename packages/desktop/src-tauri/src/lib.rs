@@ -1003,19 +1003,39 @@ fn scrap(state: tauri::State<DbState>) -> bool {
 
 // ── Native app menu (desktop only) ────────────────────────────────
 
+#[cfg(desktop)]
+fn set_menu_item_enabled(app: &tauri::AppHandle, id: &str, enabled: bool) -> Result<(), String> {
+    let menu = app
+        .menu()
+        .ok_or_else(|| "app menu is unavailable".to_string())?;
+    let item = menu
+        .get(id)
+        .and_then(|item| item.as_menuitem().cloned())
+        .ok_or_else(|| format!("{id} menu item is unavailable"))?;
+    item.set_enabled(enabled).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn cmd_set_focus_mode_available(app: tauri::AppHandle, available: bool) -> Result<(), String> {
     #[cfg(desktop)]
     {
-        let menu = app
-            .menu()
-            .ok_or_else(|| "app menu is unavailable".to_string())?;
-        let item = menu
-            .get("focus-mode")
-            .and_then(|item| item.as_menuitem().cloned())
-            .ok_or_else(|| "focus mode menu item is unavailable".to_string())?;
-        item.set_enabled(available)
-            .map_err(|error| error.to_string())?;
+        set_menu_item_enabled(&app, "focus-mode", available)?;
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, available);
+    }
+    Ok(())
+}
+
+/// Enables the Authorship Report menu item. Gated by the
+/// `authorship-provenance` feature flag on the frontend; the item ships
+/// disabled so the accelerator does nothing until the flag turns it on.
+#[tauri::command]
+fn cmd_set_authorship_available(app: tauri::AppHandle, available: bool) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        set_menu_item_enabled(&app, "authorship", available)?;
     }
     #[cfg(not(desktop))]
     {
@@ -1108,6 +1128,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .item(
             &MenuItemBuilder::with_id("authorship", "Authorship Report…")
                 .accelerator("CmdOrCtrl+Shift+A")
+                .enabled(false)
                 .build(app)?,
         )
         .separator()
@@ -1285,6 +1306,7 @@ pub fn run() {
             cmd_read_app_log,
             cmd_clear_app_log,
             cmd_set_focus_mode_available,
+            cmd_set_authorship_available,
             cmd_app_log_path,
             cmd_set_trash_retention,
             cmd_purge_expired_trash,
