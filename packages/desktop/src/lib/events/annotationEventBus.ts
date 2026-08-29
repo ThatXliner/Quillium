@@ -17,6 +17,15 @@ import type { NestedEditorCommand } from "$lib/stores";
 import type { EditorView } from "@codemirror/view";
 import { type EventOfType, TypedEventBus } from "./createEventBus";
 
+export type PendingNestedEditorSelection = {
+    type: "pending-nested-editor-selection";
+    annotationId: number;
+    from: number;
+    to: number;
+    /** Focus is explicit because a collapsed selection can still represent an intentional caret. */
+    focus: boolean;
+};
+
 export type AnnotationEvent =
     | { type: "revision-boundary-nudge"; revisionId: number }
     | { type: "nested-annotation-create"; command: NestedEditorCommand; sourceView: EditorView }
@@ -29,12 +38,7 @@ export type AnnotationEvent =
       }
     | { type: "pending-comment-alert" }
     | { type: "overlapping-revision-alert" }
-    | {
-          type: "pending-nested-editor-selection";
-          annotationId: number;
-          from: number;
-          to: number;
-      }
+    | PendingNestedEditorSelection
     | { type: "annotation-focus-reply"; annotationId: number }
     | { type: "annotation-add-version"; annotationId: number }
     | { type: "annotation-enter-editor"; annotationId: number }

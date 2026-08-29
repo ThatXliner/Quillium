@@ -196,6 +196,38 @@ test.describe("keyboard shortcuts", () => {
         });
     });
 
+    test("Cmd+Alt+K places a caret in the auto-created version", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            settings: {
+                autoVersionOnRevisionCreate: true,
+                selectTextInNestedEditor: true,
+            },
+        });
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await q.createRevision();
+
+        await expect(q.inlineEditor).toBeVisible({ timeout: 8_000 });
+        await expect(q.inlineEditor).toBeFocused();
+        await expect
+            .poll(() =>
+                page.evaluate(() => {
+                    const selection = window.getSelection();
+                    const anchorElement =
+                        selection?.anchorNode instanceof Element
+                            ? selection.anchorNode
+                            : selection?.anchorNode?.parentElement;
+                    return {
+                        collapsed: selection?.isCollapsed,
+                        insideInlineEditor:
+                            anchorElement?.closest(".revision-inline-editor") !== null,
+                    };
+                }),
+            )
+            .toEqual({ collapsed: true, insideInlineEditor: true });
+    });
+
     test("Escape closes AI sidebar", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",

@@ -916,18 +916,15 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
                 : Transaction.addToHistory.of(true),
         }),
     );
-    // When the setting is on and there is an actual selection, signal
-    // the nested editor to select all text on mount.  When autoVersion
-    // is also on the editor opens on an empty version, so just place a
-    // cursor (from === to) to focus it for immediate typing.
-    if (appSettings.selectTextInNestedEditor && !sel.empty) {
-        annotationEventBus.emit({
-            type: "pending-nested-editor-selection",
-            annotationId: newAnnotation.id,
-            from: 0,
-            to: autoVersion ? 0 : sel.to - sel.from,
-        });
-    }
+    // The shortcut always enters the new nested editor. The setting controls
+    // whether the original version starts selected, not whether focus moves.
+    annotationEventBus.emit({
+        type: "pending-nested-editor-selection",
+        annotationId: newAnnotation.id,
+        from: 0,
+        to: !autoVersion && appSettings.selectTextInNestedEditor ? sel.to - sel.from : 0,
+        focus: true,
+    });
     return true;
 };
 

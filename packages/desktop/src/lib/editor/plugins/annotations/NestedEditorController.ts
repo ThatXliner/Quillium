@@ -15,7 +15,10 @@
 
 import { logAppEvent } from "$lib/appLog";
 import { nestedSavedFields } from "$lib/editor/extensions";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
+import {
+    type PendingNestedEditorSelection,
+    annotationEventBus,
+} from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
 import { Annotation, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
@@ -133,7 +136,7 @@ export class NestedEditorController {
         host: HTMLDivElement,
         version: VersionState,
         versionIndex: number,
-        pendingSelection?: { from: number; to: number },
+        pendingSelection?: Pick<PendingNestedEditorSelection, "from" | "to" | "focus">,
     ): void {
         if (this._editor) return;
 
@@ -166,7 +169,7 @@ export class NestedEditorController {
                 selection: { anchor: from, head: to },
                 scrollIntoView: true,
             });
-            if (from !== to) this._editor.focus();
+            if (pendingSelection.focus) this._editor.focus();
         }
 
         // Snapshot only the serialized nested editor state that requires a
@@ -323,7 +326,7 @@ export class NestedEditorController {
             },
             scrollIntoView: true,
         });
-        if (from !== to) this._editor.focus();
+        if (event.focus) this._editor.focus();
     }
 
     /**
