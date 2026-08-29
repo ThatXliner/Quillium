@@ -509,14 +509,13 @@ function executePendingNestedCommand(
                         : Transaction.addToHistory.of(true),
                 }),
             );
-            if (appSettings.selectTextInNestedEditor && !sel.empty) {
-                annotationEventBus.emit({
-                    type: "pending-nested-editor-selection",
-                    annotationId: newAnnotation.id,
-                    from: 0,
-                    to: autoVersion ? 0 : sel.to - sel.from,
-                });
-            }
+            annotationEventBus.emit({
+                type: "pending-nested-editor-selection",
+                annotationId: newAnnotation.id,
+                from: 0,
+                to: !autoVersion && appSettings.selectTextInNestedEditor ? sel.to - sel.from : 0,
+                focus: true,
+            });
         }
     }
 }

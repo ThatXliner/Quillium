@@ -73,6 +73,8 @@ let unsubs: (() => void)[] = [];
 beforeEach(() => {
     appSettings.atomicRevisions = true;
     appSettings.showNestedEditor = false;
+    appSettings.selectTextInNestedEditor = true;
+    appSettings.autoVersionOnRevisionCreate = true;
 });
 
 afterEach(() => {
@@ -80,6 +82,7 @@ afterEach(() => {
     unsubs = [];
     view?.destroy();
     view = undefined;
+    annotationEventBus.clearPendingSelections();
 });
 
 describe("annotation keymap integration", () => {
@@ -205,6 +208,27 @@ describe("annotation keymap integration", () => {
         const annotations = Object.values(view.state.field(annotationField));
         expect(annotations).toHaveLength(1);
         expect(isAnnotationOfType(annotations[0], "revision")).toBe(true);
+    });
+
+    it("Mod-Alt-k requests a caret even when automatic selection is disabled", () => {
+        appSettings.selectTextInNestedEditor = false;
+        view = createView("Alpha Beta Gamma");
+
+        view.dispatch({ selection: { anchor: 0, head: 5 } });
+        const consumed = runKey(view, "Mod-Alt-k");
+        const revision = Object.values(view.state.field(annotationField)).find((annotation) =>
+            isAnnotationOfType(annotation, "revision"),
+        );
+
+        expect(consumed).toBe(true);
+        expect(revision).toBeDefined();
+        expect(annotationEventBus.consumePendingSelection(revision!.id)).toEqual({
+            type: "pending-nested-editor-selection",
+            annotationId: revision!.id,
+            from: 0,
+            to: 0,
+            focus: true,
+        });
     });
 
     it("Mod-Alt-m creates comment when not inside any revision", () => {
