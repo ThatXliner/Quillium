@@ -16,6 +16,10 @@
     <key>com.apple.security.network.client</key>
     <true/>
 
+    <!-- Required by the localhost callback listener used for ChatGPT OAuth -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
     <!-- Powerbox access for NSSavePanel/NSOpenPanel (document export).
          Without this, the sandboxed build crashes when the save dialog opens
          because the ViewBridge connection to the panel service is denied. -->

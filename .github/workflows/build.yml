@@ -214,6 +214,9 @@ jobs:
       - name: Install frontend dependencies
         run: bun ci
 
+      - name: Verify MAS OAuth callback entitlement
+        run: bash packages/desktop/src-tauri/tests/mas_oauth_loopback_entitlements.sh
+
       - name: Import MAS certificates
         env:
           APPLE_MAS_CERTIFICATE: ${{ secrets.APPLE_MAS_CERTIFICATE }}
@@ -264,6 +267,12 @@ jobs:
             --config src-tauri/tauri.mas.conf.json \
             --bundles app \
             --target aarch64-apple-darwin
+
+      - name: Verify signed MAS entitlements
+        run: |
+          APP_PATH="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Quillium.app"
+          codesign -d --entitlements :- "$APP_PATH" > signed-entitlements.plist 2>/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.server' signed-entitlements.plist)" = "true"
 
       - name: Package as .pkg
         env:
