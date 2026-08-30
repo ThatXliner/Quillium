@@ -258,10 +258,8 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
  */
 export type CommentCreationSource =
     | "context-menu"
-    | "keyboard-alternate"
     | "keyboard-physical-fallback"
     | "keyboard-primary"
-    | "native-menu"
     | "unknown";
 
 export function createCommentFromSelection(
@@ -1079,11 +1077,6 @@ export const annotationKeymap: KeyBinding[] = [
         run: deleteAdjacentRevision("forward"),
     },
     ...bindWithDevAliases("Alt-m", (view) => createCommentFromSelection(view, "keyboard-primary")),
-    // Keep a second route available while shortcut-boundary logging isolates
-    // the machine-specific failures reported for the established Alt-M chord.
-    ...bindWithDevAliases("Shift-m", (view) =>
-        createCommentFromSelection(view, "keyboard-alternate"),
-    ),
     ...bindWithDevAliases("Alt-k", redirectToNestedEditor("revision")),
     ...bindWithDevAliases("Alt-k", createRevisionCommand),
 ];

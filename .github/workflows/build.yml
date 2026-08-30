@@ -271,9 +271,15 @@ jobs:
             --bundles app \
             --target aarch64-apple-darwin
 
-      - name: Verify signed MAS entitlements
+      - name: Verify signed MAS metadata and entitlements
         run: |
           APP_PATH="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Quillium.app"
+          EXPECTED_VERSION=$(jq -r '.version' packages/desktop/src-tauri/tauri.conf.json)
+          EXPECTED_BUILD=$(jq -r '.bundle.macOS.bundleVersion' packages/desktop/src-tauri/tauri.mas.conf.json)
+          ACTUAL_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")
+          ACTUAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
+          test "$ACTUAL_BUILD" = "$EXPECTED_BUILD"
           codesign -d --entitlements :- "$APP_PATH" > signed-entitlements.plist 2>/dev/null
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.server' signed-entitlements.plist)" = "true"
 

@@ -203,6 +203,16 @@ test.describe("keyboard shortcuts", () => {
             .toEqual(expect.arrayContaining(["comment-shortcut", "comment-command"]));
     });
 
+    test("Cmd+Shift+M is not a second comment shortcut", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await page.keyboard.press("Control+Shift+m");
+
+        await expect(page.locator("textarea[placeholder='Add a comment…']")).toHaveCount(0);
+    });
+
     test("right-clicking selected text can create and focus a comment", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
@@ -228,19 +238,6 @@ test.describe("keyboard shortcuts", () => {
             await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
         }
         await menu.getByRole("menuitem", { name: /Add Comment/ }).click();
-
-        const textarea = page.locator("textarea[placeholder='Add a comment…']");
-        await expect(textarea).toBeVisible({ timeout: 5_000 });
-        await expect(textarea).toBeFocused();
-        await expect(q.annotationCards.first()).toContainText("hello");
-    });
-
-    test("native Edit menu creates and focuses a comment", async ({ page }) => {
-        const q = new QuilliumPage(page);
-        await q.init();
-        await q.typeInEditor("hello world");
-        await q.selectRange(0, 5);
-        await q.emitTauriEvent("menu:add-comment");
 
         const textarea = page.locator("textarea[placeholder='Add a comment…']");
         await expect(textarea).toBeVisible({ timeout: 5_000 });

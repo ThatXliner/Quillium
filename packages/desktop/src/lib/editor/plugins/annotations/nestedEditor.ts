@@ -321,11 +321,7 @@ function hasSerializedNestedState(
 export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
     function openNestedAnnotation(
         type: "comment" | "revision",
-        source:
-            | "keyboard-alternate"
-            | "keyboard-physical-fallback"
-            | "keyboard-primary"
-            | "unknown" = "unknown",
+        source: "keyboard-physical-fallback" | "keyboard-primary" | "unknown" = "unknown",
     ) {
         return (view: EditorView) => {
             const sel = view.state.selection.main;
@@ -480,25 +476,6 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                       {
                           key: "Meta-Alt-m",
                           run: openNestedAnnotation("comment", "keyboard-primary"),
-                          preventDefault: true,
-                      },
-                  ]
-                : []),
-            {
-                key: "Mod-Shift-m",
-                run: openNestedAnnotation("comment", "keyboard-alternate"),
-                preventDefault: true,
-            },
-            ...(dev
-                ? [
-                      {
-                          key: "Ctrl-Shift-m",
-                          run: openNestedAnnotation("comment", "keyboard-alternate"),
-                          preventDefault: true,
-                      },
-                      {
-                          key: "Meta-Shift-m",
-                          run: openNestedAnnotation("comment", "keyboard-alternate"),
                           preventDefault: true,
                       },
                   ]

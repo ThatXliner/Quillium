@@ -174,13 +174,11 @@ async function showNativeContextMenu(): Promise<boolean> {
                 {
                     id: "editor-context-add-comment",
                     text: "Add Comment",
-                    accelerator: "CmdOrCtrl+Alt+M",
                     action: () => addCommentFromContextMenu(),
                 },
                 {
                     id: "editor-context-add-revision",
                     text: "Add Revision",
-                    accelerator: "CmdOrCtrl+Alt+K",
                     action: () => addRevisionFromContextMenu(),
                 },
             ],
@@ -303,20 +301,13 @@ async function runContextMenuEditCommand(command: EditorEditCommand): Promise<vo
 }
 
 function handleCommentShortcutKeydown(event: KeyboardEvent): void {
-    // Record either modifier so browser/dev shells with a synthetic platform
-    // cannot hide a delivered shortcut from the diagnostic boundary.
     const modKey = event.metaKey || event.ctrlKey;
-    if (!modKey || event.code !== "KeyM" || (!event.shiftKey && !event.altKey)) return;
+    if (!modKey || event.code !== "KeyM" || !event.altKey || event.shiftKey) return;
 
     const view = $editorView;
     const selection = view?.state.selection.main;
     void logAppEvent("info", "comment-shortcut", "comment shortcut reached webview", {
-        variant:
-            event.altKey && !event.shiftKey
-                ? "primary"
-                : event.shiftKey && !event.altKey
-                  ? "alternate"
-                  : "extra-modifiers",
+        variant: "primary",
         code: event.code,
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,

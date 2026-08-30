@@ -10,7 +10,7 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 |---------|--------------|-------------|
 | Quillium | Settings…, Open Source Licenses… | `Cmd+,` / `Ctrl+,` |
 | File | Library, Open in New Window, Export variants | `Cmd+O`, `Cmd+Shift+O`, `Cmd+Shift+E` |
-| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Add Comment | Standard / `Cmd+Alt+M` |
+| Edit | Undo, Redo, Cut, Copy, Paste, Select All | Standard |
 | View | Version History, Authorship Report | `Cmd+Shift+H`, `Cmd+Shift+A` |
 | Window | Minimize, Maximize, Close | Standard |
 | Help | Send Feedback, App Logs | None |
@@ -37,7 +37,6 @@ Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@ta
 | `menu:history` | Navigate to version history |
 | `menu:authorship` | Navigate to authorship/provenance playback |
 | `menu:open-in-new-window` | Open selected document in a new window (library page) |
-| `menu:add-comment` | Add a comment to the current editor selection |
 | `menu:licenses` | Open licenses modal |
 | `menu:feedback` | Open the feedback URL |
 | `menu:app-logs` | Open the persistent diagnostic log viewer from any route |
@@ -165,9 +164,11 @@ The release workflow validates the final macOS updater archive after `tauri-acti
 checks the embedded version, Apple code signature, Gatekeeper assessment, notarization ticket, and
 Tauri Minisign signature. Public release publication is skipped if any validation fails.
 
-Tags named `mas-vX.Y.Z` run only the signed Mac App Store build and upload it to App Store Connect.
-Use that tag for TestFlight-only builds so the regular desktop updater and public release remain
-unchanged. The version in the desktop manifests must be newer than the last uploaded MAS build.
+Tags named `mas-vX.Y.Z-buildN` run only the signed Mac App Store build and upload it to App Store
+Connect. Use that tag for TestFlight-only builds so the regular desktop updater and public release
+remain unchanged. Keep the user-visible version in `tauri.conf.json`; increment the MAS-only
+`bundle.macOS.bundleVersion` in `tauri.mas.conf.json` before every upload. macOS build numbers must
+increase across all app versions.
 
 ### Rate Limiting (`updater/schedule.ts`)
 

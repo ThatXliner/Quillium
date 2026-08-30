@@ -192,34 +192,16 @@ describe("nested editor keymap intercepts annotation creation", () => {
         );
     });
 
-    it("keeps Mod-Shift-m as a nested-editor alternate", () => {
+    it("does not bind Mod-Shift-m in a nested editor", () => {
         const spy = vi.fn();
         unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
-
-        // Select text in nested editor
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Shift-m");
-        expect(consumed).toBe(true);
-
-        expect(spy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "nested-annotation-create",
-                command: {
-                    revisionId,
-                    type: "comment",
-                    selectionFrom: 1,
-                    selectionTo: 3,
-                },
-            }),
-        );
-
-        // Should NOT have created an annotation in the nested editor's state
-        const nestedAnnotations = Object.values(nestedView.state.field(annotationField));
-        expect(nestedAnnotations).toHaveLength(0);
+        expect(runNestedKey(nestedView, parentView, revisionId, "Mod-Shift-m")).toBe(false);
+        expect(spy).not.toHaveBeenCalled();
     });
 
     it("routes a physical Command-Option-M fallback out of the nested editor", () => {
