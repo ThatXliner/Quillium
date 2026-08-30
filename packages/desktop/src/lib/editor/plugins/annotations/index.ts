@@ -249,6 +249,15 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
     };
 }
 
+/**
+ * Runs the same comment-creation chain for keyboard and pointer entry points.
+ * Keeping the redirect here prevents mouse actions from bypassing nested-editor
+ * routing when the selected prose belongs to a revision.
+ */
+export function createCommentFromSelection(view: EditorView): boolean {
+    return redirectToNestedEditor("comment")(view) || createCommentCommand(view);
+}
+
 // -------------------------------------------------------
 // revisionAtomicRanges ViewPlugin
 //
@@ -1014,8 +1023,7 @@ export const annotationKeymap: KeyBinding[] = [
         key: "Delete",
         run: deleteAdjacentRevision("forward"),
     },
-    ...bindWithDevAliases("Alt-m", redirectToNestedEditor("comment")),
-    ...bindWithDevAliases("Alt-m", createCommentCommand),
+    ...bindWithDevAliases("Alt-m", createCommentFromSelection),
     ...bindWithDevAliases("Alt-k", redirectToNestedEditor("revision")),
     ...bindWithDevAliases("Alt-k", createRevisionCommand),
 ];

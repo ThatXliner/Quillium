@@ -35,7 +35,11 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-Shift-H` | Navigate to version history |
 | `Mod-Shift-A` | Navigate to authorship report |
 | `Mod-Shift-E` | Export plain text |
+| `Mod-Alt-M` | Add a comment to the selected prose |
 | `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
+
+The Edit menu exposes **Add Comment** with the same shortcut. Right-clicking inside selected
+prose also shows **Add Comment**, so comment creation does not depend on key-event delivery.
 
 ## Revision Modal Shortcuts
 

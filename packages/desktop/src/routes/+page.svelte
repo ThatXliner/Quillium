@@ -41,6 +41,7 @@ import { debugPanelActive } from "$lib/debug/store.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import Editor from "$lib/editor/Editor.svelte";
 import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
+import { createCommentFromSelection } from "$lib/editor/plugins/annotations";
 import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
@@ -544,6 +545,10 @@ onMount(() => {
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:new-tab", () => {
         if (!destroyed) void editorComponent?.createNewTab();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:add-comment", () => {
+        const view = $editorView;
+        if (!destroyed && view) createCommentFromSelection(view);
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:licenses", () => {
         if (!destroyed) licensesOpen = !licensesOpen;

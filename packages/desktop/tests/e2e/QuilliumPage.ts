@@ -177,6 +177,7 @@ export class QuilliumPage {
 
                 let nextCallbackId = 1;
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
+                const eventHandlers = new Map<string, number>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
                 // ── Stateful tabs & draft-tree mock (#160) ──────────────
@@ -250,7 +251,15 @@ export class QuilliumPage {
                 const activeTabByDoc: Record<string, string> = {};
                 const activeDraftByTab: Record<string, string> = {};
 
-                (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
+                (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
+                    invokeCalls,
+                    emitEvent: (event: string, payload: unknown) => {
+                        const callbackId = eventHandlers.get(event);
+                        if (callbackId === undefined) return false;
+                        callbacks.get(callbackId)?.({ event, id: 0, payload });
+                        return true;
+                    },
+                };
 
                 (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
                     metadata: {
@@ -654,8 +663,16 @@ export class QuilliumPage {
                         }
 
                         // Tauri event plumbing
-                        if (cmd === "plugin:event|listen") return 1;
-                        if (cmd === "plugin:event|unlisten") return null;
+                        if (cmd === "plugin:event|listen") {
+                            const eventArgs = args as { event: string; handler: number };
+                            eventHandlers.set(eventArgs.event, eventArgs.handler);
+                            return eventArgs.handler;
+                        }
+                        if (cmd === "plugin:event|unlisten") {
+                            const eventArgs = args as { event: string };
+                            eventHandlers.delete(eventArgs.event);
+                            return null;
+                        }
 
                         return null;
                     },
@@ -750,6 +767,22 @@ export class QuilliumPage {
                 ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === c).length,
             cmd,
         );
+    }
+
+    /** Deliver a Tauri event through the same callback registered by listen(). */
+    async emitTauriEvent(event: string, payload: unknown = null): Promise<void> {
+        const delivered = await this.page.evaluate(
+            ({ eventName, eventPayload }) =>
+                (
+                    window as unknown as {
+                        __TAURI_MOCK__: {
+                            emitEvent: (event: string, payload: unknown) => boolean;
+                        };
+                    }
+                ).__TAURI_MOCK__.emitEvent(eventName, eventPayload),
+            { eventName: event, eventPayload: payload },
+        );
+        expect(delivered).toBe(true);
     }
 
     // ── Editor text ─────────────────────────────────────────────────────
