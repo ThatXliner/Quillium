@@ -1113,7 +1113,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .separator()
         .item(
             &MenuItemBuilder::with_id("add-comment", "Add Comment")
-                .accelerator("CmdOrCtrl+Alt+M")
+                .accelerator("CmdOrCtrl+Shift+M")
                 .build(app)?,
         )
         .build()?;

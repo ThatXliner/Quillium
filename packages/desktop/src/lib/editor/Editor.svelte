@@ -137,7 +137,7 @@ const CONTEXT_MENU_WIDTH = 208;
 const CONTEXT_MENU_HEIGHT = 286;
 const CONTEXT_MENU_MARGIN = 8;
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const commentShortcutLabel = isMac ? "⌘⌥M" : "Ctrl+Alt+M";
+const commentShortcutLabel = isMac ? "⌘⇧M" : "Ctrl+Shift+M";
 const revisionShortcutLabel = isMac ? "⌘⌥K" : "Ctrl+Alt+K";
 
 function closeContextMenu(): void {
@@ -174,7 +174,7 @@ async function showNativeContextMenu(): Promise<boolean> {
                 {
                     id: "editor-context-add-comment",
                     text: "Add Comment",
-                    accelerator: "CmdOrCtrl+Alt+M",
+                    accelerator: "CmdOrCtrl+Shift+M",
                     action: () => addCommentFromContextMenu(),
                 },
                 {
@@ -312,10 +312,10 @@ function handleCommentShortcutKeydown(event: KeyboardEvent): void {
     const selection = view?.state.selection.main;
     void logAppEvent("info", "comment-shortcut", "comment shortcut reached webview", {
         variant:
-            event.altKey && !event.shiftKey
+            event.shiftKey && !event.altKey
                 ? "primary"
-                : event.shiftKey && !event.altKey
-                  ? "alternate"
+                : event.altKey && !event.shiftKey
+                  ? "legacy"
                   : "extra-modifiers",
         code: event.code,
         altKey: event.altKey,

@@ -10,7 +10,7 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 |---------|--------------|-------------|
 | Quillium | Settings…, Open Source Licenses… | `Cmd+,` / `Ctrl+,` |
 | File | Library, Open in New Window, Export variants | `Cmd+O`, `Cmd+Shift+O`, `Cmd+Shift+E` |
-| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Add Comment | Standard / `Cmd+Alt+M` |
+| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Add Comment | Standard / `Cmd+Shift+M` |
 | View | Version History, Authorship Report | `Cmd+Shift+H`, `Cmd+Shift+A` |
 | Window | Minimize, Maximize, Close | Standard |
 | Help | Send Feedback, App Logs | None |
