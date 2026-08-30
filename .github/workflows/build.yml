@@ -4,9 +4,12 @@ on:
   push:
     tags:
       - "v*"
+      # TestFlight-only MAS builds. These skip the public desktop release jobs.
+      - "mas-v*"
 
 jobs:
   build-tauri:
+    if: ${{ !startsWith(github.ref_name, 'mas-') }}
     permissions:
       contents: write
     strategy:
@@ -304,7 +307,7 @@ jobs:
   publish-release:
     needs: build-tauri
     # Never copy a partial or unverified release into the public repository.
-    if: needs.build-tauri.result == 'success'
+    if: ${{ !startsWith(github.ref_name, 'mas-') && needs.build-tauri.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
