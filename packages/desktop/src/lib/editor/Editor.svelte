@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logAppEvent } from "$lib/appLog";
 import {
     createDocument,
     createDraft,
@@ -63,8 +64,11 @@ import {
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { isTauri } from "@tauri-apps/api/core";
+import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { onMount, tick } from "svelte";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import { loadUserDictionary } from "./harper/harperLinter";
@@ -74,11 +78,15 @@ import type { EventRecord } from "$lib/db/types";
 import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 import type { ViewUpdate } from "@codemirror/view";
 import {
+    ClipboardPasteIcon,
+    CopyIcon,
     GitBranchIcon,
     LockIcon,
     Maximize2Icon,
     MessageSquareIcon,
     Minimize2Icon,
+    ScanTextIcon,
+    ScissorsIcon,
 } from "lucide-svelte";
 import DocumentTabs from "./DocumentTabs.svelte";
 import DocumentTitleBar from "./DocumentTitleBar.svelte";
@@ -96,6 +104,7 @@ import { flushMetaDebounces, flushPersistQueue } from "./listeners";
 import {
     annotationField,
     createCommentFromSelection,
+    createRevisionFromSelection,
     versionGroupField,
 } from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
@@ -122,18 +131,76 @@ let resizingDraftPanel = $state(false);
 let draftPanelDragStartWidth = 0;
 let contextMenu = $state<{ x: number; y: number } | null>(null);
 let contextMenuItem = $state<HTMLButtonElement>();
+let nativeContextMenu: Menu | undefined;
 
-const CONTEXT_MENU_WIDTH = 176;
-const CONTEXT_MENU_HEIGHT = 44;
+const CONTEXT_MENU_WIDTH = 208;
+const CONTEXT_MENU_HEIGHT = 286;
 const CONTEXT_MENU_MARGIN = 8;
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const commentShortcutLabel = isMac ? "⌘⌥M" : "Ctrl+Alt+M";
+const revisionShortcutLabel = isMac ? "⌘⌥K" : "Ctrl+Alt+K";
 
 function closeContextMenu(): void {
     contextMenu = null;
 }
 
-function handleEditorContextMenu(event: MouseEvent): void {
+function openFallbackContextMenu(x: number, y: number): void {
+    const maxX = Math.max(
+        CONTEXT_MENU_MARGIN,
+        window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN,
+    );
+    const maxY = Math.max(
+        CONTEXT_MENU_MARGIN,
+        window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN,
+    );
+    contextMenu = {
+        x: Math.min(Math.max(x, CONTEXT_MENU_MARGIN), maxX),
+        y: Math.min(Math.max(y, CONTEXT_MENU_MARGIN), maxY),
+    };
+    tick().then(() => contextMenuItem?.focus());
+}
+
+async function showNativeContextMenu(): Promise<boolean> {
+    if (!isTauri()) return false;
+    try {
+        nativeContextMenu ??= await Menu.new({
+            items: [
+                { item: "Cut", text: "Cut" },
+                { item: "Copy", text: "Copy" },
+                { item: "Paste", text: "Paste" },
+                { item: "Separator" },
+                { item: "SelectAll", text: "Select All" },
+                { item: "Separator" },
+                {
+                    id: "editor-context-add-comment",
+                    text: "Add Comment",
+                    accelerator: "CmdOrCtrl+Alt+M",
+                    action: () => addCommentFromContextMenu(),
+                },
+                {
+                    id: "editor-context-add-revision",
+                    text: "Add Revision",
+                    accelerator: "CmdOrCtrl+Alt+K",
+                    action: () => addRevisionFromContextMenu(),
+                },
+            ],
+        });
+        void logAppEvent("info", "editor-context-menu", "native context menu opened", {
+            selectionLength:
+                ($editorView?.state.selection.main.to ?? 0) -
+                ($editorView?.state.selection.main.from ?? 0),
+        });
+        await nativeContextMenu.popup();
+        return true;
+    } catch (error) {
+        void logAppEvent("warn", "editor-context-menu", "native context menu failed", {
+            error,
+        });
+        return false;
+    }
+}
+
+async function handleEditorContextMenu(event: MouseEvent): Promise<void> {
     const view = $editorView;
     if (!view || view.state.readOnly) return;
 
@@ -150,19 +217,8 @@ function handleEditorContextMenu(event: MouseEvent): void {
     }
 
     event.preventDefault();
-    const maxX = Math.max(
-        CONTEXT_MENU_MARGIN,
-        window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN,
-    );
-    const maxY = Math.max(
-        CONTEXT_MENU_MARGIN,
-        window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN,
-    );
-    contextMenu = {
-        x: Math.min(Math.max(event.clientX, CONTEXT_MENU_MARGIN), maxX),
-        y: Math.min(Math.max(event.clientY, CONTEXT_MENU_MARGIN), maxY),
-    };
-    tick().then(() => contextMenuItem?.focus());
+    if (await showNativeContextMenu()) return;
+    openFallbackContextMenu(event.clientX, event.clientY);
 }
 
 function editorContextMenu(node: HTMLElement): { destroy: () => void } {
@@ -183,7 +239,98 @@ function handleContextMenuKeydown(event: KeyboardEvent): void {
 function addCommentFromContextMenu(): void {
     const view = $editorView;
     closeContextMenu();
-    if (view) createCommentFromSelection(view);
+    if (view) createCommentFromSelection(view, "context-menu");
+}
+
+function addRevisionFromContextMenu(): void {
+    const view = $editorView;
+    closeContextMenu();
+    if (view) createRevisionFromSelection(view);
+}
+
+type EditorEditCommand = "copy" | "cut" | "paste" | "selectAll";
+
+async function runContextMenuEditCommand(command: EditorEditCommand): Promise<void> {
+    const view = $editorView;
+    closeContextMenu();
+    if (!view) return;
+
+    view.focus();
+    const browserCommand = command === "selectAll" ? "selectAll" : command;
+    if (document.execCommand(browserCommand)) {
+        void logAppEvent("info", "editor-context-menu", "browser edit command handled", {
+            command,
+            path: "exec-command",
+        });
+        return;
+    }
+
+    // This path is only used in browser preview or if a native menu cannot be
+    // created. The packaged app normally uses native Cut/Copy/Paste roles, which
+    // preserve Quillium's annotation-aware clipboard events.
+    try {
+        const selection = view.state.selection.main;
+        if (command === "selectAll") {
+            view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+        } else if (command === "paste") {
+            const text = await navigator.clipboard.readText();
+            view.dispatch({
+                changes: { from: selection.from, to: selection.to, insert: text },
+                selection: { anchor: selection.from + text.length },
+                userEvent: "input.paste",
+            });
+        } else {
+            const text = view.state.sliceDoc(selection.from, selection.to);
+            await navigator.clipboard.writeText(text);
+            if (command === "cut") {
+                view.dispatch({
+                    changes: { from: selection.from, to: selection.to, insert: "" },
+                    selection: { anchor: selection.from },
+                    userEvent: "delete.cut",
+                });
+            }
+        }
+        void logAppEvent("warn", "editor-context-menu", "edit command used plain-text fallback", {
+            command,
+        });
+    } catch (error) {
+        void logAppEvent("error", "editor-context-menu", "edit command failed", {
+            command,
+            error,
+        });
+        toast.error(`${command === "selectAll" ? "Select all" : command} failed`);
+    }
+}
+
+function handleCommentShortcutKeydown(event: KeyboardEvent): void {
+    // Record either modifier so browser/dev shells with a synthetic platform
+    // cannot hide a delivered shortcut from the diagnostic boundary.
+    const modKey = event.metaKey || event.ctrlKey;
+    if (!modKey || event.code !== "KeyM" || (!event.shiftKey && !event.altKey)) return;
+
+    const view = $editorView;
+    const selection = view?.state.selection.main;
+    void logAppEvent("info", "comment-shortcut", "comment shortcut reached webview", {
+        variant:
+            event.altKey && !event.shiftKey
+                ? "primary"
+                : event.shiftKey && !event.altKey
+                  ? "alternate"
+                  : "extra-modifiers",
+        code: event.code,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+        composing: event.isComposing,
+        editorMounted: Boolean(view),
+        editorFocused: view?.hasFocus ?? false,
+        selectionLength: selection ? selection.to - selection.from : 0,
+        readOnly: view?.state.readOnly,
+        targetInsideCodeMirror:
+            event.target instanceof Element && Boolean(event.target.closest(".cm-editor")),
+    });
 }
 
 const effectiveDraftPanelWidth = $derived(
@@ -627,6 +774,7 @@ async function seedStateJson(sourceDraftId: string): Promise<string> {
 }
 
 onMount(() => {
+    window.addEventListener("keydown", handleCommentShortcutKeydown, true);
     fromSave.then((state) => {
         $editorView = new EditorView({
             state,
@@ -658,8 +806,17 @@ onMount(() => {
     });
 
     return () => {
+        window.removeEventListener("keydown", handleCommentShortcutKeydown, true);
         unsubscribe();
         deregisterOpenDoc(windowLabel).catch(console.error);
+        if (nativeContextMenu) {
+            void nativeContextMenu.close().catch((error) => {
+                void logAppEvent("warn", "editor-context-menu", "context menu cleanup failed", {
+                    error,
+                });
+            });
+            nativeContextMenu = undefined;
+        }
     };
 });
 </script>
@@ -814,11 +971,57 @@ onMount(() => {
         <div
             role="menu"
             aria-label="Editor actions"
-            class="fixed z-[90] min-w-44 rounded-xl shadow-xl border border-white/40 bg-white/90 p-1 backdrop-blur-md"
+            class="fixed z-[90] min-w-52 rounded-xl shadow-xl border border-white/40 bg-white/90 p-1 backdrop-blur-md"
             style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
         >
             <button
                 bind:this={contextMenuItem}
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("cut")}
+            >
+                <ScissorsIcon size={15} class="text-black/40" />
+                <span class="flex-1">Cut</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘X" : "Ctrl+X"}</span>
+            </button>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("copy")}
+            >
+                <CopyIcon size={15} class="text-black/40" />
+                <span class="flex-1">Copy</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘C" : "Ctrl+C"}</span>
+            </button>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("paste")}
+            >
+                <ClipboardPasteIcon size={15} class="text-black/40" />
+                <span class="flex-1">Paste</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘V" : "Ctrl+V"}</span>
+            </button>
+            <div role="separator" class="mx-2 my-1 h-px bg-black/[0.07]"></div>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("selectAll")}
+            >
+                <ScanTextIcon size={15} class="text-black/40" />
+                <span class="flex-1">Select All</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘A" : "Ctrl+A"}</span>
+            </button>
+            <div role="separator" class="mx-2 my-1 h-px bg-black/[0.07]"></div>
+            <button
                 type="button"
                 role="menuitem"
                 class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
@@ -828,6 +1031,17 @@ onMount(() => {
                 <MessageSquareIcon size={15} class="text-amber-500" />
                 <span class="flex-1">Add Comment</span>
                 <span class="text-[11px] text-black/30">{commentShortcutLabel}</span>
+            </button>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={addRevisionFromContextMenu}
+            >
+                <GitBranchIcon size={15} class="text-violet-500" />
+                <span class="flex-1">Add Revision</span>
+                <span class="text-[11px] text-black/30">{revisionShortcutLabel}</span>
             </button>
         </div>
     {/if}

@@ -147,7 +147,14 @@ pub fn init(app: &tauri::App) -> Result<(), String> {
         }));
     }
 
-    write_record(&path, "info", "rust", "app log initialized", None)
+    let details = json!({
+        "version": app.package_info().version.to_string(),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "debugBuild": cfg!(debug_assertions),
+    })
+    .to_string();
+    write_record(&path, "info", "rust", "app log initialized", Some(&details))
 }
 
 pub fn log_event(

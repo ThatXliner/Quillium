@@ -29,6 +29,9 @@ function formatBytes(bytes: number): string {
 function diagnosticReport(): string {
     return [
         "Quillium diagnostic log",
+        `App version: ${typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}`,
+        `Platform: ${navigator.platform || "Unavailable"}`,
+        `User agent: ${navigator.userAgent || "Unavailable"}`,
         `Generated: ${new Date().toISOString()}`,
         `Log path: ${logPath || "Unavailable"}`,
         "",

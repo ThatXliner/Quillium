@@ -243,6 +243,38 @@ describe("annotation keymap integration", () => {
         expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
     });
 
+    it("keeps Mod-Shift-m as an alternate comment shortcut", () => {
+        view = createView("Alpha Beta Gamma");
+
+        view.dispatch({ selection: { anchor: 0, head: 5 } });
+        const consumed = runKey(view, "Mod-Shift-m");
+
+        expect(consumed).toBe(true);
+        const annotations = Object.values(view.state.field(annotationField));
+        expect(annotations).toHaveLength(1);
+        expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
+    });
+
+    it("falls back to physical KeyM when macOS Option changes the event key", () => {
+        view = createView("Alpha Beta Gamma");
+        view.dispatch({ selection: { anchor: 0, head: 5 } });
+
+        const event = new KeyboardEvent("keydown", {
+            key: "µ",
+            code: "KeyM",
+            metaKey: true,
+            altKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        view.contentDOM.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        const annotations = Object.values(view.state.field(annotationField));
+        expect(annotations).toHaveLength(1);
+        expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
+    });
+
     it("Delete at revision start deletes adjacent revision range", () => {
         view = createView("Alpha Beta Gamma");
         addRevision(view, 6, 10);

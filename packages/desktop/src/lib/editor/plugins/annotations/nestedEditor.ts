@@ -30,6 +30,7 @@
  */
 
 import { dev } from "$app/environment";
+import { logAppEvent } from "$lib/appLog";
 import { createAwarenessExtension } from "$lib/collab/awareness";
 import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
@@ -42,7 +43,7 @@ import {
     type StateEffect,
     Transaction,
 } from "@codemirror/state";
-import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import { EditorView, type ViewUpdate, keymap } from "@codemirror/view";
 import {
     VERSION_PREVIEW_MAX_LENGTH,
     formatVersionPreviewText,
@@ -57,6 +58,7 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
+import { isPhysicalMacCommentShortcut } from "./commentShortcut";
 import {
     type VersionState,
     activeVersion,
@@ -317,10 +319,26 @@ function hasSerializedNestedState(
  * annotationField).
  */
 export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
-    function openNestedAnnotation(type: "comment" | "revision") {
+    function openNestedAnnotation(
+        type: "comment" | "revision",
+        source:
+            | "keyboard-alternate"
+            | "keyboard-physical-fallback"
+            | "keyboard-primary"
+            | "unknown" = "unknown",
+    ) {
         return (view: EditorView) => {
             const sel = view.state.selection.main;
-            if (sel.empty) return false;
+            if (sel.empty) {
+                if (type === "comment") {
+                    void logAppEvent("warn", "comment-command", "nested comment command rejected", {
+                        source,
+                        outcome: "empty-selection",
+                        revisionId,
+                    });
+                }
+                return false;
+            }
             annotationEventBus.emit({
                 type: "nested-annotation-create",
                 sourceView: parentView,
@@ -331,11 +349,19 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                     selectionTo: sel.to,
                 },
             });
+            if (type === "comment") {
+                void logAppEvent("info", "comment-command", "nested comment command emitted", {
+                    source,
+                    outcome: "nested-annotation-event-emitted",
+                    revisionId,
+                    selectionLength: sel.to - sel.from,
+                });
+            }
             return true;
         };
     }
 
-    return Prec.highest(
+    const parentKeymap = Prec.highest(
         keymap.of([
             {
                 key: "Mod-z",
@@ -441,19 +467,38 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 : []),
             {
                 key: "Mod-Alt-m",
-                run: openNestedAnnotation("comment"),
+                run: openNestedAnnotation("comment", "keyboard-primary"),
                 preventDefault: true,
             },
             ...(dev
                 ? [
                       {
                           key: "Ctrl-Alt-m",
-                          run: openNestedAnnotation("comment"),
+                          run: openNestedAnnotation("comment", "keyboard-primary"),
                           preventDefault: true,
                       },
                       {
                           key: "Meta-Alt-m",
-                          run: openNestedAnnotation("comment"),
+                          run: openNestedAnnotation("comment", "keyboard-primary"),
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
+            {
+                key: "Mod-Shift-m",
+                run: openNestedAnnotation("comment", "keyboard-alternate"),
+                preventDefault: true,
+            },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Shift-m",
+                          run: openNestedAnnotation("comment", "keyboard-alternate"),
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Shift-m",
+                          run: openNestedAnnotation("comment", "keyboard-alternate"),
                           preventDefault: true,
                       },
                   ]
@@ -479,6 +524,18 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 : []),
         ]),
     );
+
+    return [
+        parentKeymap,
+        Prec.low(
+            EditorView.domEventHandlers({
+                keydown(event, view) {
+                    if (!isPhysicalMacCommentShortcut(event)) return false;
+                    return openNestedAnnotation("comment", "keyboard-physical-fallback")(view);
+                },
+            }),
+        ),
+    ];
 }
 
 /**

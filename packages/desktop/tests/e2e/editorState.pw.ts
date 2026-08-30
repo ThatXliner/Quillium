@@ -171,7 +171,7 @@ test.describe("status bar", () => {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 
 test.describe("keyboard shortcuts", () => {
-    test("Cmd+Alt+M creates comment when text is selected", async ({ page }) => {
+    test("Cmd+Alt+M creates comment and records both shortcut boundaries", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -182,6 +182,25 @@ test.describe("keyboard shortcuts", () => {
         const textarea = page.locator("textarea[placeholder='Add a comment…']");
         await expect(textarea).toBeVisible({ timeout: 5_000 });
         await expect(textarea).toBeFocused();
+
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    (
+                        window as unknown as {
+                            __TAURI_MOCK__: {
+                                invokeCalls: Array<{
+                                    cmd: string;
+                                    args: { target?: string };
+                                }>;
+                            };
+                        }
+                    ).__TAURI_MOCK__.invokeCalls
+                        .filter((call) => call.cmd === "cmd_log_app_event")
+                        .map((call) => call.args.target),
+                ),
+            )
+            .toEqual(expect.arrayContaining(["comment-shortcut", "comment-command"]));
     });
 
     test("right-clicking selected text can create and focus a comment", async ({ page }) => {
@@ -205,6 +224,9 @@ test.describe("keyboard shortcuts", () => {
 
         const menu = page.getByRole("menu", { name: "Editor actions" });
         await expect(menu).toBeVisible();
+        for (const item of ["Cut", "Copy", "Paste", "Select All", "Add Revision"]) {
+            await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
+        }
         await menu.getByRole("menuitem", { name: /Add Comment/ }).click();
 
         const textarea = page.locator("textarea[placeholder='Add a comment…']");

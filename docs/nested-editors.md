@@ -114,7 +114,9 @@ Modal's `parentView` can be another nested `EditorView`. `translateAndDispatch` 
 
 **Downward path** (undo → nested editors): Each modal's external-sync `$effect` detects changes and patches its nested buffer. This cascades through all nesting levels.
 
-**Sub-annotation creation**: The nested editor's `makeParentUndoKeymap` binds Mod-Alt-m/k to emit `"nested-annotation-create"` on the event bus. The modal catches this and pushes a new modal.
+**Sub-annotation creation**: The nested editor's `makeParentUndoKeymap` binds
+Mod-Alt-m for comments and Mod-Alt-k for revisions, then emits
+`"nested-annotation-create"` on the event bus. The modal catches this and pushes a new modal.
 
 **ID independence**: Each nested editor has its own `annotationField` with IDs starting from 0. Nested modals must not look up `revisionId` in `$annotationsStore`.
 

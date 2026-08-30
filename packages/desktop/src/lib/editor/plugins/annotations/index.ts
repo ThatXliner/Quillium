@@ -77,10 +77,12 @@ import {
     keymap,
 } from "@codemirror/view";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
+import { isPhysicalMacCommentShortcut } from "./commentShortcut";
 import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "$lib/editor/diff";
 export { tokenize, wordDiff } from "$lib/editor/diff";
 
+import { logAppEvent } from "$lib/appLog";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";
 import { readersSettings } from "$lib/readers/settings.svelte";
@@ -254,8 +256,61 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
  * Keeping the redirect here prevents mouse actions from bypassing nested-editor
  * routing when the selected prose belongs to a revision.
  */
-export function createCommentFromSelection(view: EditorView): boolean {
-    return redirectToNestedEditor("comment")(view) || createCommentCommand(view);
+export type CommentCreationSource =
+    | "context-menu"
+    | "keyboard-alternate"
+    | "keyboard-physical-fallback"
+    | "keyboard-primary"
+    | "native-menu"
+    | "unknown";
+
+export function createCommentFromSelection(
+    view: EditorView,
+    source: CommentCreationSource = "unknown",
+): boolean {
+    const state = view.state;
+    const selection = state.selection.main;
+    const annotations = state.field(annotationField);
+    const baseDetails = {
+        source,
+        selectionLength: selection.to - selection.from,
+        selectionRangeCount: state.selection.ranges.length,
+        readOnly: state.readOnly,
+        editorFocused: view.hasFocus,
+        annotationCount: Object.keys(annotations).length,
+    };
+
+    if (redirectToNestedEditor("comment")(view)) {
+        void logAppEvent("info", "comment-command", "comment command routed to nested editor", {
+            ...baseDetails,
+            outcome: "routed-to-nested-editor",
+        });
+        return true;
+    }
+
+    const canCreate = canCreateNewComment(annotations);
+    const handled = createCommentCommand(view);
+    const outcome = state.readOnly
+        ? "read-only"
+        : !canCreate
+          ? "pending-comment-already-open"
+          : selection.empty
+            ? "empty-selection"
+            : handled
+              ? "created"
+              : "not-handled";
+    void logAppEvent(
+        handled ? "info" : "warn",
+        "comment-command",
+        handled ? "comment command handled" : "comment command rejected",
+        { ...baseDetails, outcome },
+    );
+    return handled;
+}
+
+/** Pointer and menu entry points use the same nested-editor routing as the keymap. */
+export function createRevisionFromSelection(view: EditorView): boolean {
+    return redirectToNestedEditor("revision")(view) || createRevisionCommand(view);
 }
 
 // -------------------------------------------------------
@@ -983,9 +1038,9 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
 // Keybindings are ordered so that higher-priority handlers
 // run first. For example, nudgeBoundary runs before
 // deleteAdjacentRevision on Backspace/Delete, and
-// redirectToNestedEditor runs before the create commands
-// on Mod-Alt-m/k. If the first handler returns false, the
-// next binding for the same key is tried.
+// redirectToNestedEditor runs before the create commands.
+// If the first handler returns false, the next binding for
+// the same key is tried.
 // -------------------------------------------------------
 // Binds Mod-<suffix>, plus explicit Ctrl-/Meta- variants in dev builds
 // (where the browser-based dev shell can resolve Mod differently from the
@@ -1023,10 +1078,24 @@ export const annotationKeymap: KeyBinding[] = [
         key: "Delete",
         run: deleteAdjacentRevision("forward"),
     },
-    ...bindWithDevAliases("Alt-m", createCommentFromSelection),
+    ...bindWithDevAliases("Alt-m", (view) => createCommentFromSelection(view, "keyboard-primary")),
+    // Keep a second route available while shortcut-boundary logging isolates
+    // the machine-specific failures reported for the established Alt-M chord.
+    ...bindWithDevAliases("Shift-m", (view) =>
+        createCommentFromSelection(view, "keyboard-alternate"),
+    ),
     ...bindWithDevAliases("Alt-k", redirectToNestedEditor("revision")),
     ...bindWithDevAliases("Alt-k", createRevisionCommand),
 ];
+
+const physicalCommentShortcutFallback = Prec.lowest(
+    EditorView.domEventHandlers({
+        keydown(event, view) {
+            if (!isPhysicalMacCommentShortcut(event)) return false;
+            return createCommentFromSelection(view, "keyboard-physical-fallback");
+        },
+    }),
+);
 
 // -------------------------------------------------------
 // Extension bundle
@@ -1107,6 +1176,7 @@ export function _handleEmptyRevisionMarkerMouseDown(
 
 export const annotations = () => [
     Prec.high(keymap.of(annotationKeymap)),
+    physicalCommentShortcutFallback,
     annotationField,
     versionGroupField,
     suggestionPreviewField,

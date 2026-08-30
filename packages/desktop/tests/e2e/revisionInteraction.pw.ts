@@ -160,7 +160,7 @@ test.describe("nested annotation creation from inline editor", () => {
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
 
-        // Press Mod-Alt-M to create a nested comment
+        // Press Mod-Alt-M to create a nested comment.
         await page.keyboard.press("Control+Alt+m");
 
         // A revision modal should open (to host the nested comment)
@@ -212,7 +212,7 @@ test.describe("revision modal annotation visibility", () => {
         await page.keyboard.press("Home");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
 
-        // Create a comment via Mod-Alt-M
+        // Create a comment via Mod-Alt-M.
         await page.keyboard.press("Control+Alt+m");
 
         // The modal's annotations sidebar should show the annotation card
