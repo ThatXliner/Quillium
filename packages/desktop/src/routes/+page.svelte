@@ -548,7 +548,14 @@ onMount(() => {
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:add-comment", () => {
         const view = $editorView;
-        if (!destroyed && view) createCommentFromSelection(view);
+        if (destroyed) return;
+        if (view) {
+            createCommentFromSelection(view, "native-menu");
+        } else {
+            void logAppEvent("warn", "comment-command", "native menu event had no editor", {
+                outcome: "editor-not-mounted",
+            });
+        }
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:licenses", () => {
         if (!destroyed) licensesOpen = !licensesOpen;

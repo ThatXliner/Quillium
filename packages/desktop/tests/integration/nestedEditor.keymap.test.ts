@@ -175,10 +175,34 @@ describe("nested editor keymap intercepts annotation creation", () => {
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
 
-        // Select text in nested editor
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
         const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Alt-m");
+        expect(consumed).toBe(true);
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "nested-annotation-create",
+                command: {
+                    revisionId,
+                    type: "comment",
+                    selectionFrom: 1,
+                    selectionTo: 3,
+                },
+            }),
+        );
+    });
+
+    it("keeps Mod-Shift-m as a nested-editor alternate", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
+        parentView = createParentView("Alpha Beta Gamma");
+        const revisionId = addRevision(parentView, 6, 10);
+        nestedView = createNestedView(parentView, revisionId, "Beta");
+
+        // Select text in nested editor
+        nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
+
+        const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Shift-m");
         expect(consumed).toBe(true);
 
         expect(spy).toHaveBeenCalledWith(
@@ -196,6 +220,39 @@ describe("nested editor keymap intercepts annotation creation", () => {
         // Should NOT have created an annotation in the nested editor's state
         const nestedAnnotations = Object.values(nestedView.state.field(annotationField));
         expect(nestedAnnotations).toHaveLength(0);
+    });
+
+    it("routes a physical Command-Option-M fallback out of the nested editor", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
+        parentView = createParentView("Alpha Beta Gamma");
+        const revisionId = addRevision(parentView, 6, 10);
+        nestedView = createNestedView(parentView, revisionId, "Beta");
+        nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
+
+        const event = new KeyboardEvent("keydown", {
+            key: "µ",
+            code: "KeyM",
+            metaKey: true,
+            altKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        nestedView.contentDOM.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "nested-annotation-create",
+                command: {
+                    revisionId,
+                    type: "comment",
+                    selectionFrom: 1,
+                    selectionTo: 3,
+                },
+            }),
+        );
+        expect(Object.values(nestedView.state.field(annotationField))).toHaveLength(0);
     });
 
     it("Mod-Alt-k with empty selection in nested editor does not fire event", () => {

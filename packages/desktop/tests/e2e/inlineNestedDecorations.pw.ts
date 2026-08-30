@@ -51,6 +51,9 @@ test.describe("inline nested annotation decorations", () => {
         await createNestedComment(q, inlineEditor);
         await expect(q.modalEditor.locator(".cm-comment")).toBeVisible({ timeout: 5_000 });
 
+        // The first Escape dismisses the pending comment composer and restores
+        // focus to the modal editor; the second closes the revision modal.
+        await q.escape();
         await q.escape();
         await expect(q.modalEditor).toBeHidden({ timeout: 5_000 });
         await expect(inlineEditor.locator(".cm-comment")).toBeVisible({ timeout: 5_000 });

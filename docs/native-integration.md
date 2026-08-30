@@ -10,10 +10,10 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 |---------|--------------|-------------|
 | Quillium | Settings…, Open Source Licenses… | `Cmd+,` / `Ctrl+,` |
 | File | Library, Open in New Window, Export variants | `Cmd+O`, `Cmd+Shift+O`, `Cmd+Shift+E` |
-| Edit | Undo, Redo, Cut, Copy, Paste, Select All | Standard |
+| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Add Comment | Standard / `Cmd+Alt+M` |
 | View | Version History, Authorship Report | `Cmd+Shift+H`, `Cmd+Shift+A` |
 | Window | Minimize, Maximize, Close | Standard |
-| Help | Send Feedback | None |
+| Help | Send Feedback, App Logs | None |
 
 ### Export Menu Items
 
@@ -37,8 +37,10 @@ Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@ta
 | `menu:history` | Navigate to version history |
 | `menu:authorship` | Navigate to authorship/provenance playback |
 | `menu:open-in-new-window` | Open selected document in a new window (library page) |
+| `menu:add-comment` | Add a comment to the current editor selection |
 | `menu:licenses` | Open licenses modal |
 | `menu:feedback` | Open the feedback URL |
+| `menu:app-logs` | Open the persistent diagnostic log viewer from any route |
 | `menu:export-txt` | Export plain text |
 | `menu:export-txt-json` | Export text + annotations |
 | `menu:export-json` | Export JSON |
@@ -47,6 +49,28 @@ Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@ta
 | `menu:export-pdf-annotations` | Export PDF with annotations |
 
 `settingsOpen` store is shared between native menu and in-app UI.
+
+Selected prose also gets a native context menu with the operating system's Cut, Copy,
+Paste, and Select All roles plus Quillium's Add Comment and Add Revision actions. Outside a
+selection, the webview's default context menu remains untouched.
+
+## Persistent App Log
+
+`app_log.rs` writes bounded JSONL to `quillium.log` in the same app-local data directory as
+the database (or `QUILLIUM_DATA_DIR` in tests). The current file rotates at 2 MB and the
+viewer reads both the rotated and current logs. **Help → App Logs…** works from every route
+and can copy the log plus app version, platform, user agent, timestamp, and resolved path.
+
+The log captures Rust panics, frontend console output, native menu events, startup version / OS /
+architecture, and explicit operational events. Comment-shortcut diagnosis has three boundaries:
+
+1. `menu` / `menu event` proves a native accelerator reached Tauri.
+2. `comment-shortcut` / `comment shortcut reached webview` proves a physical key event reached JS.
+3. `comment-command` records the entry point and outcome without recording selected prose.
+
+If neither boundary 1 nor 2 appears, the shortcut did not reach Tauri or the webview. If either
+appears without boundary 3, event routing failed. Boundary 3 reports command blockers such as an
+empty selection, a locked draft, or an already-open pending comment.
 
 ## Multi-Window
 
