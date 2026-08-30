@@ -243,16 +243,12 @@ describe("annotation keymap integration", () => {
         expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
     });
 
-    it("keeps Mod-Shift-m as an alternate comment shortcut", () => {
+    it("does not bind Mod-Shift-m as a second comment shortcut", () => {
         view = createView("Alpha Beta Gamma");
-
         view.dispatch({ selection: { anchor: 0, head: 5 } });
-        const consumed = runKey(view, "Mod-Shift-m");
 
-        expect(consumed).toBe(true);
-        const annotations = Object.values(view.state.field(annotationField));
-        expect(annotations).toHaveLength(1);
-        expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
+        expect(runKey(view, "Mod-Shift-m")).toBe(false);
+        expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
     });
 
     it("falls back to physical KeyM when macOS Option changes the event key", () => {

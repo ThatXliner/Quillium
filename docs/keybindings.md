@@ -11,7 +11,6 @@ Intercepts before default CodeMirror bindings:
 | `Backspace` | `nudgeBoundary("backward")` → `deleteAdjacentRevision("backward")` → default |
 | `Delete` | `nudgeBoundary("forward")` → `deleteAdjacentRevision("forward")` → default |
 | `Mod-Alt-M` | `redirectToNestedEditor("comment")` → `createCommentCommand` |
-| `Mod-Shift-M` | Alternate comment shortcut |
 | `Mod-Alt-K` | `redirectToNestedEditor("revision")` → `createRevisionCommand` |
 
 Each handler returns `false` to fall through if it doesn't apply. `redirectToNestedEditor` returns `true` (swallows keypress) only when cursor is inside an active revision.
@@ -39,10 +38,9 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-Alt-M` | Add a comment to the selected prose |
 | `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
 
-The Edit menu exposes **Add Comment** with the same shortcut. `Mod-Shift-M` is also accepted as
-an alternate while shortcut-boundary diagnostics isolate machine-specific delivery failures.
 On macOS, a low-priority physical-key fallback handles `Command-Option-M` by `KeyboardEvent.code`
-if the regular keymap does not normalize Option's layout character back to `M`.
+if the regular keymap does not normalize Option's layout character back to `M`. The shortcut is
+owned by the editor rather than a native menu item so it reaches CodeMirror consistently.
 Right-clicking selected prose opens a native menu with Cut, Copy, Paste, Select All, Add
 Comment, and Add Revision, so annotation creation does not depend on key-event delivery.
 
@@ -63,7 +61,7 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 |-----|--------|
 | `Mod-Z` | Delegates to parent `undo()` |
 | `Mod-Shift-Z` / `Mod-Y` | Delegates to parent `redo()` |
-| `Mod-Alt-M` / `Mod-Shift-M` | Emit `nested-annotation-create` for comment |
+| `Mod-Alt-M` | Emit `nested-annotation-create` for comment |
 | `Mod-Alt-K` | Emit `nested-annotation-create` for revision |
 
 ## AI Sidebar Tab Keys
