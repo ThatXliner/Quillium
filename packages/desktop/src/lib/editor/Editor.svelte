@@ -64,7 +64,7 @@ import {
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import { loadUserDictionary } from "./harper/harperLinter";
@@ -73,7 +73,13 @@ import "./harper/harper.css";
 import type { EventRecord } from "$lib/db/types";
 import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 import type { ViewUpdate } from "@codemirror/view";
-import { GitBranchIcon, LockIcon, Maximize2Icon, Minimize2Icon } from "lucide-svelte";
+import {
+    GitBranchIcon,
+    LockIcon,
+    Maximize2Icon,
+    MessageSquareIcon,
+    Minimize2Icon,
+} from "lucide-svelte";
 import DocumentTabs from "./DocumentTabs.svelte";
 import DocumentTitleBar from "./DocumentTitleBar.svelte";
 import DraftDeleteModal from "./DraftDeleteModal.svelte";
@@ -87,7 +93,11 @@ import {
 } from "./draftPanelResize";
 import type { ListenerOptions } from "./listeners";
 import { flushMetaDebounces, flushPersistQueue } from "./listeners";
-import { annotationField, versionGroupField } from "./plugins/annotations";
+import {
+    annotationField,
+    createCommentFromSelection,
+    versionGroupField,
+} from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { reconstructState } from "./replay";
@@ -110,6 +120,71 @@ let element = $state<HTMLDivElement>();
 let viewportWidth = $state(typeof window === "undefined" ? 1280 : window.innerWidth);
 let resizingDraftPanel = $state(false);
 let draftPanelDragStartWidth = 0;
+let contextMenu = $state<{ x: number; y: number } | null>(null);
+let contextMenuItem = $state<HTMLButtonElement>();
+
+const CONTEXT_MENU_WIDTH = 176;
+const CONTEXT_MENU_HEIGHT = 44;
+const CONTEXT_MENU_MARGIN = 8;
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const commentShortcutLabel = isMac ? "⌘⌥M" : "Ctrl+Alt+M";
+
+function closeContextMenu(): void {
+    contextMenu = null;
+}
+
+function handleEditorContextMenu(event: MouseEvent): void {
+    const view = $editorView;
+    if (!view || view.state.readOnly) return;
+
+    const selection = view.state.selection.main;
+    if (selection.empty) return;
+
+    const clickedPosition = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (
+        clickedPosition === null ||
+        clickedPosition < selection.from ||
+        clickedPosition > selection.to
+    ) {
+        return;
+    }
+
+    event.preventDefault();
+    const maxX = Math.max(
+        CONTEXT_MENU_MARGIN,
+        window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN,
+    );
+    const maxY = Math.max(
+        CONTEXT_MENU_MARGIN,
+        window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN,
+    );
+    contextMenu = {
+        x: Math.min(Math.max(event.clientX, CONTEXT_MENU_MARGIN), maxX),
+        y: Math.min(Math.max(event.clientY, CONTEXT_MENU_MARGIN), maxY),
+    };
+    tick().then(() => contextMenuItem?.focus());
+}
+
+function editorContextMenu(node: HTMLElement): { destroy: () => void } {
+    node.addEventListener("contextmenu", handleEditorContextMenu);
+    return {
+        destroy: () => node.removeEventListener("contextmenu", handleEditorContextMenu),
+    };
+}
+
+function handleContextMenuKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && contextMenu) {
+        event.preventDefault();
+        closeContextMenu();
+        $editorView?.focus();
+    }
+}
+
+function addCommentFromContextMenu(): void {
+    const view = $editorView;
+    closeContextMenu();
+    if (view) createCommentFromSelection(view);
+}
 
 const effectiveDraftPanelWidth = $derived(
     clampDraftPanelWidth(appSettings.draftPanelWidth, viewportWidth),
@@ -589,6 +664,12 @@ onMount(() => {
 });
 </script>
 
+<svelte:window
+    onkeydown={handleContextMenuKeydown}
+    onresize={closeContextMenu}
+    onscroll={closeContextMenu}
+/>
+
 <div class="editor-shell w-full h-full overflow-y-auto relative" class:focus-mode={focusMode}>
     <div
         class="focus-chrome sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none"
@@ -697,6 +778,7 @@ onMount(() => {
         <div
             id="editor-document"
             class="editor-document mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
+            use:editorContextMenu
         >
             {#if isLocked}
                 <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
@@ -721,6 +803,34 @@ onMount(() => {
             <div bind:this={element}></div>
         </div>
     {/await}
+
+    {#if contextMenu}
+        <button
+            type="button"
+            aria-label="Close editor menu"
+            class="fixed inset-0 z-[89] cursor-default border-0 bg-transparent p-0"
+            onclick={closeContextMenu}
+        ></button>
+        <div
+            role="menu"
+            aria-label="Editor actions"
+            class="fixed z-[90] min-w-44 rounded-xl shadow-xl border border-white/40 bg-white/90 p-1 backdrop-blur-md"
+            style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+        >
+            <button
+                bind:this={contextMenuItem}
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={addCommentFromContextMenu}
+            >
+                <MessageSquareIcon size={15} class="text-amber-500" />
+                <span class="flex-1">Add Comment</span>
+                <span class="text-[11px] text-black/30">{commentShortcutLabel}</span>
+            </button>
+        </div>
+    {/if}
 
 
     <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>

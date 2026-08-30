@@ -181,6 +181,49 @@ test.describe("keyboard shortcuts", () => {
         // Pre-comment composer should appear
         const textarea = page.locator("textarea[placeholder='Add a comment…']");
         await expect(textarea).toBeVisible({ timeout: 5_000 });
+        await expect(textarea).toBeFocused();
+    });
+
+    test("right-clicking selected text can create and focus a comment", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+
+        const selectionRect = await page.evaluate(() => {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) return null;
+            const rect = selection.getRangeAt(0).getBoundingClientRect();
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        });
+        expect(selectionRect).not.toBeNull();
+        await page.mouse.click(
+            selectionRect!.x + selectionRect!.width / 2,
+            selectionRect!.y + selectionRect!.height / 2,
+            { button: "right" },
+        );
+
+        const menu = page.getByRole("menu", { name: "Editor actions" });
+        await expect(menu).toBeVisible();
+        await menu.getByRole("menuitem", { name: /Add Comment/ }).click();
+
+        const textarea = page.locator("textarea[placeholder='Add a comment…']");
+        await expect(textarea).toBeVisible({ timeout: 5_000 });
+        await expect(textarea).toBeFocused();
+        await expect(q.annotationCards.first()).toContainText("hello");
+    });
+
+    test("native Edit menu creates and focuses a comment", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await q.emitTauriEvent("menu:add-comment");
+
+        const textarea = page.locator("textarea[placeholder='Add a comment…']");
+        await expect(textarea).toBeVisible({ timeout: 5_000 });
+        await expect(textarea).toBeFocused();
+        await expect(q.annotationCards.first()).toContainText("hello");
     });
 
     test("Cmd+Alt+K creates revision when text is selected", async ({ page }) => {
