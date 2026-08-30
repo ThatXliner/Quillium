@@ -22,8 +22,8 @@ async function setupCommentWithReply(page: Page) {
     // Select "world"
     await page.keyboard.press("End");
     for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
-    // Create comment (Cmd+Shift+M)
-    await page.keyboard.press("Control+Shift+m");
+    // Create comment (Cmd+Alt+M)
+    await page.keyboard.press("Control+Alt+m");
 
     // The PreComment composer should appear — type a comment and submit
     const preComment = page.locator("textarea[placeholder='Add a comment…']");

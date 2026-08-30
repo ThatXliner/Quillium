@@ -77,6 +77,7 @@ import {
     keymap,
 } from "@codemirror/view";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
+import { isPhysicalMacCommentShortcut } from "./commentShortcut";
 import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "$lib/editor/diff";
 export { tokenize, wordDiff } from "$lib/editor/diff";
@@ -257,7 +258,8 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
  */
 export type CommentCreationSource =
     | "context-menu"
-    | "keyboard-legacy"
+    | "keyboard-alternate"
+    | "keyboard-physical-fallback"
     | "keyboard-primary"
     | "native-menu"
     | "unknown";
@@ -1076,15 +1078,24 @@ export const annotationKeymap: KeyBinding[] = [
         key: "Delete",
         run: deleteAdjacentRevision("forward"),
     },
+    ...bindWithDevAliases("Alt-m", (view) => createCommentFromSelection(view, "keyboard-primary")),
+    // Keep a second route available while shortcut-boundary logging isolates
+    // the machine-specific failures reported for the established Alt-M chord.
     ...bindWithDevAliases("Shift-m", (view) =>
-        createCommentFromSelection(view, "keyboard-primary"),
+        createCommentFromSelection(view, "keyboard-alternate"),
     ),
-    // Retain the old binding where the platform delivers it, but do not advertise
-    // it on macOS because Option-Command-M is the system Minimize All shortcut.
-    ...bindWithDevAliases("Alt-m", (view) => createCommentFromSelection(view, "keyboard-legacy")),
     ...bindWithDevAliases("Alt-k", redirectToNestedEditor("revision")),
     ...bindWithDevAliases("Alt-k", createRevisionCommand),
 ];
+
+const physicalCommentShortcutFallback = Prec.lowest(
+    EditorView.domEventHandlers({
+        keydown(event, view) {
+            if (!isPhysicalMacCommentShortcut(event)) return false;
+            return createCommentFromSelection(view, "keyboard-physical-fallback");
+        },
+    }),
+);
 
 // -------------------------------------------------------
 // Extension bundle
@@ -1165,6 +1176,7 @@ export function _handleEmptyRevisionMarkerMouseDown(
 
 export const annotations = () => [
     Prec.high(keymap.of(annotationKeymap)),
+    physicalCommentShortcutFallback,
     annotationField,
     versionGroupField,
     suggestionPreviewField,

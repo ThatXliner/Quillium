@@ -299,7 +299,7 @@ Set to `true` on cleanup transactions from `collapsedRevisionResolver`. Always p
 ### Creating a Comment
 
 ```
-User selects text → Mod-Shift-M
+User selects text → Mod-Alt-M
 → canCreateNewComment() check (single-pending mutex)
 → addAnnotation { _type: "comment", thread: [] }
 → PreComment.svelte renders (pending state)

@@ -10,7 +10,8 @@ Intercepts before default CodeMirror bindings:
 |-----|---------------|
 | `Backspace` | `nudgeBoundary("backward")` → `deleteAdjacentRevision("backward")` → default |
 | `Delete` | `nudgeBoundary("forward")` → `deleteAdjacentRevision("forward")` → default |
-| `Mod-Shift-M` | `redirectToNestedEditor("comment")` → `createCommentCommand` |
+| `Mod-Alt-M` | `redirectToNestedEditor("comment")` → `createCommentCommand` |
+| `Mod-Shift-M` | Alternate comment shortcut |
 | `Mod-Alt-K` | `redirectToNestedEditor("revision")` → `createRevisionCommand` |
 
 Each handler returns `false` to fall through if it doesn't apply. `redirectToNestedEditor` returns `true` (swallows keypress) only when cursor is inside an active revision.
@@ -35,11 +36,13 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-Shift-H` | Navigate to version history |
 | `Mod-Shift-A` | Navigate to authorship report |
 | `Mod-Shift-E` | Export plain text |
-| `Mod-Shift-M` | Add a comment to the selected prose |
+| `Mod-Alt-M` | Add a comment to the selected prose |
 | `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
 
-The Edit menu exposes **Add Comment** with the same shortcut. Quillium deliberately avoids
-`Command-Option-M` on macOS because the system reserves it for Minimize All.
+The Edit menu exposes **Add Comment** with the same shortcut. `Mod-Shift-M` is also accepted as
+an alternate while shortcut-boundary diagnostics isolate machine-specific delivery failures.
+On macOS, a low-priority physical-key fallback handles `Command-Option-M` by `KeyboardEvent.code`
+if the regular keymap does not normalize Option's layout character back to `M`.
 Right-clicking selected prose opens a native menu with Cut, Copy, Paste, Select All, Add
 Comment, and Add Revision, so annotation creation does not depend on key-event delivery.
 
@@ -60,7 +63,7 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 |-----|--------|
 | `Mod-Z` | Delegates to parent `undo()` |
 | `Mod-Shift-Z` / `Mod-Y` | Delegates to parent `redo()` |
-| `Mod-Shift-M` | Emit `nested-annotation-create` for comment |
+| `Mod-Alt-M` / `Mod-Shift-M` | Emit `nested-annotation-create` for comment |
 | `Mod-Alt-K` | Emit `nested-annotation-create` for revision |
 
 ## AI Sidebar Tab Keys
