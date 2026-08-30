@@ -1110,6 +1110,12 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .copy()
         .paste()
         .select_all()
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("add-comment", "Add Comment")
+                .accelerator("CmdOrCtrl+Alt+M")
+                .build(app)?,
+        )
         .build()?;
 
     let view_menu = SubmenuBuilder::new(app, "View")
@@ -1171,6 +1177,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             | "authorship"
             | "library"
             | "new-tab"
+            | "add-comment"
             | "open-in-new-window"
             | "licenses"
             | "feedback"
