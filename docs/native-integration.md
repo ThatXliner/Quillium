@@ -164,9 +164,11 @@ The release workflow validates the final macOS updater archive after `tauri-acti
 checks the embedded version, Apple code signature, Gatekeeper assessment, notarization ticket, and
 Tauri Minisign signature. Public release publication is skipped if any validation fails.
 
-Tags named `mas-vX.Y.Z` run only the signed Mac App Store build and upload it to App Store Connect.
-Use that tag for TestFlight-only builds so the regular desktop updater and public release remain
-unchanged. The version in the desktop manifests must be newer than the last uploaded MAS build.
+Tags named `mas-vX.Y.Z-buildN` run only the signed Mac App Store build and upload it to App Store
+Connect. Use that tag for TestFlight-only builds so the regular desktop updater and public release
+remain unchanged. Keep the user-visible version in `tauri.conf.json`; increment the MAS-only
+`bundle.macOS.bundleVersion` in `tauri.mas.conf.json` before every upload. macOS build numbers must
+increase across all app versions.
 
 ### Rate Limiting (`updater/schedule.ts`)
 
