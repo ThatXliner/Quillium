@@ -60,6 +60,15 @@ fontdb = "0.23"
 tauri-plugin-http = "2.5.9"
 tauri-plugin-notification = "2"
 
+# macOS-local shortcut routing. AppKit can consume Command-Option-M before WKWebView
+# receives a keydown event, so intercept that one chord before native menu dispatch.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "block2",
+    "NSEvent",
+] }
+
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
 # fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt
 # binaries don't target iOS/Android, so mobile builds fall back to

@@ -35,12 +35,12 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-Shift-H` | Navigate to version history |
 | `Mod-Shift-A` | Navigate to authorship report |
 | `Mod-Shift-E` | Export plain text |
-| `Mod-Alt-M` | Add a comment to the selected prose |
 | `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
 
-On macOS, a low-priority physical-key fallback handles `Command-Option-M` by `KeyboardEvent.code`
-if the regular keymap does not normalize Option's layout character back to `M`. The shortcut is
-owned by the editor rather than a native menu item so it reaches CodeMirror consistently.
+On macOS, an app-local AppKit event monitor intercepts `Command-Option-M` before native menu
+dispatch and emits `native:comment-shortcut` to the focused webview. The webview calls the same
+`createCommentFromSelection` command used by the CodeMirror keymap. This avoids machine-dependent
+native menu consumption without registering a global shortcut or adding a native menu item.
 Right-clicking selected prose opens a native menu with Cut, Copy, Paste, Select All, Add
 Comment, and Add Revision, so annotation creation does not depend on key-event delivery.
 

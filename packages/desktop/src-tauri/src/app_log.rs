@@ -147,8 +147,16 @@ pub fn init(app: &tauri::App) -> Result<(), String> {
         }));
     }
 
+    let bundle_version = app
+        .config()
+        .bundle
+        .macos
+        .bundle_version
+        .clone()
+        .unwrap_or_else(|| app.package_info().version.to_string());
     let details = json!({
         "version": app.package_info().version.to_string(),
+        "build": bundle_version,
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
         "debugBuild": cfg!(debug_assertions),

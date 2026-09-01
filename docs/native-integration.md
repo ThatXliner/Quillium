@@ -63,13 +63,15 @@ and can copy the log plus app version, platform, user agent, timestamp, and reso
 The log captures Rust panics, frontend console output, native menu events, startup version / OS /
 architecture, and explicit operational events. Comment-shortcut diagnosis has three boundaries:
 
-1. `menu` / `menu event` proves a native accelerator reached Tauri.
-2. `comment-shortcut` / `comment shortcut reached webview` proves a physical key event reached JS.
+1. `native-shortcut` proves macOS intercepted Command-Option-M before native menu dispatch and
+   emitted it to the focused webview.
+2. `comment-shortcut` proves the fallback CodeMirror key event reached JS on platforms where the
+   native interception is not installed.
 3. `comment-command` records the entry point and outcome without recording selected prose.
 
-If neither boundary 1 nor 2 appears, the shortcut did not reach Tauri or the webview. If either
-appears without boundary 3, event routing failed. Boundary 3 reports command blockers such as an
-empty selection, a locked draft, or an already-open pending comment.
+If neither boundary 1 nor 2 appears, the shortcut did not reach the app. If either appears without
+boundary 3, event routing failed. Boundary 3 reports command blockers such as an empty selection,
+a locked draft, or an already-open pending comment.
 
 ## Multi-Window
 

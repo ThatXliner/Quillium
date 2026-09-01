@@ -260,6 +260,7 @@ export type CommentCreationSource =
     | "context-menu"
     | "keyboard-physical-fallback"
     | "keyboard-primary"
+    | "native-shortcut"
     | "unknown";
 
 export function createCommentFromSelection(
