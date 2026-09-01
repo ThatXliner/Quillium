@@ -4252,9 +4252,11 @@ dependencies = [
 name = "quillium"
 version = "0.24.4"
 dependencies = [
+ "block2 0.6.2",
  "fastembed",
  "fontdb",
  "keyring",
+ "objc2-app-kit 0.3.2",
  "printpdf",
  "rusqlite",
  "serde",
