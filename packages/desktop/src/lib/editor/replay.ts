@@ -49,6 +49,7 @@ import {
 import {
     _revisionCleanup,
     addAnnotation,
+    aiEditProvenance,
     annotationField,
     nestedEditorEdit,
     removeAnnotation,
@@ -133,6 +134,9 @@ function replayAnnotationsOf(
     }
     if (entry.annotations.revisionProvenance !== undefined) {
         annotations.push(revisionProvenance.of(entry.annotations.revisionProvenance));
+    }
+    if (entry.annotations.aiGenerations !== undefined) {
+        annotations.push(aiEditProvenance.of(entry.annotations.aiGenerations));
     }
     if (entry.annotations.nestedEditorEdit !== undefined) {
         annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));

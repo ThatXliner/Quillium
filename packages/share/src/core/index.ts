@@ -29,6 +29,8 @@ export { resolveRevisionVersionState } from "./resolveRevisionState";
 export { versionGroupField } from "./versionGroupField";
 export { getActiveAnnotation } from "./utils";
 export {
+    AiGenerationProvenanceSchema,
+    type AiGenerationProvenance,
     type Annotation,
     type Annotations,
     type AnnotationType,

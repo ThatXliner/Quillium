@@ -58,6 +58,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
 | `editorialTarget.ts` | Request-scoped document, draft, and selection validation |
 | `persistence.ts` | AI SDK message validation and draft-scoped conversation persistence |
+| `provenance.ts` | Stable request metadata for AI-created annotations and accepted text |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
 | `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
 
@@ -235,6 +236,12 @@ that the selected source text has not changed in place.
 It dispatches valid calls through the same CodeMirror annotation commands used
 by the rest of the app. Reader-persona tool calls attach the persona name as the
 annotation author but cannot expand the parent task's permissions.
+
+Every AI-created annotation records a request ID, editorial task, provider,
+model, timestamp, and optional reader persona. Revisions also copy that metadata
+onto each generated version. When the writer applies an AI revision or
+suggestion, the event log carries the same request record alongside the existing
+AI authorship classification. Human and legacy annotations omit the field.
 
 AutoAI does not consume streamed tool calls. It uses a structured Zod response
 and applies the normalized results itself; see [AutoAI](./autoai.md).

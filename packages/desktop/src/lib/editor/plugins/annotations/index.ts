@@ -110,6 +110,7 @@ import {
 } from "./annotationField";
 import { nestedEditorEdit } from "./annotationField";
 import {
+    type AiGenerationProvenance,
     type Annotation,
     type AnnotationType,
     type VersionState,
@@ -767,6 +768,7 @@ export function createComment({
     editorSelection,
     comment,
     author = "AI",
+    aiProvenance,
     view,
 }: {
     targetText?: string;
@@ -774,6 +776,7 @@ export function createComment({
     editorSelection?: EditorSelection;
     comment: string;
     author?: string;
+    aiProvenance?: AiGenerationProvenance;
     view: EditorView;
 }): boolean {
     const state = view.state;
@@ -791,6 +794,7 @@ export function createComment({
             effects: [
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "comment"),
+                    ...(aiProvenance ? { aiProvenance } : {}),
                     status: "active",
                     thread: [{ message: comment, author, time: Date.now() }],
                 }),
@@ -807,6 +811,7 @@ export function createSuggestion({
     replacements,
     comment,
     author = "AI",
+    aiProvenance,
     dispatch,
     state,
 }: {
@@ -817,6 +822,7 @@ export function createSuggestion({
     context?: string;
     editorSelection?: EditorSelection;
     author?: string;
+    aiProvenance?: AiGenerationProvenance;
     comment?: string;
 }): boolean {
     // Locked drafts are read-only — no new annotations (#160).
@@ -837,6 +843,7 @@ export function createSuggestion({
             effects: [
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "suggestion"),
+                    ...(aiProvenance ? { aiProvenance } : {}),
                     replacements: normalizedReplacements,
                     author,
                     thread: comment ? [{ message: comment, author, time: Date.now() }] : [],
@@ -855,6 +862,7 @@ export function createRevision({
     versions,
     threadMessage,
     author = "AI",
+    aiProvenance,
     view,
 }: {
     targetText?: string;
@@ -863,6 +871,7 @@ export function createRevision({
     versions: Array<{ label: string; text: string }>;
     threadMessage: string;
     author?: string;
+    aiProvenance?: AiGenerationProvenance;
     view: EditorView;
 }) {
     const state = view.state;
@@ -882,7 +891,14 @@ export function createRevision({
     );
     const allVersions = [
         originalVersion,
-        ...versions.map(({ label, text }) => makeVersion({ doc: text, label, provenance: "ai" })),
+        ...versions.map(({ label, text }) =>
+            makeVersion({
+                doc: text,
+                label,
+                provenance: "ai",
+                ...(aiProvenance ? { aiProvenance } : {}),
+            }),
+        ),
     ];
     view.dispatch(
         state.update({
@@ -890,6 +906,7 @@ export function createRevision({
                 ...containedAnnotations.map((annotation) => removeAnnotation.of(annotation)),
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "revision"),
+                    ...(aiProvenance ? { aiProvenance } : {}),
                     activeVersionId: originalVersion.id,
                     versions: allVersions,
                     thread: [{ message: threadMessage, author, time: Date.now() }],

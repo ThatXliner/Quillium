@@ -4,6 +4,15 @@ export type SerializedThreadMessage = {
     time: number;
 };
 
+export type SerializedAiGenerationProvenance = {
+    requestId: string;
+    task: "global-review" | "local-rewrite" | "background-review";
+    provider: string;
+    model: string;
+    createdAt: number;
+    persona?: string;
+};
+
 export type SerializedAnnotationBase = {
     id: string;
     type: "comment" | "suggestion" | "revision";
@@ -11,6 +20,7 @@ export type SerializedAnnotationBase = {
     to: number;
     selectedText: string;
     thread: SerializedThreadMessage[];
+    aiProvenance?: SerializedAiGenerationProvenance;
 };
 
 export type SerializedCommentAnnotation = SerializedAnnotationBase & {
@@ -32,6 +42,8 @@ export type SerializedRevisionAnnotation = SerializedAnnotationBase & {
         versionId?: string;
         text: string;
         label?: string;
+        provenance?: "human" | "ai" | "mixed";
+        aiProvenance?: SerializedAiGenerationProvenance;
         /** Read-only presentation metadata for a linked version group. */
         group?: {
             id: string;

@@ -162,6 +162,8 @@ After 30s of no `keydown` or caret events, the face sleeps. Any interaction trig
 - **Document content**: Engine subscribes to `documentContent` store
 - **Annotation creation**: Uses same factory functions as AI sidebar
 - **Context**: Shares the budgeted draft, writer brief, and annotation context builder
+- **Provenance**: Records the request ID, provider, model, task, timestamp, and configured
+  persona on every created annotation
 - **AI settings**: Shares provider config, lazy credential loading, and `createModel()`
 - **Processing/cancellation**: Registers an AI task, uses the shared abort signal,
   and cancels a pending debounce on the global `stop-ai` event

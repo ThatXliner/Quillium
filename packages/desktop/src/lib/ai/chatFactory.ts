@@ -1,4 +1,5 @@
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
+import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
 import posthog from "$lib/posthog";
 import type { ReaderPersona } from "$lib/readers/presets";
 import {
@@ -69,6 +70,7 @@ import {
     isPersistentConversationMode,
     saveAiConversation,
 } from "./persistence";
+import { createAiGenerationProvenance } from "./provenance";
 import {
     aiSettings,
     documentContext,
@@ -91,6 +93,11 @@ const MODE_TASKS: Record<AiChatMode, EditorialTask> = {
     dictionary: "dictionary",
 };
 
+const PROVENANCE_TASKS = {
+    feedback: "global-review",
+    revise: "local-rewrite",
+} as const;
+
 const TOOL_ACTIONS: Record<ToolCall["toolName"], EditorialAction> = {
     createComment: "comment",
     createSuggestion: "suggestion",
@@ -100,6 +107,7 @@ const TOOL_ACTIONS: Record<ToolCall["toolName"], EditorialAction> = {
 type ToolCallGuard = {
     target: EditorialTargetSnapshot;
     allowedActions: readonly EditorialAction[];
+    provenance: AiGenerationProvenance;
 };
 
 /**
@@ -131,7 +139,7 @@ function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: strin
     }
 
     try {
-        dispatchToolCall(toolCall, view, author);
+        dispatchToolCall(toolCall, view, guard.provenance, author);
     } catch (e) {
         // The model may reference text that no longer exists (the user edited
         // mid-stream, or the text was hallucinated). Skip that annotation
@@ -141,11 +149,16 @@ function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: strin
     }
 }
 
-function dispatchToolCall(toolCall: ToolCall, view: EditorView, author?: string) {
+function dispatchToolCall(
+    toolCall: ToolCall,
+    view: EditorView,
+    provenance: AiGenerationProvenance,
+    author?: string,
+) {
     switch (toolCall.toolName) {
         case "createComment": {
             const { targetText, context, comment } = toolCall.input;
-            createComment({ targetText, context, comment, view, author });
+            createComment({ targetText, context, comment, view, author, aiProvenance: provenance });
             posthog.capture("annotation_created", { type: "comment", persona: author });
             break;
         }
@@ -159,6 +172,7 @@ function dispatchToolCall(toolCall: ToolCall, view: EditorView, author?: string)
                 state: view.state,
                 dispatch: view.dispatch,
                 author,
+                aiProvenance: provenance,
             });
             posthog.capture("annotation_created", {
                 type: "suggestion",
@@ -176,6 +190,7 @@ function dispatchToolCall(toolCall: ToolCall, view: EditorView, author?: string)
                 threadMessage,
                 view,
                 author,
+                aiProvenance: provenance,
             });
             if (created) {
                 posthog.capture("annotation_created", {
@@ -235,6 +250,12 @@ export async function runMultiPersonaStreams({
     });
 
     const tasks = personas.map(async (persona) => {
+        const provenance = createAiGenerationProvenance({
+            task: PROVENANCE_TASKS[mode],
+            provider: aiSettings.provider,
+            model: aiSettings.model,
+            persona: persona.name,
+        });
         const stream = await streamFn({
             messages,
             documentContent: documentContentAtStart,
@@ -262,7 +283,11 @@ export async function runMultiPersonaStreams({
                 if (value?.type === "tool-input-available") {
                     handleToolCall(
                         { toolName: value.toolName, input: value.input } as ToolCall,
-                        { target: targetAtStart, allowedActions: policy.allowedActions },
+                        {
+                            target: targetAtStart,
+                            allowedActions: policy.allowedActions,
+                            provenance,
+                        },
                         persona.name,
                     );
                 }
@@ -361,13 +386,22 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
     };
 
     let targetAtSend: EditorialTargetSnapshot | undefined;
+    let provenanceAtSend: AiGenerationProvenance | undefined;
 
     const chat = new Chat({
         transport: makeTransport(transportWithTracking, (target) => {
             targetAtSend = target;
+            provenanceAtSend =
+                mode === "feedback" || mode === "revise"
+                    ? createAiGenerationProvenance({
+                          task: PROVENANCE_TASKS[mode],
+                          provider: aiSettings.provider,
+                          model: aiSettings.model,
+                      })
+                    : undefined;
         }),
         onToolCall: ({ toolCall }) => {
-            if (!targetAtSend) return;
+            if (!targetAtSend || !provenanceAtSend) return;
             const policy = compileEditorialPolicy({
                 task: MODE_TASKS[mode],
                 hasSelection: !!targetAtSend.selectedText,
@@ -375,6 +409,7 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
             handleToolCall(toolCall as ToolCall, {
                 target: targetAtSend,
                 allowedActions: policy.allowedActions,
+                provenance: provenanceAtSend,
             });
         },
         onFinish: ({ messages }) => {

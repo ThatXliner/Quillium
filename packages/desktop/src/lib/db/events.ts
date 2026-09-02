@@ -8,6 +8,8 @@
  */
 
 /** A single change operation within a doc_change event. */
+import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
+
 export type ChangeSpec = {
     from: number;
     to: number;
@@ -47,6 +49,8 @@ export type Provenance = {
     insertedChars?: number;
     /** Total removed-char count (sum of toA - fromA). */
     removedChars?: number;
+    /** AI requests whose generated text this event applied. */
+    aiGenerations?: AiGenerationProvenance[];
 };
 
 /** Serialised CM6 SelectionRange. */
@@ -96,6 +100,7 @@ export type TransactionReplayAnnotations = {
     doneTopSelectionsAfter?: SelectionJSON[];
     revisionInternalEdit?: boolean;
     revisionProvenance?: "human" | "ai" | "mixed";
+    aiGenerations?: AiGenerationProvenance[];
     nestedEditorEdit?: number;
     revisionCleanup?: boolean;
 };

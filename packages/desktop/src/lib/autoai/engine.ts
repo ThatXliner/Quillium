@@ -15,6 +15,7 @@ import {
     type EditorialTargetSnapshot,
     validateEditorialActionTarget,
 } from "$lib/ai/editorialTarget";
+import { createAiGenerationProvenance } from "$lib/ai/provenance";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
@@ -25,6 +26,7 @@ import {
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
 import {
+    type AiGenerationProvenance,
     createComment,
     createRevision,
     createSuggestion,
@@ -110,10 +112,12 @@ function applyAnnotations({
     result,
     target,
     allowedActions,
+    provenance,
 }: {
     result: AutoAIReviewOutput;
     target: EditorialTargetSnapshot;
     allowedActions: readonly EditorialAction[];
+    provenance: AiGenerationProvenance;
 }): number {
     const view = get(editorView);
     if (!view) return 0;
@@ -149,6 +153,7 @@ function applyAnnotations({
                     targetText: ann.targetText,
                     comment: ann.comment,
                     author: autoAISettings.persona,
+                    aiProvenance: provenance,
                     view,
                 });
                 applied++;
@@ -157,6 +162,7 @@ function applyAnnotations({
                     targetText: ann.targetText,
                     replacements: [{ text: ann.replacement, rationale: ann.rationale }],
                     author: autoAISettings.persona,
+                    aiProvenance: provenance,
                     state: view.state,
                     dispatch: view.dispatch.bind(view),
                 });
@@ -172,6 +178,7 @@ function applyAnnotations({
                         targetText: ann.targetText,
                         comment: `${ann.rationale ?? "Suggested replacement"}: "${ann.replacement}"`,
                         author: autoAISettings.persona,
+                        aiProvenance: provenance,
                         view,
                     });
                     applied++;
@@ -182,6 +189,7 @@ function applyAnnotations({
                     versions: ann.versions,
                     threadMessage: ann.threadMessage,
                     author: autoAISettings.persona,
+                    aiProvenance: provenance,
                     view,
                 });
                 if (created) {
@@ -196,6 +204,7 @@ function applyAnnotations({
                         targetText: ann.targetText,
                         comment: `${ann.threadMessage} (suggested version: "${ann.versions[0].label}" — ${ann.versions[0].text})`,
                         author: autoAISettings.persona,
+                        aiProvenance: provenance,
                         view,
                     });
                     applied++;
@@ -280,6 +289,12 @@ async function runReview(content: string, manual = false, generation = contentGe
             aiSettings.model,
             aiSettings.baseURL,
         );
+        const provenance = createAiGenerationProvenance({
+            task: "background-review",
+            provider: aiSettings.provider,
+            model: aiSettings.model,
+            persona: autoAISettings.persona,
+        });
         const contextPacket = buildAiContextPacket({
             mode: "autoai",
             documentContent: content,
@@ -310,6 +325,7 @@ async function runReview(content: string, manual = false, generation = contentGe
             result: object,
             target,
             allowedActions: policy.allowedActions,
+            provenance,
         });
         if (manual && applied === 0) {
             toast("No issues found — your writing looks good.");
