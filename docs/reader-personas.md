@@ -96,14 +96,16 @@ sequenceDiagram
 When feedback is triggered:
 1. The panel checks the **per-mode opt-in** (`personaModes[mode]`). If the mode is OFF, it uses a single plain stream and stops here.
 2. If ON, it reads `getEnabledPersonas()`; if any exist, it calls `runMultiPersonaStreams()`
-3. The factory snapshots the document ID, draft, selection and range, open
-   annotations, active annotation, writer brief, and provider settings once.
+3. The factory snapshots the document, tab, draft, nested revision-version path,
+   selection and mapped range, open annotations, active annotation, writer brief,
+   saved decisions, editorial preferences, and provider settings once.
 4. Each persona runs **in parallel** (`Promise.all`) with the shared abort signal.
 5. Each stream sends `buildPersonaPrompt(persona)` as a writer-selected lens before
    the context packet.
 6. Tool-call handlers attribute annotations to the persona's name.
-7. A tool call must match the captured document, draft, selection, and task
-   permissions; late output cannot land in a different draft.
+7. A tool call must match the captured editor identity, selection, and task
+   permissions. Late output cannot land in another draft, revision branch, or
+   changed target passage.
 
 If the mode is OFF, or it is ON but no personas are enabled, it falls back to standard single-stream.
 

@@ -34,14 +34,16 @@ flowchart LR
 
 For sidebar conversations, `createAiChat()` creates an AI SDK `Chat` with a
 custom transport. At send time the transport snapshots the current document,
-draft, selection and range, open annotations, active annotation, writer brief,
-and provider settings. `editorialPolicy.ts` compiles the shared author-first
+tab, draft, nested revision-version path, selection and mapped range, open
+annotations, active annotation, writer brief, saved decisions, editorial
+preferences, and provider settings. `editorialPolicy.ts` compiles the shared author-first
 policy, task recipe, and allowed action types. `clientStreams.ts` prepends the
 context packet as a user message and calls `streamText()`.
 
 Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
-with Zod, checked against the turn's permissions and captured document, draft,
-and selection, then routed by `chatFactory.ts` to the annotation commands. A
+with Zod, checked against the turn's permissions and captured editor identity,
+mapped selection, and target text, then routed by `chatFactory.ts` to the
+annotation commands. A
 stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 ### Core Files
@@ -69,7 +71,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 |-----|-----|-----------|---------|
 | Chat | 1 | `Chat.svelte` | General writing conversation |
 | Feedback | 2 | `Feedback.svelte` | Big-picture editorial feedback and passage annotations |
-| Revise | 3 | `Revise.svelte` | Line-level suggestions and comments |
+| Revise | 3 | `Revise.svelte` | Local comments, suggestions, and reversible revisions |
 | Context | 4 | `DocumentContext.svelte` | Writer-provided brief sent with AI requests |
 | Readers | 5 | `Readers.svelte` | Reader-persona configuration |
 | Settings | 6 | `AISettings.svelte` | Provider, connection, model, and credential configuration |
@@ -80,7 +82,8 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 - Switching drafts loads that draft's Chat, Feedback, and Revise histories. Clearing
   a panel deletes only that mode's history for the active draft.
 - Uses the shared context packet before the writer's latest prompt.
-- Shows a context lens for selection, nearby text, draft, annotations, and brief.
+- Shows a context lens for selection, nearby text, draft, annotations, brief, and
+  saved decisions.
 - Offers context-aware action cards based on selection, draft length, brief, and
   open annotations.
 - Does not expose annotation-creation tools; its response is conversational text.

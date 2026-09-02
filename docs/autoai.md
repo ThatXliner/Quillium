@@ -59,7 +59,8 @@ flowchart TD
 
 Before review, AutoAI builds the same context packet used by the sidebar:
 
-1. Writer-provided document context is included as user-role guidance.
+1. The writer brief and explicit saved editorial decisions are included as
+   separate user-role guidance sources.
 2. Long drafts are clipped to the AutoAI budget with an explicit omission marker.
 3. Open annotations are included as editorial state so the model can avoid duplicates.
 4. The model is instructed to annotate only exact substrings present in the
@@ -172,7 +173,8 @@ After 30s of no `keydown` or caret events, the face sleeps. Any interaction trig
 
 - **Document content**: Engine subscribes to `documentContent` store
 - **Annotation creation**: Uses the same guarded `editorialAction.ts` gateway as the AI sidebar
-- **Context**: Shares the budgeted draft, writer brief, and annotation context builder
+- **Context**: Shares the budgeted draft, writer brief, saved decisions, and
+  annotation context builder
 - **Provenance**: Records the request ID, provider, model, task, timestamp, and configured
   persona on every created annotation
 - **AI settings**: Shares provider config, lazy credential loading, and `createModel()`

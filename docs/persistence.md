@@ -222,3 +222,19 @@ These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Ta
 | `setSnapshotRetention` | Set retention policy |
 | `pruneSnapshotsKeepLastN` | Keep only N most recent |
 | `pruneSnapshotsOlderThan` | Delete older than N days |
+
+### AI state
+
+| Function | Purpose |
+|----------|---------|
+| `loadAiConversation` | Load one Chat, Feedback, or Revise history for a draft |
+| `saveAiConversation` | Validate and replace one draft-mode conversation |
+| `clearAiConversation` | Delete one draft-mode conversation |
+| `getDocumentWriterBrief` | Load the document-scoped writer brief |
+| `setDocumentWriterBrief` | Replace the document-scoped writer brief |
+| `getDocumentEditorialDecisions` | Load writer-confirmed decisions JSON |
+| `setDocumentEditorialDecisions` | Validate and replace writer-confirmed decisions JSON |
+
+Conversation rows cascade with their draft. Briefs and saved decisions cascade
+with their document and are copied when a document is duplicated. Rust validates
+conversation JSON, brief length, and the saved-decision array before writing.
