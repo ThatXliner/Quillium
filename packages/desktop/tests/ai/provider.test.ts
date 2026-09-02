@@ -16,14 +16,28 @@ const mocked = vi.hoisted(() => {
         provider: "google",
         specificationVersion: "v1",
     }));
+    const deepseekModelBuilder = vi.fn((modelId: string) => ({
+        modelId,
+        provider: "deepseek",
+        specificationVersion: "v1",
+    }));
+    const oauthModelBuilder = vi.fn((modelId: string) => ({
+        modelId,
+        provider: "openai-oauth",
+        specificationVersion: "v1",
+    }));
 
     return {
         createOpenAI: vi.fn(() => openaiModelBuilder),
         createAnthropic: vi.fn(() => anthropicModelBuilder),
         createGoogleGenerativeAI: vi.fn(() => googleModelBuilder),
+        createDeepSeek: vi.fn(() => deepseekModelBuilder),
+        createOpenAIOAuth: vi.fn(() => oauthModelBuilder),
         openaiModelBuilder,
         anthropicModelBuilder,
         googleModelBuilder,
+        deepseekModelBuilder,
+        oauthModelBuilder,
     };
 });
 
@@ -39,10 +53,24 @@ vi.mock("@ai-sdk/google", () => ({
     createGoogleGenerativeAI: mocked.createGoogleGenerativeAI,
 }));
 
-import { createModel } from "$lib/ai/provider";
+vi.mock("@ai-sdk/deepseek", () => ({
+    createDeepSeek: mocked.createDeepSeek,
+}));
+
+vi.mock("@openai-oauth/ai-sdk", () => ({
+    createOpenAIOAuth: mocked.createOpenAIOAuth,
+}));
+
+vi.mock("$lib/ai/openaiOAuth", () => ({
+    getFreshOpenAISession: vi.fn(),
+    openAIOAuthFetch: vi.fn(),
+}));
+
+import { createModel, resetOpenAIOAuthProvider } from "$lib/ai/provider";
 
 beforeEach(() => {
     vi.clearAllMocks();
+    resetOpenAIOAuthProvider();
 });
 
 describe("createModel", () => {
@@ -99,5 +127,27 @@ describe("createModel", () => {
         expect(mocked.createOpenAI).not.toHaveBeenCalled();
         expect(mocked.createAnthropic).not.toHaveBeenCalled();
         expect(model).toMatchObject({ provider: "google", modelId: "gemini-2.0-flash" });
+    });
+
+    it("routes deepseek through createDeepSeek", () => {
+        const model = createModel("deepseek", "deepseek-key", "deepseek-chat");
+
+        expect(mocked.createDeepSeek).toHaveBeenCalledWith({ apiKey: "deepseek-key" });
+        expect(mocked.deepseekModelBuilder).toHaveBeenCalledWith("deepseek-chat");
+        expect(model).toMatchObject({ provider: "deepseek", modelId: "deepseek-chat" });
+    });
+
+    it("reuses the ChatGPT OAuth provider across turns", () => {
+        const first = createModel("openai-oauth", "", "codex-one");
+        const second = createModel("openai-oauth", "", "codex-two");
+
+        expect(mocked.createOpenAIOAuth).toHaveBeenCalledTimes(1);
+        expect(mocked.createOpenAIOAuth).toHaveBeenCalledWith(
+            expect.objectContaining({ kind: "openai-oauth" }),
+        );
+        expect(mocked.oauthModelBuilder).toHaveBeenNthCalledWith(1, "codex-one");
+        expect(mocked.oauthModelBuilder).toHaveBeenNthCalledWith(2, "codex-two");
+        expect(first).toMatchObject({ provider: "openai-oauth", modelId: "codex-one" });
+        expect(second).toMatchObject({ provider: "openai-oauth", modelId: "codex-two" });
     });
 });

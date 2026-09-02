@@ -313,6 +313,24 @@ AutoAI does not consume streamed tool calls. It uses a structured Zod response,
 then sends each normalized result through the same `editorialAction.ts` gateway;
 see [AutoAI](./autoai.md).
 
+## Provider Conformance Fixtures
+
+`tests/ai/fixtures/editorialConformance.ts` defines deterministic cases for the
+OpenAI API, ChatGPT OAuth, OpenAI-compatible endpoints, Anthropic, Google, and
+DeepSeek. `providerConformance.test.ts` runs every case through the same stream
+builder and proves that:
+
+- reverse outline remains text-only,
+- broad feedback exposes only comments,
+- exact compression exposes only revisions and keeps its exact target,
+- writer briefs and saved decisions remain user-role reference material, and
+- canonical and observed alias fields normalize into one AutoAI annotation model.
+
+`provider.test.ts` separately checks each SDK adapter, including reuse of the
+stateful ChatGPT OAuth provider across turns. These fixtures do not call remote
+models, so failures are deterministic and do not depend on credentials or network
+availability.
+
 ## Parallel Personas and Document Safety
 
 Feedback and Revise default to one stream. If personas are enabled for that
