@@ -22,6 +22,7 @@ src/
 │   │   ├── Readers.svelte     # Reader persona configuration panel
 │   │   ├── Revise.svelte      # Line-edit suggestions and comments
 │   │   ├── annotationContext.ts # Convert open annotations into AI context
+│   │   ├── editorialAction.ts # Guard, resolve, dedupe, and dispatch AI annotations
 │   │   ├── editorialTarget.ts # Map in-flight selection targets through editor changes
 │   │   ├── chatFactory.ts     # Chat transport, persona fan-out, and tool dispatch
 │   │   ├── clientStreams.ts   # Mode prompts, streaming, tools, and structured generation

@@ -39,7 +39,7 @@ flowchart TD
     Context["Build shared context packet<br/>(brief + budgeted draft + annotations)"]
     Generate["generateObject()<br/>Single non-streaming call"]
     Normalize["Normalize provider field variants<br/>Drop malformed items individually"]
-    Apply["Validate request generation, document, and draft<br/>Apply allowed annotations"]
+    Apply["Validate request identity and policy<br/>Resolve one exact target and apply"]
     Done["autoAIPhase = idle"]
 
     Change --> Guard --> Debounce --> Thinking --> LoadKey --> Reviewing --> Context --> Generate --> Normalize --> Apply --> Done
@@ -74,12 +74,15 @@ rejecting an otherwise useful review.
 
 For each normalized result:
 
-1. Check that the request generation, document ID, and draft ID still match.
+1. Check that the request generation, document ID, tab ID, and draft ID still match.
 2. Check that the annotation type is still enabled and allowed by the shared
    editorial policy.
-3. Verify `targetText` against the live editor document, not the reviewed snapshot.
-4. Dispatch `createComment`, `createSuggestion`, or `createRevision`.
-5. If a suggestion or revision overlaps an existing one and comments are allowed,
+3. Resolve `targetText` to one exact range in the live editor. Missing or repeated
+   targets are rejected rather than applied to the first or every match.
+4. Skip concerns that substantially repeat an active annotation on the same passage.
+5. Dispatch through the shared editorial action gateway, which also rejects
+   read-only editors.
+6. If a suggestion or revision overlaps an existing one and comments are allowed,
    preserve the feedback as a comment and show a warning.
 
 New edits abort an in-flight AutoAI request when a new review is scheduled. Every
@@ -160,7 +163,7 @@ After 30s of no `keydown` or caret events, the face sleeps. Any interaction trig
 ## Integration Points
 
 - **Document content**: Engine subscribes to `documentContent` store
-- **Annotation creation**: Uses same factory functions as AI sidebar
+- **Annotation creation**: Uses the same guarded `editorialAction.ts` gateway as the AI sidebar
 - **Context**: Shares the budgeted draft, writer brief, and annotation context builder
 - **Provenance**: Records the request ID, provider, model, task, timestamp, and configured
   persona on every created annotation

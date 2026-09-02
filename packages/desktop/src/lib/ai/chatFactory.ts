@@ -1,9 +1,4 @@
-import {
-    annotationField,
-    createComment,
-    createRevision,
-    createSuggestion,
-} from "$lib/editor/plugins/annotations";
+import { annotationField } from "$lib/editor/plugins/annotations";
 import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import posthog from "$lib/posthog";
@@ -67,6 +62,11 @@ import {
     streamRevise,
 } from "./clientStreams";
 import {
+    type EditorialActionPayload,
+    applyEditorialAction,
+    editorialActionFailureMessage,
+} from "./editorialAction";
+import {
     type EditorialAction,
     type EditorialTask,
     compileEditorialPolicy,
@@ -75,11 +75,7 @@ import {
     type EditorialTargetSnapshot,
     captureEditorialTarget,
     getActiveEditorialView,
-    getEditorialBranchPath,
     releaseEditorialTarget,
-    resolveEditorialTargetRange,
-    resolveEditorialTargetView,
-    validateEditorialActionTarget,
 } from "./editorialTarget";
 import {
     clearAiConversation,
@@ -115,12 +111,6 @@ const PROVENANCE_TASKS = {
     revise: "local-rewrite",
 } as const;
 
-const TOOL_ACTIONS: Record<ToolCall["toolName"], EditorialAction> = {
-    createComment: "comment",
-    createSuggestion: "suggestion",
-    createRevision: "revision",
-};
-
 type ToolCallGuard = {
     target: EditorialTargetSnapshot;
     allowedActions: readonly EditorialAction[];
@@ -137,96 +127,62 @@ type ToolCallGuard = {
 function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: string) {
     const rootView = get(editorView);
     if (!rootView) return;
-    const view = resolveEditorialTargetView(rootView, guard.target);
-    if (!view) {
-        console.warn("[chatFactory] rejected AI annotation: branch-changed");
-        toast.warning("The revision branch changed, so Quillium skipped one AI annotation.");
-        return;
-    }
 
-    const validation = validateEditorialActionTarget({
-        snapshot: guard.target,
+    const result = applyEditorialAction({
+        rootView,
+        target: guard.target,
         current: {
             documentId: get(currentDocumentId),
             tabId: get(currentTabId),
             draftId: get(currentDraftId),
-            documentText: view.state.doc.toString(),
-            selectedTextRange: resolveEditorialTargetRange(view, guard.target),
-            branchPath: getEditorialBranchPath(view),
         },
-        targetText: toolCall.input.targetText,
-        action: TOOL_ACTIONS[toolCall.toolName],
         allowedActions: guard.allowedActions,
+        payload: toolCallPayload(toolCall),
+        provenance: guard.provenance,
+        author,
     });
-    if (!validation.ok) {
-        console.warn("[chatFactory] rejected AI annotation:", validation.reason);
-        toast.warning("The draft or selection changed, so Quillium skipped one AI annotation.");
+    if (!result.ok) {
+        console.warn("[chatFactory] rejected AI annotation:", result.reason);
+        toast.warning(editorialActionFailureMessage(result.reason));
         return;
     }
 
-    try {
-        dispatchToolCall(toolCall, view, guard.provenance, author);
-    } catch (e) {
-        // The model may reference text that no longer exists (the user edited
-        // mid-stream, or the text was hallucinated). Skip that annotation
-        // instead of failing the whole stream.
-        console.warn("[chatFactory] tool call failed, skipping annotation:", e);
-        toast.warning("The AI referenced text that couldn't be found — skipped one annotation.");
+    captureToolCallAnalytics(toolCall, author);
+}
+
+function toolCallPayload(toolCall: ToolCall): EditorialActionPayload {
+    switch (toolCall.toolName) {
+        case "createComment": {
+            return { action: "comment", ...toolCall.input };
+        }
+        case "createSuggestion": {
+            return { action: "suggestion", ...toolCall.input };
+        }
+        case "createRevision": {
+            return { action: "revision", ...toolCall.input };
+        }
     }
 }
 
-function dispatchToolCall(
-    toolCall: ToolCall,
-    view: EditorView,
-    provenance: AiGenerationProvenance,
-    author?: string,
-) {
+function captureToolCallAnalytics(toolCall: ToolCall, author?: string) {
     switch (toolCall.toolName) {
-        case "createComment": {
-            const { targetText, context, comment } = toolCall.input;
-            createComment({ targetText, context, comment, view, author, aiProvenance: provenance });
+        case "createComment":
             posthog.capture("annotation_created", { type: "comment", persona: author });
             break;
-        }
-        case "createSuggestion": {
-            const { targetText, context, replacements, comment } = toolCall.input;
-            createSuggestion({
-                targetText,
-                context,
-                replacements,
-                comment,
-                state: view.state,
-                dispatch: view.dispatch,
-                author,
-                aiProvenance: provenance,
-            });
+        case "createSuggestion":
             posthog.capture("annotation_created", {
                 type: "suggestion",
-                replacement_count: replacements.length,
+                replacement_count: toolCall.input.replacements.length,
                 persona: author,
             });
             break;
-        }
-        case "createRevision": {
-            const { targetText, context, versions, threadMessage } = toolCall.input;
-            const created = createRevision({
-                targetText,
-                context,
-                versions,
-                threadMessage,
-                view,
-                author,
-                aiProvenance: provenance,
+        case "createRevision":
+            posthog.capture("annotation_created", {
+                type: "revision",
+                version_count: toolCall.input.versions.length,
+                persona: author,
             });
-            if (created) {
-                posthog.capture("annotation_created", {
-                    type: "revision",
-                    version_count: versions.length,
-                    persona: author,
-                });
-            }
             break;
-        }
     }
 }
 

@@ -10,11 +10,14 @@
 
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
-import { type EditorialAction, compileEditorialPolicy } from "$lib/ai/editorialPolicy";
 import {
-    type EditorialTargetSnapshot,
-    validateEditorialActionTarget,
-} from "$lib/ai/editorialTarget";
+    type EditorialActionFailureReason,
+    type EditorialActionPayload,
+    applyEditorialAction,
+    editorialActionFailureMessage,
+} from "$lib/ai/editorialAction";
+import { type EditorialAction, compileEditorialPolicy } from "$lib/ai/editorialPolicy";
+import type { EditorialTargetSnapshot } from "$lib/ai/editorialTarget";
 import { createAiGenerationProvenance } from "$lib/ai/provenance";
 import { createModel } from "$lib/ai/provider";
 import {
@@ -26,12 +29,7 @@ import {
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import {
-    type AiGenerationProvenance,
-    createComment,
-    createRevision,
-    createSuggestion,
-} from "$lib/editor/plugins/annotations/index";
+import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/index";
 import { appEventBus } from "$lib/events/appEventBus";
 import { captureException } from "$lib/posthog";
 import {
@@ -105,10 +103,29 @@ let reviewAbortController: AbortController | null = null;
 let unsubscribe: (() => void) | null = null;
 let unsubStopAi: (() => void) | null = null;
 
-function actionForAnnotation(
-    type: AutoAIReviewOutput["annotations"][number]["type"],
-): EditorialAction {
-    return type;
+function autoAIActionPayload(
+    annotation: ReturnType<typeof normalizeAutoAIReview>[number],
+): EditorialActionPayload {
+    if (annotation.type === "comment") {
+        return {
+            action: "comment",
+            targetText: annotation.targetText,
+            comment: annotation.comment,
+        };
+    }
+    if (annotation.type === "suggestion") {
+        return {
+            action: "suggestion",
+            targetText: annotation.targetText,
+            replacements: [{ text: annotation.replacement, rationale: annotation.rationale }],
+        };
+    }
+    return {
+        action: "revision",
+        targetText: annotation.targetText,
+        versions: annotation.versions,
+        threadMessage: annotation.threadMessage,
+    };
 }
 
 function applyAnnotations({
@@ -125,98 +142,77 @@ function applyAnnotations({
     const view = get(editorView);
     if (!view) return 0;
 
-    // Validate against the live document, not the reviewed snapshot — the
-    // user may have edited while the AI call was in flight, and annotations
-    // are applied to the live view.
-    const doc = view.state.doc.toString();
     const allowed = new Set(allowedActions);
     let applied = 0;
+    const reportableFailures = new Set<EditorialActionFailureReason>();
 
     for (const ann of normalizeAutoAIReview(result)) {
         // Skip annotation types the user disabled.
         if (!allowed.has(ann.type)) continue;
-        const validation = validateEditorialActionTarget({
-            snapshot: target,
+        const actionResult = applyEditorialAction({
+            rootView: view,
+            target,
             current: {
                 documentId: get(currentDocumentId),
                 tabId: get(currentTabId),
                 draftId: get(currentDraftId),
-                documentText: doc,
             },
-            targetText: ann.targetText,
-            action: actionForAnnotation(ann.type),
             allowedActions,
+            payload: autoAIActionPayload(ann),
+            provenance,
+            author: autoAISettings.persona,
         });
-        if (!validation.ok) continue;
-        // Verify the targetText actually exists in the current doc.
-        if (!doc.includes(ann.targetText)) continue;
-
-        try {
-            if (ann.type === "comment") {
-                createComment({
-                    targetText: ann.targetText,
-                    comment: ann.comment,
-                    author: autoAISettings.persona,
-                    aiProvenance: provenance,
-                    view,
-                });
-                applied++;
-            } else if (ann.type === "suggestion") {
-                const created = createSuggestion({
-                    targetText: ann.targetText,
-                    replacements: [{ text: ann.replacement, rationale: ann.rationale }],
-                    author: autoAISettings.persona,
-                    aiProvenance: provenance,
-                    state: view.state,
-                    dispatch: view.dispatch.bind(view),
-                });
-                if (created) {
-                    applied++;
-                } else if (allowed.has("comment")) {
-                    // Suggestion overlaps an existing one — fall back to a comment so
-                    // the AI's feedback is not silently lost.
-                    toast.warning(
-                        "A suggestion overlapped an existing one — added as a comment instead.",
-                    );
-                    createComment({
-                        targetText: ann.targetText,
-                        comment: `${ann.rationale ?? "Suggested replacement"}: "${ann.replacement}"`,
-                        author: autoAISettings.persona,
-                        aiProvenance: provenance,
-                        view,
-                    });
-                    applied++;
-                }
-            } else if (ann.type === "revision") {
-                const created = createRevision({
-                    targetText: ann.targetText,
-                    versions: ann.versions,
-                    threadMessage: ann.threadMessage,
-                    author: autoAISettings.persona,
-                    aiProvenance: provenance,
-                    view,
-                });
-                if (created) {
-                    applied++;
-                } else if (allowed.has("comment")) {
-                    // Revision overlaps an existing one — fall back to a comment so
-                    // the AI's feedback is not silently lost.
-                    toast.warning(
-                        "A revision overlapped an existing one — added as a comment instead.",
-                    );
-                    createComment({
-                        targetText: ann.targetText,
-                        comment: `${ann.threadMessage} (suggested version: "${ann.versions[0].label}" — ${ann.versions[0].text})`,
-                        author: autoAISettings.persona,
-                        aiProvenance: provenance,
-                        view,
-                    });
-                    applied++;
-                }
-            }
-        } catch {
-            // targetText lookup failed (e.g. doc changed mid-review) — skip.
+        if (actionResult.ok) {
+            applied++;
+            continue;
         }
+
+        if (actionResult.reason === "annotation-conflict" && allowed.has("comment")) {
+            const fallbackComment =
+                ann.type === "suggestion"
+                    ? `${ann.rationale}: "${ann.replacement}"`
+                    : ann.type === "revision"
+                      ? `${ann.threadMessage} (suggested version: "${ann.versions[0].label}" - ${ann.versions[0].text})`
+                      : null;
+            if (fallbackComment) {
+                const fallbackResult = applyEditorialAction({
+                    rootView: view,
+                    target,
+                    current: {
+                        documentId: get(currentDocumentId),
+                        tabId: get(currentTabId),
+                        draftId: get(currentDraftId),
+                    },
+                    allowedActions,
+                    payload: {
+                        action: "comment",
+                        targetText: ann.targetText,
+                        comment: fallbackComment,
+                    },
+                    provenance,
+                    author: autoAISettings.persona,
+                });
+                if (fallbackResult.ok) {
+                    toast.warning(
+                        `An AI ${ann.type} conflicted with an open annotation, so Quillium added it as a comment.`,
+                    );
+                    applied++;
+                    continue;
+                }
+                if (fallbackResult.reason !== "duplicate-concern") {
+                    reportableFailures.add(fallbackResult.reason);
+                }
+                continue;
+            }
+        }
+
+        if (actionResult.reason !== "duplicate-concern") {
+            reportableFailures.add(actionResult.reason);
+        }
+    }
+
+    for (const reason of reportableFailures) {
+        toast.warning(editorialActionFailureMessage(reason));
     }
     return applied;
 }

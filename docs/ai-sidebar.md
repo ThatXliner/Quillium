@@ -55,6 +55,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `openaiOAuth.ts` | Beta ChatGPT PKCE sign-in, token refresh, model discovery, and keychain session storage |
 | `context.ts` | Context budgeting, source metadata, selection focus, and context-aware actions |
 | `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
+| `editorialAction.ts` | Unique-range resolution, stale/read-only checks, duplicate-concern screening, and annotation dispatch |
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
 | `editorialTarget.ts` | Transient CodeMirror target bookmarks plus document, tab, draft, nested-branch, and selection validation |
 | `persistence.ts` | AI SDK message validation and draft-scoped conversation persistence |
@@ -246,7 +247,12 @@ reload.
 | `createSuggestion` | Revise | One or more replacement options for a short target |
 
 Tool schemas require exact `targetText` and accept surrounding `context` to
-disambiguate repeated phrases. `chatFactory.ts` also verifies the captured
+disambiguate repeated phrases. `editorialAction.ts` requires one unique exact
+match inside the mapped request scope. It never turns repeated text into a
+multi-range annotation; an unresolved or ambiguous target produces a visible
+warning. The gateway also rejects read-only editors, incompatible annotation
+overlaps, and an open concern with the same or substantially matching wording
+on the same passage. `chatFactory.ts` also verifies the captured
 document, tab, draft, and nested revision-version path, the turn's allowed action
 types, selection containment, and that the selected source text has not changed
 in place. A selected request also
@@ -268,8 +274,9 @@ onto each generated version. When the writer applies an AI revision or
 suggestion, the event log carries the same request record alongside the existing
 AI authorship classification. Human and legacy annotations omit the field.
 
-AutoAI does not consume streamed tool calls. It uses a structured Zod response
-and applies the normalized results itself; see [AutoAI](./autoai.md).
+AutoAI does not consume streamed tool calls. It uses a structured Zod response,
+then sends each normalized result through the same `editorialAction.ts` gateway;
+see [AutoAI](./autoai.md).
 
 ## Parallel Personas and Document Safety
 
