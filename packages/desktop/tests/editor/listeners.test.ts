@@ -4,6 +4,7 @@ import {
     _updateRevisionVersionState,
     addAnnotation,
     annotationField,
+    applySuggestion,
     nestedEditorEdit,
     revisionProvenance,
     setActiveRevisionVersion,
@@ -512,10 +513,17 @@ describe("listeners integration", () => {
         view = new EditorView({ state, parent });
 
         // Add a revision with two versions
+        const aiGeneration = {
+            requestId: "request-1",
+            task: "local-rewrite" as const,
+            provider: "openai",
+            model: "gpt-5.6-sol",
+            createdAt: 1234,
+        };
         const versions = [
             makeVersion({ doc: "hello" }),
             makeVersion({ doc: "hi" }),
-            makeVersion({ doc: "hey", provenance: "ai" }),
+            makeVersion({ doc: "hey", provenance: "ai", aiProvenance: aiGeneration }),
             makeVersion({ doc: "greetings", provenance: "mixed" }),
         ];
         const revision = {
@@ -556,8 +564,9 @@ describe("listeners integration", () => {
                     payloadJson: string;
                 }
             ).payloadJson,
-        ) as { provenance: { origin: string } };
+        ) as { provenance: { origin: string; aiGenerations?: unknown[] } };
         expect(aiPayload.provenance.origin).toBe("ai-revision");
+        expect(aiPayload.provenance.aiGenerations).toEqual([aiGeneration]);
 
         invoked.length = 0;
         view.dispatch(setActiveRevisionVersion(view.state, revision.id, versions[3].id));
@@ -570,5 +579,48 @@ describe("listeners integration", () => {
             ).payloadJson,
         ) as { provenance: { origin: string } };
         expect(mixedPayload.provenance.origin).toBe("mixed-revision");
+    });
+
+    it("carries AI request provenance when a suggestion is applied", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
+            return null;
+        });
+
+        view = makeView({}, "Hello world");
+        const aiGeneration = {
+            requestId: "request-suggestion",
+            task: "local-rewrite" as const,
+            provider: "openai",
+            model: "gpt-5.6-sol",
+            createdAt: 2345,
+        };
+        const suggestion = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "suggestion",
+            ),
+            replacements: [{ text: "Hi" }],
+            author: "AI",
+            aiProvenance: aiGeneration,
+        };
+        view.dispatch({ effects: [addAnnotation.of(suggestion)] });
+        await flushMicrotasks();
+        invoked.length = 0;
+
+        view.dispatch(applySuggestion(view.state, suggestion.id, 0));
+        await flushMicrotasks();
+
+        const appendCall = invoked.find((call) => call.cmd === "cmd_append_event");
+        const args = appendCall?.args as { payloadJson?: string };
+        const payload = JSON.parse(args.payloadJson ?? "{}") as {
+            provenance?: { origin: string; aiGenerations?: unknown[] };
+        };
+        expect(view.state.doc.toString()).toBe("Hi world");
+        expect(payload.provenance?.origin).toBe("ai-revision");
+        expect(payload.provenance?.aiGenerations).toEqual([aiGeneration]);
     });
 });

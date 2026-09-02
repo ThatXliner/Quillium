@@ -96,6 +96,55 @@ test.describe("AI sidebar", () => {
             .toBeGreaterThan(580);
     });
 
+    test("shows typed outline and exact-compression recipes", async ({ page }) => {
+        const draft = "One two three four five six seven eight nine ten eleven twelve.";
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: draft,
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-chat").click();
+        await expect(q.aiSidebar.getByRole("button", { name: /Reverse outline/ })).toBeVisible();
+
+        await q.selectRange(0, draft.length);
+        await page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']").click();
+        await expect(q.aiSidebar.getByRole("button", { name: /Cut to 9 words/ })).toBeVisible();
+        await expect(q.aiSidebar).toContainText("Exact target from 12 words");
+    });
+
+    test("saves and restores document editorial decisions", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: "A draft with an intentionally unresolved ending.",
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-context").click();
+        const decisionInput = q.aiSidebar.getByLabel("New editorial decision");
+        await decisionInput.fill("Keep the ending unresolved.");
+        await decisionInput.press("Enter");
+        await expect(q.aiSidebar.getByText("Keep the ending unresolved.")).toBeVisible();
+
+        await expect
+            .poll(() =>
+                page.evaluate(() => localStorage.getItem("mock-editorial-decisions:doc-test-1")),
+            )
+            .toBe('["Keep the ending unresolved."]');
+
+        await page.reload();
+        await expect(q.editor).toBeVisible({ timeout: 40_000 });
+        await page.locator("#ai-tab-context").click();
+        await expect(q.aiSidebar.getByText("Keep the ending unresolved.")).toBeVisible();
+
+        await q.aiSidebar
+            .getByRole("button", { name: "Remove decision: Keep the ending unresolved." })
+            .click();
+        await expect(q.aiSidebar.getByText("No decisions saved yet.")).toBeVisible();
+    });
+
     test("hides starter suggestions after first chat action", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
@@ -214,6 +263,49 @@ test.describe("AI sidebar", () => {
         await page.getByRole("button", { name: "Add an API key", exact: true }).click();
 
         await expect(q.aiSidebar).toContainText("AI Settings");
+    });
+
+    test("editorial approach preferences persist across reloads", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        await page.getByRole("button", { name: "AI Settings", exact: true }).click();
+        await expect(q.aiSidebar.getByText("Editorial approach", { exact: true })).toBeVisible();
+
+        const stance = q.aiSidebar.getByLabel("Stance");
+        const density = q.aiSidebar.getByLabel("Feedback density");
+        const voice = q.aiSidebar.getByLabel("Voice latitude");
+
+        await expect(stance).toHaveValue("author-first");
+        await expect(density).toHaveValue("focused");
+        await expect(voice).toHaveValue("preserve");
+
+        await stance.selectOption("exploratory");
+        await density.selectOption("thorough");
+        await voice.selectOption("transform");
+
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    JSON.parse(localStorage.getItem("quillium-ai-editorial-preferences") ?? "null"),
+                ),
+            )
+            .toEqual({
+                stance: "exploratory",
+                feedbackDensity: "thorough",
+                voiceLatitude: "transform",
+            });
+
+        await page.reload();
+        await expect(q.editor).toBeVisible({ timeout: 40_000 });
+        await page.getByRole("button", { name: "AI Settings", exact: true }).click();
+
+        await expect(q.aiSidebar.getByLabel("Stance")).toHaveValue("exploratory");
+        await expect(q.aiSidebar.getByLabel("Feedback density")).toHaveValue("thorough");
+        await expect(q.aiSidebar.getByLabel("Voice latitude")).toHaveValue("transform");
     });
 });
 

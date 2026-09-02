@@ -61,7 +61,7 @@ import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
 
 let input = $state("");
-const { chat, clearChat } = createAiChat({ mode: "chat" });
+const { chat, clearChat, sendMessage } = createAiChat({ mode: "chat" });
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
 let hasConversationActivity = $derived(
@@ -78,7 +78,7 @@ function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
         has_selection: !!$selectedText,
     });
-    chat.sendMessage({ text: prompt });
+    sendMessage(prompt);
 }
 
 function useContextAction(action: ContextAction) {
@@ -87,7 +87,7 @@ function useContextAction(action: ContextAction) {
         action: action.id,
         has_selection: !!$selectedText,
     });
-    chat.sendMessage({ text: action.prompt });
+    sendMessage(action.prompt, action.turn);
 }
 
 // Pre-fill input from app-level "open chat" requests.
@@ -98,7 +98,7 @@ $effect(() => {
 });
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "chat");
 
 /**
  * Extract the user's message from the form, validate it, send it
@@ -115,7 +115,7 @@ async function handleSubmit(event: Event) {
         message_length: userMessage.length,
     });
     input = "";
-    await chat.sendMessage({ text: userMessage });
+    await sendMessage(userMessage);
 }
 </script>
 

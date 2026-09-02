@@ -166,16 +166,17 @@ function originOf(event: NormalizedEvent): Provenance["origin"] {
 
 type LooseAnnotation = {
     thread?: Array<{ author?: unknown }>;
+    aiProvenance?: { requestId?: unknown };
 };
 
 /**
- * True when an annotation_add payload's annotation has any thread message
- * authored by "AI". Defensive: thread may be absent or malformed on
- * legacy/foreign payloads.
+ * True when an annotation_add payload carries explicit AI request metadata or
+ * has a legacy thread message authored by "AI".
  */
 function isAiAuthoredAnnotation(payload: EventPayload): boolean {
     if (payload.type !== "annotation_add") return false;
     const annotation = payload.annotation as LooseAnnotation | undefined;
+    if (typeof annotation?.aiProvenance?.requestId === "string") return true;
     const thread = annotation?.thread;
     if (!Array.isArray(thread)) return false;
     return thread.some((message) => message?.author === "AI");

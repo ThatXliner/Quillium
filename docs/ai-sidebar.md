@@ -33,15 +33,18 @@ flowchart LR
 ```
 
 For sidebar conversations, `createAiChat()` creates an AI SDK `Chat` with a
-custom transport. At send time the transport snapshots the current draft,
-selection and range, open annotations, active annotation, writer brief, and
-provider settings. `clientStreams.ts` then builds the mode-specific system
-prompt, prepends the context packet as a user message, and calls `streamText()`.
+custom transport. At send time the transport snapshots the current document,
+tab, draft, nested revision-version path, selection and mapped range, open
+annotations, active annotation, writer brief, saved decisions, editorial
+preferences, and provider settings. `editorialPolicy.ts` compiles the shared author-first
+policy, task recipe, and allowed action types. `clientStreams.ts` prepends the
+context packet as a user message and calls `streamText()`.
 
 Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
-with Zod and routed by `chatFactory.ts` to the annotation commands. A tool call
-whose exact target can no longer be found is skipped with a warning instead of
-failing the entire stream.
+with Zod, checked against the turn's permissions and captured editor identity,
+mapped selection, and target text, then routed by `chatFactory.ts` to the
+annotation commands. A
+stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 ### Core Files
 
@@ -54,8 +57,13 @@ failing the entire stream.
 | `openaiOAuth.ts` | Beta ChatGPT PKCE sign-in, token refresh, model discovery, and keychain session storage |
 | `context.ts` | Context budgeting, source metadata, selection focus, and context-aware actions |
 | `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
+| `editorialAction.ts` | Unique-range resolution, stale/read-only checks, duplicate-concern screening, and annotation dispatch |
+| `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
+| `editorialTarget.ts` | Transient CodeMirror target bookmarks plus document, tab, draft, nested-branch, and selection validation |
+| `persistence.ts` | AI SDK message validation and draft-scoped conversation persistence |
+| `provenance.ts` | Stable request metadata for AI-created annotations and accepted text |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
-| `clientStreams.ts` | Mode prompts, tools, streaming, context generation, and characterization |
+| `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
 
 ## Sidebar Tabs
 
@@ -63,53 +71,108 @@ failing the entire stream.
 |-----|-----|-----------|---------|
 | Chat | 1 | `Chat.svelte` | General writing conversation |
 | Feedback | 2 | `Feedback.svelte` | Big-picture editorial feedback and passage annotations |
-| Revise | 3 | `Revise.svelte` | Line-level suggestions and comments |
+| Revise | 3 | `Revise.svelte` | Local comments, suggestions, and reversible revisions |
 | Context | 4 | `DocumentContext.svelte` | Writer-provided brief sent with AI requests |
 | Readers | 5 | `Readers.svelte` | Reader-persona configuration |
 | Settings | 6 | `AISettings.svelte` | Provider, connection, model, and credential configuration |
 
 ### Chat
 
-- Conversational writing help with session-local message history.
+- Conversational writing help with message history stored per draft and sidebar mode.
+- Switching drafts loads that draft's Chat, Feedback, and Revise histories. Clearing
+  a panel deletes only that mode's history for the active draft.
 - Uses the shared context packet before the writer's latest prompt.
-- Shows a context lens for selection, nearby text, draft, annotations, and brief.
+- Shows a context lens for selection, nearby text, draft, annotations, brief, and
+  saved decisions.
 - Offers context-aware action cards based on selection, draft length, brief, and
   open annotations.
 - Does not expose annotation-creation tools; its response is conversational text.
+- The Reverse outline recipe lists each paragraph or section's current job and
+  structural gaps in the conversation without creating annotations.
+- When an active revision is in context, Compare versions gives a read-only
+  account of meaning, voice, pacing, emphasis, and reader-effect tradeoffs.
 
 ### Feedback
 
 - Focuses on structure, voice, argument, scope, pacing, and style.
-- Uses `createComment` for passage-level observations and `createRevision` for
-  two or three meaningfully different versions of a passage.
-- Keeps the overall response conversational while requiring concrete passage
-  feedback to go through tools.
+- Uses `createComment` for a small number of high-impact passage observations.
+- Does not create rewrites during broad review. The writer can move to Revise or
+  ask for a targeted rewrite afterward.
+- Tool use is optional, and a strong draft may receive no annotations.
 - Includes user-defined Feedback quick actions from general app settings.
 - Can fan out through enabled reader personas when Feedback's persona toggle is on.
 
 ### Revise
 
-- Works as a line editor for words and short phrases.
-- Uses `createSuggestion` for replacement options and can use `createComment`
-  for explanation or clarification.
-- Instructs the model to target the smallest useful span, include sentence or
-  clause context for disambiguation, and provide at least two alternatives.
+- Works on a writer-requested passage while preserving intent and voice.
+- Uses `createSuggestion` for local replacements, `createRevision` for coherent
+  passage alternatives, and `createComment` when diagnosis or a question should
+  precede rewriting.
+- Does not require a minimum number of changes. With a selection, every target
+  must remain inside that captured selection.
+- A selection of at least eight words offers an exact-compression recipe. Its
+  target is 75 percent of the current selection, rounded down. The turn can only
+  create one reversible revision, must cover the complete captured selection,
+  and is rejected unless every proposed alternative meets the exact count.
 - Includes user-defined Revise quick actions from general app settings.
 - Can fan out through enabled reader personas when Revise's persona toggle is on.
 
 ### Context
 
-- Stores one freeform writer brief in localStorage.
+- Stores one freeform writer brief per document in SQLite.
+- Stores explicit editorial decisions separately per document. Writers add and
+  remove these decisions themselves; Quillium does not infer permanent rules
+  from chat messages or accepted edits.
+- The first document opened after this upgrade claims any legacy global brief from
+  localStorage, then removes the legacy value.
 - Can generate a brief from a prompt with a non-streaming `generateText()` call.
 - Uses the `context-generation-format` feature flag to choose freeform or
   structured output.
-- The brief is shown separately in the context lens and appended to the
-  mode-specific system prompt.
+- The brief is shown separately in the context lens and serialized as writer
+  guidance in the user-role context packet. It is never appended to the system
+  policy.
+- Saved decisions are serialized as a distinct `writer-confirmed` context source,
+  so providers can respect them without confusing them with draft text or the brief.
 
 ### Readers
 
 See [Reader Personas](./reader-personas.md) for persona configuration, parallel
 execution, attribution, and cost behavior.
+
+### Editorial approach
+
+AI Settings stores three device-local preferences that apply to every editorial
+request:
+
+| Preference | Options | Default |
+|------------|---------|---------|
+| Stance | Author-first, Collaborative, Exploratory | Author-first |
+| Feedback density | Quiet, Focused, Thorough | Focused |
+| Voice latitude | Preserve, Adapt, Transform | Preserve |
+
+The request transport snapshots these values alongside provider settings. The
+policy compiler inserts them after the fixed capability contract, so they can
+shape advice but cannot grant another action type. Transform applies only to
+explicit revision proposals that retain the original text.
+
+### Per-turn task recipes
+
+Context actions carry typed task metadata through the local AI transport. The
+transport validates each task against its panel before compiling tools, so prompt
+wording cannot expand a turn's permissions.
+
+| Recipe | Surface | Allowed document actions |
+|--------|---------|--------------------------|
+| Conversation | Chat | None |
+| Reverse outline | Chat | None |
+| Compare versions | Chat | None |
+| Global review | Feedback | Comment |
+| Local rewrite | Revise | Comment, suggestion, revision |
+| Exact compression | Revise | Revision only |
+
+An unsupported panel/task pair falls back to the text-only conversation policy.
+Exact compression also requires a positive whole-word target and a live selection
+before provider inference starts.
 
 ## Context Packets
 
@@ -123,6 +186,7 @@ a deterministic, mode-specific packet with these possible sources:
 | Draft | Full text up to the mode budget, otherwise a head/tail excerpt with an omission marker |
 | Annotations | Up to six relevant open comments, suggestions, or revisions within a separate character budget |
 | Brief | Writer-provided context, kept logically separate from draft text |
+| Decisions | Explicit document-scoped choices, labeled as writer-confirmed |
 
 Open annotations include their target, nearby context, recent thread messages,
 and a limited number of suggestion replacements or revision versions. They are
@@ -145,8 +209,10 @@ Annotation context is separately capped at six items and approximately 4,800
 characters. These are character budgets, not provider token limits.
 
 The context message is inserted before the conversation messages, leaving the
-writer's latest prompt as the most recent instruction. The context lens uses the
-same packet metadata, so its source list reflects what the request builder sees.
+writer's latest prompt as the most recent instruction. Drafts, selections,
+annotations, and briefs are JSON-serialized and labeled as untrusted reference
+material. The context lens uses the same packet metadata, so its source list
+reflects what the request builder sees.
 
 ## Providers, Connections, and Models
 
@@ -201,6 +267,8 @@ reload.
   appear at ordinary app startup.
 - localStorage contains only presence flags and non-secret preferences, not
   provider API keys or OAuth tokens.
+- SQLite stores draft-scoped sidebar conversations plus document-scoped writer briefs
+  and editorial decisions.
 - ChatGPT OAuth sessions are serialized in the OS keychain under the
   `openai-oauth` provider name.
 - A local/custom endpoint's optional key is held in memory and is not persisted.
@@ -211,18 +279,60 @@ reload.
 
 | Tool | Used by | Result |
 |------|---------|--------|
-| `createComment` | Feedback, Revise | Comment thread anchored to exact text |
-| `createRevision` | Feedback | Two or three named passage versions plus a thread message |
+| `createComment` | Feedback, local Revise | Comment thread anchored to exact text |
+| `createRevision` | Local Revise, exact compression | Two or more named passage versions plus a thread message |
 | `createSuggestion` | Revise | One or more replacement options for a short target |
 
 Tool schemas require exact `targetText` and accept surrounding `context` to
-disambiguate repeated phrases. `chatFactory.ts` dispatches valid calls through
-the same CodeMirror annotation commands used by the rest of the app and records
-annotation analytics. Reader-persona tool calls attach the persona name as the
-annotation author.
+disambiguate repeated phrases. `editorialAction.ts` requires one unique exact
+match inside the mapped request scope. It never turns repeated text into a
+multi-range annotation; an unresolved or ambiguous target produces a visible
+warning. The gateway also rejects read-only editors, incompatible annotation
+overlaps, and an open concern with the same or substantially matching wording
+on the same passage. Exact compression adds a full-selection and exact-word-count
+constraint before dispatch. `chatFactory.ts` also verifies the captured
+document, tab, draft, and nested revision-version path, the turn's allowed action
+types, selection containment, and that the selected source text has not changed
+in place. A selected request also
+registers a transient range in `editorialTargetBookmarkField`. CodeMirror maps
+the range as the writer edits, so an insertion before the passage moves the
+target instead of invalidating it. An edit inside the selected source changes
+the mapped text and causes the tool call to be rejected.
+It dispatches valid calls through the same CodeMirror annotation commands used
+by the rest of the app. Reader-persona tool calls attach the persona name as the
+annotation author but cannot expand the parent task's permissions.
 
-AutoAI does not consume streamed tool calls. It uses a structured Zod response
-and applies the normalized results itself; see [AutoAI](./autoai.md).
+Bookmarks live only for the request. They are removed on completion or error,
+and persona batches remove their shared bookmark in a `finally` block. The field
+is not part of `savedFields`, event persistence, or undo history.
+
+Every AI-created annotation records a request ID, editorial task, provider,
+model, timestamp, and optional reader persona. Revisions also copy that metadata
+onto each generated version. When the writer applies an AI revision or
+suggestion, the event log carries the same request record alongside the existing
+AI authorship classification. Human and legacy annotations omit the field.
+
+AutoAI does not consume streamed tool calls. It uses a structured Zod response,
+then sends each normalized result through the same `editorialAction.ts` gateway;
+see [AutoAI](./autoai.md).
+
+## Provider Conformance Fixtures
+
+`tests/ai/fixtures/editorialConformance.ts` defines deterministic cases for the
+OpenAI API, ChatGPT OAuth, OpenAI-compatible endpoints, Anthropic, Google, and
+DeepSeek. `providerConformance.test.ts` runs every case through the same stream
+builder and proves that:
+
+- reverse outline remains text-only,
+- broad feedback exposes only comments,
+- exact compression exposes only revisions and keeps its exact target,
+- writer briefs and saved decisions remain user-role reference material, and
+- canonical and observed alias fields normalize into one AutoAI annotation model.
+
+`provider.test.ts` separately checks each SDK adapter, including reuse of the
+stateful ChatGPT OAuth provider across turns. These fixtures do not call remote
+models, so failures are deterministic and do not depend on credentials or network
+availability.
 
 ## Parallel Personas and Document Safety
 
@@ -230,9 +340,10 @@ Feedback and Revise default to one stream. If personas are enabled for that
 specific mode, `runMultiPersonaStreams()` starts one stream per enabled persona
 with `Promise.all()`.
 
-The fan-out path snapshots the document ID and editor context once. Tool calls
-are only applied if the user is still on that document, preventing a late
-persona result from landing in a different draft. See
+The fan-out path snapshots the document ID, tab ID, draft ID, nested branch path,
+selection, and owning editor once. Tool calls use the same action and target guard as ordinary
+requests, preventing a late persona result from landing in another draft or
+outside the captured selection. See
 [Reader Personas](./reader-personas.md) for the full behavior.
 
 ## Processing State and Cancellation
@@ -264,10 +375,10 @@ signal.
 ### Annotation-Thread Suggestions
 
 Comment cards and comment modals can ask AI to respond to the current thread.
-`commentAi.ts` builds a prompt from the thread messages and anchored document
-text, calls `streamChat()`, collects text deltas, and appends the result as an
-`AI` thread message. This path sends no additional draft context, but it does
-include the writer brief through the normal Chat system prompt. If stopped, it
+`commentAi.ts` builds a JSON reference packet from the thread messages and
+anchored document text, calls the dedicated thread-reply policy, collects text
+deltas, and appends the result as an `AI` thread message. This path sends no
+additional draft context. The writer brief remains user-role guidance. If stopped, it
 keeps any text that streamed before cancellation rather than adding an error.
 
 ### Dictionary and Thesaurus

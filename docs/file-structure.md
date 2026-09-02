@@ -15,13 +15,15 @@ src/
 │   │   ├── ContextInfoButton.svelte # Compact context-source popover trigger
 │   │   ├── ContextLens.svelte # Context summary and context-aware action cards
 │   │   ├── CustomQuickActions.svelte # User-defined Feedback/Revise actions
-│   │   ├── DocumentContext.svelte # Writer brief editor and generator
+│   │   ├── DocumentContext.svelte # Writer brief, saved decisions, and generator
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
 │   │   ├── ModelGuideModal.svelte # Curated model rationale and recommendations
 │   │   ├── PersonaInfoModal.svelte # Reader-persona explanation
 │   │   ├── Readers.svelte     # Reader persona configuration panel
 │   │   ├── Revise.svelte      # Line-edit suggestions and comments
 │   │   ├── annotationContext.ts # Convert open annotations into AI context
+│   │   ├── editorialAction.ts # Guard, resolve, dedupe, and dispatch AI annotations
+│   │   ├── editorialTarget.ts # Map in-flight selection targets through editor changes
 │   │   ├── chatFactory.ts     # Chat transport, persona fan-out, and tool dispatch
 │   │   ├── clientStreams.ts   # Mode prompts, streaming, tools, and structured generation
 │   │   ├── context.ts         # Context packet budgeting and source metadata
@@ -46,6 +48,7 @@ src/
 │   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI
 │   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state
 │   │   ├── engine.ts            # Review orchestration, AI calls
+│   │   ├── outcome.ts           # Last-review status model and labels
 │   │   ├── reviewSchema.ts       # Structured response normalization
 │   │   └── settings.svelte.ts   # AutoAI settings store
 │   ├── collab/

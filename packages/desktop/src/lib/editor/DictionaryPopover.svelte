@@ -58,7 +58,7 @@ let describeInput = $state("");
 const { chat, clearChat } = createAiChat({ mode: "dictionary" });
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "dictionary");
 
 // ── React to bus events ────────────────────────────────────────
 

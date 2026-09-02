@@ -49,6 +49,7 @@ type Provenance = {
     userEvent?: string;
     insertedChars?: number;
     removedChars?: number;
+    aiGenerations?: AiGenerationProvenance[];
 };
 ```
 
@@ -56,6 +57,13 @@ type Provenance = {
 annotation and revision/nested-editor markers, then stores the derived
 `origin` alongside the raw `userEvent`. The raw value stays in the event so the
 classification can be audited or reinterpreted later.
+
+When a transaction applies text from an AI suggestion or revision,
+`aiGenerations` records the originating request ID, editorial task, provider,
+model, timestamp, and optional persona. The same request record lives on the
+source annotation and generated revision versions. Human and legacy work omits
+it. This gives accepted AI text a traceable request identity without treating all
+revision-system transactions as AI-authored.
 
 ## Origin Mapping
 

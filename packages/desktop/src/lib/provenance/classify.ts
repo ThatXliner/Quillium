@@ -23,6 +23,7 @@ export function classifyOrigin(args: {
     userEvent: string | undefined;
     hasRevisionInternalEdit: boolean;
     hasNestedEditorEdit: boolean;
+    hasAiEdit?: boolean;
     revisionProvenance?: RevisionProvenance;
 }): ChangeOrigin {
     const explicitRevisionOrigin =
@@ -40,6 +41,7 @@ export function classifyOrigin(args: {
     if (args.hasRevisionInternalEdit) {
         return explicitRevisionOrigin ?? "unknown";
     }
+    if (args.hasAiEdit) return "ai-revision";
     if (args.hasNestedEditorEdit) return explicitRevisionOrigin ?? "nested-edit";
 
     const ue = args.userEvent ?? "";

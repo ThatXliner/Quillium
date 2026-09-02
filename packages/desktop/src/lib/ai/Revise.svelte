@@ -2,10 +2,11 @@
     Revise.svelte — Text revision AI panel (purple theme).
 
     Provides targeted rewriting and revision suggestions. Uses the
-    "revise" mode stream which includes two tools:
+    "revise" mode stream which includes three tools:
       - createSuggestion: proposes one or more rewritten versions of a
         passage, each with an optional rationale.
       - createComment: adds an explanatory note about the revision.
+      - createRevision: creates reversible passage alternatives.
 
     These tool calls are routed through chatFactory.handleToolCall to
     the annotation system, which attaches inline suggestions/comments
@@ -62,10 +63,8 @@ import { appSettings } from "$lib/settings.svelte";
  *     streaming so the sidebar glow activates.
  *
  * AI streaming layer:
- *   Uses createAiChat({ mode: "revise" }) which provides two
- *   tool definitions: createSuggestion (proposes rewritten
- *   versions with optional rationale) and createComment (adds
- *   explanatory notes). Tool calls are routed through
+ *   Uses createAiChat({ mode: "revise" }) with comment, suggestion,
+ *   and revision tools. Tool calls are routed through
  *   chatFactory.handleToolCall to the annotation system.
  *
  * State machine (chat.status):
@@ -82,7 +81,7 @@ import type { ContextAction } from "./context";
 let input = $state("");
 let personaInFlight = $state(false);
 
-const { chat, clearChat } = createAiChat({ mode: "revise" });
+const { chat, clearChat, sendMessage } = createAiChat({ mode: "revise" });
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
 );
@@ -95,7 +94,7 @@ function clearConversation() {
 }
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "revise");
 
 // Also reset persona state on global stop.
 $effect(() => {
@@ -111,14 +110,14 @@ $effect(() => {
  * cost — see issue #259). Otherwise, and as a fallback when no personas
  * are actually enabled, uses the single-stream chat.
  */
-async function sendRevise(text: string, trigger: string) {
+async function sendRevise(text: string, trigger: string, turn?: ContextAction["turn"]) {
     const personas = personaModes.revise ? getEnabledPersonas() : [];
-    if (personas.length === 0) {
+    if (personas.length === 0 || turn?.task === "exact-compression") {
         posthog.capture("ai_revise_requested", {
             has_selection: !!$selectedText,
             trigger,
         });
-        chat.sendMessage({ text });
+        sendMessage(text, turn);
         return;
     }
 
@@ -136,6 +135,7 @@ async function sendRevise(text: string, trigger: string) {
             streamFn: streamRevise,
             messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
             mode: "revise",
+            turn,
         });
     } finally {
         personaInFlight = false;
@@ -185,7 +185,7 @@ function useContextAction(action: ContextAction) {
         has_selection: !!$selectedText,
     });
     input = "";
-    sendRevise(action.prompt, `context_${action.id}`);
+    sendRevise(action.prompt, `context_${action.id}`, action.turn);
 }
 </script>
 

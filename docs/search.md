@@ -36,6 +36,8 @@ change the schema, **append a new numbered migration**; never edit shipped ones.
 | 7 | draft_branch_relation | `drafts.branched_from`; reinterprets old fork-as-child links as branches |
 | 8 | document_history_policy | adds `documents.persist_history`; documents created before `2026-07-14T00:00:00Z` retain cross-restart undo, while newer documents record the current new-document setting |
 | 9 | grandfather_document_history_policy | backfills persistent undo for pre-cutoff documents created after pre-release migration 8 had already run |
+| 10 | ai_conversations_and_profiles | adds draft-scoped AI conversations and document-scoped writer briefs |
+| 11 | document_editorial_decisions | adds explicit document-scoped editorial decisions |
 
 Key files:
 

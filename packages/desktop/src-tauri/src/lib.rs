@@ -10,6 +10,10 @@ use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 use db::{
+    ai::{
+        clear_conversation, get_editorial_decisions, get_writer_brief, load_conversation,
+        save_conversation, set_editorial_decisions, set_writer_brief,
+    },
     documents::{
         create_document_with_history, create_draft, delete_document, duplicate_document,
         get_document, get_semantic_search_enabled, get_trash_retention, list_documents,
@@ -46,6 +50,77 @@ pub struct DbState(pub Mutex<rusqlite::Connection>);
 pub struct SemanticState(pub std::sync::Arc<embeddings::SemanticIndex>);
 
 pub struct OpenWindows(pub std::sync::Arc<Mutex<std::collections::HashMap<String, String>>>);
+
+// ── AI state commands ────────────────────────────────────────────
+
+#[tauri::command]
+fn cmd_load_ai_conversation(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    mode: String,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    load_conversation(&conn, &draft_id, &mode).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_save_ai_conversation(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    mode: String,
+    messages_json: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    save_conversation(&conn, &draft_id, &mode, &messages_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_clear_ai_conversation(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    mode: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    clear_conversation(&conn, &draft_id, &mode).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_document_writer_brief(
+    state: tauri::State<DbState>,
+    document_id: String,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_writer_brief(&conn, &document_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_document_writer_brief(
+    state: tauri::State<DbState>,
+    document_id: String,
+    writer_brief: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_writer_brief(&conn, &document_id, &writer_brief).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_document_editorial_decisions(
+    state: tauri::State<DbState>,
+    document_id: String,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_editorial_decisions(&conn, &document_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_document_editorial_decisions(
+    state: tauri::State<DbState>,
+    document_id: String,
+    decisions_json: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_editorial_decisions(&conn, &document_id, &decisions_json).map_err(|e| e.to_string())
+}
 
 // ── Document commands ─────────────────────────────────────────────
 
@@ -868,6 +943,9 @@ fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
     conn.execute_batch(
         "DELETE FROM vec_chunks;
          DELETE FROM chunks;
+         DELETE FROM ai_conversations;
+         DELETE FROM document_editorial_decisions;
+         DELETE FROM document_ai_profiles;
          DELETE FROM snapshots;
          DELETE FROM events;
          DELETE FROM doc_events;
@@ -1296,6 +1374,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             cmd_reset_db,
+            cmd_load_ai_conversation,
+            cmd_save_ai_conversation,
+            cmd_clear_ai_conversation,
+            cmd_get_document_writer_brief,
+            cmd_set_document_writer_brief,
+            cmd_get_document_editorial_decisions,
+            cmd_set_document_editorial_decisions,
             scrap,
             cmd_get_trash_retention,
             cmd_export_pdf,

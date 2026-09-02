@@ -40,9 +40,11 @@ import type { Provider } from "$lib/ai/provider";
 import {
     HAS_API_KEY_KEY,
     aiSettings,
+    editorialPreferences,
     hasApiKey,
     loadApiKeyForProvider,
     persistBaseUrl,
+    persistEditorialPreferences,
     resetApiKeyLoadPromise,
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
@@ -416,6 +418,59 @@ async function saveApiKey() {
             </p>
         </div>
     {/if}
+
+    <div class="rounded-xl border border-black/8 bg-white/35 p-3">
+        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+            Editorial approach
+        </p>
+        <p class="mt-1 text-[10px] leading-relaxed text-black/35">
+            These guide feedback and proposals. They never let AI replace your draft directly.
+        </p>
+
+        <div class="mt-3 grid gap-2.5">
+            <label class="grid gap-1" for="editorial-stance">
+                <span class="text-[10px] font-medium text-black/55">Stance</span>
+                <select
+                    id="editorial-stance"
+                    bind:value={editorialPreferences.stance}
+                    onchange={persistEditorialPreferences}
+                    class="rounded-lg border border-black/10 bg-white/60 px-2.5 py-2 text-xs text-black/70 outline-none focus:border-blue-400"
+                >
+                    <option value="author-first">Author-first</option>
+                    <option value="collaborative">Collaborative</option>
+                    <option value="exploratory">Exploratory</option>
+                </select>
+            </label>
+
+            <label class="grid gap-1" for="feedback-density">
+                <span class="text-[10px] font-medium text-black/55">Feedback density</span>
+                <select
+                    id="feedback-density"
+                    bind:value={editorialPreferences.feedbackDensity}
+                    onchange={persistEditorialPreferences}
+                    class="rounded-lg border border-black/10 bg-white/60 px-2.5 py-2 text-xs text-black/70 outline-none focus:border-blue-400"
+                >
+                    <option value="quiet">Quiet</option>
+                    <option value="focused">Focused</option>
+                    <option value="thorough">Thorough</option>
+                </select>
+            </label>
+
+            <label class="grid gap-1" for="voice-latitude">
+                <span class="text-[10px] font-medium text-black/55">Voice latitude</span>
+                <select
+                    id="voice-latitude"
+                    bind:value={editorialPreferences.voiceLatitude}
+                    onchange={persistEditorialPreferences}
+                    class="rounded-lg border border-black/10 bg-white/60 px-2.5 py-2 text-xs text-black/70 outline-none focus:border-blue-400"
+                >
+                    <option value="preserve">Preserve</option>
+                    <option value="adapt">Adapt</option>
+                    <option value="transform">Transform</option>
+                </select>
+            </label>
+        </div>
+    </div>
 
     <!-- Provider -->
     <div>

@@ -10,27 +10,40 @@
 
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
+import {
+    type EditorialActionFailureReason,
+    type EditorialActionPayload,
+    applyEditorialAction,
+    editorialActionFailureMessage,
+} from "$lib/ai/editorialAction";
+import { type EditorialAction, compileEditorialPolicy } from "$lib/ai/editorialPolicy";
+import type { EditorialTargetSnapshot } from "$lib/ai/editorialTarget";
+import { createAiGenerationProvenance } from "$lib/ai/provenance";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
     beginAiTask,
     documentContext,
+    editorialPreferences,
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import { buildDocumentContextPrompt } from "$lib/ai/utils";
-import {
-    createComment,
-    createRevision,
-    createSuggestion,
-} from "$lib/editor/plugins/annotations/index";
+import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/index";
 import { appEventBus } from "$lib/events/appEventBus";
 import { captureException } from "$lib/posthog";
-import { annotations, documentContent, editorView } from "$lib/stores";
+import {
+    annotations,
+    currentDocumentId,
+    currentDraftId,
+    currentTabId,
+    documentContent,
+    editorView,
+} from "$lib/stores";
 import { generateObject } from "ai";
 import { toast } from "svelte-sonner";
 import { get, writable } from "svelte/store";
+import type { AutoAIReviewOutcome } from "./outcome";
 import { type AutoAIReviewOutput, AutoAIReviewSchema, normalizeAutoAIReview } from "./reviewSchema";
 import { type AutoAIConservativeness, autoAISettings } from "./settings.svelte";
 
@@ -38,6 +51,7 @@ export type AutoAIPhase = "idle" | "thinking" | "reviewing";
 
 /** Current AutoAI engine phase. idle → thinking (debounce warning) → reviewing → idle. */
 export const autoAIPhase = writable<AutoAIPhase>("idle");
+export const autoAILastOutcome = writable<AutoAIReviewOutcome | null>(null);
 
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
@@ -52,11 +66,16 @@ const conservativenessPrompts: Record<AutoAIConservativeness, string> = {
 };
 
 function buildSystemPrompt(): string {
-    const { conservativeness, annotationTypes, persona } = autoAISettings;
-    const allowed = annotationTypes.join(", ");
-    return `You are ${persona}, an AI writing collaborator embedded in a writing app called Quillium. Your job is to review the document and return structured feedback as JSON.
+    const { conservativeness, annotationTypes } = autoAISettings;
+    const policy = compileEditorialPolicy({
+        task: "background-review",
+        requestedActions: annotationTypes,
+        preferences: editorialPreferences,
+    });
+    const allowed = policy.allowedActions.join(", ") || "none";
+    return `${policy.systemPrompt}
 
-Annotation types you may use: ${allowed}.
+Return structured feedback as JSON. Annotation types allowed for this request: ${allowed}.
 - comment: A note pointing out an issue or observation.
 - suggestion: A replacement for a specific phrase (provide the exact original text and a better alternative).
 - revision: Multiple named versions of a passage for the writer to compare.
@@ -67,7 +86,6 @@ Use these fields:
 - revision: type, targetText, versionLabel, versionText, threadMessage
 
 ${conservativenessPrompts[conservativeness]}
-${buildDocumentContextPrompt(documentContext)}
 
 IMPORTANT RULES:
 - targetText must be an EXACT substring of the document. Copy it verbatim.
@@ -81,98 +99,200 @@ IMPORTANT RULES:
 //   WAITING (70% of debounceMs) → WARNING/thinking (30%) → runReview
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
+let lastReviewedTargetKey = "";
+let contentGeneration = 0;
+let reviewAbortController: AbortController | null = null;
 let unsubscribe: (() => void) | null = null;
 let unsubStopAi: (() => void) | null = null;
 
-function applyAnnotations(result: AutoAIReviewOutput): number {
-    const view = get(editorView);
-    if (!view) return 0;
+function autoAIActionPayload(
+    annotation: ReturnType<typeof normalizeAutoAIReview>[number],
+): EditorialActionPayload {
+    if (annotation.type === "comment") {
+        return {
+            action: "comment",
+            targetText: annotation.targetText,
+            comment: annotation.comment,
+        };
+    }
+    if (annotation.type === "suggestion") {
+        return {
+            action: "suggestion",
+            targetText: annotation.targetText,
+            replacements: [{ text: annotation.replacement, rationale: annotation.rationale }],
+        };
+    }
+    return {
+        action: "revision",
+        targetText: annotation.targetText,
+        versions: annotation.versions,
+        threadMessage: annotation.threadMessage,
+    };
+}
 
-    // Validate against the live document, not the reviewed snapshot — the
-    // user may have edited while the AI call was in flight, and annotations
-    // are applied to the live view.
-    const doc = view.state.doc.toString();
-    const allowed = new Set(autoAISettings.annotationTypes);
-    let applied = 0;
+type AutoAIApplySummary = Pick<
+    AutoAIReviewOutcome,
+    "appliedCount" | "duplicateCount" | "rejectedCount"
+>;
+
+function applyAnnotations({
+    result,
+    target,
+    allowedActions,
+    provenance,
+}: {
+    result: AutoAIReviewOutput;
+    target: EditorialTargetSnapshot;
+    allowedActions: readonly EditorialAction[];
+    provenance: AiGenerationProvenance;
+}): AutoAIApplySummary {
+    const view = get(editorView);
+    if (!view) return { appliedCount: 0, duplicateCount: 0, rejectedCount: 0 };
+
+    const allowed = new Set(allowedActions);
+    const summary: AutoAIApplySummary = {
+        appliedCount: 0,
+        duplicateCount: 0,
+        rejectedCount: 0,
+    };
+    const reportableFailures = new Set<EditorialActionFailureReason>();
 
     for (const ann of normalizeAutoAIReview(result)) {
         // Skip annotation types the user disabled.
         if (!allowed.has(ann.type)) continue;
-        // Verify the targetText actually exists in the current doc.
-        if (!doc.includes(ann.targetText)) continue;
+        const actionResult = applyEditorialAction({
+            rootView: view,
+            target,
+            current: {
+                documentId: get(currentDocumentId),
+                tabId: get(currentTabId),
+                draftId: get(currentDraftId),
+            },
+            allowedActions,
+            payload: autoAIActionPayload(ann),
+            provenance,
+            author: autoAISettings.persona,
+        });
+        if (actionResult.ok) {
+            summary.appliedCount++;
+            continue;
+        }
 
-        try {
-            if (ann.type === "comment") {
-                createComment({
-                    targetText: ann.targetText,
-                    comment: ann.comment,
-                    author: autoAISettings.persona,
-                    view,
-                });
-                applied++;
-            } else if (ann.type === "suggestion") {
-                const created = createSuggestion({
-                    targetText: ann.targetText,
-                    replacements: [{ text: ann.replacement, rationale: ann.rationale }],
-                    author: autoAISettings.persona,
-                    state: view.state,
-                    dispatch: view.dispatch.bind(view),
-                });
-                if (created) {
-                    applied++;
-                } else {
-                    // Suggestion overlaps an existing one — fall back to a comment so
-                    // the AI's feedback is not silently lost.
-                    toast.warning(
-                        "A suggestion overlapped an existing one — added as a comment instead.",
-                    );
-                    createComment({
+        if (actionResult.reason === "annotation-conflict" && allowed.has("comment")) {
+            const fallbackComment =
+                ann.type === "suggestion"
+                    ? `${ann.rationale}: "${ann.replacement}"`
+                    : ann.type === "revision"
+                      ? `${ann.threadMessage} (suggested version: "${ann.versions[0].label}" - ${ann.versions[0].text})`
+                      : null;
+            if (fallbackComment) {
+                const fallbackResult = applyEditorialAction({
+                    rootView: view,
+                    target,
+                    current: {
+                        documentId: get(currentDocumentId),
+                        tabId: get(currentTabId),
+                        draftId: get(currentDraftId),
+                    },
+                    allowedActions,
+                    payload: {
+                        action: "comment",
                         targetText: ann.targetText,
-                        comment: `${ann.rationale ?? "Suggested replacement"}: "${ann.replacement}"`,
-                        author: autoAISettings.persona,
-                        view,
-                    });
-                    applied++;
-                }
-            } else if (ann.type === "revision") {
-                const created = createRevision({
-                    targetText: ann.targetText,
-                    versions: ann.versions,
-                    threadMessage: ann.threadMessage,
+                        comment: fallbackComment,
+                    },
+                    provenance,
                     author: autoAISettings.persona,
-                    view,
                 });
-                if (created) {
-                    applied++;
-                } else {
-                    // Revision overlaps an existing one — fall back to a comment so
-                    // the AI's feedback is not silently lost.
+                if (fallbackResult.ok) {
                     toast.warning(
-                        "A revision overlapped an existing one — added as a comment instead.",
+                        `An AI ${ann.type} conflicted with an open annotation, so Quillium added it as a comment.`,
                     );
-                    createComment({
-                        targetText: ann.targetText,
-                        comment: `${ann.threadMessage} (suggested version: "${ann.versions[0].label}" — ${ann.versions[0].text})`,
-                        author: autoAISettings.persona,
-                        view,
-                    });
-                    applied++;
+                    summary.appliedCount++;
+                    continue;
                 }
+                if (fallbackResult.reason === "duplicate-concern") {
+                    summary.duplicateCount++;
+                } else {
+                    summary.rejectedCount++;
+                    reportableFailures.add(fallbackResult.reason);
+                }
+                continue;
             }
-        } catch {
-            // targetText lookup failed (e.g. doc changed mid-review) — skip.
+        }
+
+        if (actionResult.reason === "duplicate-concern") {
+            summary.duplicateCount++;
+        } else {
+            summary.rejectedCount++;
+            reportableFailures.add(actionResult.reason);
         }
     }
-    return applied;
+
+    for (const reason of reportableFailures) {
+        toast.warning(editorialActionFailureMessage(reason));
+    }
+    return summary;
 }
 
-async function runReview(content: string, manual = false) {
+function targetKey(): string {
+    return `${get(currentDocumentId) ?? ""}\u0000${get(currentDraftId) ?? ""}`;
+}
+
+function changedCharacterCount(previous: string, current: string): number {
+    if (!previous) return current.length;
+    let prefix = 0;
+    const prefixLimit = Math.min(previous.length, current.length);
+    while (prefix < prefixLimit && previous[prefix] === current[prefix]) prefix++;
+
+    let suffix = 0;
+    const suffixLimit = prefixLimit - prefix;
+    while (
+        suffix < suffixLimit &&
+        previous[previous.length - 1 - suffix] === current[current.length - 1 - suffix]
+    ) {
+        suffix++;
+    }
+
+    return Math.max(previous.length - prefix - suffix, current.length - prefix - suffix);
+}
+
+function linkedAbortController(parent: AbortSignal): {
+    controller: AbortController;
+    cleanup: () => void;
+} {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (parent.aborted) controller.abort();
+    else parent.addEventListener("abort", abort, { once: true });
+    return {
+        controller,
+        cleanup: () => parent.removeEventListener("abort", abort),
+    };
+}
+
+async function runReview(content: string, manual = false, generation = contentGeneration) {
     if (!content.trim()) {
         autoAIPhase.set("idle");
         return;
     }
 
-    const abortSignal = getAiAbortSignal();
+    reviewAbortController?.abort();
+    const linkedAbort = linkedAbortController(getAiAbortSignal());
+    const { controller } = linkedAbort;
+    const abortSignal = controller.signal;
+    reviewAbortController = controller;
+    const target: EditorialTargetSnapshot = {
+        documentId: get(currentDocumentId),
+        tabId: get(currentTabId),
+        draftId: get(currentDraftId),
+        selectedText: "",
+        branchPath: [],
+    };
+    const policy = compileEditorialPolicy({
+        task: "background-review",
+        requestedActions: autoAISettings.annotationTypes,
+        preferences: editorialPreferences,
+    });
     let task: symbol | null = null;
     try {
         await ensureApiKeyLoaded();
@@ -189,6 +309,12 @@ async function runReview(content: string, manual = false) {
             aiSettings.model,
             aiSettings.baseURL,
         );
+        const provenance = createAiGenerationProvenance({
+            task: "background-review",
+            provider: aiSettings.provider,
+            model: aiSettings.model,
+            persona: autoAISettings.persona,
+        });
         const contextPacket = buildAiContextPacket({
             mode: "autoai",
             documentContent: content,
@@ -205,29 +331,79 @@ async function runReview(content: string, manual = false) {
             prompt: `Review this context packet. Only create annotations for exact targetText substrings that appear in the included document text.\n\n${contextPacketToPrompt(contextPacket)}`,
             abortSignal,
         });
+        if (
+            generation !== contentGeneration ||
+            target.documentId !== get(currentDocumentId) ||
+            target.tabId !== get(currentTabId) ||
+            target.draftId !== get(currentDraftId)
+        ) {
+            autoAILastOutcome.set({
+                documentId: target.documentId,
+                draftId: target.draftId,
+                status: "discarded",
+                appliedCount: 0,
+                duplicateCount: 0,
+                rejectedCount: 0,
+                completedAt: Date.now(),
+            });
+            if (manual) toast("The draft changed during review, so the result was discarded.");
+            return;
+        }
         lastReviewedContent = content;
-        const applied = applyAnnotations(object);
-        if (manual && applied === 0) {
-            toast("No issues found — your writing looks good.");
+        lastReviewedTargetKey = targetKey();
+        const summary = applyAnnotations({
+            result: object,
+            target,
+            allowedActions: policy.allowedActions,
+            provenance,
+        });
+        autoAILastOutcome.set({
+            documentId: target.documentId,
+            draftId: target.draftId,
+            status: summary.appliedCount > 0 ? "applied" : "clear",
+            ...summary,
+            completedAt: Date.now(),
+        });
+        if (manual && summary.appliedCount === 0) {
+            if (summary.duplicateCount > 0) {
+                toast("No new notes; the concerns found were already covered.");
+            } else if (summary.rejectedCount > 0) {
+                toast("No annotations were added; unsafe results were skipped.");
+            } else {
+                toast("No issues found — your writing looks good.");
+            }
         }
     } catch (e) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
         captureException(e);
+        autoAILastOutcome.set({
+            documentId: target.documentId,
+            draftId: target.draftId,
+            status: "failed",
+            appliedCount: 0,
+            duplicateCount: 0,
+            rejectedCount: 0,
+            completedAt: Date.now(),
+        });
     } finally {
-        autoAIPhase.set("idle");
+        linkedAbort.cleanup();
+        if (reviewAbortController === controller) {
+            reviewAbortController = null;
+            autoAIPhase.set("idle");
+        }
         endAiTask(task);
     }
 }
 
-function scheduleReview(content: string) {
+function scheduleReview(content: string, generation: number) {
     cancelPendingReview();
     debounceTimer = setTimeout(() => {
         // WAITING → WARNING: show thinking face for the last 30% of the window.
         autoAIPhase.set("thinking");
         debounceTimer = setTimeout(() => {
             debounceTimer = null;
-            runReview(content);
+            runReview(content, false, generation);
         }, autoAISettings.debounceMs * 0.3);
     }, autoAISettings.debounceMs * 0.7);
 }
@@ -236,15 +412,29 @@ function scheduleReview(content: string) {
 export function startAutoAI() {
     if (unsubscribe) return; // already running
 
+    let observedTargetKey = targetKey();
     unsubscribe = documentContent.subscribe((content) => {
+        const currentTargetKey = targetKey();
+        if (currentTargetKey !== observedTargetKey) {
+            observedTargetKey = currentTargetKey;
+            autoAILastOutcome.set(null);
+        }
+        contentGeneration++;
+        cancelPendingReview();
         if (!autoAISettings.enabled) return;
         if (autoAISettings.mode !== "continuous") return;
         // Locked drafts are read-only — don't burn an AI call reviewing
         // text that can't be annotated (#160).
         if (get(editorView)?.state.readOnly) return;
-        const diff = Math.abs(content.length - lastReviewedContent.length);
-        if (diff < MIN_DIFF_CHARS && lastReviewedContent !== "") return;
-        scheduleReview(content);
+        const diff = changedCharacterCount(lastReviewedContent, content);
+        if (
+            currentTargetKey === lastReviewedTargetKey &&
+            diff < MIN_DIFF_CHARS &&
+            lastReviewedContent !== ""
+        ) {
+            return;
+        }
+        scheduleReview(content, contentGeneration);
     });
 
     // Cancel pending reviews when the global stop event fires.
@@ -261,6 +451,7 @@ export function stopAutoAI() {
         unsubscribe = null;
     }
     lastReviewedContent = "";
+    lastReviewedTargetKey = "";
 }
 
 /** Cancel any pending debounced review without stopping the engine. */
@@ -269,6 +460,8 @@ export function cancelPendingReview() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
     }
+    reviewAbortController?.abort();
+    reviewAbortController = null;
     autoAIPhase.set("idle");
 }
 
@@ -277,5 +470,5 @@ export function triggerManualReview() {
     const content = get(documentContent);
     if (!content.trim()) return;
     cancelPendingReview();
-    runReview(content, true);
+    runReview(content, true, contentGeneration);
 }

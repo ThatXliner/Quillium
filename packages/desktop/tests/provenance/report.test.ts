@@ -178,6 +178,39 @@ describe("buildProvenanceReport — session splitting", () => {
     });
 });
 
+describe("buildProvenanceReport — AI annotations", () => {
+    it("counts persona annotations from explicit AI request provenance", () => {
+        const payload = {
+            type: "annotation_add",
+            annotation: {
+                id: 1,
+                _type: "comment",
+                status: "active",
+                selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
+                thread: [{ author: "Skeptical editor", message: "Check this", time: 1 }],
+                aiProvenance: {
+                    requestId: "request-1",
+                    task: "global-review",
+                    provider: "anthropic",
+                    model: "claude-sonnet-4-6",
+                    createdAt: 1,
+                    persona: "Skeptical editor",
+                },
+            },
+        };
+        const report = build([
+            {
+                id: 1,
+                eventType: "annotation_add",
+                payload: JSON.stringify(payload),
+                createdAt: 1,
+            },
+        ]);
+
+        expect(report.aiAssist.aiAuthoredAnnotations).toBe(1);
+    });
+});
+
 // ── Paste log ─────────────────────────────────────────────────────────────────
 
 describe("buildProvenanceReport — paste log", () => {

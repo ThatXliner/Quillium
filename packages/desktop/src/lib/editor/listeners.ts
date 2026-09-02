@@ -68,9 +68,11 @@ import {
     transactionStartsNewHistoryGroup,
 } from "./persistentHistory";
 import {
+    type AiGenerationProvenance,
     type GenericAnnotation,
     _revisionCleanup,
     addAnnotation,
+    aiEditProvenance,
     isRawAnnotationOfType,
     nestedEditorEdit,
     removeAnnotation,
@@ -139,11 +141,13 @@ function txProvenance(tr: Transaction): {
     userEvent: string | undefined;
     insertedChars: number;
     removedChars: number;
+    aiGenerations: AiGenerationProvenance[] | undefined;
 } {
     const userEvent = tr.annotation(Transaction.userEvent);
     const hasRevisionInternalEdit = !!tr.annotation(revisionInternalEdit);
     const hasNestedEditorEdit = tr.annotation(nestedEditorEdit) != null;
     const explicitRevisionProvenance = tr.annotation(revisionProvenance);
+    const aiGenerations = tr.annotation(aiEditProvenance);
 
     let insertedChars = 0;
     let removedChars = 0;
@@ -156,9 +160,17 @@ function txProvenance(tr: Transaction): {
         userEvent,
         hasRevisionInternalEdit,
         hasNestedEditorEdit,
+        hasAiEdit: (aiGenerations?.length ?? 0) > 0,
         revisionProvenance: explicitRevisionProvenance,
     });
-    return { origin, hasRevisionInternalEdit, userEvent, insertedChars, removedChars };
+    return {
+        origin,
+        hasRevisionInternalEdit,
+        userEvent,
+        insertedChars,
+        removedChars,
+        aiGenerations,
+    };
 }
 
 /**
@@ -279,6 +291,7 @@ function replayAnnotationsOf(tr: Transaction): TransactionReplayEntry & { kind: 
                 : undefined,
         revisionInternalEdit: tr.annotation(revisionInternalEdit),
         revisionProvenance: tr.annotation(revisionProvenance),
+        aiGenerations: tr.annotation(aiEditProvenance),
         nestedEditorEdit: tr.annotation(nestedEditorEdit),
         revisionCleanup: tr.annotation(_revisionCleanup),
     };
@@ -316,6 +329,9 @@ function codeMirrorAnnotationsOf(
     }
     if (entry.annotations.revisionProvenance !== undefined) {
         annotations.push(revisionProvenance.of(entry.annotations.revisionProvenance));
+    }
+    if (entry.annotations.aiGenerations !== undefined) {
+        annotations.push(aiEditProvenance.of(entry.annotations.aiGenerations));
     }
     if (entry.annotations.nestedEditorEdit !== undefined) {
         annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));
@@ -410,11 +426,13 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
     let allAnnotationEvents: AnnotationEvent[] = [];
 
     // Aggregate one event-level provenance across all doc-changing transactions:
-    //   - origin: "ai-revision" if ANY tr is a revision-internal edit, else
-    //     "nested-edit" if ANY tr is a nested-editor edit, else the origin of
-    //     the LAST doc-changing transaction.
+    //   - origin: the combined revision origin for revision-internal edits,
+    //     otherwise "nested-edit" for nested editor changes, otherwise the
+    //     origin of the last doc-changing transaction. Applied AI suggestions
+    //     identify themselves through aiEditProvenance.
     //   - userEvent: the userEvent of that same last doc-changing transaction.
     //   - inserted/removedChars: summed across all doc-changing transactions.
+    //   - aiGenerations: unique request records across those transactions.
     let anyRevisionInternal = false;
     const revisionOrigins = new Set<ChangeOrigin>();
     let anyNestedEdit = false;
@@ -422,6 +440,7 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
     let lastUserEvent: string | undefined;
     let totalInserted = 0;
     let totalRemoved = 0;
+    const aiGenerations = new Map<string, NonNullable<Provenance["aiGenerations"]>[number]>();
 
     for (const tr of update.transactions) {
         if (tr.docChanged) {
@@ -436,6 +455,9 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
             lastUserEvent = prov.userEvent;
             totalInserted += prov.insertedChars;
             totalRemoved += prov.removedChars;
+            for (const generation of prov.aiGenerations ?? []) {
+                aiGenerations.set(generation.requestId, generation);
+            }
         }
         allAnnotationEvents = allAnnotationEvents.concat(extractAnnotationEvents(tr));
     }
@@ -477,6 +499,7 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
               userEvent: lastUserEvent,
               insertedChars: totalInserted,
               removedChars: totalRemoved,
+              ...(aiGenerations.size > 0 ? { aiGenerations: [...aiGenerations.values()] } : {}),
           }
         : undefined;
 

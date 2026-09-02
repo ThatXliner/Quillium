@@ -96,6 +96,17 @@ describe("classifyOrigin — marker precedence", () => {
         ).toBe("unknown");
     });
 
+    it("classifies applied AI suggestion text from request provenance", () => {
+        expect(
+            classifyOrigin({
+                userEvent: undefined,
+                hasRevisionInternalEdit: false,
+                hasNestedEditorEdit: false,
+                hasAiEdit: true,
+            }),
+        ).toBe("ai-revision");
+    });
+
     it("explicit revision provenance wins over nested when both markers are present", () => {
         expect(
             classifyOrigin({

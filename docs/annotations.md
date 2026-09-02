@@ -25,6 +25,7 @@ type BaseAnnotation = {
     thread: Thread;             // array of { message, author, time }
     status: "pending" | "active"; // explicit lifecycle state
     _historyId?: string;        // private stable lineage; backfilled for legacy data
+    aiProvenance?: AiGenerationProvenance; // absent for human and legacy annotations
 };
 
 type CommentAnnotation    = BaseAnnotation & { _type: "comment" };
@@ -48,6 +49,22 @@ without `status` are healed once at deserialization; the first thread-message or
 revision-version effect transitions a pending annotation to active.
 
 **Important:** A revision points at its active version by **stable `id`** (`activeVersionId`), not by array index. The `versions[]` array stays ordered (pills, `Ctrl-[` / `Ctrl-]` navigation are positional), but identity is the id. Read the active version with the `activeVersion(rev)` / `activeVersionIndex(rev)` helpers — never `rev.versions[rev.activeVersionId]` (it's not an index). See [Version identity](#version-identity).
+
+### AI generation metadata
+
+AI-created annotations carry an optional `aiProvenance` record with the request
+ID, editorial task, provider, model, creation time, and optional reader persona.
+AI-generated revision alternatives copy the same record onto their
+`VersionState`, alongside the version's `"ai"` authorship classification. A human
+edit changes that classification to `"mixed"` but retains the originating request
+record.
+
+The field is part of the shared raw and clipboard schemas, so it survives event
+replay, snapshots, copy/paste, collaboration, and read-only shares. Human-created
+and legacy annotations omit it. The request metadata supports attribution and
+auditing; it does not bypass the normal annotation commands, undo history, or
+persistence path. See [AI Features and Request Pipeline](./ai-sidebar.md) and
+[Authorship Provenance](./provenance.md).
 
 ### Adding a new annotation type
 

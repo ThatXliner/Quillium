@@ -34,6 +34,57 @@ export async function resetDb(): Promise<void> {
     return invoke<void>("cmd_reset_db");
 }
 
+// ── AI state ─────────────────────────────────────────────────────
+
+export type PersistedAiConversationMode = "chat" | "feedback" | "revise";
+
+export async function loadAiConversation(
+    draftId: string,
+    mode: PersistedAiConversationMode,
+): Promise<string | null> {
+    return invoke<string | null>("cmd_load_ai_conversation", { draftId, mode });
+}
+
+export async function saveAiConversation(
+    draftId: string,
+    mode: PersistedAiConversationMode,
+    messagesJson: string,
+): Promise<void> {
+    return invoke<void>("cmd_save_ai_conversation", { draftId, mode, messagesJson });
+}
+
+export async function clearAiConversation(
+    draftId: string,
+    mode: PersistedAiConversationMode,
+): Promise<void> {
+    return invoke<void>("cmd_clear_ai_conversation", { draftId, mode });
+}
+
+export async function getDocumentWriterBrief(documentId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_document_writer_brief", { documentId });
+}
+
+export async function setDocumentWriterBrief(
+    documentId: string,
+    writerBrief: string,
+): Promise<void> {
+    return invoke<void>("cmd_set_document_writer_brief", { documentId, writerBrief });
+}
+
+export async function getDocumentEditorialDecisions(documentId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_document_editorial_decisions", { documentId });
+}
+
+export async function setDocumentEditorialDecisions(
+    documentId: string,
+    decisionsJson: string,
+): Promise<void> {
+    return invoke<void>("cmd_set_document_editorial_decisions", {
+        documentId,
+        decisionsJson,
+    });
+}
+
 // ── Documents ─────────────────────────────────────────────────────
 
 export async function listDocuments(): Promise<DocumentMeta[]> {

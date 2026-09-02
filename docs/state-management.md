@@ -37,6 +37,13 @@ flowchart TD
 
 This is intentional: the store is only for *imperative access* (e.g., dispatching a transaction from the AI sidebar). For *reactive data*, use the manually-synced mirror stores.
 
+In-flight AI selection targets are an exception to the persisted editor model.
+`editorialTargetBookmarkField` holds request IDs and ranges only while a Feedback
+or Revise request with a selection is running. CodeMirror maps those ranges through transactions,
+but `savedFields` excludes the field because a request cannot survive an editor
+reload. Adding and removing a bookmark also uses `addToHistory.of(false)` so the
+writer's undo stack contains only writing actions.
+
 ## Transaction Annotation vs StateEffect
 
 CodeMirror has two mechanisms for attaching metadata to a transaction:

@@ -2,9 +2,8 @@
     Feedback.svelte — Editorial feedback AI panel (green theme).
 
     Provides high-level editorial feedback on the writer's document.
-    Uses the "feedback" mode stream which includes two tools:
+    Uses the "feedback" mode stream which includes one tool:
       - createComment: flags a specific passage with editorial notes.
-      - createRevision: proposes 2-3 alternative versions of a passage.
 
     These tool calls are routed through chatFactory.handleToolCall to
     the annotation system, which attaches comments/revisions directly
@@ -60,8 +59,8 @@ import { appSettings } from "$lib/settings.svelte";
  *     streaming so the sidebar glow activates.
  *
  * AI streaming layer:
- *   Uses createAiChat({ mode: "feedback" }) which provides two
- *   tool definitions: createComment and createRevision. Tool calls
+ *   Uses createAiChat({ mode: "feedback" }) which provides the
+ *   createComment tool. Tool calls
  *   are routed through chatFactory.handleToolCall to the annotation
  *   system, attaching comments/revisions to the CodeMirror editor.
  *
@@ -79,7 +78,7 @@ import type { ContextAction } from "./context";
 let input = $state("");
 let personaInFlight = $state(false);
 
-const { chat, clearChat } = createAiChat({ mode: "feedback" });
+const { chat, clearChat, sendMessage } = createAiChat({ mode: "feedback" });
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
 );
@@ -92,7 +91,7 @@ function clearConversation() {
 }
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "feedback");
 
 // Also reset persona state on global stop.
 $effect(() => {
@@ -108,14 +107,14 @@ $effect(() => {
  * cost — see issue #259). Otherwise, and as a fallback when no personas
  * are actually enabled, uses the single-stream chat.
  */
-async function sendFeedback(text: string, trigger: string) {
+async function sendFeedback(text: string, trigger: string, turn?: ContextAction["turn"]) {
     const personas = personaModes.feedback ? getEnabledPersonas() : [];
     if (personas.length === 0) {
         posthog.capture("ai_feedback_requested", {
             has_selection: !!$selectedText,
             trigger,
         });
-        chat.sendMessage({ text });
+        sendMessage(text, turn);
         return;
     }
 
@@ -133,6 +132,7 @@ async function sendFeedback(text: string, trigger: string) {
             streamFn: streamFeedback,
             messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
             mode: "feedback",
+            turn,
         });
     } finally {
         personaInFlight = false;
@@ -178,7 +178,7 @@ function useContextAction(action: ContextAction) {
         has_selection: !!$selectedText,
     });
     input = "";
-    sendFeedback(action.prompt, `context_${action.id}`);
+    sendFeedback(action.prompt, `context_${action.id}`, action.turn);
 }
 </script>
 

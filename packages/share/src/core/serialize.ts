@@ -81,6 +81,7 @@ function serializeParsedAnnotationMap(
                 to,
                 selectedText: doc.slice(from, to),
                 thread: annotation.thread.map((message) => ({ ...message })),
+                aiProvenance: annotation.aiProvenance,
             };
 
             if (isRawAnnotationOfType(annotation, "suggestion")) {
@@ -112,6 +113,8 @@ function serializeParsedAnnotationMap(
                             versionId: version.id,
                             text: versionText(version),
                             label: version.label,
+                            provenance: version.provenance,
+                            aiProvenance: version.aiProvenance,
                             group: group
                                 ? {
                                       id: group.id,

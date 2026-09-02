@@ -54,7 +54,10 @@ const packet = $derived(
         documentContent: $documentContent,
         selectedText: $selectedText,
         selectedTextRange: $selectedTextRange,
-        documentContext: { freeform: documentContext.freeform },
+        documentContext: {
+            freeform: documentContext.freeform,
+            decisions: documentContext.decisions,
+        },
         annotationContext,
     }),
 );
@@ -111,6 +114,7 @@ function sourceIcon(id: string) {
     if (id === "surrounding") return ScanTextIcon;
     if (id === "annotations") return MessageSquareTextIcon;
     if (id === "writer-context") return NotebookTabsIcon;
+    if (id === "editorial-decisions") return NotebookTabsIcon;
     return FileTextIcon;
 }
 </script>

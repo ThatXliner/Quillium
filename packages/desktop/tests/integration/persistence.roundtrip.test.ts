@@ -172,6 +172,38 @@ describe("persistence round-trip integration", () => {
         expect(annotations[0].thread[0]?.message).toBe("Check wording");
     });
 
+    it("restores selection-free snapshots without discarding document state", () => {
+        view = createView("Alpha Beta Gamma");
+        const comment = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(6, 10),
+                "comment",
+            ),
+            thread: [{ message: "Keep this", author: "Reviewer", time: 1 }],
+        };
+        view.dispatch({ effects: addAnnotation.of(comment) });
+
+        const { selection: _selection, ...snapshot } = view.state.toJSON(savedFields);
+        const restored = reconstructState(
+            JSON.stringify(snapshot),
+            [],
+            [
+                persistHistoryFacet.of(true),
+                persistentHistoryExtension,
+                history(),
+                annotationExtensions(),
+            ],
+        );
+
+        expect(restored.doc.toString()).toBe("Alpha Beta Gamma");
+        expect(restored.selection.main.eq(EditorSelection.cursor(0))).toBe(true);
+        expect(restored.field(annotationField)[comment.id]).toMatchObject({
+            id: comment.id,
+            thread: comment.thread,
+        });
+    });
+
     it("replays revision version edits, switches, and labels without a fresh snapshot", () => {
         const payloads: object[] = [];
         const extensions = [

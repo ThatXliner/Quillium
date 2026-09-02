@@ -58,6 +58,7 @@ import {
 } from "@codemirror/state";
 import { isEqual, mapValues } from "lodash-es";
 import {
+    type AiGenerationProvenance,
     type Annotations,
     type GenericAnnotation,
     RawAnnotationSchema,
@@ -212,6 +213,8 @@ export const updateThread = StateEffect.define<{
 export const revisionInternalEdit = Annotation.define<boolean>();
 /** Explicit authorship of revision text applied by a revision-internal transaction. */
 export const revisionProvenance = Annotation.define<RevisionProvenance>();
+/** AI request metadata for generated text applied by this transaction. */
+export const aiEditProvenance = Annotation.define<AiGenerationProvenance[]>();
 
 // Marks a parent-editor transaction that was originated by a nested editor
 // acting as a direct viewport. Set to the revision ID whose nested editor
@@ -590,6 +593,7 @@ export function setActiveRevisionVersion(
     const effects: StateEffect<unknown>[] = [];
     const changeSpecs: { from: number; to: number; insert: string }[] = [];
     const appliedProvenance: Array<RevisionProvenance | undefined> = [];
+    const appliedAiProvenance = new Map<string, AiGenerationProvenance>();
     for (const sw of switches) {
         const rev = state.field(annotationField)[sw.annotationId];
         if (!isAnnotationOfType(rev, "revision")) continue;
@@ -599,6 +603,9 @@ export function setActiveRevisionVersion(
             _updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }),
         );
         appliedProvenance.push(v.provenance);
+        if (v.aiProvenance) {
+            appliedAiProvenance.set(v.aiProvenance.requestId, v.aiProvenance);
+        }
         changeSpecs.push({
             from: rev.selection.main.from,
             to: rev.selection.main.to,
@@ -616,6 +623,9 @@ export function setActiveRevisionVersion(
         annotations: [
             revisionInternalEdit.of(true),
             ...(combinedProvenance ? [revisionProvenance.of(combinedProvenance)] : []),
+            ...(appliedAiProvenance.size > 0
+                ? [aiEditProvenance.of([...appliedAiProvenance.values()])]
+                : []),
             Transaction.addToHistory.of(true),
             isolateHistory.of("full"),
         ],
@@ -877,12 +887,16 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
         );
     }
 
-    const fallbackProvenance = deletingActive
-        ? nextVersions.find((version) => version.id === nextActiveId)?.provenance
+    const fallbackVersion = deletingActive
+        ? nextVersions.find((version) => version.id === nextActiveId)
         : undefined;
+    const fallbackProvenance = fallbackVersion?.provenance;
     const annotations = [
         revisionInternalEdit.of(true),
         ...(fallbackProvenance ? [revisionProvenance.of(fallbackProvenance)] : []),
+        ...(fallbackVersion?.aiProvenance
+            ? [aiEditProvenance.of([fallbackVersion.aiProvenance])]
+            : []),
         Transaction.addToHistory.of(true),
         isolateHistory.of("full"),
     ];
@@ -930,6 +944,9 @@ export function updateRevisionVersionState(
     const annotations = [
         revisionInternalEdit.of(true),
         ...(newVersionState.provenance ? [revisionProvenance.of(newVersionState.provenance)] : []),
+        ...(newVersionState.aiProvenance
+            ? [aiEditProvenance.of([newVersionState.aiProvenance])]
+            : []),
         Transaction.addToHistory.of(addToHistory),
     ];
     if (original.activeVersionId !== versionId) {
@@ -984,7 +1001,13 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
 
     const versions: VersionState[] = [
         makeVersion({ doc: originalText, provenance: "human" }),
-        ...annotation.replacements.map((r) => makeVersion({ doc: r.text, provenance: "ai" })),
+        ...annotation.replacements.map((r) =>
+            makeVersion({
+                doc: r.text,
+                provenance: "ai",
+                ...(annotation.aiProvenance ? { aiProvenance: annotation.aiProvenance } : {}),
+            }),
+        ),
     ];
 
     const firstReplacement = annotation.replacements[0]?.text ?? originalText;
@@ -1000,6 +1023,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
         activeVersionId,
         versions,
         thread: annotation.thread,
+        ...(annotation.aiProvenance ? { aiProvenance: annotation.aiProvenance } : {}),
     };
 
     return state.update({
@@ -1008,6 +1032,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
         annotations: [
             revisionInternalEdit.of(true),
             revisionProvenance.of(versions[1]?.provenance ?? "human"),
+            ...(annotation.aiProvenance ? [aiEditProvenance.of([annotation.aiProvenance])] : []),
             Transaction.addToHistory.of(true),
             isolateHistory.of("full"),
         ],
@@ -1057,7 +1082,11 @@ export function applySuggestion(
             to: annotation.selection.main.to,
             insert: annotation.replacements[replacementIndex].text,
         }),
-        annotations: [Transaction.addToHistory.of(true), isolateHistory.of("full")],
+        annotations: [
+            ...(annotation.aiProvenance ? [aiEditProvenance.of([annotation.aiProvenance])] : []),
+            Transaction.addToHistory.of(true),
+            isolateHistory.of("full"),
+        ],
     });
 }
 // -------------------------------------------------------

@@ -9,6 +9,7 @@ AutoAI is a background AI review system that watches document content and create
 | `settings.svelte.ts` | Settings store, localStorage persistence |
 | `engine.ts` | Review orchestration, AI calls, annotation dispatch |
 | `reviewSchema.ts` | Provider-tolerant structured schema and strict result normalization |
+| `outcome.ts` | Typed last-review result and compact user-facing labels |
 | `AutoAIWidget.svelte` | Bubble + expanded panel UI |
 | `AutoAIFace.svelte` | Animated face SVG component |
 | `faceAnimation.svelte.ts` | Eye tracking + sleep/wake state |
@@ -23,14 +24,14 @@ Stored in localStorage under `"quillium-autoai-settings"`:
 | `mode` | `"continuous"` \| `"manual"` | `"continuous"` | Auto-review vs manual trigger |
 | `debounceMs` | number | 10000 | Delay before review after change |
 | `persona` | string | `"AutoAI"` | Name in annotation author fields |
-| `annotationTypes` | set | all three | Which types to create |
+| `annotationTypes` | set | comments only | Which types to create |
 | `conservativeness` | enum | `"conservative"` | Review depth |
 
 ## Review Engine
 
 ```mermaid
 flowchart TD
-    Change["documentContent changed<br/>(≥ 20-character length delta)"]
+    Change["documentContent changed<br/>(≥ 20 changed characters)"]
     Guard["Enabled, continuous, and draft is writable"]
     Debounce["Wait for 70% of debounceMs"]
     Thinking["autoAIPhase = thinking<br/>Final 30% warning"]
@@ -39,7 +40,7 @@ flowchart TD
     Context["Build shared context packet<br/>(brief + budgeted draft + annotations)"]
     Generate["generateObject()<br/>Single non-streaming call"]
     Normalize["Normalize provider field variants<br/>Drop malformed items individually"]
-    Apply["Validate against live draft<br/>Apply allowed annotations"]
+    Apply["Validate request identity and policy<br/>Resolve one exact target and apply"]
     Done["autoAIPhase = idle"]
 
     Change --> Guard --> Debounce --> Thinking --> LoadKey --> Reviewing --> Context --> Generate --> Normalize --> Apply --> Done
@@ -58,7 +59,8 @@ flowchart TD
 
 Before review, AutoAI builds the same context packet used by the sidebar:
 
-1. Writer-provided document context is included as guidance.
+1. The writer brief and explicit saved editorial decisions are included as
+   separate user-role guidance sources.
 2. Long drafts are clipped to the AutoAI budget with an explicit omission marker.
 3. Open annotations are included as editorial state so the model can avoid duplicates.
 4. The model is instructed to annotate only exact substrings present in the
@@ -74,11 +76,27 @@ rejecting an otherwise useful review.
 
 For each normalized result:
 
-1. Check that the annotation type is still enabled.
-2. Verify `targetText` against the live editor document, not the reviewed snapshot.
-3. Dispatch `createComment`, `createSuggestion`, or `createRevision`.
-4. If a suggestion or revision overlaps an existing one, preserve the feedback
-   as a comment and show a warning instead of silently dropping it.
+1. Check that the request generation, document ID, tab ID, and draft ID still match.
+2. Check that the annotation type is still enabled and allowed by the shared
+   editorial policy.
+3. Resolve `targetText` to one exact range in the live editor. Missing or repeated
+   targets are rejected rather than applied to the first or every match.
+4. Skip concerns that substantially repeat an active annotation on the same passage.
+5. Dispatch through the shared editorial action gateway, which also rejects
+   read-only editors.
+6. If a suggestion or revision overlaps an existing one and comments are allowed,
+   preserve the feedback as a comment and show a warning.
+
+New edits abort an in-flight AutoAI request when a new review is scheduled. Every
+content change also advances a generation counter, so even a small edit prevents
+an older result from applying. Switching documents or drafts always schedules a
+fresh review regardless of text similarity.
+
+Each completed review publishes a document-local in-memory outcome. The expanded
+widget reports whether the last review added notes, found no new concerns, skipped
+duplicate or unsafe results, was discarded after the draft changed, or failed. The
+outcome is cleared when the active document or draft changes. Routine cancellation
+while the writer keeps typing is not presented as an error.
 
 Continuous review is skipped for read-only drafts. Manual review runs immediately
 when the document is non-empty and shows a “No issues found” toast when the model
@@ -97,6 +115,7 @@ Fixed at `bottom: 24px; left: 24px`:
 ### Expanded (320 × 310px)
 
 - Persona name (editable), enable toggle, close button
+- Last completed review outcome, when one exists for the active draft
 - Mode selector (Auto / Manual)
   - Auto: delay slider (2–60s)
   - Manual: "Review now" button
@@ -153,8 +172,11 @@ After 30s of no `keydown` or caret events, the face sleeps. Any interaction trig
 ## Integration Points
 
 - **Document content**: Engine subscribes to `documentContent` store
-- **Annotation creation**: Uses same factory functions as AI sidebar
-- **Context**: Shares the budgeted draft, writer brief, and annotation context builder
+- **Annotation creation**: Uses the same guarded `editorialAction.ts` gateway as the AI sidebar
+- **Context**: Shares the budgeted draft, writer brief, saved decisions, and
+  annotation context builder
+- **Provenance**: Records the request ID, provider, model, task, timestamp, and configured
+  persona on every created annotation
 - **AI settings**: Shares provider config, lazy credential loading, and `createModel()`
 - **Processing/cancellation**: Registers an AI task, uses the shared abort signal,
   and cancels a pending debounce on the global `stop-ai` event

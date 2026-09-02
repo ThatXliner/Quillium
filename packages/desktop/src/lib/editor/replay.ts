@@ -49,6 +49,7 @@ import {
 import {
     _revisionCleanup,
     addAnnotation,
+    aiEditProvenance,
     annotationField,
     nestedEditorEdit,
     removeAnnotation,
@@ -133,6 +134,9 @@ function replayAnnotationsOf(
     }
     if (entry.annotations.revisionProvenance !== undefined) {
         annotations.push(revisionProvenance.of(entry.annotations.revisionProvenance));
+    }
+    if (entry.annotations.aiGenerations !== undefined) {
+        annotations.push(aiEditProvenance.of(entry.annotations.aiGenerations));
     }
     if (entry.annotations.nestedEditorEdit !== undefined) {
         annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));
@@ -600,6 +604,17 @@ function tryParseType(payload: string): string | undefined {
     }
 }
 
+/** Supply the transient cursor omitted by public/share snapshots. */
+function withSnapshotSelection(value: unknown): unknown {
+    if (!value || typeof value !== "object" || Array.isArray(value) || "selection" in value) {
+        return value;
+    }
+    return {
+        selection: EditorSelection.single(0).toJSON(),
+        ...value,
+    };
+}
+
 /**
  * Rebuilds an EditorState from a persisted snapshot plus the events recorded
  * after it — the canonical load recipe shared by the editor, the library
@@ -621,8 +636,13 @@ export function reconstructState(
     let state: EditorState;
     if (snapshotStateJson && snapshotStateJson !== "{}") {
         try {
-            state = EditorState.fromJSON(JSON.parse(snapshotStateJson), { extensions }, fields);
-        } catch {
+            state = EditorState.fromJSON(
+                withSnapshotSelection(JSON.parse(snapshotStateJson)),
+                { extensions },
+                fields,
+            );
+        } catch (error) {
+            console.error("[replay] Could not restore persisted editor snapshot", error);
             state = EditorState.create({ extensions });
         }
     } else {

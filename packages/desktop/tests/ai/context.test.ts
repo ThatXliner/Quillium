@@ -33,8 +33,8 @@ describe("buildAiContextPacket", () => {
         expect(surroundingSource?.label).toBe("Selection Focus");
         expect(surroundingSource?.detail).toBe("Draft already includes nearby text");
         expect(packet.sources.find((source) => source.id === "selection")?.active).toBe(true);
-        expect(prompt).not.toContain("Nearby context around the selection");
-        expect(prompt).not.toContain("Nearby paragraphs around the selection");
+        expect(prompt).not.toContain('"source": "nearby-passage"');
+        expect(prompt).not.toContain('"source": "nearby-paragraphs"');
         expect(contextScopeDetail(packet)).toBe(
             "The current draft and selected text will be sent.",
         );
@@ -73,7 +73,7 @@ describe("buildAiContextPacket", () => {
         expect(packet.surroundingText).toContain("The paragraph after");
         expect(packet.surroundingText).not.toContain("wrong shared phrase");
         expect(surroundingSource?.label).toBe("Nearby Paragraphs");
-        expect(prompt).toContain("Nearby paragraphs around the selection");
+        expect(prompt).toContain('"source": "nearby-paragraphs"');
     });
 
     it("falls back to a bounded character window for huge paragraphs", () => {
@@ -125,6 +125,30 @@ describe("buildAiContextPacket", () => {
         const writerSource = packet.sources.find((source) => source.id === "writer-context");
         expect(writerSource?.active).toBe(true);
         expect(writerSource?.chars).toBeGreaterThan(0);
+        expect(contextPacketToPrompt(packet)).toContain('"source": "writer-brief"');
+    });
+
+    it("keeps explicit editorial decisions separate from the writer brief", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "Draft",
+            documentContext: {
+                freeform: "Audience: skeptical editors",
+                decisions: ["Keep the unresolved ending.", "Retain first person."],
+            },
+        });
+
+        expect(packet.editorialDecisions).toEqual([
+            "Keep the unresolved ending.",
+            "Retain first person.",
+        ]);
+        expect(packet.sources.find((source) => source.id === "editorial-decisions")).toMatchObject({
+            active: true,
+            detail: "2 saved",
+        });
+        const prompt = contextPacketToPrompt(packet);
+        expect(prompt).toContain('"source": "saved-editorial-decisions"');
+        expect(prompt).toContain('"status": "writer-confirmed"');
     });
 
     it("labels full-document context as visible draft state", () => {
@@ -154,10 +178,12 @@ describe("buildAiContextPacket", () => {
 
         expect(packet.includedAnnotationCount).toBe(1);
         expect(packet.sources.find((source) => source.id === "annotations")?.active).toBe(true);
-        expect(prompt).toContain("Existing annotations");
-        expect(prompt).toContain("avoid duplicating");
-        expect(prompt).toContain("[comment #7, active]");
-        expect(prompt).toContain("Bryan: This may repeat the intro.");
+        expect(prompt).toContain('"source": "existing-annotations"');
+        expect(prompt).toContain('"status": "already-open-editorial-state"');
+        expect(prompt).toContain('"type": "comment"');
+        expect(prompt).toContain('"active": true');
+        expect(prompt).toContain('"author": "Bryan"');
+        expect(prompt).toContain("This may repeat the intro.");
     });
 
     it("caps annotation context by relevance budget", () => {
@@ -191,6 +217,53 @@ describe("getContextAwareActions", () => {
         const actions = getContextAwareActions("revise", packet);
         expect(actions.map((action) => action.id)).toContain("revise-tighten");
         expect(actions[0].prompt).toContain("selected text");
+    });
+
+    it("offers exact compression as a typed revision turn for a substantial selection", () => {
+        const packet = buildAiContextPacket({
+            mode: "revise",
+            documentContent: "One two three four five six seven eight nine ten eleven twelve.",
+            selectedText: "One two three four five six seven eight nine ten eleven twelve.",
+        });
+
+        const action = getContextAwareActions("revise", packet).find(
+            (candidate) => candidate.id === "revise-exact-compression",
+        );
+        expect(action?.label).toBe("Cut to 9 words");
+        expect(action?.turn).toEqual({ task: "exact-compression", exactWordCount: 9 });
+    });
+
+    it("marks reverse outline as a text-only recipe", () => {
+        const packet = buildAiContextPacket({ mode: "chat", documentContent: "A draft." });
+        const action = getContextAwareActions("chat", packet).find(
+            (candidate) => candidate.id === "chat-map",
+        );
+
+        expect(action?.label).toBe("Reverse outline");
+        expect(action?.turn).toEqual({ task: "reverse-outline" });
+    });
+
+    it("offers read-only comparison for an active revision", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "A draft.",
+            annotationContext: [
+                {
+                    id: 4,
+                    type: "revision",
+                    targetText: "A draft.",
+                    active: true,
+                    versions: [
+                        { label: "Original", text: "A draft." },
+                        { label: "Direct", text: "The draft." },
+                    ],
+                },
+            ],
+        });
+        const action = getContextAwareActions("chat", packet)[0];
+
+        expect(action.id).toBe("chat-compare-versions");
+        expect(action.turn).toEqual({ task: "branch-comparison" });
     });
 
     it("uses writer-context-aware feedback actions for a full draft", () => {

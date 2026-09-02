@@ -1,4 +1,5 @@
 import { dev } from "$app/environment";
+import { editorialTargetBookmarkField, editorialTargetViewTracker } from "$lib/ai/editorialTarget";
 import { collabCompartment } from "$lib/collab";
 import { appEventBus } from "$lib/events/appEventBus";
 import { appSettings } from "$lib/settings.svelte";
@@ -167,6 +168,8 @@ export const getExtensions = (options?: ListenerOptions) => {
             autocapitalize: "on",
         }),
         languageCompartment.of(getEditorLanguageExtension()),
+        editorialTargetBookmarkField,
+        editorialTargetViewTracker,
         richMarkdownExtension(),
         markdownFormattingKeymap,
         listeners(options),

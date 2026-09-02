@@ -31,6 +31,16 @@
 import { EditorSelection } from "@codemirror/state";
 import { z } from "zod";
 
+export const AiGenerationProvenanceSchema = z.object({
+    requestId: z.string().min(1),
+    task: z.enum(["global-review", "local-rewrite", "exact-compression", "background-review"]),
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    createdAt: z.number(),
+    persona: z.string().min(1).optional(),
+});
+export type AiGenerationProvenance = z.infer<typeof AiGenerationProvenanceSchema>;
+
 // what about multiple authors and stuff???
 export type ThreadMessage = { message: string; author: string; time: number };
 export type Thread = ThreadMessage[];
@@ -57,6 +67,8 @@ type BaseAnnotation = {
     status: AnnotationStatus;
     /** Stable lineage token used to distinguish a removed annotation from ID reuse. */
     _historyId?: string;
+    /** The AI request that created this annotation. Missing for human and legacy annotations. */
+    aiProvenance?: AiGenerationProvenance;
 };
 
 export function getNewId(annotations: Annotations) {
@@ -116,6 +128,8 @@ export type VersionState = object & {
     label?: string;
     /** Explicit authorship of this version. Missing only on legacy persisted data. */
     provenance?: RevisionProvenance;
+    /** The AI request that generated this version, retained if a human later edits it. */
+    aiProvenance?: AiGenerationProvenance;
 };
 
 export function versionText(version: VersionState): string {
@@ -321,6 +335,7 @@ export const VersionStateSchema = z
         doc: z.string(),
         label: z.string().optional(),
         provenance: z.enum(["human", "ai", "mixed"]).optional(),
+        aiProvenance: AiGenerationProvenanceSchema.optional(),
     })
     .passthrough();
 const RawBaseSchema = z.object({
@@ -332,6 +347,7 @@ const RawBaseSchema = z.object({
     // Optional on disk for back-compat. annotationField normalizes legacy data
     // before it enters live state.
     _historyId: z.string().optional(),
+    aiProvenance: AiGenerationProvenanceSchema.optional(),
 });
 export const RawAnnotationSchema = z.discriminatedUnion("_type", [
     RawBaseSchema.extend({ _type: z.literal("comment") }),
@@ -463,6 +479,7 @@ const SerializedBase = z.object({
     thread: z.array(ThreadMessageSchema),
     // Optional for clipboard payloads copied by older Quillium releases.
     status: z.enum(["pending", "active"]).optional(),
+    aiProvenance: AiGenerationProvenanceSchema.optional(),
 });
 // Tripwire: if a fourth annotation type is added to RawAnnotationSchema, this
 // `satisfies` fails to compile (4 options no longer assignable to a 3-tuple),

@@ -1,4 +1,11 @@
+import {
+    getDocumentEditorialDecisions,
+    getDocumentWriterBrief,
+    setDocumentEditorialDecisions,
+    setDocumentWriterBrief,
+} from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
+import { currentDocumentId, currentDraftId } from "$lib/stores";
 /**
  * Reactive AI settings store (Svelte 5 runes).
  *
@@ -7,8 +14,8 @@ import { appEventBus } from "$lib/events/appEventBus";
  *
  * - `aiSettings` — provider, model ID, and API key (key loaded from
  *   the system keychain via Tauri at startup).
- * - `documentContext` — structured writing-context fields (goal, tone,
- *   audience, etc.) persisted to localStorage.
+ * - `documentContext` — the active document's writer brief and explicit editorial
+ *   decisions, persisted in SQLite.
  * - `personaModes` — per-mode opt-in for reader personas (default OFF
  *   because personas multiply token cost); persisted to localStorage.
  * - `aiProcessing` — boolean flag consumed by the sidebar glow
@@ -18,7 +25,7 @@ import { appEventBus } from "$lib/events/appEventBus";
  *   provider/model  -> localStorage
  *   API key         -> system keychain (via Tauri `get_api_key` /
  *                      `set_api_key` commands)
- *   documentContext -> localStorage
+ *   documentContext -> SQLite, scoped by document
  *
  * Data flow:
  *   AISettings.svelte  -->  aiSettings / documentContext (writes)
@@ -27,6 +34,21 @@ import { appEventBus } from "$lib/events/appEventBus";
  *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
  */
 import { invoke } from "@tauri-apps/api/core";
+import type { UIMessage } from "ai";
+import { untrack } from "svelte";
+import { derived, get } from "svelte/store";
+import {
+    DEFAULT_EDITORIAL_PREFERENCES,
+    type EditorialPreferences,
+    type EditorialStance,
+    type FeedbackDensity,
+    type VoiceLatitude,
+} from "./editorialPolicy";
+import {
+    type AiConversationMode,
+    isPersistentConversationMode,
+    loadAiConversation,
+} from "./persistence";
 import type { Provider } from "./provider";
 
 const PROVIDER_KEY = "quillium-ai-provider";
@@ -34,31 +56,164 @@ const MODEL_KEY = "quillium-ai-model";
 const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 const PERSONA_MODES_KEY = "quillium-ai-persona-modes";
+const EDITORIAL_PREFERENCES_KEY = "quillium-ai-editorial-preferences";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 export const HAS_OPENAI_OAUTH_KEY = "quillium-has-openai-oauth";
 
 export type DocumentContext = {
     freeform: string;
+    decisions: string[];
 };
 
-function loadDocumentContext(): DocumentContext {
+function loadLegacyDocumentContext(): Pick<DocumentContext, "freeform"> {
     if (typeof localStorage === "undefined") return { freeform: "" };
     try {
         const stored = localStorage.getItem(DOCUMENT_CONTEXT_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) {
+            const parsed = JSON.parse(stored) as Partial<DocumentContext> | null;
+            if (typeof parsed?.freeform === "string") return { freeform: parsed.freeform };
+        }
     } catch {}
     return { freeform: "" };
 }
 
-export function saveDocumentContext() {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(DOCUMENT_CONTEXT_KEY, JSON.stringify(documentContext));
+const legacyDocumentContext = loadLegacyDocumentContext();
+
+let documentContextDocumentId: string | null = null;
+let documentContextReady = false;
+let legacyDocumentContextClaimed = false;
+
+function parseEditorialDecisions(value: string | null): string[] {
+    if (!value) return [];
+    try {
+        const parsed: unknown = JSON.parse(value);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter((decision): decision is string => typeof decision === "string")
+            .map((decision) => decision.trim())
+            .filter((decision) => decision.length > 0 && decision.length <= 500);
+    } catch {
+        return [];
+    }
 }
 
-export const documentContext = $state<DocumentContext>(loadDocumentContext());
+function persistDocumentContext(documentId: string, context: DocumentContext): Promise<void> {
+    return Promise.all([
+        setDocumentWriterBrief(documentId, context.freeform),
+        setDocumentEditorialDecisions(documentId, JSON.stringify(context.decisions)),
+    ]).then(() => undefined);
+}
+
+export function saveDocumentContext() {
+    if (!documentContextDocumentId || !documentContextReady) return;
+    void persistDocumentContext(documentContextDocumentId, {
+        freeform: documentContext.freeform,
+        decisions: [...documentContext.decisions],
+    }).catch((error) => {
+        console.error("[aiSettings] failed to save document context", error);
+    });
+}
+
+export const documentContext = $state<DocumentContext>({ freeform: "", decisions: [] });
 
 export function hasDocumentContext(): boolean {
-    return documentContext.freeform.trim().length > 0;
+    return documentContext.freeform.trim().length > 0 || documentContext.decisions.length > 0;
+}
+
+/** Loads the writer brief for each active document and flushes the old one before switching. */
+export function useDocumentContextEffects() {
+    $effect(() => {
+        let generation = 0;
+        // Store subscriptions run synchronously during effect setup. Keep context reads and writes
+        // untracked so remounting the sidebar cannot make this effect depend on its own mutations.
+        return currentDocumentId.subscribe((documentId) =>
+            untrack(() => {
+                generation += 1;
+                const loadGeneration = generation;
+                if (documentContextDocumentId && documentContextReady) {
+                    void persistDocumentContext(documentContextDocumentId, {
+                        freeform: documentContext.freeform,
+                        decisions: [...documentContext.decisions],
+                    }).catch((error) => {
+                        console.error("[aiSettings] failed to save document context", error);
+                    });
+                }
+
+                documentContextDocumentId = documentId;
+                documentContextReady = false;
+                documentContext.freeform = "";
+                documentContext.decisions = [];
+                if (!documentId) return;
+                const loadingFreeform = documentContext.freeform;
+                const loadingDecisions = documentContext.decisions;
+
+                void Promise.all([
+                    getDocumentWriterBrief(documentId),
+                    getDocumentEditorialDecisions(documentId),
+                ])
+                    .then(async ([writerBrief, decisionsJson]) => {
+                        if (
+                            loadGeneration !== generation ||
+                            documentId !== get(currentDocumentId)
+                        ) {
+                            return;
+                        }
+                        if (
+                            documentContext.freeform !== loadingFreeform ||
+                            documentContext.decisions !== loadingDecisions
+                        ) {
+                            documentContextReady = true;
+                            saveDocumentContext();
+                            return;
+                        }
+
+                        if (
+                            writerBrief === null &&
+                            !legacyDocumentContextClaimed &&
+                            legacyDocumentContext.freeform.trim()
+                        ) {
+                            legacyDocumentContextClaimed = true;
+                            documentContext.freeform = legacyDocumentContext.freeform;
+                            await setDocumentWriterBrief(documentId, documentContext.freeform);
+                            if (
+                                loadGeneration !== generation ||
+                                documentId !== get(currentDocumentId)
+                            ) {
+                                return;
+                            }
+                            if (typeof localStorage !== "undefined") {
+                                localStorage.removeItem(DOCUMENT_CONTEXT_KEY);
+                            }
+                        } else {
+                            documentContext.freeform = writerBrief ?? "";
+                        }
+                        documentContext.decisions = parseEditorialDecisions(decisionsJson);
+                        documentContextReady = true;
+                    })
+                    .catch((error) => {
+                        if (loadGeneration !== generation) return;
+                        documentContextReady = true;
+                        console.error("[aiSettings] failed to load document context", error);
+                    });
+            }),
+        );
+    });
+
+    $effect(() => {
+        const writerBrief = documentContext.freeform;
+        const decisions = [...documentContext.decisions];
+        if (!documentContextDocumentId || !documentContextReady) return;
+        const documentId = documentContextDocumentId;
+        const timer = setTimeout(() => {
+            void persistDocumentContext(documentId, {
+                freeform: writerBrief,
+                decisions,
+            }).catch((error) => {
+                console.error("[aiSettings] failed to save document context", error);
+            });
+        }, 350);
+        return () => clearTimeout(timer);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +258,43 @@ export function setPersonasForMode(mode: PersonaMode, enabled: boolean) {
     }
 }
 
+const EDITORIAL_STANCES = new Set<EditorialStance>([
+    "author-first",
+    "collaborative",
+    "exploratory",
+]);
+const FEEDBACK_DENSITIES = new Set<FeedbackDensity>(["quiet", "focused", "thorough"]);
+const VOICE_LATITUDES = new Set<VoiceLatitude>(["preserve", "adapt", "transform"]);
+
+function loadEditorialPreferences(): EditorialPreferences {
+    if (typeof localStorage === "undefined") return { ...DEFAULT_EDITORIAL_PREFERENCES };
+    try {
+        const stored = localStorage.getItem(EDITORIAL_PREFERENCES_KEY);
+        if (!stored) return { ...DEFAULT_EDITORIAL_PREFERENCES };
+        const parsed = JSON.parse(stored) as Partial<EditorialPreferences>;
+        return {
+            stance: EDITORIAL_STANCES.has(parsed.stance as EditorialStance)
+                ? (parsed.stance as EditorialStance)
+                : DEFAULT_EDITORIAL_PREFERENCES.stance,
+            feedbackDensity: FEEDBACK_DENSITIES.has(parsed.feedbackDensity as FeedbackDensity)
+                ? (parsed.feedbackDensity as FeedbackDensity)
+                : DEFAULT_EDITORIAL_PREFERENCES.feedbackDensity,
+            voiceLatitude: VOICE_LATITUDES.has(parsed.voiceLatitude as VoiceLatitude)
+                ? (parsed.voiceLatitude as VoiceLatitude)
+                : DEFAULT_EDITORIAL_PREFERENCES.voiceLatitude,
+        };
+    } catch {
+        return { ...DEFAULT_EDITORIAL_PREFERENCES };
+    }
+}
+
+export const editorialPreferences = $state<EditorialPreferences>(loadEditorialPreferences());
+
+export function persistEditorialPreferences() {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(EDITORIAL_PREFERENCES_KEY, JSON.stringify(editorialPreferences));
+}
+
 // ---------------------------------------------------------------------------
 // AI processing indicator — purely for UI feedback (e.g. sidebar glow).
 // Long-running requests should use beginAiTask/endAiTask so overlapping
@@ -142,7 +334,14 @@ export function setAiProcessing(value: boolean) {
  * (i.e. at the top-level of a Svelte component's `<script>` block) so
  * `$effect` has a valid owner.
  */
-export function useAiChatEffects(chat: { status: string; stop: () => void }) {
+export function useAiChatEffects(
+    chat: {
+        status: string;
+        stop: () => void;
+        messages: UIMessage[];
+    },
+    mode: AiConversationMode | "dictionary",
+) {
     let processingTask: symbol | null = null;
 
     $effect(() => {
@@ -161,6 +360,42 @@ export function useAiChatEffects(chat: { status: string; stop: () => void }) {
             }
         });
         return unsub;
+    });
+
+    $effect(() => {
+        let generation = 0;
+        const scope = derived([currentDocumentId, currentDraftId], ([$documentId, $draftId]) => ({
+            documentId: $documentId,
+            draftId: $draftId,
+        }));
+        return scope.subscribe(({ documentId, draftId }) =>
+            untrack(() => {
+                generation += 1;
+                const loadGeneration = generation;
+                if (chat.status === "submitted" || chat.status === "streaming") chat.stop();
+                chat.messages = [];
+                const loadingPlaceholder = chat.messages;
+
+                if (!documentId || !draftId || !isPersistentConversationMode(mode)) return;
+                void loadAiConversation(draftId, mode)
+                    .then((messages) => {
+                        if (
+                            loadGeneration !== generation ||
+                            documentId !== get(currentDocumentId) ||
+                            draftId !== get(currentDraftId) ||
+                            chat.status !== "ready" ||
+                            chat.messages !== loadingPlaceholder
+                        ) {
+                            return;
+                        }
+                        chat.messages = messages;
+                    })
+                    .catch((error) => {
+                        if (loadGeneration !== generation) return;
+                        console.error("[aiSettings] failed to load AI conversation", error);
+                    });
+            }),
+        );
     });
 }
 

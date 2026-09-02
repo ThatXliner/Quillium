@@ -75,4 +75,23 @@ Root-level modals (`stackIndex === 0`) watch `$annotationsStore` (which reflects
 
 ## AI
 
-AI suggestions are just another annotation type. They show up in the same flow as comments and revisions, not in a separate UI. The AI sidebar has three modes—Chat, Feedback, and Revise—so you can switch without losing your place in the document. AutoAI can also create annotations automatically in the background based on document content.
+AI is an editorial collaborator, not the owner of the draft. The writer's text
+remains canonical until the writer applies a suggestion or chooses a revision
+version. Chat and structural recipes stay conversational. Feedback can add
+anchored comments, while Revise can propose comments, suggestions, or reversible
+revision branches. A valid AI turn may produce no document action.
+
+Every turn has an explicit task and capability set. Prompt wording, reader
+personas, saved decisions, and device-local editorial preferences can shape the
+response but cannot grant another action type. Before dispatch, Quillium resolves
+one exact target in the editor that originated the request and checks document,
+tab, draft, nested revision branch, selection, read-only state, conflicting
+annotations, and duplicate concerns. In-flight selections map through edits before
+the passage; edits inside the passage invalidate the result.
+
+AI actions use the same CodeMirror annotation commands, history, persistence, and
+collaboration paths as human actions. Generated annotations and revision versions
+carry request provenance. AutoAI uses the same policy and action gateway, defaults
+off and to comments only, and reports whether a review applied, found nothing new,
+was skipped or discarded, or failed. See
+[AI Features and Request Pipeline](./docs/ai-sidebar.md).
