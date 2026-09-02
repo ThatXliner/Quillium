@@ -35,9 +35,20 @@ const VIEWPORTS: ReadonlyArray<{
 const COLOR_SCHEMES: readonly ColorScheme[] = ["light"];
 
 const VISUAL_FIXTURE = buildVisualFixtureState();
-const VISUAL_STATE_JSON = JSON.stringify(serializeFixtureWire(VISUAL_FIXTURE.state));
 const SHORT_FIXTURE = buildFixtureState();
-const SHORT_STATE_JSON = JSON.stringify(serializeFixtureWire(SHORT_FIXTURE.state));
+
+function serializeDesktopFixtureState(fixture: typeof VISUAL_FIXTURE.state): string {
+    // Public shares omit the author's cursor. Desktop screenshots provide a
+    // deterministic test cursor separately so annotation activation cannot
+    // drift when the production share wire changes transient-state policy.
+    return JSON.stringify({
+        selection: fixture.selection.toJSON(),
+        ...serializeFixtureWire(fixture),
+    });
+}
+
+const VISUAL_STATE_JSON = serializeDesktopFixtureState(VISUAL_FIXTURE.state);
+const SHORT_STATE_JSON = serializeDesktopFixtureState(SHORT_FIXTURE.state);
 
 const SCREENSHOT_OPTIONS = {
     animations: "disabled" as const,
