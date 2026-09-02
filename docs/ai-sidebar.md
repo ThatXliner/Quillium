@@ -56,7 +56,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `context.ts` | Context budgeting, source metadata, selection focus, and context-aware actions |
 | `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
-| `editorialTarget.ts` | Request-scoped document, draft, and selection validation |
+| `editorialTarget.ts` | Transient CodeMirror target bookmarks plus document, tab, draft, nested-branch, and selection validation |
 | `persistence.ts` | AI SDK message validation and draft-scoped conversation persistence |
 | `provenance.ts` | Stable request metadata for AI-created annotations and accepted text |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
@@ -121,6 +121,22 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 See [Reader Personas](./reader-personas.md) for persona configuration, parallel
 execution, attribution, and cost behavior.
+
+### Editorial approach
+
+AI Settings stores three device-local preferences that apply to every editorial
+request:
+
+| Preference | Options | Default |
+|------------|---------|---------|
+| Stance | Author-first, Collaborative, Exploratory | Author-first |
+| Feedback density | Quiet, Focused, Thorough | Focused |
+| Voice latitude | Preserve, Adapt, Transform | Preserve |
+
+The request transport snapshots these values alongside provider settings. The
+policy compiler inserts them after the fixed capability contract, so they can
+shape advice but cannot grant another action type. Transform applies only to
+explicit revision proposals that retain the original text.
 
 ## Context Packets
 
@@ -231,11 +247,20 @@ reload.
 
 Tool schemas require exact `targetText` and accept surrounding `context` to
 disambiguate repeated phrases. `chatFactory.ts` also verifies the captured
-document and draft, the turn's allowed action types, selection containment, and
-that the selected source text has not changed in place.
+document, tab, draft, and nested revision-version path, the turn's allowed action
+types, selection containment, and that the selected source text has not changed
+in place. A selected request also
+registers a transient range in `editorialTargetBookmarkField`. CodeMirror maps
+the range as the writer edits, so an insertion before the passage moves the
+target instead of invalidating it. An edit inside the selected source changes
+the mapped text and causes the tool call to be rejected.
 It dispatches valid calls through the same CodeMirror annotation commands used
 by the rest of the app. Reader-persona tool calls attach the persona name as the
 annotation author but cannot expand the parent task's permissions.
+
+Bookmarks live only for the request. They are removed on completion or error,
+and persona batches remove their shared bookmark in a `finally` block. The field
+is not part of `savedFields`, event persistence, or undo history.
 
 Every AI-created annotation records a request ID, editorial task, provider,
 model, timestamp, and optional reader persona. Revisions also copy that metadata
@@ -252,8 +277,8 @@ Feedback and Revise default to one stream. If personas are enabled for that
 specific mode, `runMultiPersonaStreams()` starts one stream per enabled persona
 with `Promise.all()`.
 
-The fan-out path snapshots the document ID, draft ID, selection, and editor
-context once. Tool calls use the same action and target guard as ordinary
+The fan-out path snapshots the document ID, tab ID, draft ID, nested branch path,
+selection, and owning editor once. Tool calls use the same action and target guard as ordinary
 requests, preventing a late persona result from landing in another draft or
 outside the captured selection. See
 [Reader Personas](./reader-personas.md) for the full behavior.

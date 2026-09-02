@@ -1,5 +1,11 @@
-import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
+import {
+    annotationField,
+    createComment,
+    createRevision,
+    createSuggestion,
+} from "$lib/editor/plugins/annotations";
 import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
+import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import posthog from "$lib/posthog";
 import type { ReaderPersona } from "$lib/readers/presets";
 import {
@@ -7,6 +13,7 @@ import {
     annotations,
     currentDocumentId,
     currentDraftId,
+    currentTabId,
     documentContent,
     editorView,
     selectedText,
@@ -64,7 +71,16 @@ import {
     type EditorialTask,
     compileEditorialPolicy,
 } from "./editorialPolicy";
-import { type EditorialTargetSnapshot, validateEditorialActionTarget } from "./editorialTarget";
+import {
+    type EditorialTargetSnapshot,
+    captureEditorialTarget,
+    getActiveEditorialView,
+    getEditorialBranchPath,
+    releaseEditorialTarget,
+    resolveEditorialTargetRange,
+    resolveEditorialTargetView,
+    validateEditorialActionTarget,
+} from "./editorialTarget";
 import {
     clearAiConversation,
     isPersistentConversationMode,
@@ -74,6 +90,7 @@ import { createAiGenerationProvenance } from "./provenance";
 import {
     aiSettings,
     documentContext,
+    editorialPreferences,
     ensureApiKeyLoaded,
     getAiAbortSignal,
     setAiProcessing,
@@ -118,15 +135,24 @@ type ToolCallGuard = {
  * finds the target text in the editor and attaches the annotation.
  */
 function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: string) {
-    const view = get(editorView);
-    if (!view) return;
+    const rootView = get(editorView);
+    if (!rootView) return;
+    const view = resolveEditorialTargetView(rootView, guard.target);
+    if (!view) {
+        console.warn("[chatFactory] rejected AI annotation: branch-changed");
+        toast.warning("The revision branch changed, so Quillium skipped one AI annotation.");
+        return;
+    }
 
     const validation = validateEditorialActionTarget({
         snapshot: guard.target,
         current: {
             documentId: get(currentDocumentId),
+            tabId: get(currentTabId),
             draftId: get(currentDraftId),
             documentText: view.state.doc.toString(),
+            selectedTextRange: resolveEditorialTargetRange(view, guard.target),
+            branchPath: getEditorialBranchPath(view),
         },
         targetText: toolCall.input.targetText,
         action: TOOL_ACTIONS[toolCall.toolName],
@@ -228,13 +254,25 @@ export async function runMultiPersonaStreams({
     // Annotations from these streams must land in the document the review
     // was started on — if the user switches documents mid-stream, tool
     // calls would otherwise be applied to the wrong document.
-    const targetAtStart: EditorialTargetSnapshot = {
+    const rootView = get(editorView);
+    const targetView = rootView ? getActiveEditorialView(rootView) : undefined;
+    const targetSelection = targetView?.state.selection.main;
+    const targetSelectedText =
+        targetView && targetSelection && !targetSelection.empty
+            ? targetView.state.sliceDoc(targetSelection.from, targetSelection.to)
+            : "";
+    const targetAtStart = captureEditorialTarget({
+        view: targetView ?? null,
         documentId: get(currentDocumentId),
+        tabId: get(currentTabId),
         draftId: get(currentDraftId),
-        selectedText: get(selectedText),
-        selectedTextRange: get(selectedTextRange),
-    };
-    const documentContentAtStart = get(documentContent);
+        selectedText: targetSelectedText,
+        selectedTextRange:
+            targetSelection && !targetSelection.empty
+                ? { from: targetSelection.from, to: targetSelection.to }
+                : undefined,
+    });
+    const documentContentAtStart = targetView?.state.doc.toString() ?? get(documentContent);
     const selectedTextAtStart = targetAtStart.selectedText;
     const selectedTextRangeAtStart = targetAtStart.selectedTextRange;
     const policy = compileEditorialPolicy({
@@ -242,11 +280,13 @@ export async function runMultiPersonaStreams({
         hasSelection: !!selectedTextAtStart,
     });
     const annotationContextAtStart = buildAnnotationContextInputs({
-        annotations: get(annotations),
+        annotations: targetView?.state.field(annotationField, false) ?? get(annotations),
         documentContent: documentContentAtStart,
         selectedText: selectedTextAtStart,
         selectedTextRange: selectedTextRangeAtStart,
-        activeAnnotation: get(activeAnnotation),
+        activeAnnotation: targetView
+            ? getActiveAnnotation(targetView.state)
+            : get(activeAnnotation),
     });
 
     const tasks = personas.map(async (persona) => {
@@ -266,6 +306,7 @@ export async function runMultiPersonaStreams({
             apiKey: aiSettings.apiKey,
             baseURL: aiSettings.baseURL,
             documentContext: { ...documentContext },
+            editorialPreferences: { ...editorialPreferences },
             annotationContext: annotationContextAtStart,
             persona,
             abortSignal,
@@ -303,7 +344,11 @@ export async function runMultiPersonaStreams({
         });
     });
 
-    await Promise.all(tasks);
+    try {
+        await Promise.all(tasks);
+    } finally {
+        releaseEditorialTarget(targetView, targetAtStart);
+    }
 }
 
 /**
@@ -324,15 +369,32 @@ function makeTransport(
             abortSignal,
         }: { messages: UIMessage[]; abortSignal?: AbortSignal } & Record<string, unknown>) {
             await ensureApiKeyLoaded();
-            const documentContentAtSend = get(documentContent);
-            const selectedTextAtSend = get(selectedText);
-            const selectedTextRangeAtSend = get(selectedTextRange);
-            captureTarget({
-                documentId: get(currentDocumentId),
-                draftId: get(currentDraftId),
-                selectedText: selectedTextAtSend,
-                selectedTextRange: selectedTextRangeAtSend,
-            });
+            const rootView = get(editorView);
+            const targetView = rootView ? getActiveEditorialView(rootView) : undefined;
+            const selection = targetView?.state.selection.main;
+            const documentContentAtSend = targetView?.state.doc.toString() ?? get(documentContent);
+            const selectedTextAtSend =
+                targetView && selection
+                    ? selection.empty
+                        ? ""
+                        : targetView.state.sliceDoc(selection.from, selection.to)
+                    : get(selectedText);
+            const selectedTextRangeAtSend =
+                targetView && selection
+                    ? selection.empty
+                        ? undefined
+                        : { from: selection.from, to: selection.to }
+                    : get(selectedTextRange);
+            captureTarget(
+                captureEditorialTarget({
+                    view: targetView ?? null,
+                    documentId: get(currentDocumentId),
+                    tabId: get(currentTabId),
+                    draftId: get(currentDraftId),
+                    selectedText: selectedTextAtSend,
+                    selectedTextRange: selectedTextRangeAtSend,
+                }),
+            );
             return streamFn({
                 messages,
                 documentContent: documentContentAtSend,
@@ -343,12 +405,16 @@ function makeTransport(
                 apiKey: aiSettings.apiKey,
                 baseURL: aiSettings.baseURL,
                 documentContext: { ...documentContext },
+                editorialPreferences: { ...editorialPreferences },
                 annotationContext: buildAnnotationContextInputs({
-                    annotations: get(annotations),
+                    annotations:
+                        targetView?.state.field(annotationField, false) ?? get(annotations),
                     documentContent: documentContentAtSend,
                     selectedText: selectedTextAtSend,
                     selectedTextRange: selectedTextRangeAtSend,
-                    activeAnnotation: get(activeAnnotation),
+                    activeAnnotation: targetView
+                        ? getActiveAnnotation(targetView.state)
+                        : get(activeAnnotation),
                 }),
                 abortSignal,
             });
@@ -388,8 +454,15 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
     let targetAtSend: EditorialTargetSnapshot | undefined;
     let provenanceAtSend: AiGenerationProvenance | undefined;
 
+    function releaseTargetAtSend() {
+        releaseEditorialTarget(targetAtSend?.ownerView, targetAtSend);
+        targetAtSend = undefined;
+        provenanceAtSend = undefined;
+    }
+
     const chat = new Chat({
         transport: makeTransport(transportWithTracking, (target) => {
+            releaseTargetAtSend();
             targetAtSend = target;
             provenanceAtSend =
                 mode === "feedback" || mode === "revise"
@@ -414,10 +487,14 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         },
         onFinish: ({ messages }) => {
             const draftId = targetAtSend?.draftId;
+            releaseTargetAtSend();
             if (!draftId || !isPersistentConversationMode(mode)) return;
             void saveAiConversation(draftId, mode, messages).catch((error) => {
                 console.error("[chatFactory] failed to save AI conversation", error);
             });
+        },
+        onError: () => {
+            releaseTargetAtSend();
         },
     });
 

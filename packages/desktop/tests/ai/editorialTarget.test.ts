@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 
 const snapshot = {
     documentId: "document-a",
+    tabId: "tab-a",
     draftId: "draft-a",
     selectedText: "A deliberately repeated sentence.",
     selectedTextRange: { from: 20, to: 53 },
+    branchPath: [],
 };
 
 describe("validateEditorialActionTarget", () => {
@@ -15,8 +17,10 @@ describe("validateEditorialActionTarget", () => {
                 snapshot,
                 current: {
                     documentId: "document-a",
+                    tabId: "tab-a",
                     draftId: "draft-a",
                     documentText: `01234567890123456789${snapshot.selectedText}`,
+                    selectedTextRange: snapshot.selectedTextRange,
                 },
                 targetText: "deliberately repeated",
                 action: "suggestion",
@@ -29,7 +33,7 @@ describe("validateEditorialActionTarget", () => {
         expect(
             validateEditorialActionTarget({
                 snapshot,
-                current: { documentId: "document-a", draftId: "draft-b" },
+                current: { documentId: "document-a", tabId: "tab-a", draftId: "draft-b" },
                 targetText: "deliberately repeated",
                 action: "comment",
                 allowedActions: ["comment"],
@@ -41,7 +45,7 @@ describe("validateEditorialActionTarget", () => {
         expect(
             validateEditorialActionTarget({
                 snapshot,
-                current: { documentId: "document-a", draftId: "draft-a" },
+                current: { documentId: "document-a", tabId: "tab-a", draftId: "draft-a" },
                 targetText: "A different paragraph",
                 action: "revision",
                 allowedActions: ["revision"],
@@ -55,8 +59,10 @@ describe("validateEditorialActionTarget", () => {
                 snapshot,
                 current: {
                     documentId: "document-a",
+                    tabId: "tab-a",
                     draftId: "draft-a",
                     documentText: "x".repeat(80),
+                    selectedTextRange: snapshot.selectedTextRange,
                 },
                 targetText: "deliberately repeated",
                 action: "suggestion",
@@ -69,11 +75,43 @@ describe("validateEditorialActionTarget", () => {
         expect(
             validateEditorialActionTarget({
                 snapshot,
-                current: { documentId: "document-a", draftId: "draft-a" },
+                current: { documentId: "document-a", tabId: "tab-a", draftId: "draft-a" },
                 targetText: "deliberately repeated",
                 action: "revision",
                 allowedActions: ["comment"],
             }),
         ).toEqual({ ok: false, reason: "action-forbidden" });
+    });
+
+    it("rejects a result after switching tabs", () => {
+        expect(
+            validateEditorialActionTarget({
+                snapshot,
+                current: { documentId: "document-a", tabId: "tab-b", draftId: "draft-a" },
+                targetText: "deliberately repeated",
+                action: "comment",
+                allowedActions: ["comment"],
+            }),
+        ).toEqual({ ok: false, reason: "tab-changed" });
+    });
+
+    it("rejects a result after switching nested revision versions", () => {
+        expect(
+            validateEditorialActionTarget({
+                snapshot: {
+                    ...snapshot,
+                    branchPath: [{ revisionId: 7, versionId: "version-a" }],
+                },
+                current: {
+                    documentId: "document-a",
+                    tabId: "tab-a",
+                    draftId: "draft-a",
+                    branchPath: [{ revisionId: 7, versionId: "version-b" }],
+                },
+                targetText: "deliberately repeated",
+                action: "comment",
+                allowedActions: ["comment"],
+            }),
+        ).toEqual({ ok: false, reason: "branch-changed" });
     });
 });

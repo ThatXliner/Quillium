@@ -29,7 +29,15 @@ import { currentDocumentId, currentDraftId } from "$lib/stores";
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { UIMessage } from "ai";
+import { untrack } from "svelte";
 import { derived, get } from "svelte/store";
+import {
+    DEFAULT_EDITORIAL_PREFERENCES,
+    type EditorialPreferences,
+    type EditorialStance,
+    type FeedbackDensity,
+    type VoiceLatitude,
+} from "./editorialPolicy";
 import {
     type AiConversationMode,
     isPersistentConversationMode,
@@ -42,6 +50,7 @@ const MODEL_KEY = "quillium-ai-model";
 const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 const PERSONA_MODES_KEY = "quillium-ai-persona-modes";
+const EDITORIAL_PREFERENCES_KEY = "quillium-ai-editorial-preferences";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 export const HAS_OPENAI_OAUTH_KEY = "quillium-has-openai-oauth";
 
@@ -200,6 +209,43 @@ export function setPersonasForMode(mode: PersonaMode, enabled: boolean) {
     }
 }
 
+const EDITORIAL_STANCES = new Set<EditorialStance>([
+    "author-first",
+    "collaborative",
+    "exploratory",
+]);
+const FEEDBACK_DENSITIES = new Set<FeedbackDensity>(["quiet", "focused", "thorough"]);
+const VOICE_LATITUDES = new Set<VoiceLatitude>(["preserve", "adapt", "transform"]);
+
+function loadEditorialPreferences(): EditorialPreferences {
+    if (typeof localStorage === "undefined") return { ...DEFAULT_EDITORIAL_PREFERENCES };
+    try {
+        const stored = localStorage.getItem(EDITORIAL_PREFERENCES_KEY);
+        if (!stored) return { ...DEFAULT_EDITORIAL_PREFERENCES };
+        const parsed = JSON.parse(stored) as Partial<EditorialPreferences>;
+        return {
+            stance: EDITORIAL_STANCES.has(parsed.stance as EditorialStance)
+                ? (parsed.stance as EditorialStance)
+                : DEFAULT_EDITORIAL_PREFERENCES.stance,
+            feedbackDensity: FEEDBACK_DENSITIES.has(parsed.feedbackDensity as FeedbackDensity)
+                ? (parsed.feedbackDensity as FeedbackDensity)
+                : DEFAULT_EDITORIAL_PREFERENCES.feedbackDensity,
+            voiceLatitude: VOICE_LATITUDES.has(parsed.voiceLatitude as VoiceLatitude)
+                ? (parsed.voiceLatitude as VoiceLatitude)
+                : DEFAULT_EDITORIAL_PREFERENCES.voiceLatitude,
+        };
+    } catch {
+        return { ...DEFAULT_EDITORIAL_PREFERENCES };
+    }
+}
+
+export const editorialPreferences = $state<EditorialPreferences>(loadEditorialPreferences());
+
+export function persistEditorialPreferences() {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(EDITORIAL_PREFERENCES_KEY, JSON.stringify(editorialPreferences));
+}
+
 // ---------------------------------------------------------------------------
 // AI processing indicator — purely for UI feedback (e.g. sidebar glow).
 // Long-running requests should use beginAiTask/endAiTask so overlapping
@@ -273,32 +319,34 @@ export function useAiChatEffects(
             documentId: $documentId,
             draftId: $draftId,
         }));
-        return scope.subscribe(({ documentId, draftId }) => {
-            generation += 1;
-            const loadGeneration = generation;
-            if (chat.status === "submitted" || chat.status === "streaming") chat.stop();
-            chat.messages = [];
-            const loadingPlaceholder = chat.messages;
+        return scope.subscribe(({ documentId, draftId }) =>
+            untrack(() => {
+                generation += 1;
+                const loadGeneration = generation;
+                if (chat.status === "submitted" || chat.status === "streaming") chat.stop();
+                chat.messages = [];
+                const loadingPlaceholder = chat.messages;
 
-            if (!documentId || !draftId || !isPersistentConversationMode(mode)) return;
-            void loadAiConversation(draftId, mode)
-                .then((messages) => {
-                    if (
-                        loadGeneration !== generation ||
-                        documentId !== get(currentDocumentId) ||
-                        draftId !== get(currentDraftId) ||
-                        chat.status !== "ready" ||
-                        chat.messages !== loadingPlaceholder
-                    ) {
-                        return;
-                    }
-                    chat.messages = messages;
-                })
-                .catch((error) => {
-                    if (loadGeneration !== generation) return;
-                    console.error("[aiSettings] failed to load AI conversation", error);
-                });
-        });
+                if (!documentId || !draftId || !isPersistentConversationMode(mode)) return;
+                void loadAiConversation(draftId, mode)
+                    .then((messages) => {
+                        if (
+                            loadGeneration !== generation ||
+                            documentId !== get(currentDocumentId) ||
+                            draftId !== get(currentDraftId) ||
+                            chat.status !== "ready" ||
+                            chat.messages !== loadingPlaceholder
+                        ) {
+                            return;
+                        }
+                        chat.messages = messages;
+                    })
+                    .catch((error) => {
+                        if (loadGeneration !== generation) return;
+                        console.error("[aiSettings] failed to load AI conversation", error);
+                    });
+            }),
+        );
     });
 }
 

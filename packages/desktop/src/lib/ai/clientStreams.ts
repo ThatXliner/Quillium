@@ -41,6 +41,7 @@ import { z } from "zod";
 import type { AiContextMode, AiTextRange, AnnotationContextInput } from "./context";
 import {
     type EditorialAction,
+    type EditorialPreferences,
     type EditorialTask,
     compileEditorialPolicy,
 } from "./editorialPolicy";
@@ -65,6 +66,7 @@ interface StreamOpts extends BaseOpts {
     documentContext?: DocumentContext;
     annotationContext?: AnnotationContextInput[];
     persona?: ReaderPersona;
+    editorialPreferences?: EditorialPreferences;
 }
 
 export type { StreamOpts };
@@ -225,7 +227,11 @@ async function buildStream(
     mode: AiContextMode,
 ): Promise<ReadableStream<UIMessageChunk>> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
-    const policy = compileEditorialPolicy({ task, hasSelection: !!opts.selectedText });
+    const policy = compileEditorialPolicy({
+        task,
+        hasSelection: !!opts.selectedText,
+        preferences: opts.editorialPreferences,
+    });
     const contextMessage = injectDocumentContext({
         documentContent: opts.documentContent,
         selectedText: opts.selectedText,

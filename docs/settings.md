@@ -84,7 +84,8 @@ use individual localStorage keys:
 | `aiSettings.provider` | `quillium-ai-provider` | OpenAI API, ChatGPT OAuth, OpenAI-compatible, Anthropic, Google, or DeepSeek |
 | `aiSettings.model` | `quillium-ai-model` | Curated or custom provider model ID; defaults to `gpt-5.6-sol` |
 | `aiSettings.baseURL` | `quillium-ai-base-url` | OpenAI-compatible endpoint URL |
-| `documentContext.freeform` | `quillium-document-context` | Writer brief injected into AI requests |
+| `editorialPreferences` | `quillium-ai-editorial-preferences` | Stance, feedback density, and voice latitude |
+| `documentContext.freeform` | SQLite `document_writer_briefs` | Document-scoped writer brief injected into AI requests; the legacy `quillium-document-context` key is imported once |
 | `personaModes` | `quillium-ai-persona-modes` | Per-mode reader-persona opt-in for Feedback and Revise |
 
 `aiSettings.apiKey` is memory-only. Provider API keys are lazy-loaded from the

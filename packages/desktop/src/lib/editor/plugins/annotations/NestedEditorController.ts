@@ -13,6 +13,7 @@
  * on the transaction itself, which is always in scope and timing-safe.
  */
 
+import { registerNestedEditorialView, unregisterEditorialView } from "$lib/ai/editorialTarget";
 import { logAppEvent } from "$lib/appLog";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import {
@@ -149,6 +150,20 @@ export class NestedEditorController {
         );
 
         this._editor = new EditorView({ state, parent: host });
+        registerNestedEditorialView({
+            view: this._editor,
+            parentView: this.parentView,
+            revisionId: this.revisionId,
+            versionId: version.id,
+            isCurrent: () => {
+                const revision = this.parentView.state.field(annotationField)[this.revisionId];
+                return (
+                    !!revision &&
+                    isAnnotationOfType(revision, "revision") &&
+                    revision.activeVersionId === version.id
+                );
+            },
+        });
         this._mountedVersionIndex = versionIndex;
         this._mountedVersionId = version.id;
         this._editorVersionId = version.id;
@@ -197,6 +212,7 @@ export class NestedEditorController {
             this.flushToParent();
         }
 
+        unregisterEditorialView(this._editor);
         this._editor.destroy();
         this._editor = undefined;
         this._mountedVersionIndex = -1;

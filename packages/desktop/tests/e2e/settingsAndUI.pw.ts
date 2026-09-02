@@ -215,6 +215,49 @@ test.describe("AI sidebar", () => {
 
         await expect(q.aiSidebar).toContainText("AI Settings");
     });
+
+    test("editorial approach preferences persist across reloads", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        await page.getByRole("button", { name: "AI Settings", exact: true }).click();
+        await expect(q.aiSidebar.getByText("Editorial approach", { exact: true })).toBeVisible();
+
+        const stance = q.aiSidebar.getByLabel("Stance");
+        const density = q.aiSidebar.getByLabel("Feedback density");
+        const voice = q.aiSidebar.getByLabel("Voice latitude");
+
+        await expect(stance).toHaveValue("author-first");
+        await expect(density).toHaveValue("focused");
+        await expect(voice).toHaveValue("preserve");
+
+        await stance.selectOption("exploratory");
+        await density.selectOption("thorough");
+        await voice.selectOption("transform");
+
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    JSON.parse(localStorage.getItem("quillium-ai-editorial-preferences") ?? "null"),
+                ),
+            )
+            .toEqual({
+                stance: "exploratory",
+                feedbackDensity: "thorough",
+                voiceLatitude: "transform",
+            });
+
+        await page.reload();
+        await expect(q.editor).toBeVisible({ timeout: 40_000 });
+        await page.getByRole("button", { name: "AI Settings", exact: true }).click();
+
+        await expect(q.aiSidebar.getByLabel("Stance")).toHaveValue("exploratory");
+        await expect(q.aiSidebar.getByLabel("Feedback density")).toHaveValue("thorough");
+        await expect(q.aiSidebar.getByLabel("Voice latitude")).toHaveValue("transform");
+    });
 });
 
 // ── Tutorial ────────────────────────────────────────────────────────────────

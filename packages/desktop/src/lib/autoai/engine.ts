@@ -21,6 +21,7 @@ import {
     aiSettings,
     beginAiTask,
     documentContext,
+    editorialPreferences,
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
@@ -37,6 +38,7 @@ import {
     annotations,
     currentDocumentId,
     currentDraftId,
+    currentTabId,
     documentContent,
     editorView,
 } from "$lib/stores";
@@ -68,6 +70,7 @@ function buildSystemPrompt(): string {
     const policy = compileEditorialPolicy({
         task: "background-review",
         requestedActions: annotationTypes,
+        preferences: editorialPreferences,
     });
     const allowed = policy.allowedActions.join(", ") || "none";
     return `${policy.systemPrompt}
@@ -136,6 +139,7 @@ function applyAnnotations({
             snapshot: target,
             current: {
                 documentId: get(currentDocumentId),
+                tabId: get(currentTabId),
                 draftId: get(currentDraftId),
                 documentText: doc,
             },
@@ -266,12 +270,15 @@ async function runReview(content: string, manual = false, generation = contentGe
     reviewAbortController = controller;
     const target: EditorialTargetSnapshot = {
         documentId: get(currentDocumentId),
+        tabId: get(currentTabId),
         draftId: get(currentDraftId),
         selectedText: "",
+        branchPath: [],
     };
     const policy = compileEditorialPolicy({
         task: "background-review",
         requestedActions: autoAISettings.annotationTypes,
+        preferences: editorialPreferences,
     });
     let task: symbol | null = null;
     try {
@@ -314,6 +321,7 @@ async function runReview(content: string, manual = false, generation = contentGe
         if (
             generation !== contentGeneration ||
             target.documentId !== get(currentDocumentId) ||
+            target.tabId !== get(currentTabId) ||
             target.draftId !== get(currentDraftId)
         ) {
             if (manual) toast("The draft changed during review, so the result was discarded.");

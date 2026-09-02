@@ -9,6 +9,7 @@ import type { Provider } from "$lib/ai/provider";
 import {
     beginAiTask,
     documentContext,
+    editorialPreferences,
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
@@ -54,6 +55,7 @@ export async function streamCommentAiResponse(
             documentContent: "",
             selectedText: "",
             documentContext,
+            editorialPreferences: { ...editorialPreferences },
             provider: settings.provider,
             model: settings.model,
             apiKey: settings.apiKey,
