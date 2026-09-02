@@ -95,7 +95,7 @@ function clearConversation() {
 }
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "revise");
 
 // Also reset persona state on global stop.
 $effect(() => {

@@ -65,6 +65,11 @@ import {
 } from "./editorialPolicy";
 import { type EditorialTargetSnapshot, validateEditorialActionTarget } from "./editorialTarget";
 import {
+    clearAiConversation,
+    isPersistentConversationMode,
+    saveAiConversation,
+} from "./persistence";
+import {
     aiSettings,
     documentContext,
     ensureApiKeyLoaded,
@@ -372,10 +377,22 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
                 allowedActions: policy.allowedActions,
             });
         },
+        onFinish: ({ messages }) => {
+            const draftId = targetAtSend?.draftId;
+            if (!draftId || !isPersistentConversationMode(mode)) return;
+            void saveAiConversation(draftId, mode, messages).catch((error) => {
+                console.error("[chatFactory] failed to save AI conversation", error);
+            });
+        },
     });
 
     function clearChat() {
         chat.messages = [];
+        const draftId = get(currentDraftId);
+        if (!draftId || !isPersistentConversationMode(mode)) return;
+        void clearAiConversation(draftId, mode).catch((error) => {
+            console.error("[chatFactory] failed to clear AI conversation", error);
+        });
     }
 
     return { chat, clearChat };

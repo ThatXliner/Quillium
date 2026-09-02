@@ -1,3 +1,4 @@
+import { getDocumentWriterBrief, setDocumentWriterBrief } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import { currentDocumentId, currentDraftId } from "$lib/stores";
 /**
@@ -8,8 +9,7 @@ import { currentDocumentId, currentDraftId } from "$lib/stores";
  *
  * - `aiSettings` — provider, model ID, and API key (key loaded from
  *   the system keychain via Tauri at startup).
- * - `documentContext` — structured writing-context fields (goal, tone,
- *   audience, etc.) persisted to localStorage.
+ * - `documentContext` — the active document's writer brief, persisted in SQLite.
  * - `personaModes` — per-mode opt-in for reader personas (default OFF
  *   because personas multiply token cost); persisted to localStorage.
  * - `aiProcessing` — boolean flag consumed by the sidebar glow
@@ -19,7 +19,7 @@ import { currentDocumentId, currentDraftId } from "$lib/stores";
  *   provider/model  -> localStorage
  *   API key         -> system keychain (via Tauri `get_api_key` /
  *                      `set_api_key` commands)
- *   documentContext -> localStorage
+ *   documentContext -> SQLite, scoped by document
  *
  * Data flow:
  *   AISettings.svelte  -->  aiSettings / documentContext (writes)
@@ -28,7 +28,13 @@ import { currentDocumentId, currentDraftId } from "$lib/stores";
  *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
  */
 import { invoke } from "@tauri-apps/api/core";
-import { derived } from "svelte/store";
+import type { UIMessage } from "ai";
+import { derived, get } from "svelte/store";
+import {
+    type AiConversationMode,
+    isPersistentConversationMode,
+    loadAiConversation,
+} from "./persistence";
 import type { Provider } from "./provider";
 
 const PROVIDER_KEY = "quillium-ai-provider";
@@ -43,24 +49,113 @@ export type DocumentContext = {
     freeform: string;
 };
 
-function loadDocumentContext(): DocumentContext {
+function loadLegacyDocumentContext(): DocumentContext {
     if (typeof localStorage === "undefined") return { freeform: "" };
     try {
         const stored = localStorage.getItem(DOCUMENT_CONTEXT_KEY);
-        if (stored) return JSON.parse(stored);
+        if (stored) {
+            const parsed = JSON.parse(stored) as Partial<DocumentContext> | null;
+            if (typeof parsed?.freeform === "string") return { freeform: parsed.freeform };
+        }
     } catch {}
     return { freeform: "" };
 }
 
+const legacyDocumentContext = loadLegacyDocumentContext();
+
+let documentContextDocumentId: string | null = null;
+let documentContextReady = false;
+let legacyDocumentContextClaimed = false;
+
 export function saveDocumentContext() {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(DOCUMENT_CONTEXT_KEY, JSON.stringify(documentContext));
+    if (!documentContextDocumentId || !documentContextReady) return;
+    void setDocumentWriterBrief(documentContextDocumentId, documentContext.freeform).catch(
+        (error) => {
+            console.error("[aiSettings] failed to save writer brief", error);
+        },
+    );
 }
 
-export const documentContext = $state<DocumentContext>(loadDocumentContext());
+export const documentContext = $state<DocumentContext>({ freeform: "" });
 
 export function hasDocumentContext(): boolean {
     return documentContext.freeform.trim().length > 0;
+}
+
+/** Loads the writer brief for each active document and flushes the old one before switching. */
+export function useDocumentContextEffects() {
+    $effect(() => {
+        let generation = 0;
+        return currentDocumentId.subscribe((documentId) => {
+            generation += 1;
+            const loadGeneration = generation;
+            if (documentContextDocumentId && documentContextReady) {
+                void setDocumentWriterBrief(
+                    documentContextDocumentId,
+                    documentContext.freeform,
+                ).catch((error) => {
+                    console.error("[aiSettings] failed to save writer brief", error);
+                });
+            }
+
+            documentContextDocumentId = documentId;
+            documentContextReady = false;
+            documentContext.freeform = "";
+            if (!documentId) return;
+            const loadingValue = documentContext.freeform;
+
+            void getDocumentWriterBrief(documentId)
+                .then(async (writerBrief) => {
+                    if (loadGeneration !== generation || documentId !== get(currentDocumentId)) {
+                        return;
+                    }
+                    if (documentContext.freeform !== loadingValue) {
+                        documentContextReady = true;
+                        saveDocumentContext();
+                        return;
+                    }
+
+                    if (
+                        writerBrief === null &&
+                        !legacyDocumentContextClaimed &&
+                        legacyDocumentContext.freeform.trim()
+                    ) {
+                        legacyDocumentContextClaimed = true;
+                        documentContext.freeform = legacyDocumentContext.freeform;
+                        await setDocumentWriterBrief(documentId, documentContext.freeform);
+                        if (
+                            loadGeneration !== generation ||
+                            documentId !== get(currentDocumentId)
+                        ) {
+                            return;
+                        }
+                        if (typeof localStorage !== "undefined") {
+                            localStorage.removeItem(DOCUMENT_CONTEXT_KEY);
+                        }
+                    } else {
+                        documentContext.freeform = writerBrief ?? "";
+                    }
+                    documentContextReady = true;
+                })
+                .catch((error) => {
+                    if (loadGeneration !== generation) return;
+                    documentContextReady = true;
+                    console.error("[aiSettings] failed to load writer brief", error);
+                });
+        });
+    });
+
+    $effect(() => {
+        const writerBrief = documentContext.freeform;
+        if (!documentContextDocumentId || !documentContextReady) return;
+        const documentId = documentContextDocumentId;
+        const timer = setTimeout(() => {
+            void setDocumentWriterBrief(documentId, writerBrief).catch((error) => {
+                console.error("[aiSettings] failed to save writer brief", error);
+            });
+        }, 350);
+        return () => clearTimeout(timer);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -144,11 +239,14 @@ export function setAiProcessing(value: boolean) {
  * (i.e. at the top-level of a Svelte component's `<script>` block) so
  * `$effect` has a valid owner.
  */
-export function useAiChatEffects(chat: {
-    status: string;
-    stop: () => void;
-    messages: unknown[];
-}) {
+export function useAiChatEffects(
+    chat: {
+        status: string;
+        stop: () => void;
+        messages: UIMessage[];
+    },
+    mode: AiConversationMode | "dictionary",
+) {
     let processingTask: symbol | null = null;
 
     $effect(() => {
@@ -170,20 +268,36 @@ export function useAiChatEffects(chat: {
     });
 
     $effect(() => {
-        let previousScope: string | undefined;
-        const scope = derived(
-            [currentDocumentId, currentDraftId],
-            ([$documentId, $draftId]) => `${$documentId ?? ""}\u0000${$draftId ?? ""}`,
-        );
-        return scope.subscribe((nextScope) => {
-            if (previousScope === undefined) {
-                previousScope = nextScope;
-                return;
-            }
-            if (nextScope === previousScope) return;
-            previousScope = nextScope;
+        let generation = 0;
+        const scope = derived([currentDocumentId, currentDraftId], ([$documentId, $draftId]) => ({
+            documentId: $documentId,
+            draftId: $draftId,
+        }));
+        return scope.subscribe(({ documentId, draftId }) => {
+            generation += 1;
+            const loadGeneration = generation;
             if (chat.status === "submitted" || chat.status === "streaming") chat.stop();
             chat.messages = [];
+            const loadingPlaceholder = chat.messages;
+
+            if (!documentId || !draftId || !isPersistentConversationMode(mode)) return;
+            void loadAiConversation(draftId, mode)
+                .then((messages) => {
+                    if (
+                        loadGeneration !== generation ||
+                        documentId !== get(currentDocumentId) ||
+                        draftId !== get(currentDraftId) ||
+                        chat.status !== "ready" ||
+                        chat.messages !== loadingPlaceholder
+                    ) {
+                        return;
+                    }
+                    chat.messages = messages;
+                })
+                .catch((error) => {
+                    if (loadGeneration !== generation) return;
+                    console.error("[aiSettings] failed to load AI conversation", error);
+                });
         });
     });
 }

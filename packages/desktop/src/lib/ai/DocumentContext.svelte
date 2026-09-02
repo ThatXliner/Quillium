@@ -9,7 +9,7 @@
     Also supports AI generation: paste a writing prompt or brief and
     click "Generate context" to have the LLM populate the textarea.
 
-    State persisted to localStorage via saveDocumentContext.
+    State persisted per document in SQLite via saveDocumentContext.
 -->
 <script lang="ts">
 import { generateContext } from "$lib/ai/clientStreams";

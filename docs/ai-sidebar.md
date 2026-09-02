@@ -57,6 +57,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
 | `editorialTarget.ts` | Request-scoped document, draft, and selection validation |
+| `persistence.ts` | AI SDK message validation and draft-scoped conversation persistence |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
 | `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
 
@@ -73,8 +74,9 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 ### Chat
 
-- Conversational writing help with session-local message history. The history is
-  cleared when the current document or draft changes.
+- Conversational writing help with message history stored per draft and sidebar mode.
+- Switching drafts loads that draft's Chat, Feedback, and Revise histories. Clearing
+  a panel deletes only that mode's history for the active draft.
 - Uses the shared context packet before the writer's latest prompt.
 - Shows a context lens for selection, nearby text, draft, annotations, and brief.
 - Offers context-aware action cards based on selection, draft length, brief, and
@@ -104,7 +106,9 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 ### Context
 
-- Stores one freeform writer brief in localStorage.
+- Stores one freeform writer brief per document in SQLite.
+- The first document opened after this upgrade claims any legacy global brief from
+  localStorage, then removes the legacy value.
 - Can generate a brief from a prompt with a non-streaming `generateText()` call.
 - Uses the `context-generation-format` feature flag to choose freeform or
   structured output.
@@ -209,6 +213,7 @@ reload.
   appear at ordinary app startup.
 - localStorage contains only presence flags and non-secret preferences, not
   provider API keys or OAuth tokens.
+- SQLite stores draft-scoped sidebar conversations and document-scoped writer briefs.
 - ChatGPT OAuth sessions are serialized in the OS keychain under the
   `openai-oauth` provider name.
 - A local/custom endpoint's optional key is held in memory and is not persisted.

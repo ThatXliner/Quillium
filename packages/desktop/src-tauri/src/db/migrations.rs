@@ -138,6 +138,27 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "grandfather_document_history_policy",
         kind: MigrationKind::Rust(grandfather_document_history_policy),
     },
+    Migration {
+        version: 10,
+        name: "ai_conversations_and_profiles",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS ai_conversations (
+                draft_id      TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+                mode          TEXT NOT NULL CHECK (mode IN ('chat', 'feedback', 'revise')),
+                messages_json TEXT NOT NULL DEFAULT '[]',
+                updated_at    INTEGER NOT NULL,
+                PRIMARY KEY (draft_id, mode)
+            ) WITHOUT ROWID;
+
+            CREATE TABLE IF NOT EXISTS document_ai_profiles (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                writer_brief TEXT NOT NULL DEFAULT '',
+                updated_at  INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            ",
+        ),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.

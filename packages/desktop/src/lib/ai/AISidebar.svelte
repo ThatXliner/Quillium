@@ -31,6 +31,7 @@ import {
     ensureApiKeyLoaded,
     hasApiKey,
     stopAllAi,
+    useDocumentContextEffects,
 } from "$lib/ai/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
@@ -88,6 +89,8 @@ import ContextInfoButton from "./ContextInfoButton.svelte";
 import DocumentContext from "./DocumentContext.svelte";
 import Feedback from "./Feedback.svelte";
 import Readers from "./Readers.svelte";
+
+useDocumentContextEffects();
 import Revise from "./Revise.svelte";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import { buildAiContextPacket, shouldShowContextSummary } from "./context";

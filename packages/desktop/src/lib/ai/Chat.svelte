@@ -98,7 +98,7 @@ $effect(() => {
 });
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "chat");
 
 /**
  * Extract the user's message from the form, validate it, send it

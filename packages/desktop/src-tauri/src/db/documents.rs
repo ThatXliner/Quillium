@@ -335,6 +335,14 @@ pub fn duplicate_document(
         }
     }
 
+    // The writer brief describes the document itself, so a document copy keeps it.
+    // Draft conversations are deliberately omitted with the rest of the event history.
+    tx.execute(
+        "INSERT INTO document_ai_profiles (document_id, writer_brief, updated_at)
+         SELECT ?1, writer_brief, ?2 FROM document_ai_profiles WHERE document_id = ?3",
+        params![document_id, now, source_document_id],
+    )?;
+
     tx.commit()?;
     Ok(document_id)
 }
@@ -623,6 +631,12 @@ mod tests {
             params![source_id],
         )
         .unwrap();
+        conn.execute(
+            "INSERT INTO document_ai_profiles (document_id, writer_brief, updated_at)
+             VALUES (?1, 'Keep the close third-person voice.', 3)",
+            params![source_id],
+        )
+        .unwrap();
 
         let states = vec![
             DuplicateDraftState {
@@ -707,9 +721,26 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
+        let copied_writer_brief: String = conn
+            .query_row(
+                "SELECT writer_brief FROM document_ai_profiles WHERE document_id = ?1",
+                params![copy_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let conversation_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ai_conversations c
+                 JOIN drafts d ON d.id = c.draft_id WHERE d.document_id = ?1",
+                params![copy_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(event_count, 0);
         assert_eq!(doc_event_count, 0);
         assert_eq!(snapshot_count, 3);
+        assert_eq!(copied_writer_brief, "Keep the close third-person voice.");
+        assert_eq!(conversation_count, 0);
     }
 
     #[test]
