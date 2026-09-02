@@ -63,7 +63,7 @@ and can copy the log plus app version, platform, user agent, timestamp, and reso
 The log captures Rust panics, frontend console output, native menu events, startup version / OS /
 architecture, and explicit operational events. Comment-shortcut diagnosis has two boundaries:
 
-1. `comment-shortcut` proves Command-Shift-M reached the webview.
+1. `comment-shortcut` proves Command-Shift-C reached the webview.
 2. `comment-command` records the entry point and outcome without recording selected prose.
 
 If boundary 1 is absent, the shortcut did not reach the webview. If boundary 1 appears without

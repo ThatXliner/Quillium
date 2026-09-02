@@ -1,5 +1,5 @@
 /**
- * Tests that Mod-Alt-k and Mod-Shift-m in the nested editor intercept
+ * Tests that Mod-Alt-k and Mod-Shift-c in the nested editor intercept
  * annotation creation and publish a nested-annotation-create event
  * instead of creating a dead-end annotation in the nested editor's state.
  *
@@ -97,13 +97,16 @@ function runNestedKey(
     return false;
 }
 
-function dispatchCommentShortcut(view: EditorView, retiredAltChord = false): KeyboardEvent {
+function dispatchCommentShortcut(
+    view: EditorView,
+    retiredChord: "alt-m" | "shift-m" | null = null,
+): KeyboardEvent {
     const event = new KeyboardEvent("keydown", {
-        key: retiredAltChord ? "µ" : "M",
-        code: "KeyM",
+        key: retiredChord === "alt-m" ? "µ" : retiredChord === "shift-m" ? "M" : "C",
+        code: retiredChord === null ? "KeyC" : "KeyM",
         metaKey: true,
-        altKey: retiredAltChord,
-        shiftKey: !retiredAltChord,
+        altKey: retiredChord === "alt-m",
+        shiftKey: retiredChord !== "alt-m",
         bubbles: true,
         cancelable: true,
     });
@@ -213,7 +216,19 @@ describe("nested editor keymap intercepts annotation creation", () => {
         nestedView = createNestedView(parentView, revisionId, "Beta");
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        expect(dispatchCommentShortcut(nestedView, true).defaultPrevented).toBe(false);
+        expect(dispatchCommentShortcut(nestedView, "alt-m").defaultPrevented).toBe(false);
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("does not handle the macOS man-page shortcut Mod-Shift-m in a nested editor", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
+        parentView = createParentView("Alpha Beta Gamma");
+        const revisionId = addRevision(parentView, 6, 10);
+        nestedView = createNestedView(parentView, revisionId, "Beta");
+        nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
+
+        expect(dispatchCommentShortcut(nestedView, "shift-m").defaultPrevented).toBe(false);
         expect(spy).not.toHaveBeenCalled();
     });
 

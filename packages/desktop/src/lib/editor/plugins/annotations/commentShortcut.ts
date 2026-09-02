@@ -9,7 +9,7 @@ export function isCommentShortcut(event: KeyboardEvent): boolean {
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
         !event.altKey &&
-        event.code === "KeyM" &&
+        event.code === "KeyC" &&
         !event.isComposing
     );
 }

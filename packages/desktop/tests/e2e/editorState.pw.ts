@@ -171,7 +171,7 @@ test.describe("status bar", () => {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 
 test.describe("keyboard shortcuts", () => {
-    test("Cmd+Shift+M creates comment and records both shortcut boundaries", async ({ page }) => {
+    test("Cmd+Shift+C creates comment and records both shortcut boundaries", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -209,6 +209,16 @@ test.describe("keyboard shortcuts", () => {
         await q.typeInEditor("hello world");
         await q.selectRange(0, 5);
         await page.keyboard.press("Control+Alt+m");
+
+        await expect(page.locator("textarea[placeholder='Add a comment…']")).toHaveCount(0);
+    });
+
+    test("Cmd+Shift+M is retired because macOS assigns it to a text Service", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await page.keyboard.press("Control+Shift+m");
 
         await expect(page.locator("textarea[placeholder='Add a comment…']")).toHaveCount(0);
     });
