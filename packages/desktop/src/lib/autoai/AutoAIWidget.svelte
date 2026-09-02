@@ -13,12 +13,20 @@
 import { hasApiKey } from "$lib/ai/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
+import { currentDocumentId, currentDraftId } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { onDestroy, onMount } from "svelte";
 import { get } from "svelte/store";
 import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
-import { autoAIPhase, startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
+import {
+    autoAILastOutcome,
+    autoAIPhase,
+    startAutoAI,
+    stopAutoAI,
+    triggerManualReview,
+} from "./engine";
 import { createFaceAnimation } from "./faceAnimation.svelte";
+import { autoAIOutcomeLabel } from "./outcome";
 import {
     type AutoAIAnnotationType,
     type AutoAIConservativeness,
@@ -65,6 +73,13 @@ const faceState = $derived<FaceState>(
 );
 const isReviewing = $derived(autoAIRunning && $autoAIPhase === "reviewing");
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
+const lastOutcomeLabel = $derived(
+    $autoAILastOutcome &&
+        $autoAILastOutcome.documentId === $currentDocumentId &&
+        $autoAILastOutcome.draftId === $currentDraftId
+        ? autoAIOutcomeLabel($autoAILastOutcome)
+        : "",
+);
 
 // Focus slider: map conservativeness ↔ 0/1/2
 const focusLevels: AutoAIConservativeness[] = ["conservative", "balanced", "thorough"];
@@ -269,6 +284,9 @@ const annotationPills = [
                 {:else if autoAIRunning}Active · on your call
                 {:else}Paused{/if}
             </p>
+            {#if lastOutcomeLabel && !isReviewing}
+                <p class="outcome-line">{lastOutcomeLabel}</p>
+            {/if}
 
             <div class="divider"></div>
         </div>
@@ -489,6 +507,13 @@ const annotationPills = [
     .status-line {
         font-size: 11px; color: #9ca3af; margin: 0; line-height: 1.3;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .outcome-line {
+        margin: -4px 0 0;
+        color: #6b7280;
+        font-size: 10px;
+        line-height: 1.25;
     }
 
     .settings-link {

@@ -9,6 +9,7 @@ AutoAI is a background AI review system that watches document content and create
 | `settings.svelte.ts` | Settings store, localStorage persistence |
 | `engine.ts` | Review orchestration, AI calls, annotation dispatch |
 | `reviewSchema.ts` | Provider-tolerant structured schema and strict result normalization |
+| `outcome.ts` | Typed last-review result and compact user-facing labels |
 | `AutoAIWidget.svelte` | Bubble + expanded panel UI |
 | `AutoAIFace.svelte` | Animated face SVG component |
 | `faceAnimation.svelte.ts` | Eye tracking + sleep/wake state |
@@ -90,6 +91,12 @@ content change also advances a generation counter, so even a small edit prevents
 an older result from applying. Switching documents or drafts always schedules a
 fresh review regardless of text similarity.
 
+Each completed review publishes a document-local in-memory outcome. The expanded
+widget reports whether the last review added notes, found no new concerns, skipped
+duplicate or unsafe results, was discarded after the draft changed, or failed. The
+outcome is cleared when the active document or draft changes. Routine cancellation
+while the writer keeps typing is not presented as an error.
+
 Continuous review is skipped for read-only drafts. Manual review runs immediately
 when the document is non-empty and shows a “No issues found” toast when the model
 returns no applicable annotations.
@@ -107,6 +114,7 @@ Fixed at `bottom: 24px; left: 24px`:
 ### Expanded (320 × 310px)
 
 - Persona name (editable), enable toggle, close button
+- Last completed review outcome, when one exists for the active draft
 - Mode selector (Auto / Manual)
   - Auto: delay slider (2–60s)
   - Manual: "Review now" button

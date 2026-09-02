@@ -71,6 +71,20 @@ export async function setDocumentWriterBrief(
     return invoke<void>("cmd_set_document_writer_brief", { documentId, writerBrief });
 }
 
+export async function getDocumentEditorialDecisions(documentId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_document_editorial_decisions", { documentId });
+}
+
+export async function setDocumentEditorialDecisions(
+    documentId: string,
+    decisionsJson: string,
+): Promise<void> {
+    return invoke<void>("cmd_set_document_editorial_decisions", {
+        documentId,
+        decisionsJson,
+    });
+}
+
 // ── Documents ─────────────────────────────────────────────────────
 
 export async function listDocuments(): Promise<DocumentMeta[]> {

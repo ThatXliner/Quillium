@@ -114,6 +114,37 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Exact target from 12 words");
     });
 
+    test("saves and restores document editorial decisions", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: "A draft with an intentionally unresolved ending.",
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-context").click();
+        const decisionInput = q.aiSidebar.getByLabel("New editorial decision");
+        await decisionInput.fill("Keep the ending unresolved.");
+        await decisionInput.press("Enter");
+        await expect(q.aiSidebar.getByText("Keep the ending unresolved.")).toBeVisible();
+
+        await expect
+            .poll(() =>
+                page.evaluate(() => localStorage.getItem("mock-editorial-decisions:doc-test-1")),
+            )
+            .toBe('["Keep the ending unresolved."]');
+
+        await page.reload();
+        await expect(q.editor).toBeVisible({ timeout: 40_000 });
+        await page.locator("#ai-tab-context").click();
+        await expect(q.aiSidebar.getByText("Keep the ending unresolved.")).toBeVisible();
+
+        await q.aiSidebar
+            .getByRole("button", { name: "Remove decision: Keep the ending unresolved." })
+            .click();
+        await expect(q.aiSidebar.getByText("No decisions saved yet.")).toBeVisible();
+    });
+
     test("hides starter suggestions after first chat action", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",

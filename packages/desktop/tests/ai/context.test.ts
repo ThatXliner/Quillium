@@ -128,6 +128,29 @@ describe("buildAiContextPacket", () => {
         expect(contextPacketToPrompt(packet)).toContain('"source": "writer-brief"');
     });
 
+    it("keeps explicit editorial decisions separate from the writer brief", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "Draft",
+            documentContext: {
+                freeform: "Audience: skeptical editors",
+                decisions: ["Keep the unresolved ending.", "Retain first person."],
+            },
+        });
+
+        expect(packet.editorialDecisions).toEqual([
+            "Keep the unresolved ending.",
+            "Retain first person.",
+        ]);
+        expect(packet.sources.find((source) => source.id === "editorial-decisions")).toMatchObject({
+            active: true,
+            detail: "2 saved",
+        });
+        const prompt = contextPacketToPrompt(packet);
+        expect(prompt).toContain('"source": "saved-editorial-decisions"');
+        expect(prompt).toContain('"status": "writer-confirmed"');
+    });
+
     it("labels full-document context as visible draft state", () => {
         const packet = buildAiContextPacket({
             mode: "chat",

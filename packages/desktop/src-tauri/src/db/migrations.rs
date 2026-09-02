@@ -159,6 +159,19 @@ pub const MIGRATIONS: &[Migration] = &[
             ",
         ),
     },
+    Migration {
+        version: 11,
+        name: "document_editorial_decisions",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS document_editorial_decisions (
+                document_id   TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                decisions_json TEXT NOT NULL DEFAULT '[]',
+                updated_at     INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            ",
+        ),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.

@@ -30,6 +30,8 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `ai_revise_quick_prompt_used` | Revise quick prompt used | `Revise.svelte` |
 | `context_generated` | Document context generated | `clientStreams.ts` |
 | `context_cleared` | Context cleared | `DocumentContext.svelte` |
+| `editorial_decision_saved` | Writer saves a document editorial decision | `DocumentContext.svelte` |
+| `editorial_decision_removed` | Writer removes a document editorial decision | `DocumentContext.svelte` |
 
 ## Annotations
 

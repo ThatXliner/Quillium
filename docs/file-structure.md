@@ -15,7 +15,7 @@ src/
 │   │   ├── ContextInfoButton.svelte # Compact context-source popover trigger
 │   │   ├── ContextLens.svelte # Context summary and context-aware action cards
 │   │   ├── CustomQuickActions.svelte # User-defined Feedback/Revise actions
-│   │   ├── DocumentContext.svelte # Writer brief editor and generator
+│   │   ├── DocumentContext.svelte # Writer brief, saved decisions, and generator
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
 │   │   ├── ModelGuideModal.svelte # Curated model rationale and recommendations
 │   │   ├── PersonaInfoModal.svelte # Reader-persona explanation
@@ -48,6 +48,7 @@ src/
 │   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI
 │   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state
 │   │   ├── engine.ts            # Review orchestration, AI calls
+│   │   ├── outcome.ts           # Last-review status model and labels
 │   │   ├── reviewSchema.ts       # Structured response normalization
 │   │   └── settings.svelte.ts   # AutoAI settings store
 │   ├── collab/

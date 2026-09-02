@@ -570,6 +570,28 @@ export class QuilliumPage {
                         if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
                         if (cmd === "cmd_create_snapshot") return null;
                         if (cmd === "cmd_update_document_meta") return null;
+                        if (cmd === "cmd_get_document_writer_brief") {
+                            const a = args as { documentId: string };
+                            return localStorage.getItem(`mock-writer-brief:${a.documentId}`);
+                        }
+                        if (cmd === "cmd_set_document_writer_brief") {
+                            const a = args as { documentId: string; writerBrief: string };
+                            const key = `mock-writer-brief:${a.documentId}`;
+                            if (a.writerBrief) localStorage.setItem(key, a.writerBrief);
+                            else localStorage.removeItem(key);
+                            return null;
+                        }
+                        if (cmd === "cmd_get_document_editorial_decisions") {
+                            const a = args as { documentId: string };
+                            return localStorage.getItem(`mock-editorial-decisions:${a.documentId}`);
+                        }
+                        if (cmd === "cmd_set_document_editorial_decisions") {
+                            const a = args as { documentId: string; decisionsJson: string };
+                            const key = `mock-editorial-decisions:${a.documentId}`;
+                            if (a.decisionsJson === "[]") localStorage.removeItem(key);
+                            else localStorage.setItem(key, a.decisionsJson);
+                            return null;
+                        }
                         if (cmd === "get_api_key") return payload.apiKey;
 
                         // Version history

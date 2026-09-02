@@ -1,4 +1,9 @@
-import { getDocumentWriterBrief, setDocumentWriterBrief } from "$lib/db";
+import {
+    getDocumentEditorialDecisions,
+    getDocumentWriterBrief,
+    setDocumentEditorialDecisions,
+    setDocumentWriterBrief,
+} from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import { currentDocumentId, currentDraftId } from "$lib/stores";
 /**
@@ -9,7 +14,8 @@ import { currentDocumentId, currentDraftId } from "$lib/stores";
  *
  * - `aiSettings` — provider, model ID, and API key (key loaded from
  *   the system keychain via Tauri at startup).
- * - `documentContext` — the active document's writer brief, persisted in SQLite.
+ * - `documentContext` — the active document's writer brief and explicit editorial
+ *   decisions, persisted in SQLite.
  * - `personaModes` — per-mode opt-in for reader personas (default OFF
  *   because personas multiply token cost); persisted to localStorage.
  * - `aiProcessing` — boolean flag consumed by the sidebar glow
@@ -56,9 +62,10 @@ export const HAS_OPENAI_OAUTH_KEY = "quillium-has-openai-oauth";
 
 export type DocumentContext = {
     freeform: string;
+    decisions: string[];
 };
 
-function loadLegacyDocumentContext(): DocumentContext {
+function loadLegacyDocumentContext(): Pick<DocumentContext, "freeform"> {
     if (typeof localStorage === "undefined") return { freeform: "" };
     try {
         const stored = localStorage.getItem(DOCUMENT_CONTEXT_KEY);
@@ -76,19 +83,41 @@ let documentContextDocumentId: string | null = null;
 let documentContextReady = false;
 let legacyDocumentContextClaimed = false;
 
-export function saveDocumentContext() {
-    if (!documentContextDocumentId || !documentContextReady) return;
-    void setDocumentWriterBrief(documentContextDocumentId, documentContext.freeform).catch(
-        (error) => {
-            console.error("[aiSettings] failed to save writer brief", error);
-        },
-    );
+function parseEditorialDecisions(value: string | null): string[] {
+    if (!value) return [];
+    try {
+        const parsed: unknown = JSON.parse(value);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter((decision): decision is string => typeof decision === "string")
+            .map((decision) => decision.trim())
+            .filter((decision) => decision.length > 0 && decision.length <= 500);
+    } catch {
+        return [];
+    }
 }
 
-export const documentContext = $state<DocumentContext>({ freeform: "" });
+function persistDocumentContext(documentId: string, context: DocumentContext): Promise<void> {
+    return Promise.all([
+        setDocumentWriterBrief(documentId, context.freeform),
+        setDocumentEditorialDecisions(documentId, JSON.stringify(context.decisions)),
+    ]).then(() => undefined);
+}
+
+export function saveDocumentContext() {
+    if (!documentContextDocumentId || !documentContextReady) return;
+    void persistDocumentContext(documentContextDocumentId, {
+        freeform: documentContext.freeform,
+        decisions: [...documentContext.decisions],
+    }).catch((error) => {
+        console.error("[aiSettings] failed to save document context", error);
+    });
+}
+
+export const documentContext = $state<DocumentContext>({ freeform: "", decisions: [] });
 
 export function hasDocumentContext(): boolean {
-    return documentContext.freeform.trim().length > 0;
+    return documentContext.freeform.trim().length > 0 || documentContext.decisions.length > 0;
 }
 
 /** Loads the writer brief for each active document and flushes the old one before switching. */
@@ -99,26 +128,34 @@ export function useDocumentContextEffects() {
             generation += 1;
             const loadGeneration = generation;
             if (documentContextDocumentId && documentContextReady) {
-                void setDocumentWriterBrief(
-                    documentContextDocumentId,
-                    documentContext.freeform,
-                ).catch((error) => {
-                    console.error("[aiSettings] failed to save writer brief", error);
+                void persistDocumentContext(documentContextDocumentId, {
+                    freeform: documentContext.freeform,
+                    decisions: [...documentContext.decisions],
+                }).catch((error) => {
+                    console.error("[aiSettings] failed to save document context", error);
                 });
             }
 
             documentContextDocumentId = documentId;
             documentContextReady = false;
             documentContext.freeform = "";
+            documentContext.decisions = [];
             if (!documentId) return;
-            const loadingValue = documentContext.freeform;
+            const loadingFreeform = documentContext.freeform;
+            const loadingDecisions = documentContext.decisions;
 
-            void getDocumentWriterBrief(documentId)
-                .then(async (writerBrief) => {
+            void Promise.all([
+                getDocumentWriterBrief(documentId),
+                getDocumentEditorialDecisions(documentId),
+            ])
+                .then(async ([writerBrief, decisionsJson]) => {
                     if (loadGeneration !== generation || documentId !== get(currentDocumentId)) {
                         return;
                     }
-                    if (documentContext.freeform !== loadingValue) {
+                    if (
+                        documentContext.freeform !== loadingFreeform ||
+                        documentContext.decisions !== loadingDecisions
+                    ) {
                         documentContextReady = true;
                         saveDocumentContext();
                         return;
@@ -144,23 +181,28 @@ export function useDocumentContextEffects() {
                     } else {
                         documentContext.freeform = writerBrief ?? "";
                     }
+                    documentContext.decisions = parseEditorialDecisions(decisionsJson);
                     documentContextReady = true;
                 })
                 .catch((error) => {
                     if (loadGeneration !== generation) return;
                     documentContextReady = true;
-                    console.error("[aiSettings] failed to load writer brief", error);
+                    console.error("[aiSettings] failed to load document context", error);
                 });
         });
     });
 
     $effect(() => {
         const writerBrief = documentContext.freeform;
+        const decisions = [...documentContext.decisions];
         if (!documentContextDocumentId || !documentContextReady) return;
         const documentId = documentContextDocumentId;
         const timer = setTimeout(() => {
-            void setDocumentWriterBrief(documentId, writerBrief).catch((error) => {
-                console.error("[aiSettings] failed to save writer brief", error);
+            void persistDocumentContext(documentId, {
+                freeform: writerBrief,
+                decisions,
+            }).catch((error) => {
+                console.error("[aiSettings] failed to save document context", error);
             });
         }, 350);
         return () => clearTimeout(timer);

@@ -43,6 +43,7 @@ import {
 import { generateObject } from "ai";
 import { toast } from "svelte-sonner";
 import { get, writable } from "svelte/store";
+import type { AutoAIReviewOutcome } from "./outcome";
 import { type AutoAIReviewOutput, AutoAIReviewSchema, normalizeAutoAIReview } from "./reviewSchema";
 import { type AutoAIConservativeness, autoAISettings } from "./settings.svelte";
 
@@ -50,6 +51,7 @@ export type AutoAIPhase = "idle" | "thinking" | "reviewing";
 
 /** Current AutoAI engine phase. idle → thinking (debounce warning) → reviewing → idle. */
 export const autoAIPhase = writable<AutoAIPhase>("idle");
+export const autoAILastOutcome = writable<AutoAIReviewOutcome | null>(null);
 
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
@@ -128,6 +130,11 @@ function autoAIActionPayload(
     };
 }
 
+type AutoAIApplySummary = Pick<
+    AutoAIReviewOutcome,
+    "appliedCount" | "duplicateCount" | "rejectedCount"
+>;
+
 function applyAnnotations({
     result,
     target,
@@ -138,12 +145,16 @@ function applyAnnotations({
     target: EditorialTargetSnapshot;
     allowedActions: readonly EditorialAction[];
     provenance: AiGenerationProvenance;
-}): number {
+}): AutoAIApplySummary {
     const view = get(editorView);
-    if (!view) return 0;
+    if (!view) return { appliedCount: 0, duplicateCount: 0, rejectedCount: 0 };
 
     const allowed = new Set(allowedActions);
-    let applied = 0;
+    const summary: AutoAIApplySummary = {
+        appliedCount: 0,
+        duplicateCount: 0,
+        rejectedCount: 0,
+    };
     const reportableFailures = new Set<EditorialActionFailureReason>();
 
     for (const ann of normalizeAutoAIReview(result)) {
@@ -163,7 +174,7 @@ function applyAnnotations({
             author: autoAISettings.persona,
         });
         if (actionResult.ok) {
-            applied++;
+            summary.appliedCount++;
             continue;
         }
 
@@ -196,17 +207,23 @@ function applyAnnotations({
                     toast.warning(
                         `An AI ${ann.type} conflicted with an open annotation, so Quillium added it as a comment.`,
                     );
-                    applied++;
+                    summary.appliedCount++;
                     continue;
                 }
-                if (fallbackResult.reason !== "duplicate-concern") {
+                if (fallbackResult.reason === "duplicate-concern") {
+                    summary.duplicateCount++;
+                } else {
+                    summary.rejectedCount++;
                     reportableFailures.add(fallbackResult.reason);
                 }
                 continue;
             }
         }
 
-        if (actionResult.reason !== "duplicate-concern") {
+        if (actionResult.reason === "duplicate-concern") {
+            summary.duplicateCount++;
+        } else {
+            summary.rejectedCount++;
             reportableFailures.add(actionResult.reason);
         }
     }
@@ -214,7 +231,7 @@ function applyAnnotations({
     for (const reason of reportableFailures) {
         toast.warning(editorialActionFailureMessage(reason));
     }
-    return applied;
+    return summary;
 }
 
 function targetKey(): string {
@@ -320,24 +337,55 @@ async function runReview(content: string, manual = false, generation = contentGe
             target.tabId !== get(currentTabId) ||
             target.draftId !== get(currentDraftId)
         ) {
+            autoAILastOutcome.set({
+                documentId: target.documentId,
+                draftId: target.draftId,
+                status: "discarded",
+                appliedCount: 0,
+                duplicateCount: 0,
+                rejectedCount: 0,
+                completedAt: Date.now(),
+            });
             if (manual) toast("The draft changed during review, so the result was discarded.");
             return;
         }
         lastReviewedContent = content;
         lastReviewedTargetKey = targetKey();
-        const applied = applyAnnotations({
+        const summary = applyAnnotations({
             result: object,
             target,
             allowedActions: policy.allowedActions,
             provenance,
         });
-        if (manual && applied === 0) {
-            toast("No issues found — your writing looks good.");
+        autoAILastOutcome.set({
+            documentId: target.documentId,
+            draftId: target.draftId,
+            status: summary.appliedCount > 0 ? "applied" : "clear",
+            ...summary,
+            completedAt: Date.now(),
+        });
+        if (manual && summary.appliedCount === 0) {
+            if (summary.duplicateCount > 0) {
+                toast("No new notes; the concerns found were already covered.");
+            } else if (summary.rejectedCount > 0) {
+                toast("No annotations were added; unsafe results were skipped.");
+            } else {
+                toast("No issues found — your writing looks good.");
+            }
         }
     } catch (e) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
         captureException(e);
+        autoAILastOutcome.set({
+            documentId: target.documentId,
+            draftId: target.draftId,
+            status: "failed",
+            appliedCount: 0,
+            duplicateCount: 0,
+            rejectedCount: 0,
+            completedAt: Date.now(),
+        });
     } finally {
         linkedAbort.cleanup();
         if (reviewAbortController === controller) {
@@ -364,7 +412,13 @@ function scheduleReview(content: string, generation: number) {
 export function startAutoAI() {
     if (unsubscribe) return; // already running
 
+    let observedTargetKey = targetKey();
     unsubscribe = documentContent.subscribe((content) => {
+        const currentTargetKey = targetKey();
+        if (currentTargetKey !== observedTargetKey) {
+            observedTargetKey = currentTargetKey;
+            autoAILastOutcome.set(null);
+        }
         contentGeneration++;
         cancelPendingReview();
         if (!autoAISettings.enabled) return;
@@ -372,7 +426,6 @@ export function startAutoAI() {
         // Locked drafts are read-only — don't burn an AI call reviewing
         // text that can't be annotated (#160).
         if (get(editorView)?.state.readOnly) return;
-        const currentTargetKey = targetKey();
         const diff = changedCharacterCount(lastReviewedContent, content);
         if (
             currentTargetKey === lastReviewedTargetKey &&

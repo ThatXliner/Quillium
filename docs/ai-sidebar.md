@@ -117,6 +117,9 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 ### Context
 
 - Stores one freeform writer brief per document in SQLite.
+- Stores explicit editorial decisions separately per document. Writers add and
+  remove these decisions themselves; Quillium does not infer permanent rules
+  from chat messages or accepted edits.
 - The first document opened after this upgrade claims any legacy global brief from
   localStorage, then removes the legacy value.
 - Can generate a brief from a prompt with a non-streaming `generateText()` call.
@@ -125,6 +128,8 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 - The brief is shown separately in the context lens and serialized as writer
   guidance in the user-role context packet. It is never appended to the system
   policy.
+- Saved decisions are serialized as a distinct `writer-confirmed` context source,
+  so providers can respect them without confusing them with draft text or the brief.
 
 ### Readers
 
@@ -178,6 +183,7 @@ a deterministic, mode-specific packet with these possible sources:
 | Draft | Full text up to the mode budget, otherwise a head/tail excerpt with an omission marker |
 | Annotations | Up to six relevant open comments, suggestions, or revisions within a separate character budget |
 | Brief | Writer-provided context, kept logically separate from draft text |
+| Decisions | Explicit document-scoped choices, labeled as writer-confirmed |
 
 Open annotations include their target, nearby context, recent thread messages,
 and a limited number of suggestion replacements or revision versions. They are
@@ -258,7 +264,8 @@ reload.
   appear at ordinary app startup.
 - localStorage contains only presence flags and non-secret preferences, not
   provider API keys or OAuth tokens.
-- SQLite stores draft-scoped sidebar conversations and document-scoped writer briefs.
+- SQLite stores draft-scoped sidebar conversations plus document-scoped writer briefs
+  and editorial decisions.
 - ChatGPT OAuth sessions are serialized in the OS keychain under the
   `openai-oauth` provider name.
 - A local/custom endpoint's optional key is held in memory and is not persisted.

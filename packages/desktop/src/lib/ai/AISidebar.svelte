@@ -219,7 +219,10 @@ const headerContextPacket = $derived(
               documentContent: $documentContent,
               selectedText: $selectedText,
               selectedTextRange: $selectedTextRange,
-              documentContext: { freeform: documentContext.freeform },
+              documentContext: {
+                  freeform: documentContext.freeform,
+                  decisions: documentContext.decisions,
+              },
               annotationContext: headerAnnotationContext,
           })
         : null,

@@ -38,7 +38,12 @@ import {
     tool,
 } from "ai";
 import { z } from "zod";
-import type { AiContextMode, AiTextRange, AnnotationContextInput } from "./context";
+import type {
+    AiContextMode,
+    AiTextRange,
+    AnnotationContextInput,
+    DocumentContextLike,
+} from "./context";
 import {
     type EditorialAction,
     type EditorialPreferences,
@@ -49,7 +54,7 @@ import {
 import { type Provider, createModel } from "./provider";
 import { injectDocumentContext } from "./utils";
 
-type DocumentContext = Record<string, string> | undefined;
+type DocumentContext = DocumentContextLike | undefined;
 
 interface BaseOpts {
     provider: Provider;

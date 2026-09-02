@@ -15,6 +15,9 @@ Architecture decisions: [event log and snapshots](./adr/0001-event-log-with-snap
 | `doc_events` | Document-level structural audit log (tab CRUD, branching, locks, checkpoints) |
 | `events` | Append-only log of CM transactions (draft-scoped) |
 | `snapshots` | Full `EditorState.toJSON()` blobs (draft-scoped) |
+| `ai_conversations` | Draft-scoped Chat, Feedback, and Revise message JSON |
+| `document_ai_profiles` | Document-scoped writer brief |
+| `document_editorial_decisions` | Writer-confirmed document-scoped decision JSON |
 | `_meta` | Key/value flags (`active_tab:{doc}`, `active_draft:{tab}`) |
 
 The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
