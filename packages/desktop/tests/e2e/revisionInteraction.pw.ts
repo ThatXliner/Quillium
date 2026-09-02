@@ -149,7 +149,9 @@ test.describe("nested annotation creation from inline editor", () => {
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
     });
 
-    test("Mod-Alt-M in inline editor with selection opens modal for comment", async ({ page }) => {
+    test("Mod-Shift-M in inline editor with selection opens modal for comment", async ({
+        page,
+    }) => {
         await setupFullRevision(page, "hello world");
 
         const inlineEditor = page.locator(".revision-inline-editor .cm-content").first();
@@ -160,8 +162,8 @@ test.describe("nested annotation creation from inline editor", () => {
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
 
-        // Press Mod-Alt-M to create a nested comment.
-        await page.keyboard.press("Control+Alt+m");
+        // Press Mod-Shift-M to create a nested comment.
+        await page.keyboard.press("Control+Shift+m");
 
         // A revision modal should open (to host the nested comment)
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
@@ -212,8 +214,8 @@ test.describe("revision modal annotation visibility", () => {
         await page.keyboard.press("Home");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
 
-        // Create a comment via Mod-Alt-M.
-        await page.keyboard.press("Control+Alt+m");
+        // Create a comment via Mod-Shift-M.
+        await page.keyboard.press("Control+Shift+m");
 
         // The modal's annotations sidebar should show the annotation card
         const annotationCard = page.locator("dialog .annotation-card-inline").first();

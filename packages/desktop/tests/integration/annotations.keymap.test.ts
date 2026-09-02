@@ -36,6 +36,20 @@ function runKey(view: EditorView, key: string) {
     return false;
 }
 
+function dispatchCommentShortcut(view: EditorView, retiredAltChord = false): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", {
+        key: retiredAltChord ? "µ" : "M",
+        code: "KeyM",
+        metaKey: true,
+        altKey: retiredAltChord,
+        shiftKey: !retiredAltChord,
+        bubbles: true,
+        cancelable: true,
+    });
+    view.contentDOM.dispatchEvent(event);
+    return event;
+}
+
 function addRevision(
     view: EditorView,
     from: number,
@@ -110,16 +124,16 @@ describe("annotation keymap integration", () => {
         );
     });
 
-    it("redirects Mod-Alt-m to nested editor when cursor is inside revision", () => {
+    it("redirects the comment shortcut when cursor is inside revision", () => {
         const spy = vi.fn();
         unsubs.push(annotationEventBus.on("revision-request-modal", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
         view.dispatch({ selection: { anchor: 7 } });
-        const consumed = runKey(view, "Mod-Alt-m");
+        const event = dispatchCommentShortcut(view);
 
-        expect(consumed).toBe(true);
+        expect(event.defaultPrevented).toBe(true);
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-request-modal",
@@ -231,44 +245,24 @@ describe("annotation keymap integration", () => {
         });
     });
 
-    it("Mod-Alt-m creates comment when not inside any revision", () => {
+    it("the comment shortcut creates a comment when not inside any revision", () => {
         view = createView("Alpha Beta Gamma");
 
         view.dispatch({ selection: { anchor: 0, head: 5 } });
-        const consumed = runKey(view, "Mod-Alt-m");
-
-        expect(consumed).toBe(true);
-        const annotations = Object.values(view.state.field(annotationField));
-        expect(annotations).toHaveLength(1);
-        expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
-    });
-
-    it("does not bind Mod-Shift-m as a second comment shortcut", () => {
-        view = createView("Alpha Beta Gamma");
-        view.dispatch({ selection: { anchor: 0, head: 5 } });
-
-        expect(runKey(view, "Mod-Shift-m")).toBe(false);
-        expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
-    });
-
-    it("falls back to physical KeyM when macOS Option changes the event key", () => {
-        view = createView("Alpha Beta Gamma");
-        view.dispatch({ selection: { anchor: 0, head: 5 } });
-
-        const event = new KeyboardEvent("keydown", {
-            key: "µ",
-            code: "KeyM",
-            metaKey: true,
-            altKey: true,
-            bubbles: true,
-            cancelable: true,
-        });
-        view.contentDOM.dispatchEvent(event);
+        const event = dispatchCommentShortcut(view);
 
         expect(event.defaultPrevented).toBe(true);
         const annotations = Object.values(view.state.field(annotationField));
         expect(annotations).toHaveLength(1);
         expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
+    });
+
+    it("does not handle the retired Mod-Alt-m comment shortcut", () => {
+        view = createView("Alpha Beta Gamma");
+        view.dispatch({ selection: { anchor: 0, head: 5 } });
+
+        expect(dispatchCommentShortcut(view, true).defaultPrevented).toBe(false);
+        expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
     });
 
     it("Delete at revision start deletes adjacent revision range", () => {

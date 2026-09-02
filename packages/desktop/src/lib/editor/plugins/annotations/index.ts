@@ -48,7 +48,6 @@
  *     (via stores) to render the annotation panel.
  */
 
-import { dev } from "$app/environment";
 import { isolateHistory } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
@@ -77,7 +76,7 @@ import {
     keymap,
 } from "@codemirror/view";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
-import { isPhysicalMacCommentShortcut } from "./commentShortcut";
+import { isCommentShortcut } from "./commentShortcut";
 import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "$lib/editor/diff";
 export { tokenize, wordDiff } from "$lib/editor/diff";
@@ -256,12 +255,7 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
  * Keeping the redirect here prevents mouse actions from bypassing nested-editor
  * routing when the selected prose belongs to a revision.
  */
-export type CommentCreationSource =
-    | "context-menu"
-    | "keyboard-physical-fallback"
-    | "keyboard-primary"
-    | "native-shortcut"
-    | "unknown";
+export type CommentCreationSource = "context-menu" | "keyboard-primary" | "unknown";
 
 export function createCommentFromSelection(
     view: EditorView,
@@ -1041,15 +1035,14 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
 // If the first handler returns false, the next binding for
 // the same key is tried.
 // -------------------------------------------------------
-// Binds Mod-<suffix>, plus explicit Ctrl-/Meta- variants in dev builds
-// (where the browser-based dev shell can resolve Mod differently from the
-// packaged app).
-function bindWithDevAliases(suffix: string, run: KeyBinding["run"]): KeyBinding[] {
-    const bindings: KeyBinding[] = [{ key: `Mod-${suffix}`, run }];
-    if (dev) {
-        bindings.push({ key: `Ctrl-${suffix}`, run }, { key: `Meta-${suffix}`, run });
-    }
-    return bindings;
+// Keep explicit platform aliases so production browser tests can exercise the
+// same command regardless of the host OS used to build and run the webview.
+function bindWithPlatformAliases(suffix: string, run: KeyBinding["run"]): KeyBinding[] {
+    return [
+        { key: `Mod-${suffix}`, run },
+        { key: `Ctrl-${suffix}`, run },
+        { key: `Meta-${suffix}`, run },
+    ];
 }
 
 export const annotationKeymap: KeyBinding[] = [
@@ -1077,16 +1070,17 @@ export const annotationKeymap: KeyBinding[] = [
         key: "Delete",
         run: deleteAdjacentRevision("forward"),
     },
-    ...bindWithDevAliases("Alt-m", (view) => createCommentFromSelection(view, "keyboard-primary")),
-    ...bindWithDevAliases("Alt-k", redirectToNestedEditor("revision")),
-    ...bindWithDevAliases("Alt-k", createRevisionCommand),
+    ...bindWithPlatformAliases("Alt-k", redirectToNestedEditor("revision")),
+    ...bindWithPlatformAliases("Alt-k", createRevisionCommand),
 ];
 
-const physicalCommentShortcutFallback = Prec.lowest(
+// Call the command with CodeMirror's own view while matching the physical key.
+// This stays in the webview and avoids key-name normalization differences.
+const commentShortcutHandler = Prec.highest(
     EditorView.domEventHandlers({
         keydown(event, view) {
-            if (!isPhysicalMacCommentShortcut(event)) return false;
-            return createCommentFromSelection(view, "keyboard-physical-fallback");
+            if (!isCommentShortcut(event)) return false;
+            return createCommentFromSelection(view, "keyboard-primary");
         },
     }),
 );
@@ -1169,8 +1163,8 @@ export function _handleEmptyRevisionMarkerMouseDown(
 }
 
 export const annotations = () => [
+    commentShortcutHandler,
     Prec.high(keymap.of(annotationKeymap)),
-    physicalCommentShortcutFallback,
     annotationField,
     versionGroupField,
     suggestionPreviewField,

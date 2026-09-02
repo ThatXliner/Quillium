@@ -1,9 +1,9 @@
 /**
- * Tests that Mod-Alt-k and Mod-Alt-m in the nested editor intercept
+ * Tests that Mod-Alt-k and Mod-Shift-m in the nested editor intercept
  * annotation creation and publish a nested-annotation-create event
  * instead of creating a dead-end annotation in the nested editor's state.
  *
- * Bug: pressing Cmd+Alt+K in the inline nested editor would create an
+ * Bug: pressing an annotation shortcut in the inline nested editor would create an
  * annotation in the nested editor's own state (which has no annotations
  * panel and doesn't flush annotations on destroy), instead of opening
  * the modal with the pending nested command.
@@ -57,12 +57,12 @@ function addRevision(view: EditorView, from: number, to: number) {
 /**
  * Create a nested-style editor that has both the annotation extensions
  * (so annotationField exists) and makeParentUndoKeymap (which includes
- * the Mod-Alt-k/m interceptors).
+ * the annotation shortcut interceptors).
  */
 function createNestedView(parentView: EditorView, revisionId: number, doc: string) {
     const state = EditorState.create({
         doc,
-        extensions: [annotationExtensions(), makeParentUndoKeymap(parentView, revisionId)],
+        extensions: [makeParentUndoKeymap(parentView, revisionId), annotationExtensions()],
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
@@ -95,6 +95,20 @@ function runNestedKey(
         }
     }
     return false;
+}
+
+function dispatchCommentShortcut(view: EditorView, retiredAltChord = false): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", {
+        key: retiredAltChord ? "µ" : "M",
+        code: "KeyM",
+        metaKey: true,
+        altKey: retiredAltChord,
+        shiftKey: !retiredAltChord,
+        bubbles: true,
+        cancelable: true,
+    });
+    view.contentDOM.dispatchEvent(event);
+    return event;
 }
 
 /**
@@ -168,7 +182,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         expect(nestedAnnotations).toHaveLength(0);
     });
 
-    it("Mod-Alt-m in nested editor fires nested-annotation-create for comment", () => {
+    it("the comment shortcut in a nested editor fires nested-annotation-create", () => {
         const spy = vi.fn();
         unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
@@ -177,8 +191,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
 
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Alt-m");
-        expect(consumed).toBe(true);
+        expect(dispatchCommentShortcut(nestedView).defaultPrevented).toBe(true);
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "nested-annotation-create",
@@ -192,7 +205,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         );
     });
 
-    it("does not bind Mod-Shift-m in a nested editor", () => {
+    it("does not handle retired Mod-Alt-m in a nested editor", () => {
         const spy = vi.fn();
         unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
@@ -200,41 +213,8 @@ describe("nested editor keymap intercepts annotation creation", () => {
         nestedView = createNestedView(parentView, revisionId, "Beta");
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        expect(runNestedKey(nestedView, parentView, revisionId, "Mod-Shift-m")).toBe(false);
+        expect(dispatchCommentShortcut(nestedView, true).defaultPrevented).toBe(false);
         expect(spy).not.toHaveBeenCalled();
-    });
-
-    it("routes a physical Command-Option-M fallback out of the nested editor", () => {
-        const spy = vi.fn();
-        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
-        parentView = createParentView("Alpha Beta Gamma");
-        const revisionId = addRevision(parentView, 6, 10);
-        nestedView = createNestedView(parentView, revisionId, "Beta");
-        nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
-
-        const event = new KeyboardEvent("keydown", {
-            key: "µ",
-            code: "KeyM",
-            metaKey: true,
-            altKey: true,
-            bubbles: true,
-            cancelable: true,
-        });
-        nestedView.contentDOM.dispatchEvent(event);
-
-        expect(event.defaultPrevented).toBe(true);
-        expect(spy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "nested-annotation-create",
-                command: {
-                    revisionId,
-                    type: "comment",
-                    selectionFrom: 1,
-                    selectionTo: 3,
-                },
-            }),
-        );
-        expect(Object.values(nestedView.state.field(annotationField))).toHaveLength(0);
     });
 
     it("Mod-Alt-k with empty selection in nested editor does not fire event", () => {
