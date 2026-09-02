@@ -2,15 +2,18 @@
 
 All keyboard shortcuts in Quillium.
 
-## Annotation Keymap (Prec.high)
+## Annotation Shortcuts
 
-Intercepts before default CodeMirror bindings:
+The comment chord is matched from the physical `KeyC` webview event at highest precedence, then
+calls `createCommentFromSelection()` with CodeMirror's active view. This avoids layout-dependent
+key-name normalization while preserving the correct root, inline, or modal editor context. The
+remaining annotation shortcuts use the high-precedence CodeMirror keymap.
 
 | Key | Command Chain |
 |-----|---------------|
 | `Backspace` | `nudgeBoundary("backward")` → `deleteAdjacentRevision("backward")` → default |
 | `Delete` | `nudgeBoundary("forward")` → `deleteAdjacentRevision("forward")` → default |
-| `Mod-Alt-M` | `redirectToNestedEditor("comment")` → `createCommentCommand` |
+| `Mod-Shift-C` | `createCommentFromSelection()` → nested redirect or `createCommentCommand` |
 | `Mod-Alt-K` | `redirectToNestedEditor("revision")` → `createRevisionCommand` |
 
 Each handler returns `false` to fall through if it doesn't apply. `redirectToNestedEditor` returns `true` (swallows keypress) only when cursor is inside an active revision.
@@ -37,12 +40,9 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-Shift-E` | Export plain text |
 | `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
 
-On macOS, an app-local AppKit event monitor intercepts `Command-Option-M` before native menu
-dispatch and emits `native:comment-shortcut` to the focused webview. The webview calls the same
-`createCommentFromSelection` command used by the CodeMirror keymap. This avoids machine-dependent
-native menu consumption without registering a global shortcut or adding a native menu item.
-Right-clicking selected prose opens a native menu with Cut, Copy, Paste, Select All, Add
-Comment, and Add Revision, so annotation creation does not depend on key-event delivery.
+`Command-Option-M` is not bound because macOS reserves it for Minimize All. `Command-Shift-M` is
+not bound because macOS uses it for the Open man Page in Terminal text Service. Right-clicking
+selected prose opens a native menu with Cut, Copy, Paste, Select All, Add Comment, and Add Revision.
 
 ## Revision Modal Shortcuts
 
@@ -61,7 +61,7 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 |-----|--------|
 | `Mod-Z` | Delegates to parent `undo()` |
 | `Mod-Shift-Z` / `Mod-Y` | Delegates to parent `redo()` |
-| `Mod-Alt-M` | Emit `nested-annotation-create` for comment |
+| `Mod-Shift-C` | Emit `nested-annotation-create` for comment |
 | `Mod-Alt-K` | Emit `nested-annotation-create` for revision |
 
 ## AI Sidebar Tab Keys

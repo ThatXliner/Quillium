@@ -936,7 +936,7 @@ export class QuilliumPage {
     }
 
     async createComment(): Promise<void> {
-        await this.page.keyboard.press("Control+Alt+m");
+        await this.page.keyboard.press("Control+Shift+c");
     }
 
     async createRevision(): Promise<void> {

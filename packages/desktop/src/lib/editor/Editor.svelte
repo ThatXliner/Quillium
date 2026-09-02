@@ -72,6 +72,7 @@ import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import { loadUserDictionary } from "./harper/harperLinter";
+import { isCommentShortcut } from "./plugins/annotations/commentShortcut";
 import "./plugins/annotations/default.css";
 import "./harper/harper.css";
 import type { EventRecord } from "$lib/db/types";
@@ -137,7 +138,7 @@ const CONTEXT_MENU_WIDTH = 208;
 const CONTEXT_MENU_HEIGHT = 286;
 const CONTEXT_MENU_MARGIN = 8;
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const commentShortcutLabel = isMac ? "⌘⌥M" : "Ctrl+Alt+M";
+const commentShortcutLabel = isMac ? "⌘⇧C" : "Ctrl+Shift+C";
 const revisionShortcutLabel = isMac ? "⌘⌥K" : "Ctrl+Alt+K";
 
 function closeContextMenu(): void {
@@ -301,8 +302,7 @@ async function runContextMenuEditCommand(command: EditorEditCommand): Promise<vo
 }
 
 function handleCommentShortcutKeydown(event: KeyboardEvent): void {
-    const modKey = event.metaKey || event.ctrlKey;
-    if (!modKey || event.code !== "KeyM" || !event.altKey || event.shiftKey) return;
+    if (!isCommentShortcut(event)) return;
 
     const view = $editorView;
     const selection = view?.state.selection.main;

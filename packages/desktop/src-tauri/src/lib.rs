@@ -2,8 +2,6 @@ mod app_log;
 pub mod db;
 pub mod embeddings;
 mod keychain;
-#[cfg(target_os = "macos")]
-mod macos_comment_shortcut;
 mod oauth;
 mod pdf_export;
 
@@ -1371,9 +1369,6 @@ pub fn run() {
             // frontend exposes these actions through in-app UI instead.
             #[cfg(desktop)]
             setup_app_menu(app)?;
-
-            #[cfg(target_os = "macos")]
-            macos_comment_shortcut::install(app)?;
 
             Ok(())
         })

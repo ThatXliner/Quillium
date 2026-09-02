@@ -25,7 +25,7 @@ async function createNestedComment(q: QuilliumPage, inlineEditor: Locator): Prom
     await inlineEditor.click();
     await q.home();
     await q.selectRight(5);
-    await pressWithFallback(q.page, "ControlOrMeta+Alt+m", "Control+Alt+m", async () =>
+    await pressWithFallback(q.page, "ControlOrMeta+Shift+c", "Control+Shift+c", async () =>
         q.modalEditor.isVisible({ timeout: 2_000 }).catch(() => false),
     );
 }

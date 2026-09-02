@@ -1,18 +1,15 @@
 /**
- * commentShortcut.ts — Physical-key fallback for the macOS comment shortcut.
+ * commentShortcut.ts — Layout-independent comment chord matching.
  *
- * Option-letter combinations can change KeyboardEvent.key into a layout character
- * such as "µ". KeyboardEvent.code remains "KeyM", so this check gives the established
- * Command-Option-M shortcut a layout-independent fallback after CodeMirror's keymap.
+ * Match the physical comment chord instead of the layout-dependent event key.
+ * Shift changes `event.key` casing, but `event.code` remains stable.
  */
-
-export function isPhysicalMacCommentShortcut(event: KeyboardEvent): boolean {
+export function isCommentShortcut(event: KeyboardEvent): boolean {
     return (
-        event.code === "KeyM" &&
-        event.metaKey &&
-        event.altKey &&
-        !event.ctrlKey &&
-        !event.shiftKey &&
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.code === "KeyC" &&
         !event.isComposing
     );
 }
