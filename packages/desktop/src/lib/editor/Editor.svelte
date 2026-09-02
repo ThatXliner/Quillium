@@ -138,7 +138,7 @@ const CONTEXT_MENU_WIDTH = 208;
 const CONTEXT_MENU_HEIGHT = 286;
 const CONTEXT_MENU_MARGIN = 8;
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const commentShortcutLabel = isMac ? "⌘⇧M" : "Ctrl+Shift+M";
+const commentShortcutLabel = isMac ? "⌘⇧C" : "Ctrl+Shift+C";
 const revisionShortcutLabel = isMac ? "⌘⌥K" : "Ctrl+Alt+K";
 
 function closeContextMenu(): void {
