@@ -58,7 +58,7 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
-import { isPhysicalMacCommentShortcut } from "./commentShortcut";
+import { isCommentShortcut } from "./commentShortcut";
 import {
     type VersionState,
     activeVersion,
@@ -123,9 +123,13 @@ export function createNestedEditorState(
                   ),
               ];
     const extensions = [
+        // Install nested command routing before the shared editor extensions.
+        // Both layers watch the same physical comment chord at highest precedence;
+        // extension order ensures the nested route wins instead of creating a
+        // comment in the nested editor's non-persistent annotation field.
+        makeParentUndoKeymap(historyView ?? parentView, revisionId),
         ...getExtensions({ persist: false, history: false, updateListener }),
         ...nestedAwareness,
-        makeParentUndoKeymap(historyView ?? parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
 
@@ -321,7 +325,7 @@ function hasSerializedNestedState(
 export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
     function openNestedAnnotation(
         type: "comment" | "revision",
-        source: "keyboard-physical-fallback" | "keyboard-primary" | "unknown" = "unknown",
+        source: "keyboard-primary" | "unknown" = "unknown",
     ) {
         return (view: EditorView) => {
             const sel = view.state.selection.main;
@@ -462,57 +466,33 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                   ]
                 : []),
             {
-                key: "Mod-Alt-m",
-                run: openNestedAnnotation("comment", "keyboard-primary"),
-                preventDefault: true,
-            },
-            ...(dev
-                ? [
-                      {
-                          key: "Ctrl-Alt-m",
-                          run: openNestedAnnotation("comment", "keyboard-primary"),
-                          preventDefault: true,
-                      },
-                      {
-                          key: "Meta-Alt-m",
-                          run: openNestedAnnotation("comment", "keyboard-primary"),
-                          preventDefault: true,
-                      },
-                  ]
-                : []),
-            {
                 key: "Mod-Alt-k",
                 run: openNestedAnnotation("revision"),
                 preventDefault: true,
             },
-            ...(dev
-                ? [
-                      {
-                          key: "Ctrl-Alt-k",
-                          run: openNestedAnnotation("revision"),
-                          preventDefault: true,
-                      },
-                      {
-                          key: "Meta-Alt-k",
-                          run: openNestedAnnotation("revision"),
-                          preventDefault: true,
-                      },
-                  ]
-                : []),
+            {
+                key: "Ctrl-Alt-k",
+                run: openNestedAnnotation("revision"),
+                preventDefault: true,
+            },
+            {
+                key: "Meta-Alt-k",
+                run: openNestedAnnotation("revision"),
+                preventDefault: true,
+            },
         ]),
     );
 
-    return [
-        parentKeymap,
-        Prec.low(
-            EditorView.domEventHandlers({
-                keydown(event, view) {
-                    if (!isPhysicalMacCommentShortcut(event)) return false;
-                    return openNestedAnnotation("comment", "keyboard-physical-fallback")(view);
-                },
-            }),
-        ),
-    ];
+    const commentShortcutHandler = Prec.highest(
+        EditorView.domEventHandlers({
+            keydown(event, view) {
+                if (!isCommentShortcut(event)) return false;
+                return openNestedAnnotation("comment", "keyboard-primary")(view);
+            },
+        }),
+    );
+
+    return [commentShortcutHandler, parentKeymap];
 }
 
 /**

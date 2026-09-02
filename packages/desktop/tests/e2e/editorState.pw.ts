@@ -171,7 +171,7 @@ test.describe("status bar", () => {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 
 test.describe("keyboard shortcuts", () => {
-    test("Cmd+Alt+M creates comment and records both shortcut boundaries", async ({ page }) => {
+    test("Cmd+Shift+M creates comment and records both shortcut boundaries", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -203,12 +203,12 @@ test.describe("keyboard shortcuts", () => {
             .toEqual(expect.arrayContaining(["comment-shortcut", "comment-command"]));
     });
 
-    test("Cmd+Shift+M is not a second comment shortcut", async ({ page }) => {
+    test("Cmd+Alt+M is not a second comment shortcut", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
         await q.selectRange(0, 5);
-        await page.keyboard.press("Control+Shift+m");
+        await page.keyboard.press("Control+Alt+m");
 
         await expect(page.locator("textarea[placeholder='Add a comment…']")).toHaveCount(0);
     });
