@@ -33,8 +33,8 @@ describe("buildAiContextPacket", () => {
         expect(surroundingSource?.label).toBe("Selection Focus");
         expect(surroundingSource?.detail).toBe("Draft already includes nearby text");
         expect(packet.sources.find((source) => source.id === "selection")?.active).toBe(true);
-        expect(prompt).not.toContain("Nearby context around the selection");
-        expect(prompt).not.toContain("Nearby paragraphs around the selection");
+        expect(prompt).not.toContain('"source": "nearby-passage"');
+        expect(prompt).not.toContain('"source": "nearby-paragraphs"');
         expect(contextScopeDetail(packet)).toBe(
             "The current draft and selected text will be sent.",
         );
@@ -73,7 +73,7 @@ describe("buildAiContextPacket", () => {
         expect(packet.surroundingText).toContain("The paragraph after");
         expect(packet.surroundingText).not.toContain("wrong shared phrase");
         expect(surroundingSource?.label).toBe("Nearby Paragraphs");
-        expect(prompt).toContain("Nearby paragraphs around the selection");
+        expect(prompt).toContain('"source": "nearby-paragraphs"');
     });
 
     it("falls back to a bounded character window for huge paragraphs", () => {
@@ -125,6 +125,7 @@ describe("buildAiContextPacket", () => {
         const writerSource = packet.sources.find((source) => source.id === "writer-context");
         expect(writerSource?.active).toBe(true);
         expect(writerSource?.chars).toBeGreaterThan(0);
+        expect(contextPacketToPrompt(packet)).toContain('"source": "writer-brief"');
     });
 
     it("labels full-document context as visible draft state", () => {
@@ -154,10 +155,12 @@ describe("buildAiContextPacket", () => {
 
         expect(packet.includedAnnotationCount).toBe(1);
         expect(packet.sources.find((source) => source.id === "annotations")?.active).toBe(true);
-        expect(prompt).toContain("Existing annotations");
-        expect(prompt).toContain("avoid duplicating");
-        expect(prompt).toContain("[comment #7, active]");
-        expect(prompt).toContain("Bryan: This may repeat the intro.");
+        expect(prompt).toContain('"source": "existing-annotations"');
+        expect(prompt).toContain('"status": "already-open-editorial-state"');
+        expect(prompt).toContain('"type": "comment"');
+        expect(prompt).toContain('"active": true');
+        expect(prompt).toContain('"author": "Bryan"');
+        expect(prompt).toContain("This may repeat the intro.");
     });
 
     it("caps annotation context by relevance budget", () => {

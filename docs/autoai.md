@@ -23,14 +23,14 @@ Stored in localStorage under `"quillium-autoai-settings"`:
 | `mode` | `"continuous"` \| `"manual"` | `"continuous"` | Auto-review vs manual trigger |
 | `debounceMs` | number | 10000 | Delay before review after change |
 | `persona` | string | `"AutoAI"` | Name in annotation author fields |
-| `annotationTypes` | set | all three | Which types to create |
+| `annotationTypes` | set | comments only | Which types to create |
 | `conservativeness` | enum | `"conservative"` | Review depth |
 
 ## Review Engine
 
 ```mermaid
 flowchart TD
-    Change["documentContent changed<br/>(≥ 20-character length delta)"]
+    Change["documentContent changed<br/>(≥ 20 changed characters)"]
     Guard["Enabled, continuous, and draft is writable"]
     Debounce["Wait for 70% of debounceMs"]
     Thinking["autoAIPhase = thinking<br/>Final 30% warning"]
@@ -39,7 +39,7 @@ flowchart TD
     Context["Build shared context packet<br/>(brief + budgeted draft + annotations)"]
     Generate["generateObject()<br/>Single non-streaming call"]
     Normalize["Normalize provider field variants<br/>Drop malformed items individually"]
-    Apply["Validate against live draft<br/>Apply allowed annotations"]
+    Apply["Validate request generation, document, and draft<br/>Apply allowed annotations"]
     Done["autoAIPhase = idle"]
 
     Change --> Guard --> Debounce --> Thinking --> LoadKey --> Reviewing --> Context --> Generate --> Normalize --> Apply --> Done
@@ -58,7 +58,7 @@ flowchart TD
 
 Before review, AutoAI builds the same context packet used by the sidebar:
 
-1. Writer-provided document context is included as guidance.
+1. Writer-provided document context is included as user-role guidance.
 2. Long drafts are clipped to the AutoAI budget with an explicit omission marker.
 3. Open annotations are included as editorial state so the model can avoid duplicates.
 4. The model is instructed to annotate only exact substrings present in the
@@ -74,11 +74,18 @@ rejecting an otherwise useful review.
 
 For each normalized result:
 
-1. Check that the annotation type is still enabled.
-2. Verify `targetText` against the live editor document, not the reviewed snapshot.
-3. Dispatch `createComment`, `createSuggestion`, or `createRevision`.
-4. If a suggestion or revision overlaps an existing one, preserve the feedback
-   as a comment and show a warning instead of silently dropping it.
+1. Check that the request generation, document ID, and draft ID still match.
+2. Check that the annotation type is still enabled and allowed by the shared
+   editorial policy.
+3. Verify `targetText` against the live editor document, not the reviewed snapshot.
+4. Dispatch `createComment`, `createSuggestion`, or `createRevision`.
+5. If a suggestion or revision overlaps an existing one and comments are allowed,
+   preserve the feedback as a comment and show a warning.
+
+New edits abort an in-flight AutoAI request when a new review is scheduled. Every
+content change also advances a generation counter, so even a small edit prevents
+an older result from applying. Switching documents or drafts always schedules a
+fresh review regardless of text similarity.
 
 Continuous review is skipped for read-only drafts. Manual review runs immediately
 when the document is non-empty and shows a “No issues found” toast when the model

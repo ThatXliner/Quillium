@@ -56,9 +56,10 @@ Each persona has a 3-level chattiness setting:
 |-------|----------|
 | `quiet` | Only significant issues; nothing if solid |
 | `normal` | Issues worth writer's attention |
-| `verbose` | Thorough; flag everything |
+| `verbose` | Thorough about meaningful patterns; skips minor preferences |
 
-The directive is prepended to the persona's system prompt via `buildPersonaPrompt()`.
+The directive is sent as a writer-selected reader lens in a user-role message via
+`buildPersonaPrompt()`. The shared system policy keeps the task's action permissions fixed.
 
 ## Settings Persistence
 
@@ -98,16 +99,17 @@ When feedback is triggered:
 3. The factory snapshots the document ID, draft, selection and range, open
    annotations, active annotation, writer brief, and provider settings once.
 4. Each persona runs **in parallel** (`Promise.all`) with the shared abort signal.
-5. Each stream uses `buildPersonaPrompt(persona)` prepended to the mode system prompt.
+5. Each stream sends `buildPersonaPrompt(persona)` as a writer-selected lens before
+   the context packet.
 6. Tool-call handlers attribute annotations to the persona's name.
-7. A tool call is applied only while the document that started the review is
-   still active; late output cannot land in a different draft.
+7. A tool call must match the captured document, draft, selection, and task
+   permissions; late output cannot land in a different draft.
 
 If the mode is OFF, or it is ON but no personas are enabled, it falls back to standard single-stream.
 
 Persona streams consume tool-call chunks directly instead of rendering each
 persona's conversational text in the panel. Feedback personas can create
-comments and revisions; Revise personas can create suggestions and comments.
+comments; Revise personas can create comments, suggestions, and revisions.
 The global AI stop control cancels every persona stream through the shared abort
 signal.
 

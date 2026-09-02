@@ -10,6 +10,11 @@
 
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
+import { type EditorialAction, compileEditorialPolicy } from "$lib/ai/editorialPolicy";
+import {
+    type EditorialTargetSnapshot,
+    validateEditorialActionTarget,
+} from "$lib/ai/editorialTarget";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
@@ -19,7 +24,6 @@ import {
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import { buildDocumentContextPrompt } from "$lib/ai/utils";
 import {
     createComment,
     createRevision,
@@ -27,7 +31,13 @@ import {
 } from "$lib/editor/plugins/annotations/index";
 import { appEventBus } from "$lib/events/appEventBus";
 import { captureException } from "$lib/posthog";
-import { annotations, documentContent, editorView } from "$lib/stores";
+import {
+    annotations,
+    currentDocumentId,
+    currentDraftId,
+    documentContent,
+    editorView,
+} from "$lib/stores";
 import { generateObject } from "ai";
 import { toast } from "svelte-sonner";
 import { get, writable } from "svelte/store";
@@ -52,11 +62,15 @@ const conservativenessPrompts: Record<AutoAIConservativeness, string> = {
 };
 
 function buildSystemPrompt(): string {
-    const { conservativeness, annotationTypes, persona } = autoAISettings;
-    const allowed = annotationTypes.join(", ");
-    return `You are ${persona}, an AI writing collaborator embedded in a writing app called Quillium. Your job is to review the document and return structured feedback as JSON.
+    const { conservativeness, annotationTypes } = autoAISettings;
+    const policy = compileEditorialPolicy({
+        task: "background-review",
+        requestedActions: annotationTypes,
+    });
+    const allowed = policy.allowedActions.join(", ") || "none";
+    return `${policy.systemPrompt}
 
-Annotation types you may use: ${allowed}.
+Return structured feedback as JSON. Annotation types allowed for this request: ${allowed}.
 - comment: A note pointing out an issue or observation.
 - suggestion: A replacement for a specific phrase (provide the exact original text and a better alternative).
 - revision: Multiple named versions of a passage for the writer to compare.
@@ -67,7 +81,6 @@ Use these fields:
 - revision: type, targetText, versionLabel, versionText, threadMessage
 
 ${conservativenessPrompts[conservativeness]}
-${buildDocumentContextPrompt(documentContext)}
 
 IMPORTANT RULES:
 - targetText must be an EXACT substring of the document. Copy it verbatim.
@@ -81,10 +94,27 @@ IMPORTANT RULES:
 //   WAITING (70% of debounceMs) → WARNING/thinking (30%) → runReview
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
+let lastReviewedTargetKey = "";
+let contentGeneration = 0;
+let reviewAbortController: AbortController | null = null;
 let unsubscribe: (() => void) | null = null;
 let unsubStopAi: (() => void) | null = null;
 
-function applyAnnotations(result: AutoAIReviewOutput): number {
+function actionForAnnotation(
+    type: AutoAIReviewOutput["annotations"][number]["type"],
+): EditorialAction {
+    return type;
+}
+
+function applyAnnotations({
+    result,
+    target,
+    allowedActions,
+}: {
+    result: AutoAIReviewOutput;
+    target: EditorialTargetSnapshot;
+    allowedActions: readonly EditorialAction[];
+}): number {
     const view = get(editorView);
     if (!view) return 0;
 
@@ -92,12 +122,24 @@ function applyAnnotations(result: AutoAIReviewOutput): number {
     // user may have edited while the AI call was in flight, and annotations
     // are applied to the live view.
     const doc = view.state.doc.toString();
-    const allowed = new Set(autoAISettings.annotationTypes);
+    const allowed = new Set(allowedActions);
     let applied = 0;
 
     for (const ann of normalizeAutoAIReview(result)) {
         // Skip annotation types the user disabled.
         if (!allowed.has(ann.type)) continue;
+        const validation = validateEditorialActionTarget({
+            snapshot: target,
+            current: {
+                documentId: get(currentDocumentId),
+                draftId: get(currentDraftId),
+                documentText: doc,
+            },
+            targetText: ann.targetText,
+            action: actionForAnnotation(ann.type),
+            allowedActions,
+        });
+        if (!validation.ok) continue;
         // Verify the targetText actually exists in the current doc.
         if (!doc.includes(ann.targetText)) continue;
 
@@ -120,7 +162,7 @@ function applyAnnotations(result: AutoAIReviewOutput): number {
                 });
                 if (created) {
                     applied++;
-                } else {
+                } else if (allowed.has("comment")) {
                     // Suggestion overlaps an existing one — fall back to a comment so
                     // the AI's feedback is not silently lost.
                     toast.warning(
@@ -144,7 +186,7 @@ function applyAnnotations(result: AutoAIReviewOutput): number {
                 });
                 if (created) {
                     applied++;
-                } else {
+                } else if (allowed.has("comment")) {
                     // Revision overlaps an existing one — fall back to a comment so
                     // the AI's feedback is not silently lost.
                     toast.warning(
@@ -166,13 +208,62 @@ function applyAnnotations(result: AutoAIReviewOutput): number {
     return applied;
 }
 
-async function runReview(content: string, manual = false) {
+function targetKey(): string {
+    return `${get(currentDocumentId) ?? ""}\u0000${get(currentDraftId) ?? ""}`;
+}
+
+function changedCharacterCount(previous: string, current: string): number {
+    if (!previous) return current.length;
+    let prefix = 0;
+    const prefixLimit = Math.min(previous.length, current.length);
+    while (prefix < prefixLimit && previous[prefix] === current[prefix]) prefix++;
+
+    let suffix = 0;
+    const suffixLimit = prefixLimit - prefix;
+    while (
+        suffix < suffixLimit &&
+        previous[previous.length - 1 - suffix] === current[current.length - 1 - suffix]
+    ) {
+        suffix++;
+    }
+
+    return Math.max(previous.length - prefix - suffix, current.length - prefix - suffix);
+}
+
+function linkedAbortController(parent: AbortSignal): {
+    controller: AbortController;
+    cleanup: () => void;
+} {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (parent.aborted) controller.abort();
+    else parent.addEventListener("abort", abort, { once: true });
+    return {
+        controller,
+        cleanup: () => parent.removeEventListener("abort", abort),
+    };
+}
+
+async function runReview(content: string, manual = false, generation = contentGeneration) {
     if (!content.trim()) {
         autoAIPhase.set("idle");
         return;
     }
 
-    const abortSignal = getAiAbortSignal();
+    reviewAbortController?.abort();
+    const linkedAbort = linkedAbortController(getAiAbortSignal());
+    const { controller } = linkedAbort;
+    const abortSignal = controller.signal;
+    reviewAbortController = controller;
+    const target: EditorialTargetSnapshot = {
+        documentId: get(currentDocumentId),
+        draftId: get(currentDraftId),
+        selectedText: "",
+    };
+    const policy = compileEditorialPolicy({
+        task: "background-review",
+        requestedActions: autoAISettings.annotationTypes,
+    });
     let task: symbol | null = null;
     try {
         await ensureApiKeyLoaded();
@@ -205,8 +296,21 @@ async function runReview(content: string, manual = false) {
             prompt: `Review this context packet. Only create annotations for exact targetText substrings that appear in the included document text.\n\n${contextPacketToPrompt(contextPacket)}`,
             abortSignal,
         });
+        if (
+            generation !== contentGeneration ||
+            target.documentId !== get(currentDocumentId) ||
+            target.draftId !== get(currentDraftId)
+        ) {
+            if (manual) toast("The draft changed during review, so the result was discarded.");
+            return;
+        }
         lastReviewedContent = content;
-        const applied = applyAnnotations(object);
+        lastReviewedTargetKey = targetKey();
+        const applied = applyAnnotations({
+            result: object,
+            target,
+            allowedActions: policy.allowedActions,
+        });
         if (manual && applied === 0) {
             toast("No issues found — your writing looks good.");
         }
@@ -215,19 +319,23 @@ async function runReview(content: string, manual = false) {
         console.error("[AutoAI] review failed:", e);
         captureException(e);
     } finally {
-        autoAIPhase.set("idle");
+        linkedAbort.cleanup();
+        if (reviewAbortController === controller) {
+            reviewAbortController = null;
+            autoAIPhase.set("idle");
+        }
         endAiTask(task);
     }
 }
 
-function scheduleReview(content: string) {
+function scheduleReview(content: string, generation: number) {
     cancelPendingReview();
     debounceTimer = setTimeout(() => {
         // WAITING → WARNING: show thinking face for the last 30% of the window.
         autoAIPhase.set("thinking");
         debounceTimer = setTimeout(() => {
             debounceTimer = null;
-            runReview(content);
+            runReview(content, false, generation);
         }, autoAISettings.debounceMs * 0.3);
     }, autoAISettings.debounceMs * 0.7);
 }
@@ -237,14 +345,23 @@ export function startAutoAI() {
     if (unsubscribe) return; // already running
 
     unsubscribe = documentContent.subscribe((content) => {
+        contentGeneration++;
+        cancelPendingReview();
         if (!autoAISettings.enabled) return;
         if (autoAISettings.mode !== "continuous") return;
         // Locked drafts are read-only — don't burn an AI call reviewing
         // text that can't be annotated (#160).
         if (get(editorView)?.state.readOnly) return;
-        const diff = Math.abs(content.length - lastReviewedContent.length);
-        if (diff < MIN_DIFF_CHARS && lastReviewedContent !== "") return;
-        scheduleReview(content);
+        const currentTargetKey = targetKey();
+        const diff = changedCharacterCount(lastReviewedContent, content);
+        if (
+            currentTargetKey === lastReviewedTargetKey &&
+            diff < MIN_DIFF_CHARS &&
+            lastReviewedContent !== ""
+        ) {
+            return;
+        }
+        scheduleReview(content, contentGeneration);
     });
 
     // Cancel pending reviews when the global stop event fires.
@@ -261,6 +378,7 @@ export function stopAutoAI() {
         unsubscribe = null;
     }
     lastReviewedContent = "";
+    lastReviewedTargetKey = "";
 }
 
 /** Cancel any pending debounced review without stopping the engine. */
@@ -269,6 +387,8 @@ export function cancelPendingReview() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
     }
+    reviewAbortController?.abort();
+    reviewAbortController = null;
     autoAIPhase.set("idle");
 }
 
@@ -277,5 +397,5 @@ export function triggerManualReview() {
     const content = get(documentContent);
     if (!content.trim()) return;
     cancelPendingReview();
-    runReview(content, true);
+    runReview(content, true, contentGeneration);
 }

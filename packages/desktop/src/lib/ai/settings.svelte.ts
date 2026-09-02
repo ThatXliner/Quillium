@@ -1,4 +1,5 @@
 import { appEventBus } from "$lib/events/appEventBus";
+import { currentDocumentId, currentDraftId } from "$lib/stores";
 /**
  * Reactive AI settings store (Svelte 5 runes).
  *
@@ -27,6 +28,7 @@ import { appEventBus } from "$lib/events/appEventBus";
  *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
  */
 import { invoke } from "@tauri-apps/api/core";
+import { derived } from "svelte/store";
 import type { Provider } from "./provider";
 
 const PROVIDER_KEY = "quillium-ai-provider";
@@ -142,7 +144,11 @@ export function setAiProcessing(value: boolean) {
  * (i.e. at the top-level of a Svelte component's `<script>` block) so
  * `$effect` has a valid owner.
  */
-export function useAiChatEffects(chat: { status: string; stop: () => void }) {
+export function useAiChatEffects(chat: {
+    status: string;
+    stop: () => void;
+    messages: unknown[];
+}) {
     let processingTask: symbol | null = null;
 
     $effect(() => {
@@ -161,6 +167,24 @@ export function useAiChatEffects(chat: { status: string; stop: () => void }) {
             }
         });
         return unsub;
+    });
+
+    $effect(() => {
+        let previousScope: string | undefined;
+        const scope = derived(
+            [currentDocumentId, currentDraftId],
+            ([$documentId, $draftId]) => `${$documentId ?? ""}\u0000${$draftId ?? ""}`,
+        );
+        return scope.subscribe((nextScope) => {
+            if (previousScope === undefined) {
+                previousScope = nextScope;
+                return;
+            }
+            if (nextScope === previousScope) return;
+            previousScope = nextScope;
+            if (chat.status === "submitted" || chat.status === "streaming") chat.stop();
+            chat.messages = [];
+        });
     });
 }
 

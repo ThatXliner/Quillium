@@ -5,6 +5,7 @@ import {
     activeAnnotation,
     annotations,
     currentDocumentId,
+    currentDraftId,
     documentContent,
     editorView,
     selectedText,
@@ -58,6 +59,12 @@ import {
     streamRevise,
 } from "./clientStreams";
 import {
+    type EditorialAction,
+    type EditorialTask,
+    compileEditorialPolicy,
+} from "./editorialPolicy";
+import { type EditorialTargetSnapshot, validateEditorialActionTarget } from "./editorialTarget";
+import {
     aiSettings,
     documentContext,
     ensureApiKeyLoaded,
@@ -70,6 +77,26 @@ type ToolCall =
     | { toolName: "createSuggestion"; input: SuggestionInput }
     | { toolName: "createRevision"; input: RevisionInput };
 
+type AiChatMode = "chat" | "feedback" | "revise" | "dictionary";
+
+const MODE_TASKS: Record<AiChatMode, EditorialTask> = {
+    chat: "conversation",
+    feedback: "global-review",
+    revise: "local-rewrite",
+    dictionary: "dictionary",
+};
+
+const TOOL_ACTIONS: Record<ToolCall["toolName"], EditorialAction> = {
+    createComment: "comment",
+    createSuggestion: "suggestion",
+    createRevision: "revision",
+};
+
+type ToolCallGuard = {
+    target: EditorialTargetSnapshot;
+    allowedActions: readonly EditorialAction[];
+};
+
 /**
  * Route LLM tool calls to the CodeMirror annotation system.
  *
@@ -77,9 +104,26 @@ type ToolCall =
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall(toolCall: ToolCall, author?: string) {
+function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: string) {
     const view = get(editorView);
     if (!view) return;
+
+    const validation = validateEditorialActionTarget({
+        snapshot: guard.target,
+        current: {
+            documentId: get(currentDocumentId),
+            draftId: get(currentDraftId),
+            documentText: view.state.doc.toString(),
+        },
+        targetText: toolCall.input.targetText,
+        action: TOOL_ACTIONS[toolCall.toolName],
+        allowedActions: guard.allowedActions,
+    });
+    if (!validation.ok) {
+        console.warn("[chatFactory] rejected AI annotation:", validation.reason);
+        toast.warning("The draft or selection changed, so Quillium skipped one AI annotation.");
+        return;
+    }
 
     try {
         dispatchToolCall(toolCall, view, author);
@@ -156,7 +200,7 @@ export async function runMultiPersonaStreams({
     personas: ReaderPersona[];
     streamFn: StreamFn;
     messages: UIMessage[];
-    mode: string;
+    mode: "feedback" | "revise";
 }): Promise<void> {
     await ensureApiKeyLoaded();
 
@@ -164,10 +208,19 @@ export async function runMultiPersonaStreams({
     // Annotations from these streams must land in the document the review
     // was started on — if the user switches documents mid-stream, tool
     // calls would otherwise be applied to the wrong document.
-    const docIdAtStart = get(currentDocumentId);
+    const targetAtStart: EditorialTargetSnapshot = {
+        documentId: get(currentDocumentId),
+        draftId: get(currentDraftId),
+        selectedText: get(selectedText),
+        selectedTextRange: get(selectedTextRange),
+    };
     const documentContentAtStart = get(documentContent);
-    const selectedTextAtStart = get(selectedText);
-    const selectedTextRangeAtStart = get(selectedTextRange);
+    const selectedTextAtStart = targetAtStart.selectedText;
+    const selectedTextRangeAtStart = targetAtStart.selectedTextRange;
+    const policy = compileEditorialPolicy({
+        task: MODE_TASKS[mode],
+        hasSelection: !!selectedTextAtStart,
+    });
     const annotationContextAtStart = buildAnnotationContextInputs({
         annotations: get(annotations),
         documentContent: documentContentAtStart,
@@ -201,12 +254,10 @@ export async function runMultiPersonaStreams({
                 }
                 const { value, done } = await reader.read();
                 if (done) break;
-                if (
-                    value?.type === "tool-input-available" &&
-                    get(currentDocumentId) === docIdAtStart
-                ) {
+                if (value?.type === "tool-input-available") {
                     handleToolCall(
                         { toolName: value.toolName, input: value.input } as ToolCall,
+                        { target: targetAtStart, allowedActions: policy.allowedActions },
                         persona.name,
                     );
                 }
@@ -233,7 +284,10 @@ export async function runMultiPersonaStreams({
  * config, and document-context fields from their respective stores so
  * the stream function always sees a consistent view of the world.
  */
-function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
+function makeTransport(
+    streamFn: StreamFn,
+    captureTarget: (target: EditorialTargetSnapshot) => void,
+): ChatTransport<UIMessage> {
     return {
         async sendMessages({
             messages,
@@ -243,6 +297,12 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
             const documentContentAtSend = get(documentContent);
             const selectedTextAtSend = get(selectedText);
             const selectedTextRangeAtSend = get(selectedTextRange);
+            captureTarget({
+                documentId: get(currentDocumentId),
+                draftId: get(currentDraftId),
+                selectedText: selectedTextAtSend,
+                selectedTextRange: selectedTextRangeAtSend,
+            });
             return streamFn({
                 messages,
                 documentContent: documentContentAtSend,
@@ -272,12 +332,11 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
 /**
  * Create a Chat instance for the given AI mode.
  *
- * Each mode maps to a different stream function (and therefore a
- * different system prompt + tool set). The returned `chat` object
+ * Each mode maps to a task recipe and its allowed tool set. The returned `chat` object
  * is a reactive @ai-sdk/svelte Chat whose `.messages`, `.status`,
  * and `.error` properties drive the component UI.
  */
-export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | "dictionary" }) {
+export function createAiChat({ mode }: { mode: AiChatMode }) {
     const streamFns = {
         chat: streamChat,
         feedback: streamFeedback,
@@ -296,9 +355,23 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | 
         return streamFns[mode](opts);
     };
 
+    let targetAtSend: EditorialTargetSnapshot | undefined;
+
     const chat = new Chat({
-        transport: makeTransport(transportWithTracking),
-        onToolCall: ({ toolCall }) => handleToolCall(toolCall as ToolCall),
+        transport: makeTransport(transportWithTracking, (target) => {
+            targetAtSend = target;
+        }),
+        onToolCall: ({ toolCall }) => {
+            if (!targetAtSend) return;
+            const policy = compileEditorialPolicy({
+                task: MODE_TASKS[mode],
+                hasSelection: !!targetAtSend.selectedText,
+            });
+            handleToolCall(toolCall as ToolCall, {
+                target: targetAtSend,
+                allowedActions: policy.allowedActions,
+            });
+        },
     });
 
     function clearChat() {

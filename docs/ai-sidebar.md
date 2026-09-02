@@ -33,15 +33,16 @@ flowchart LR
 ```
 
 For sidebar conversations, `createAiChat()` creates an AI SDK `Chat` with a
-custom transport. At send time the transport snapshots the current draft,
-selection and range, open annotations, active annotation, writer brief, and
-provider settings. `clientStreams.ts` then builds the mode-specific system
-prompt, prepends the context packet as a user message, and calls `streamText()`.
+custom transport. At send time the transport snapshots the current document,
+draft, selection and range, open annotations, active annotation, writer brief,
+and provider settings. `editorialPolicy.ts` compiles the shared author-first
+policy, task recipe, and allowed action types. `clientStreams.ts` prepends the
+context packet as a user message and calls `streamText()`.
 
 Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
-with Zod and routed by `chatFactory.ts` to the annotation commands. A tool call
-whose exact target can no longer be found is skipped with a warning instead of
-failing the entire stream.
+with Zod, checked against the turn's permissions and captured document, draft,
+and selection, then routed by `chatFactory.ts` to the annotation commands. A
+stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 ### Core Files
 
@@ -54,8 +55,10 @@ failing the entire stream.
 | `openaiOAuth.ts` | Beta ChatGPT PKCE sign-in, token refresh, model discovery, and keychain session storage |
 | `context.ts` | Context budgeting, source metadata, selection focus, and context-aware actions |
 | `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
+| `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
+| `editorialTarget.ts` | Request-scoped document, draft, and selection validation |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
-| `clientStreams.ts` | Mode prompts, tools, streaming, context generation, and characterization |
+| `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
 
 ## Sidebar Tabs
 
@@ -70,7 +73,8 @@ failing the entire stream.
 
 ### Chat
 
-- Conversational writing help with session-local message history.
+- Conversational writing help with session-local message history. The history is
+  cleared when the current document or draft changes.
 - Uses the shared context packet before the writer's latest prompt.
 - Shows a context lens for selection, nearby text, draft, annotations, and brief.
 - Offers context-aware action cards based on selection, draft length, brief, and
@@ -80,20 +84,21 @@ failing the entire stream.
 ### Feedback
 
 - Focuses on structure, voice, argument, scope, pacing, and style.
-- Uses `createComment` for passage-level observations and `createRevision` for
-  two or three meaningfully different versions of a passage.
-- Keeps the overall response conversational while requiring concrete passage
-  feedback to go through tools.
+- Uses `createComment` for a small number of high-impact passage observations.
+- Does not create rewrites during broad review. The writer can move to Revise or
+  ask for a targeted rewrite afterward.
+- Tool use is optional, and a strong draft may receive no annotations.
 - Includes user-defined Feedback quick actions from general app settings.
 - Can fan out through enabled reader personas when Feedback's persona toggle is on.
 
 ### Revise
 
-- Works as a line editor for words and short phrases.
-- Uses `createSuggestion` for replacement options and can use `createComment`
-  for explanation or clarification.
-- Instructs the model to target the smallest useful span, include sentence or
-  clause context for disambiguation, and provide at least two alternatives.
+- Works on a writer-requested passage while preserving intent and voice.
+- Uses `createSuggestion` for local replacements, `createRevision` for coherent
+  passage alternatives, and `createComment` when diagnosis or a question should
+  precede rewriting.
+- Does not require a minimum number of changes. With a selection, every target
+  must remain inside that captured selection.
 - Includes user-defined Revise quick actions from general app settings.
 - Can fan out through enabled reader personas when Revise's persona toggle is on.
 
@@ -103,8 +108,9 @@ failing the entire stream.
 - Can generate a brief from a prompt with a non-streaming `generateText()` call.
 - Uses the `context-generation-format` feature flag to choose freeform or
   structured output.
-- The brief is shown separately in the context lens and appended to the
-  mode-specific system prompt.
+- The brief is shown separately in the context lens and serialized as writer
+  guidance in the user-role context packet. It is never appended to the system
+  policy.
 
 ### Readers
 
@@ -145,8 +151,10 @@ Annotation context is separately capped at six items and approximately 4,800
 characters. These are character budgets, not provider token limits.
 
 The context message is inserted before the conversation messages, leaving the
-writer's latest prompt as the most recent instruction. The context lens uses the
-same packet metadata, so its source list reflects what the request builder sees.
+writer's latest prompt as the most recent instruction. Drafts, selections,
+annotations, and briefs are JSON-serialized and labeled as untrusted reference
+material. The context lens uses the same packet metadata, so its source list
+reflects what the request builder sees.
 
 ## Providers, Connections, and Models
 
@@ -212,14 +220,16 @@ reload.
 | Tool | Used by | Result |
 |------|---------|--------|
 | `createComment` | Feedback, Revise | Comment thread anchored to exact text |
-| `createRevision` | Feedback | Two or three named passage versions plus a thread message |
+| `createRevision` | Revise | Two or more named passage versions plus a thread message |
 | `createSuggestion` | Revise | One or more replacement options for a short target |
 
 Tool schemas require exact `targetText` and accept surrounding `context` to
-disambiguate repeated phrases. `chatFactory.ts` dispatches valid calls through
-the same CodeMirror annotation commands used by the rest of the app and records
-annotation analytics. Reader-persona tool calls attach the persona name as the
-annotation author.
+disambiguate repeated phrases. `chatFactory.ts` also verifies the captured
+document and draft, the turn's allowed action types, selection containment, and
+that the selected source text has not changed in place.
+It dispatches valid calls through the same CodeMirror annotation commands used
+by the rest of the app. Reader-persona tool calls attach the persona name as the
+annotation author but cannot expand the parent task's permissions.
 
 AutoAI does not consume streamed tool calls. It uses a structured Zod response
 and applies the normalized results itself; see [AutoAI](./autoai.md).
@@ -230,9 +240,10 @@ Feedback and Revise default to one stream. If personas are enabled for that
 specific mode, `runMultiPersonaStreams()` starts one stream per enabled persona
 with `Promise.all()`.
 
-The fan-out path snapshots the document ID and editor context once. Tool calls
-are only applied if the user is still on that document, preventing a late
-persona result from landing in a different draft. See
+The fan-out path snapshots the document ID, draft ID, selection, and editor
+context once. Tool calls use the same action and target guard as ordinary
+requests, preventing a late persona result from landing in another draft or
+outside the captured selection. See
 [Reader Personas](./reader-personas.md) for the full behavior.
 
 ## Processing State and Cancellation
@@ -264,10 +275,10 @@ signal.
 ### Annotation-Thread Suggestions
 
 Comment cards and comment modals can ask AI to respond to the current thread.
-`commentAi.ts` builds a prompt from the thread messages and anchored document
-text, calls `streamChat()`, collects text deltas, and appends the result as an
-`AI` thread message. This path sends no additional draft context, but it does
-include the writer brief through the normal Chat system prompt. If stopped, it
+`commentAi.ts` builds a JSON reference packet from the thread messages and
+anchored document text, calls the dedicated thread-reply policy, collects text
+deltas, and appends the result as an `AI` thread message. This path sends no
+additional draft context. The writer brief remains user-role guidance. If stopped, it
 keeps any text that streamed before cancellation rather than adding an error.
 
 ### Dictionary and Thesaurus
