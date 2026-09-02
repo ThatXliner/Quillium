@@ -124,72 +124,79 @@ export function hasDocumentContext(): boolean {
 export function useDocumentContextEffects() {
     $effect(() => {
         let generation = 0;
-        return currentDocumentId.subscribe((documentId) => {
-            generation += 1;
-            const loadGeneration = generation;
-            if (documentContextDocumentId && documentContextReady) {
-                void persistDocumentContext(documentContextDocumentId, {
-                    freeform: documentContext.freeform,
-                    decisions: [...documentContext.decisions],
-                }).catch((error) => {
-                    console.error("[aiSettings] failed to save document context", error);
-                });
-            }
+        // Store subscriptions run synchronously during effect setup. Keep context reads and writes
+        // untracked so remounting the sidebar cannot make this effect depend on its own mutations.
+        return currentDocumentId.subscribe((documentId) =>
+            untrack(() => {
+                generation += 1;
+                const loadGeneration = generation;
+                if (documentContextDocumentId && documentContextReady) {
+                    void persistDocumentContext(documentContextDocumentId, {
+                        freeform: documentContext.freeform,
+                        decisions: [...documentContext.decisions],
+                    }).catch((error) => {
+                        console.error("[aiSettings] failed to save document context", error);
+                    });
+                }
 
-            documentContextDocumentId = documentId;
-            documentContextReady = false;
-            documentContext.freeform = "";
-            documentContext.decisions = [];
-            if (!documentId) return;
-            const loadingFreeform = documentContext.freeform;
-            const loadingDecisions = documentContext.decisions;
+                documentContextDocumentId = documentId;
+                documentContextReady = false;
+                documentContext.freeform = "";
+                documentContext.decisions = [];
+                if (!documentId) return;
+                const loadingFreeform = documentContext.freeform;
+                const loadingDecisions = documentContext.decisions;
 
-            void Promise.all([
-                getDocumentWriterBrief(documentId),
-                getDocumentEditorialDecisions(documentId),
-            ])
-                .then(async ([writerBrief, decisionsJson]) => {
-                    if (loadGeneration !== generation || documentId !== get(currentDocumentId)) {
-                        return;
-                    }
-                    if (
-                        documentContext.freeform !== loadingFreeform ||
-                        documentContext.decisions !== loadingDecisions
-                    ) {
-                        documentContextReady = true;
-                        saveDocumentContext();
-                        return;
-                    }
-
-                    if (
-                        writerBrief === null &&
-                        !legacyDocumentContextClaimed &&
-                        legacyDocumentContext.freeform.trim()
-                    ) {
-                        legacyDocumentContextClaimed = true;
-                        documentContext.freeform = legacyDocumentContext.freeform;
-                        await setDocumentWriterBrief(documentId, documentContext.freeform);
+                void Promise.all([
+                    getDocumentWriterBrief(documentId),
+                    getDocumentEditorialDecisions(documentId),
+                ])
+                    .then(async ([writerBrief, decisionsJson]) => {
                         if (
                             loadGeneration !== generation ||
                             documentId !== get(currentDocumentId)
                         ) {
                             return;
                         }
-                        if (typeof localStorage !== "undefined") {
-                            localStorage.removeItem(DOCUMENT_CONTEXT_KEY);
+                        if (
+                            documentContext.freeform !== loadingFreeform ||
+                            documentContext.decisions !== loadingDecisions
+                        ) {
+                            documentContextReady = true;
+                            saveDocumentContext();
+                            return;
                         }
-                    } else {
-                        documentContext.freeform = writerBrief ?? "";
-                    }
-                    documentContext.decisions = parseEditorialDecisions(decisionsJson);
-                    documentContextReady = true;
-                })
-                .catch((error) => {
-                    if (loadGeneration !== generation) return;
-                    documentContextReady = true;
-                    console.error("[aiSettings] failed to load document context", error);
-                });
-        });
+
+                        if (
+                            writerBrief === null &&
+                            !legacyDocumentContextClaimed &&
+                            legacyDocumentContext.freeform.trim()
+                        ) {
+                            legacyDocumentContextClaimed = true;
+                            documentContext.freeform = legacyDocumentContext.freeform;
+                            await setDocumentWriterBrief(documentId, documentContext.freeform);
+                            if (
+                                loadGeneration !== generation ||
+                                documentId !== get(currentDocumentId)
+                            ) {
+                                return;
+                            }
+                            if (typeof localStorage !== "undefined") {
+                                localStorage.removeItem(DOCUMENT_CONTEXT_KEY);
+                            }
+                        } else {
+                            documentContext.freeform = writerBrief ?? "";
+                        }
+                        documentContext.decisions = parseEditorialDecisions(decisionsJson);
+                        documentContextReady = true;
+                    })
+                    .catch((error) => {
+                        if (loadGeneration !== generation) return;
+                        documentContextReady = true;
+                        console.error("[aiSettings] failed to load document context", error);
+                    });
+            }),
+        );
     });
 
     $effect(() => {
