@@ -196,6 +196,53 @@ describe("getContextAwareActions", () => {
         expect(actions[0].prompt).toContain("selected text");
     });
 
+    it("offers exact compression as a typed revision turn for a substantial selection", () => {
+        const packet = buildAiContextPacket({
+            mode: "revise",
+            documentContent: "One two three four five six seven eight nine ten eleven twelve.",
+            selectedText: "One two three four five six seven eight nine ten eleven twelve.",
+        });
+
+        const action = getContextAwareActions("revise", packet).find(
+            (candidate) => candidate.id === "revise-exact-compression",
+        );
+        expect(action?.label).toBe("Cut to 9 words");
+        expect(action?.turn).toEqual({ task: "exact-compression", exactWordCount: 9 });
+    });
+
+    it("marks reverse outline as a text-only recipe", () => {
+        const packet = buildAiContextPacket({ mode: "chat", documentContent: "A draft." });
+        const action = getContextAwareActions("chat", packet).find(
+            (candidate) => candidate.id === "chat-map",
+        );
+
+        expect(action?.label).toBe("Reverse outline");
+        expect(action?.turn).toEqual({ task: "reverse-outline" });
+    });
+
+    it("offers read-only comparison for an active revision", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "A draft.",
+            annotationContext: [
+                {
+                    id: 4,
+                    type: "revision",
+                    targetText: "A draft.",
+                    active: true,
+                    versions: [
+                        { label: "Original", text: "A draft." },
+                        { label: "Direct", text: "The draft." },
+                    ],
+                },
+            ],
+        });
+        const action = getContextAwareActions("chat", packet)[0];
+
+        expect(action.id).toBe("chat-compare-versions");
+        expect(action.turn).toEqual({ task: "branch-comparison" });
+    });
+
     it("uses writer-context-aware feedback actions for a full draft", () => {
         const packet = buildAiContextPacket({
             mode: "feedback",

@@ -96,6 +96,24 @@ test.describe("AI sidebar", () => {
             .toBeGreaterThan(580);
     });
 
+    test("shows typed outline and exact-compression recipes", async ({ page }) => {
+        const draft = "One two three four five six seven eight nine ten eleven twelve.";
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: draft,
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-chat").click();
+        await expect(q.aiSidebar.getByRole("button", { name: /Reverse outline/ })).toBeVisible();
+
+        await q.selectRange(0, draft.length);
+        await page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']").click();
+        await expect(q.aiSidebar.getByRole("button", { name: /Cut to 9 words/ })).toBeVisible();
+        await expect(q.aiSidebar).toContainText("Exact target from 12 words");
+    });
+
     test("hides starter suggestions after first chat action", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",

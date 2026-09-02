@@ -1,4 +1,5 @@
 import type { UserModelMessage } from "ai";
+import type { EditorialTurn } from "./editorialPolicy";
 
 export type AiContextMode = "chat" | "feedback" | "revise" | "dictionary" | "autoai";
 export type AiContextScope = "empty" | "selection" | "document";
@@ -76,6 +77,7 @@ export type ContextAction = {
     label: string;
     detail: string;
     prompt: string;
+    turn?: EditorialTurn;
 };
 
 const MODE_DOCUMENT_BUDGETS: Record<AiContextMode, number> = {
@@ -617,10 +619,23 @@ export function getContextAwareActions(
     const hasWriterContext = packet.writerContext.length > 0;
     const hasAnnotations = packet.includedAnnotationCount > 0;
     const longDraft = packet.documentLength > 12000;
+    const activeRevision = packet.annotationContext.find(
+        (annotation) =>
+            annotation.active && annotation.type === "revision" && annotation.versions?.length,
+    );
+    const comparisonAction: ContextAction | undefined = activeRevision
+        ? {
+              id: "chat-compare-versions",
+              label: "Compare versions",
+              detail: `${activeRevision.versions?.length ?? 0} read-only alternatives`,
+              prompt: "Compare the active revision's versions. Explain the concrete tradeoffs in meaning, voice, pacing, emphasis, and reader effect. Do not edit or combine them.",
+              turn: { task: "branch-comparison" },
+          }
+        : undefined;
 
     if (mode === "chat") {
         if (hasSelection) {
-            const actions = [
+            const actions: ContextAction[] = [
                 {
                     id: "chat-role",
                     label: "Explain its job",
@@ -640,6 +655,7 @@ export function getContextAwareActions(
                     prompt: "Suggest two different editorial directions for this selected passage without rewriting it yet.",
                 },
             ];
+            if (comparisonAction) return [comparisonAction, ...actions].slice(0, 3);
             if (!hasAnnotations) return actions;
             return [
                 {
@@ -651,16 +667,15 @@ export function getContextAwareActions(
                 ...actions,
             ].slice(0, 3);
         }
-        const actions = [
+        const actions: ContextAction[] = [
             {
                 id: "chat-map",
-                label: longDraft ? "Map the draft" : "Name the center",
+                label: "Reverse outline",
                 detail: longDraft
                     ? "Sections, turns, and pressure points"
-                    : "What the piece seems to be about",
-                prompt: longDraft
-                    ? "Map this draft: identify the major sections, turning points, and where the argument or story loses pressure."
-                    : "What does this draft seem to be trying to say? Name the central tension and one next move.",
+                    : "The job of each paragraph or section",
+                prompt: "Create a reverse outline of this draft. For each paragraph or coherent section, name its current job in one concise line, then identify structural gaps, repetition, and weak transitions. Keep the result in chat without adding annotations.",
+                turn: { task: "reverse-outline" },
             },
             {
                 id: "chat-gap",
@@ -679,6 +694,7 @@ export function getContextAwareActions(
                     : "Based on this draft, propose a concise document context with goal, audience, tone, emphasis, and what to avoid.",
             },
         ];
+        if (comparisonAction) return [comparisonAction, ...actions].slice(0, 3);
         if (!hasAnnotations) return actions;
         return [
             {
@@ -724,7 +740,7 @@ export function getContextAwareActions(
                 ...actions,
             ].slice(0, 3);
         }
-        const actions = [
+        const actions: ContextAction[] = [
             {
                 id: "feedback-structure",
                 label: "Structure scan",
@@ -759,7 +775,23 @@ export function getContextAwareActions(
     }
 
     if (hasSelection) {
+        const selectedWordCount = packet.selectedText.trim().split(/\s+/).filter(Boolean).length;
+        const compressionTarget = Math.max(1, Math.floor(selectedWordCount * 0.75));
+        const compressionAction: ContextAction | undefined =
+            selectedWordCount >= 8
+                ? {
+                      id: "revise-exact-compression",
+                      label: `Cut to ${compressionTarget} words`,
+                      detail: `Exact target from ${selectedWordCount} words`,
+                      prompt: `Compress this selected passage to exactly ${compressionTarget} words. Preserve its meaning, factual claims, and distinctive voice. Propose two alternatives as one reversible revision.`,
+                      turn: {
+                          task: "exact-compression",
+                          exactWordCount: compressionTarget,
+                      },
+                  }
+                : undefined;
         const actions = [
+            ...(compressionAction ? [compressionAction] : []),
             {
                 id: "revise-tighten",
                 label: "Tighten",
@@ -778,7 +810,7 @@ export function getContextAwareActions(
                 detail: "Compare different revision paths",
                 prompt: "Offer two meaningfully different revision directions for this selected text, with tradeoffs.",
             },
-        ];
+        ].slice(0, 3);
         if (!hasAnnotations) return actions;
         return [
             {

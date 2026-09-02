@@ -6,7 +6,7 @@ export type SerializedThreadMessage = {
 
 export type SerializedAiGenerationProvenance = {
     requestId: string;
-    task: "global-review" | "local-rewrite" | "background-review";
+    task: "global-review" | "local-rewrite" | "exact-compression" | "background-review";
     provider: string;
     model: string;
     createdAt: number;

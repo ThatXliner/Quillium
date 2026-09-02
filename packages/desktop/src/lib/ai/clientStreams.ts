@@ -44,6 +44,7 @@ import {
     type EditorialPreferences,
     type EditorialTask,
     compileEditorialPolicy,
+    resolveEditorialTask,
 } from "./editorialPolicy";
 import { type Provider, createModel } from "./provider";
 import { injectDocumentContext } from "./utils";
@@ -67,6 +68,8 @@ interface StreamOpts extends BaseOpts {
     annotationContext?: AnnotationContextInput[];
     persona?: ReaderPersona;
     editorialPreferences?: EditorialPreferences;
+    editorialTask?: EditorialTask;
+    exactWordCount?: number;
 }
 
 export type { StreamOpts };
@@ -230,6 +233,7 @@ async function buildStream(
     const policy = compileEditorialPolicy({
         task,
         hasSelection: !!opts.selectedText,
+        exactWordCount: opts.exactWordCount,
         preferences: opts.editorialPreferences,
     });
     const contextMessage = injectDocumentContext({
@@ -265,21 +269,21 @@ async function buildStream(
 // Chat
 // ---------------------------------------------------------------------------
 export function streamChat(opts: ChatStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
-    return buildStream(opts, "conversation", "chat");
+    return buildStream(opts, resolveEditorialTask("chat", opts.editorialTask), "chat");
 }
 
 // ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
 export function streamFeedback(opts: FeedbackStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
-    return buildStream(opts, "global-review", "feedback");
+    return buildStream(opts, resolveEditorialTask("feedback", opts.editorialTask), "feedback");
 }
 
 // ---------------------------------------------------------------------------
 // Revise
 // ---------------------------------------------------------------------------
 export function streamRevise(opts: ReviseStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
-    return buildStream(opts, "local-rewrite", "revise");
+    return buildStream(opts, resolveEditorialTask("revise", opts.editorialTask), "revise");
 }
 
 export function streamCommentThread(opts: ChatStreamOpts): Promise<ReadableStream<UIMessageChunk>> {

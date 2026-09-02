@@ -68,8 +68,11 @@ import {
 } from "./editorialAction";
 import {
     type EditorialAction,
+    type EditorialPanelMode,
     type EditorialTask,
+    type EditorialTurn,
     compileEditorialPolicy,
+    resolveEditorialTask,
 } from "./editorialPolicy";
 import {
     type EditorialTargetSnapshot,
@@ -97,24 +100,18 @@ type ToolCall =
     | { toolName: "createSuggestion"; input: SuggestionInput }
     | { toolName: "createRevision"; input: RevisionInput };
 
-type AiChatMode = "chat" | "feedback" | "revise" | "dictionary";
+type AiChatMode = EditorialPanelMode;
 
-const MODE_TASKS: Record<AiChatMode, EditorialTask> = {
-    chat: "conversation",
-    feedback: "global-review",
-    revise: "local-rewrite",
-    dictionary: "dictionary",
+type EditorialTurnAtSend = {
+    task: EditorialTask;
+    exactWordCount?: number;
 };
-
-const PROVENANCE_TASKS = {
-    feedback: "global-review",
-    revise: "local-rewrite",
-} as const;
 
 type ToolCallGuard = {
     target: EditorialTargetSnapshot;
     allowedActions: readonly EditorialAction[];
     provenance: AiGenerationProvenance;
+    exactWordCount?: number;
 };
 
 /**
@@ -140,6 +137,10 @@ function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: strin
         payload: toolCallPayload(toolCall),
         provenance: guard.provenance,
         author,
+        constraints:
+            guard.exactWordCount === undefined
+                ? undefined
+                : { exactWordCount: guard.exactWordCount },
     });
     if (!result.ok) {
         console.warn("[chatFactory] rejected AI annotation:", result.reason);
@@ -198,11 +199,13 @@ export async function runMultiPersonaStreams({
     streamFn,
     messages,
     mode,
+    turn,
 }: {
     personas: ReaderPersona[];
     streamFn: StreamFn;
     messages: UIMessage[];
     mode: "feedback" | "revise";
+    turn?: EditorialTurn;
 }): Promise<void> {
     await ensureApiKeyLoaded();
 
@@ -231,9 +234,20 @@ export async function runMultiPersonaStreams({
     const documentContentAtStart = targetView?.state.doc.toString() ?? get(documentContent);
     const selectedTextAtStart = targetAtStart.selectedText;
     const selectedTextRangeAtStart = targetAtStart.selectedTextRange;
+    const task = resolveEditorialTask(mode, turn?.task);
+    const exactWordCount = validExactWordCount(turn?.exactWordCount);
+    if (task === "exact-compression" && exactWordCount === undefined) {
+        releaseEditorialTarget(targetView, targetAtStart);
+        throw new Error("Exact compression requires a positive whole-word target.");
+    }
+    if (task === "exact-compression" && !selectedTextAtStart) {
+        releaseEditorialTarget(targetView, targetAtStart);
+        throw new Error("Select a passage before requesting exact compression.");
+    }
     const policy = compileEditorialPolicy({
-        task: MODE_TASKS[mode],
+        task,
         hasSelection: !!selectedTextAtStart,
+        exactWordCount,
     });
     const annotationContextAtStart = buildAnnotationContextInputs({
         annotations: targetView?.state.field(annotationField, false) ?? get(annotations),
@@ -246,12 +260,15 @@ export async function runMultiPersonaStreams({
     });
 
     const tasks = personas.map(async (persona) => {
-        const provenance = createAiGenerationProvenance({
-            task: PROVENANCE_TASKS[mode],
-            provider: aiSettings.provider,
-            model: aiSettings.model,
-            persona: persona.name,
-        });
+        const provenanceTask = actionProvenanceTask(task);
+        const provenance = provenanceTask
+            ? createAiGenerationProvenance({
+                  task: provenanceTask,
+                  provider: aiSettings.provider,
+                  model: aiSettings.model,
+                  persona: persona.name,
+              })
+            : undefined;
         const stream = await streamFn({
             messages,
             documentContent: documentContentAtStart,
@@ -263,6 +280,8 @@ export async function runMultiPersonaStreams({
             baseURL: aiSettings.baseURL,
             documentContext: { ...documentContext },
             editorialPreferences: { ...editorialPreferences },
+            editorialTask: task,
+            exactWordCount,
             annotationContext: annotationContextAtStart,
             persona,
             abortSignal,
@@ -278,12 +297,14 @@ export async function runMultiPersonaStreams({
                 const { value, done } = await reader.read();
                 if (done) break;
                 if (value?.type === "tool-input-available") {
+                    if (!provenance) continue;
                     handleToolCall(
                         { toolName: value.toolName, input: value.input } as ToolCall,
                         {
                             target: targetAtStart,
                             allowedActions: policy.allowedActions,
                             provenance,
+                            exactWordCount,
                         },
                         persona.name,
                     );
@@ -307,6 +328,36 @@ export async function runMultiPersonaStreams({
     }
 }
 
+function validExactWordCount(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function actionProvenanceTask(task: EditorialTask): AiGenerationProvenance["task"] | undefined {
+    if (
+        task === "global-review" ||
+        task === "local-rewrite" ||
+        task === "exact-compression" ||
+        task === "background-review"
+    ) {
+        return task;
+    }
+    return undefined;
+}
+
+function resolveTurnFromBody(mode: AiChatMode, body: object | undefined): EditorialTurnAtSend {
+    const fields = body as Record<string, unknown> | undefined;
+    const requestedTask =
+        typeof fields?.editorialTask === "string"
+            ? (fields.editorialTask as EditorialTask)
+            : undefined;
+    const task = resolveEditorialTask(mode, requestedTask);
+    const exactWordCount = validExactWordCount(fields?.exactWordCount);
+    if (task === "exact-compression" && exactWordCount === undefined) {
+        throw new Error("Exact compression requires a positive whole-word target.");
+    }
+    return { task, exactWordCount };
+}
+
 /**
  * Build a ChatTransport that captures current editor/settings state
  * at send-time and delegates to the given stream function.
@@ -316,15 +367,22 @@ export async function runMultiPersonaStreams({
  * the stream function always sees a consistent view of the world.
  */
 function makeTransport(
+    mode: AiChatMode,
     streamFn: StreamFn,
-    captureTarget: (target: EditorialTargetSnapshot) => void,
+    captureTarget: (target: EditorialTargetSnapshot, turn: EditorialTurnAtSend) => void,
 ): ChatTransport<UIMessage> {
     return {
         async sendMessages({
             messages,
             abortSignal,
-        }: { messages: UIMessage[]; abortSignal?: AbortSignal } & Record<string, unknown>) {
+            body,
+        }: {
+            messages: UIMessage[];
+            abortSignal?: AbortSignal;
+            body?: object;
+        } & Record<string, unknown>) {
             await ensureApiKeyLoaded();
+            const turn = resolveTurnFromBody(mode, body);
             const rootView = get(editorView);
             const targetView = rootView ? getActiveEditorialView(rootView) : undefined;
             const selection = targetView?.state.selection.main;
@@ -341,6 +399,9 @@ function makeTransport(
                         ? undefined
                         : { from: selection.from, to: selection.to }
                     : get(selectedTextRange);
+            if (turn.task === "exact-compression" && !selectedTextAtSend) {
+                throw new Error("Select a passage before requesting exact compression.");
+            }
             captureTarget(
                 captureEditorialTarget({
                     view: targetView ?? null,
@@ -350,6 +411,7 @@ function makeTransport(
                     selectedText: selectedTextAtSend,
                     selectedTextRange: selectedTextRangeAtSend,
                 }),
+                turn,
             );
             return streamFn({
                 messages,
@@ -362,6 +424,8 @@ function makeTransport(
                 baseURL: aiSettings.baseURL,
                 documentContext: { ...documentContext },
                 editorialPreferences: { ...editorialPreferences },
+                editorialTask: turn.task,
+                exactWordCount: turn.exactWordCount,
                 annotationContext: buildAnnotationContextInputs({
                     annotations:
                         targetView?.state.field(annotationField, false) ?? get(annotations),
@@ -409,36 +473,41 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
 
     let targetAtSend: EditorialTargetSnapshot | undefined;
     let provenanceAtSend: AiGenerationProvenance | undefined;
+    let turnAtSend: EditorialTurnAtSend | undefined;
 
     function releaseTargetAtSend() {
         releaseEditorialTarget(targetAtSend?.ownerView, targetAtSend);
         targetAtSend = undefined;
         provenanceAtSend = undefined;
+        turnAtSend = undefined;
     }
 
     const chat = new Chat({
-        transport: makeTransport(transportWithTracking, (target) => {
+        transport: makeTransport(mode, transportWithTracking, (target, turn) => {
             releaseTargetAtSend();
             targetAtSend = target;
-            provenanceAtSend =
-                mode === "feedback" || mode === "revise"
-                    ? createAiGenerationProvenance({
-                          task: PROVENANCE_TASKS[mode],
-                          provider: aiSettings.provider,
-                          model: aiSettings.model,
-                      })
-                    : undefined;
+            turnAtSend = turn;
+            const provenanceTask = actionProvenanceTask(turn.task);
+            provenanceAtSend = provenanceTask
+                ? createAiGenerationProvenance({
+                      task: provenanceTask,
+                      provider: aiSettings.provider,
+                      model: aiSettings.model,
+                  })
+                : undefined;
         }),
         onToolCall: ({ toolCall }) => {
-            if (!targetAtSend || !provenanceAtSend) return;
+            if (!targetAtSend || !provenanceAtSend || !turnAtSend) return;
             const policy = compileEditorialPolicy({
-                task: MODE_TASKS[mode],
+                task: turnAtSend.task,
                 hasSelection: !!targetAtSend.selectedText,
+                exactWordCount: turnAtSend.exactWordCount,
             });
             handleToolCall(toolCall as ToolCall, {
                 target: targetAtSend,
                 allowedActions: policy.allowedActions,
                 provenance: provenanceAtSend,
+                exactWordCount: turnAtSend.exactWordCount,
             });
         },
         onFinish: ({ messages }) => {
@@ -463,7 +532,26 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         });
     }
 
-    return { chat, clearChat };
+    function sendMessage(text: string, turn?: EditorialTurn): Promise<void> {
+        const task = resolveEditorialTask(mode, turn?.task);
+        const exactWordCount = validExactWordCount(turn?.exactWordCount);
+        if (task === "exact-compression" && exactWordCount === undefined) {
+            return Promise.reject(
+                new Error("Exact compression requires a positive whole-word target."),
+            );
+        }
+        return chat.sendMessage(
+            { text },
+            {
+                body: {
+                    editorialTask: task,
+                    ...(exactWordCount === undefined ? {} : { exactWordCount }),
+                },
+            },
+        );
+    }
+
+    return { chat, clearChat, sendMessage };
 }
 
 // Re-export so components only need one import for all chat concerns

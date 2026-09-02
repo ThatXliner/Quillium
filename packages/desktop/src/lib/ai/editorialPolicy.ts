@@ -8,11 +8,21 @@
 
 export type EditorialTask =
     | "conversation"
+    | "reverse-outline"
+    | "branch-comparison"
     | "global-review"
     | "local-rewrite"
+    | "exact-compression"
     | "thread-reply"
     | "background-review"
     | "dictionary";
+
+export type EditorialPanelMode = "chat" | "feedback" | "revise" | "dictionary";
+
+export type EditorialTurn = {
+    task: EditorialTask;
+    exactWordCount?: number;
+};
 
 export type EditorialAction = "comment" | "suggestion" | "revision";
 
@@ -40,6 +50,7 @@ export type EditorialPolicy = {
 type CompileEditorialPolicyOptions = {
     task: EditorialTask;
     hasSelection?: boolean;
+    exactWordCount?: number;
     requestedActions?: readonly EditorialAction[];
     preferences?: EditorialPreferences;
 };
@@ -60,11 +71,28 @@ Core rules:
 
 const TASK_ACTION_LIMITS: Record<EditorialTask, readonly EditorialAction[]> = {
     conversation: [],
+    "reverse-outline": [],
+    "branch-comparison": [],
     "global-review": ["comment"],
     "local-rewrite": ["comment", "suggestion", "revision"],
+    "exact-compression": ["revision"],
     "thread-reply": [],
     "background-review": ["comment", "suggestion", "revision"],
     dictionary: [],
+};
+
+const PANEL_TASKS: Record<EditorialPanelMode, readonly EditorialTask[]> = {
+    chat: ["conversation", "reverse-outline", "branch-comparison"],
+    feedback: ["global-review"],
+    revise: ["local-rewrite", "exact-compression"],
+    dictionary: ["dictionary"],
+};
+
+const DEFAULT_PANEL_TASKS: Record<EditorialPanelMode, EditorialTask> = {
+    chat: "conversation",
+    feedback: "global-review",
+    revise: "local-rewrite",
+    dictionary: "dictionary",
 };
 
 const STANCE_PROMPTS: Record<EditorialStance, string> = {
@@ -100,10 +128,14 @@ function preferencePrompt(preferences: EditorialPreferences): string {
     ].join("\n");
 }
 
-function taskPrompt(task: EditorialTask, hasSelection: boolean): string {
+function taskPrompt(task: EditorialTask, hasSelection: boolean, exactWordCount?: number): string {
     switch (task) {
         case "conversation":
             return "Task: discuss the writer's question about the current writing. Answer directly and concisely. Diagnose before prescribing, and offer wording only when the writer asks for wording.";
+        case "reverse-outline":
+            return "Task: produce a reverse outline of the included draft. List each paragraph or coherent section in order, state its current job in one concise line, then identify structural gaps, repetition, or weak transitions. Keep the result in the conversation. Do not create annotations or rewrite prose.";
+        case "branch-comparison":
+            return "Task: compare the included revision versions as read-only alternatives. Describe what each version changes in meaning, emphasis, voice, pacing, and reader effect. Name concrete tradeoffs and questions for the writer. Do not choose for the writer, combine versions, or create document actions.";
         case "global-review":
             return `Task: review structure, argument, scope, pacing, voice, and the reader's experience.
 
@@ -120,6 +152,14 @@ Use a suggestion for a small local replacement. Use a revision when the passage 
                     ? " Work only inside the selected passage."
                     : " The writer has not selected text. Ask them to identify the passage if their request does not name a clear target."
             }`;
+        case "exact-compression":
+            return `Task: compress the selected passage to exactly ${exactWordCount ?? "the requested number of"} words while preserving its meaning, factual claims, and distinctive voice.
+
+Use one revision action containing two meaningfully different compressed alternatives. Every proposed version must meet the exact word count. The application preserves the original as the active version, so do not repeat it as a proposed version. Do not use comments or suggestions.${
+                hasSelection
+                    ? " Work only inside the selected passage."
+                    : " No passage is selected, so explain that the writer must select text before exact compression."
+            }`;
         case "thread-reply":
             return "Task: reply inside an editorial comment thread. Read the whole exchange, account for the anchored passage, and respond to the writer's latest point. If the writer pushes back, reassess the original concern. Withdraw it, narrow it, or explain the remaining reader risk. Do not propose unrelated edits.";
         case "background-review":
@@ -127,6 +167,15 @@ Use a suggestion for a small local replacement. Use a revision when the passage 
         case "dictionary":
             return "Task: help with definitions, connotations, register, synonyms, antonyms, or finding a precise word. Keep the result compact and distinguish close alternatives by meaning and tone.";
     }
+}
+
+/** Resolve a requested per-turn task without allowing a panel to escalate its capabilities. */
+export function resolveEditorialTask(
+    mode: EditorialPanelMode,
+    requestedTask?: EditorialTask,
+): EditorialTask {
+    if (!requestedTask) return DEFAULT_PANEL_TASKS[mode];
+    return PANEL_TASKS[mode].includes(requestedTask) ? requestedTask : "conversation";
 }
 
 function capabilityPrompt(actions: readonly EditorialAction[]): string {
@@ -148,6 +197,7 @@ ${allowed}`;
 export function compileEditorialPolicy({
     task,
     hasSelection = false,
+    exactWordCount,
     requestedActions,
     preferences = DEFAULT_EDITORIAL_PREFERENCES,
 }: CompileEditorialPolicyOptions): EditorialPolicy {
@@ -160,7 +210,7 @@ export function compileEditorialPolicy({
             EDITORIAL_CONSTITUTION,
             capabilityPrompt(allowedActions),
             preferencePrompt(preferences),
-            taskPrompt(task, hasSelection),
+            taskPrompt(task, hasSelection, exactWordCount),
         ].join("\n\n"),
         allowedActions,
     };

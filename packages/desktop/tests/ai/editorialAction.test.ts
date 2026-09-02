@@ -191,4 +191,83 @@ describe("applyEditorialAction", () => {
             }),
         ).toEqual({ ok: false, reason: "action-forbidden" });
     });
+
+    it("rejects an exact-compression revision that misses its word target", () => {
+        const editor = createView("This passage has six words total now.");
+        expect(
+            applyEditorialAction({
+                rootView: editor,
+                target,
+                current,
+                allowedActions: ["revision"],
+                payload: {
+                    action: "revision",
+                    targetText: "This passage has six words total now.",
+                    versions: [
+                        { label: "Direct", text: "Six words are not present." },
+                        { label: "Spare", text: "Still only five words here." },
+                    ],
+                    threadMessage: "Two compressed alternatives.",
+                },
+                provenance: { ...provenance, task: "exact-compression" },
+                constraints: { exactWordCount: 6 },
+            }),
+        ).toEqual({ ok: false, reason: "exact-word-count-mismatch" });
+        expect(Object.values(editor.state.field(annotationField))).toHaveLength(0);
+    });
+
+    it("accepts exact-compression alternatives only when every version meets the target", () => {
+        const editor = createView("This passage has six words total now.");
+        const result = applyEditorialAction({
+            rootView: editor,
+            target,
+            current,
+            allowedActions: ["revision"],
+            payload: {
+                action: "revision",
+                targetText: "This passage has six words total now.",
+                versions: [
+                    { label: "Direct", text: "This passage now has six words." },
+                    { label: "Spare", text: "Six words preserve this passage now." },
+                ],
+                threadMessage: "Two exact six-word alternatives.",
+            },
+            provenance: { ...provenance, task: "exact-compression" },
+            constraints: { exactWordCount: 6 },
+        });
+
+        expect(result.ok).toBe(true);
+        expect(Object.values(editor.state.field(annotationField))).toHaveLength(1);
+    });
+
+    it("requires exact compression to cover the full captured selection", () => {
+        const documentText = "Opening words. This passage has six words total now.";
+        const selectedText = "This passage has six words total now.";
+        const from = documentText.indexOf(selectedText);
+        const editor = createView(documentText);
+
+        expect(
+            applyEditorialAction({
+                rootView: editor,
+                target: {
+                    ...target,
+                    selectedText,
+                    selectedTextRange: { from, to: from + selectedText.length },
+                },
+                current,
+                allowedActions: ["revision"],
+                payload: {
+                    action: "revision",
+                    targetText: "passage has six words",
+                    versions: [
+                        { label: "Direct", text: "Passage now has three words." },
+                        { label: "Spare", text: "Three words remain right here." },
+                    ],
+                    threadMessage: "An incorrectly scoped compression.",
+                },
+                provenance: { ...provenance, task: "exact-compression" },
+                constraints: { exactWordCount: 5 },
+            }),
+        ).toEqual({ ok: false, reason: "exact-compression-target-mismatch" });
+    });
 });

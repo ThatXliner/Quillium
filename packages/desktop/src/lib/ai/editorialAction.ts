@@ -62,6 +62,8 @@ export type EditorialActionFailureReason =
     | "read-only"
     | "target-not-found"
     | "target-ambiguous"
+    | "exact-compression-target-mismatch"
+    | "exact-word-count-mismatch"
     | "duplicate-concern"
     | "annotation-conflict";
 
@@ -73,6 +75,10 @@ export type EditorialActionIdentity = Pick<
     EditorialTargetState,
     "documentId" | "tabId" | "draftId"
 >;
+
+export type EditorialActionConstraints = {
+    exactWordCount?: number;
+};
 
 type ExactRangeResolution =
     | { ok: true; range: AiTextRange }
@@ -199,6 +205,24 @@ function payloadConcerns(payload: EditorialActionPayload): string[] {
     ];
 }
 
+export function countEditorialWords(text: string): number {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+function meetsActionConstraints(
+    payload: EditorialActionPayload,
+    constraints?: EditorialActionConstraints,
+): boolean {
+    if (constraints?.exactWordCount === undefined) return true;
+    if (payload.action !== "revision") return false;
+    if (!Number.isInteger(constraints.exactWordCount) || constraints.exactWordCount < 1) {
+        return false;
+    }
+    return payload.versions.every(
+        (version) => countEditorialWords(version.text) === constraints.exactWordCount,
+    );
+}
+
 function annotationConcerns(annotations: Annotations, selection: EditorSelection): string[] {
     const concerns: string[] = [];
     for (const annotation of Object.values(annotations)) {
@@ -247,6 +271,7 @@ export function applyEditorialAction({
     payload,
     provenance,
     author,
+    constraints,
 }: {
     rootView: EditorView;
     target: EditorialTargetSnapshot;
@@ -255,6 +280,7 @@ export function applyEditorialAction({
     payload: EditorialActionPayload;
     provenance: AiGenerationProvenance;
     author?: string;
+    constraints?: EditorialActionConstraints;
 }): EditorialActionResult {
     const view = resolveEditorialTargetView(rootView, target);
     if (!view) return { ok: false, reason: "branch-changed" };
@@ -283,6 +309,23 @@ export function applyEditorialAction({
         scope: selectedTextRange,
     });
     if (!resolution.ok) return resolution;
+    if (
+        constraints?.exactWordCount !== undefined &&
+        selectedTextRange &&
+        (resolution.range.from !== selectedTextRange.from ||
+            resolution.range.to !== selectedTextRange.to)
+    ) {
+        return { ok: false, reason: "exact-compression-target-mismatch" };
+    }
+    if (!meetsActionConstraints(payload, constraints)) {
+        return { ok: false, reason: "exact-word-count-mismatch" };
+    }
+    if (
+        constraints?.exactWordCount !== undefined &&
+        countEditorialWords(payload.targetText) <= constraints.exactWordCount
+    ) {
+        return { ok: false, reason: "exact-word-count-mismatch" };
+    }
 
     const selection = EditorSelection.single(resolution.range.from, resolution.range.to);
     const annotations = view.state.field(annotationField);
@@ -329,6 +372,10 @@ export function editorialActionFailureMessage(reason: EditorialActionFailureReas
             return "The AI target matched more than one passage, so Quillium skipped the annotation.";
         case "target-not-found":
             return "The AI target could not be found, so Quillium skipped the annotation.";
+        case "exact-word-count-mismatch":
+            return "The AI revision missed the exact word-count target, so Quillium skipped it.";
+        case "exact-compression-target-mismatch":
+            return "The AI compression did not target the full selected passage, so Quillium skipped it.";
         case "read-only":
             return "This draft is read-only, so Quillium skipped the AI annotation.";
         case "duplicate-concern":

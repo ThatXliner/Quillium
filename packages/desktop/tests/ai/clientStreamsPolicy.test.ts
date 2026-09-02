@@ -69,4 +69,34 @@ describe("editorial stream policy", () => {
         ]);
         expect(request.system).toContain("Work only inside the selected passage");
     });
+
+    it("uses a text-only reverse-outline recipe for a Chat turn", async () => {
+        await streamChat({ ...baseOptions, editorialTask: "reverse-outline" });
+
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(request.tools).toBeUndefined();
+        expect(request.system).toContain("produce a reverse outline");
+    });
+
+    it("exposes only revision for exact compression", async () => {
+        await streamRevise({
+            ...baseOptions,
+            selectedText: "The draft contains a deliberate fragment.",
+            selectedTextRange: { from: 0, to: 41 },
+            editorialTask: "exact-compression",
+            exactWordCount: 5,
+        });
+
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(Object.keys(request.tools)).toEqual(["createRevision"]);
+        expect(request.system).toContain("exactly 5 words");
+    });
+
+    it("falls back to text-only when a task belongs to another panel", async () => {
+        await streamChat({ ...baseOptions, editorialTask: "local-rewrite" });
+
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(request.tools).toBeUndefined();
+        expect(request.system).toContain("discuss the writer's question");
+    });
 });

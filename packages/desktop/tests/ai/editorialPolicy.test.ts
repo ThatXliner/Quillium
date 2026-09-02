@@ -1,4 +1,4 @@
-import { compileEditorialPolicy } from "$lib/ai/editorialPolicy";
+import { compileEditorialPolicy, resolveEditorialTask } from "$lib/ai/editorialPolicy";
 import { describe, expect, it } from "vitest";
 
 describe("compileEditorialPolicy", () => {
@@ -30,6 +30,37 @@ describe("compileEditorialPolicy", () => {
         expect(policy.systemPrompt).toContain("Tool use is optional");
         expect(policy.systemPrompt).toContain("Work only inside the selected passage");
         expect(policy.systemPrompt).toContain("invent a minimum number of changes");
+    });
+
+    it("keeps reverse outlines and branch comparisons text-only", () => {
+        const outline = compileEditorialPolicy({ task: "reverse-outline" });
+        const comparison = compileEditorialPolicy({ task: "branch-comparison" });
+
+        expect(outline.allowedActions).toEqual([]);
+        expect(outline.systemPrompt).toContain("reverse outline");
+        expect(outline.systemPrompt).toContain("Do not create annotations");
+        expect(comparison.allowedActions).toEqual([]);
+        expect(comparison.systemPrompt).toContain("read-only alternatives");
+        expect(comparison.systemPrompt).toContain("Do not choose for the writer");
+    });
+
+    it("limits exact compression to revisions and names the exact target", () => {
+        const policy = compileEditorialPolicy({
+            task: "exact-compression",
+            hasSelection: true,
+            exactWordCount: 42,
+        });
+
+        expect(policy.allowedActions).toEqual(["revision"]);
+        expect(policy.systemPrompt).toContain("exactly 42 words");
+        expect(policy.systemPrompt).toContain("Every proposed version must meet");
+        expect(policy.systemPrompt).toContain("application preserves the original");
+    });
+
+    it("does not allow a per-turn task to escalate another panel", () => {
+        expect(resolveEditorialTask("chat", "local-rewrite")).toBe("conversation");
+        expect(resolveEditorialTask("feedback", "exact-compression")).toBe("conversation");
+        expect(resolveEditorialTask("revise", "exact-compression")).toBe("exact-compression");
     });
 
     it("intersects background settings with the task capability limit", () => {

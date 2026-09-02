@@ -84,6 +84,10 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 - Offers context-aware action cards based on selection, draft length, brief, and
   open annotations.
 - Does not expose annotation-creation tools; its response is conversational text.
+- The Reverse outline recipe lists each paragraph or section's current job and
+  structural gaps in the conversation without creating annotations.
+- When an active revision is in context, Compare versions gives a read-only
+  account of meaning, voice, pacing, emphasis, and reader-effect tradeoffs.
 
 ### Feedback
 
@@ -103,6 +107,10 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
   precede rewriting.
 - Does not require a minimum number of changes. With a selection, every target
   must remain inside that captured selection.
+- A selection of at least eight words offers an exact-compression recipe. Its
+  target is 75 percent of the current selection, rounded down. The turn can only
+  create one reversible revision, must cover the complete captured selection,
+  and is rejected unless every proposed alternative meets the exact count.
 - Includes user-defined Revise quick actions from general app settings.
 - Can fan out through enabled reader personas when Revise's persona toggle is on.
 
@@ -138,6 +146,25 @@ The request transport snapshots these values alongside provider settings. The
 policy compiler inserts them after the fixed capability contract, so they can
 shape advice but cannot grant another action type. Transform applies only to
 explicit revision proposals that retain the original text.
+
+### Per-turn task recipes
+
+Context actions carry typed task metadata through the local AI transport. The
+transport validates each task against its panel before compiling tools, so prompt
+wording cannot expand a turn's permissions.
+
+| Recipe | Surface | Allowed document actions |
+|--------|---------|--------------------------|
+| Conversation | Chat | None |
+| Reverse outline | Chat | None |
+| Compare versions | Chat | None |
+| Global review | Feedback | Comment |
+| Local rewrite | Revise | Comment, suggestion, revision |
+| Exact compression | Revise | Revision only |
+
+An unsupported panel/task pair falls back to the text-only conversation policy.
+Exact compression also requires a positive whole-word target and a live selection
+before provider inference starts.
 
 ## Context Packets
 
@@ -242,8 +269,8 @@ reload.
 
 | Tool | Used by | Result |
 |------|---------|--------|
-| `createComment` | Feedback, Revise | Comment thread anchored to exact text |
-| `createRevision` | Revise | Two or more named passage versions plus a thread message |
+| `createComment` | Feedback, local Revise | Comment thread anchored to exact text |
+| `createRevision` | Local Revise, exact compression | Two or more named passage versions plus a thread message |
 | `createSuggestion` | Revise | One or more replacement options for a short target |
 
 Tool schemas require exact `targetText` and accept surrounding `context` to
@@ -252,7 +279,8 @@ match inside the mapped request scope. It never turns repeated text into a
 multi-range annotation; an unresolved or ambiguous target produces a visible
 warning. The gateway also rejects read-only editors, incompatible annotation
 overlaps, and an open concern with the same or substantially matching wording
-on the same passage. `chatFactory.ts` also verifies the captured
+on the same passage. Exact compression adds a full-selection and exact-word-count
+constraint before dispatch. `chatFactory.ts` also verifies the captured
 document, tab, draft, and nested revision-version path, the turn's allowed action
 types, selection containment, and that the selected source text has not changed
 in place. A selected request also
