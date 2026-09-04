@@ -945,7 +945,6 @@ export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
     return true;
 };
 
-
 // QUESTION: Should we have some sort of global annotation mutex
 export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     // Locked drafts are read-only — no new annotations (#160).
@@ -1098,9 +1097,8 @@ export const annotationKeymap: KeyBinding[] = [
     },
     ...bindWithPlatformAliases("Alt-k", redirectToNestedEditor("revision")),
     ...bindWithPlatformAliases("Alt-k", createRevisionCommand),
-    ...bindWithPlatformAliases("Alt-m", (view) =>
-        redirectToNestedEditor("comment")(view) ||
-        createCommentFromSelection(view, "keyboard-primary")
+    ...bindWithPlatformAliases("Shift-c", (view) =>
+        createCommentFromSelection(view, "keyboard-primary"),
     ),
 ];
 

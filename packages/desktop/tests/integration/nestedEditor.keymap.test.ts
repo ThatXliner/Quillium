@@ -1,5 +1,5 @@
 /**
- * Tests that Mod-Alt-k and Mod-Alt-m in the nested editor intercept
+ * Tests that Mod-Alt-k and Mod-Shift-c in the nested editor intercept
  * annotation creation and publish a nested-annotation-create event
  * instead of creating a dead-end annotation in the nested editor's state.
  *
@@ -177,7 +177,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
 
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Alt-m");
+        const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Shift-c");
         expect(consumed).toBe(true);
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({

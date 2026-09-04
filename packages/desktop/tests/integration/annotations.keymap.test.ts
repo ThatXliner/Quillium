@@ -36,23 +36,6 @@ function runKey(view: EditorView, key: string) {
     return false;
 }
 
-function dispatchCommentShortcut(
-    view: EditorView,
-    retiredChord: "shift-m" | null = null,
-): KeyboardEvent {
-    const event = new KeyboardEvent("keydown", {
-        key: retiredChord === "shift-m" ? "M" : "m",
-        code: "KeyM",
-        metaKey: true,
-        altKey: true,
-        shiftKey: retiredChord === "shift-m",
-        bubbles: true,
-        cancelable: true,
-    });
-    view.contentDOM.dispatchEvent(event);
-    return event;
-}
-
 function addRevision(
     view: EditorView,
     from: number,
@@ -134,9 +117,9 @@ describe("annotation keymap integration", () => {
         const revisionId = addRevision(view, 6, 10);
 
         view.dispatch({ selection: { anchor: 7 } });
-        const event = dispatchCommentShortcut(view);
+        const consumed = runKey(view, "Mod-Shift-c");
 
-        expect(event.defaultPrevented).toBe(true);
+        expect(consumed).toBe(true);
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-request-modal",
@@ -252,9 +235,9 @@ describe("annotation keymap integration", () => {
         view = createView("Alpha Beta Gamma");
 
         view.dispatch({ selection: { anchor: 0, head: 5 } });
-        const event = dispatchCommentShortcut(view);
+        const consumed = runKey(view, "Mod-Shift-c");
 
-        expect(event.defaultPrevented).toBe(true);
+        expect(consumed).toBe(true);
         const annotations = Object.values(view.state.field(annotationField));
         expect(annotations).toHaveLength(1);
         expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
@@ -264,7 +247,7 @@ describe("annotation keymap integration", () => {
         view = createView("Alpha Beta Gamma");
         view.dispatch({ selection: { anchor: 0, head: 5 } });
 
-        expect(dispatchCommentShortcut(view, "shift-m").defaultPrevented).toBe(false);
+        expect(runKey(view, "Mod-Shift-m")).toBe(false);
         expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
     });
 

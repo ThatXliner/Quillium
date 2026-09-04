@@ -43,7 +43,7 @@ import {
     type StateEffect,
     Transaction,
 } from "@codemirror/state";
-import { EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
 import {
     VERSION_PREVIEW_MAX_LENGTH,
     formatVersionPreviewText,
@@ -470,11 +470,6 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 preventDefault: true,
             },
             {
-                key: "Mod-Alt-m",
-                run: openNestedAnnotation("comment", "keyboard-primary"),
-                preventDefault: true,
-            },
-            {
                 key: "Ctrl-Alt-k",
                 run: openNestedAnnotation("revision"),
                 preventDefault: true,
@@ -482,6 +477,21 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
             {
                 key: "Meta-Alt-k",
                 run: openNestedAnnotation("revision"),
+                preventDefault: true,
+            },
+            {
+                key: "Mod-Shift-c",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
+                preventDefault: true,
+            },
+            {
+                key: "Ctrl-Shift-c",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
+                preventDefault: true,
+            },
+            {
+                key: "Meta-Shift-c",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
                 preventDefault: true,
             },
         ]),
