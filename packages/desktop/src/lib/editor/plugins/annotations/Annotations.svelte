@@ -818,7 +818,7 @@ onDestroy(() => annotationColumnDom.destroy());
         >
             {#if !hasComments}
                 <div class="flex items-center gap-2 text-black/40">
-                    <Kbd variant="large" keys={[mod, "⇧", "C"]} />
+                    <Kbd variant="large" keys={[mod, opt, "M"]} />
                     <span class="text-sm font-medium text-black/35">comment</span>
                 </div>
             {/if}

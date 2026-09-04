@@ -5,7 +5,7 @@
     bar leads with those actions. Markdown formatting is tucked behind an "Aa"
     button that opens a popover — reachable, but off the critical path.
 
-    The desktop equivalents are keyboard shortcuts (Mod-Shift-c comment,
+    The desktop equivalents are keyboard shortcuts (Mod-Alt-m comment,
     Mod-Alt-k revision, Mod-b/i headings, …) which are unreachable without a
     hardware keyboard, so on mobile we surface them as buttons that float
     directly on top of the on-screen keyboard — the pattern Obsidian uses.

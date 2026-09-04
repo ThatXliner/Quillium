@@ -58,7 +58,6 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
-import { isCommentShortcut } from "./commentShortcut";
 import {
     type VersionState,
     activeVersion,
@@ -471,6 +470,11 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 preventDefault: true,
             },
             {
+                key: "Mod-Alt-m",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
+                preventDefault: true,
+            },
+            {
                 key: "Ctrl-Alt-k",
                 run: openNestedAnnotation("revision"),
                 preventDefault: true,
@@ -483,16 +487,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
         ]),
     );
 
-    const commentShortcutHandler = Prec.highest(
-        EditorView.domEventHandlers({
-            keydown(event, view) {
-                if (!isCommentShortcut(event)) return false;
-                return openNestedAnnotation("comment", "keyboard-primary")(view);
-            },
-        }),
-    );
-
-    return [commentShortcutHandler, parentKeymap];
+    return [parentKeymap];
 }
 
 /**

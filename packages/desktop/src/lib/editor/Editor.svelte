@@ -72,7 +72,6 @@ import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import { loadUserDictionary } from "./harper/harperLinter";
-import { isCommentShortcut } from "./plugins/annotations/commentShortcut";
 import "./plugins/annotations/default.css";
 import "./harper/harper.css";
 import type { EventRecord } from "$lib/db/types";
@@ -138,7 +137,7 @@ const CONTEXT_MENU_WIDTH = 208;
 const CONTEXT_MENU_HEIGHT = 286;
 const CONTEXT_MENU_MARGIN = 8;
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const commentShortcutLabel = isMac ? "⌘⇧C" : "Ctrl+Shift+C";
+const commentShortcutLabel = isMac ? "⌘⌥M" : "Ctrl+Alt+M";
 const revisionShortcutLabel = isMac ? "⌘⌥K" : "Ctrl+Alt+K";
 
 function closeContextMenu(): void {
@@ -299,29 +298,6 @@ async function runContextMenuEditCommand(command: EditorEditCommand): Promise<vo
         });
         toast.error(`${command === "selectAll" ? "Select all" : command} failed`);
     }
-}
-
-function handleCommentShortcutKeydown(event: KeyboardEvent): void {
-    if (!isCommentShortcut(event)) return;
-
-    const view = $editorView;
-    const selection = view?.state.selection.main;
-    void logAppEvent("info", "comment-shortcut", "comment shortcut reached webview", {
-        variant: "primary",
-        code: event.code,
-        altKey: event.altKey,
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
-        shiftKey: event.shiftKey,
-        repeat: event.repeat,
-        composing: event.isComposing,
-        editorMounted: Boolean(view),
-        editorFocused: view?.hasFocus ?? false,
-        selectionLength: selection ? selection.to - selection.from : 0,
-        readOnly: view?.state.readOnly,
-        targetInsideCodeMirror:
-            event.target instanceof Element && Boolean(event.target.closest(".cm-editor")),
-    });
 }
 
 const effectiveDraftPanelWidth = $derived(
@@ -765,7 +741,6 @@ async function seedStateJson(sourceDraftId: string): Promise<string> {
 }
 
 onMount(() => {
-    window.addEventListener("keydown", handleCommentShortcutKeydown, true);
     fromSave.then((state) => {
         $editorView = new EditorView({
             state,
@@ -797,7 +772,6 @@ onMount(() => {
     });
 
     return () => {
-        window.removeEventListener("keydown", handleCommentShortcutKeydown, true);
         unsubscribe();
         deregisterOpenDoc(windowLabel).catch(console.error);
         if (nativeContextMenu) {

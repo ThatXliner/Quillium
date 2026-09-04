@@ -76,7 +76,6 @@ import {
     keymap,
 } from "@codemirror/view";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
-import { isCommentShortcut } from "./commentShortcut";
 import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "$lib/editor/diff";
 export { tokenize, wordDiff } from "$lib/editor/diff";
@@ -280,6 +279,14 @@ export function createCommentFromSelection(
             outcome: "routed-to-nested-editor",
         });
         return true;
+    }
+
+    if (source === "keyboard-primary") {
+        void logAppEvent("info", "comment-shortcut", "comment shortcut reached webview", {
+            ...baseDetails,
+            source: "keyboard-primary",
+            variant: "primary",
+        });
     }
 
     const canCreate = canCreateNewComment(annotations);
@@ -937,6 +944,8 @@ export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
     );
     return true;
 };
+
+
 // QUESTION: Should we have some sort of global annotation mutex
 export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     // Locked drafts are read-only — no new annotations (#160).
@@ -1089,18 +1098,11 @@ export const annotationKeymap: KeyBinding[] = [
     },
     ...bindWithPlatformAliases("Alt-k", redirectToNestedEditor("revision")),
     ...bindWithPlatformAliases("Alt-k", createRevisionCommand),
+    ...bindWithPlatformAliases("Alt-m", (view) =>
+        redirectToNestedEditor("comment")(view) ||
+        createCommentFromSelection(view, "keyboard-primary")
+    ),
 ];
-
-// Call the command with CodeMirror's own view while matching the physical key.
-// This stays in the webview and avoids key-name normalization differences.
-const commentShortcutHandler = Prec.highest(
-    EditorView.domEventHandlers({
-        keydown(event, view) {
-            if (!isCommentShortcut(event)) return false;
-            return createCommentFromSelection(view, "keyboard-primary");
-        },
-    }),
-);
 
 // -------------------------------------------------------
 // Extension bundle
@@ -1180,7 +1182,6 @@ export function _handleEmptyRevisionMarkerMouseDown(
 }
 
 export const annotations = () => [
-    commentShortcutHandler,
     Prec.high(keymap.of(annotationKeymap)),
     annotationField,
     versionGroupField,

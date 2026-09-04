@@ -1,5 +1,5 @@
 /**
- * Tests that Mod-Alt-k and Mod-Shift-c in the nested editor intercept
+ * Tests that Mod-Alt-k and Mod-Alt-m in the nested editor intercept
  * annotation creation and publish a nested-annotation-create event
  * instead of creating a dead-end annotation in the nested editor's state.
  *
@@ -97,23 +97,6 @@ function runNestedKey(
     return false;
 }
 
-function dispatchCommentShortcut(
-    view: EditorView,
-    retiredChord: "alt-m" | "shift-m" | null = null,
-): KeyboardEvent {
-    const event = new KeyboardEvent("keydown", {
-        key: retiredChord === "alt-m" ? "µ" : retiredChord === "shift-m" ? "M" : "C",
-        code: retiredChord === null ? "KeyC" : "KeyM",
-        metaKey: true,
-        altKey: retiredChord === "alt-m",
-        shiftKey: retiredChord !== "alt-m",
-        bubbles: true,
-        cancelable: true,
-    });
-    view.contentDOM.dispatchEvent(event);
-    return event;
-}
-
 /**
  * Recursively extract KeyBinding objects from a Prec-wrapped keymap extension.
  */
@@ -194,7 +177,8 @@ describe("nested editor keymap intercepts annotation creation", () => {
 
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        expect(dispatchCommentShortcut(nestedView).defaultPrevented).toBe(true);
+        const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Alt-m");
+        expect(consumed).toBe(true);
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "nested-annotation-create",
@@ -208,7 +192,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         );
     });
 
-    it("does not handle retired Mod-Alt-m in a nested editor", () => {
+    it("does not handle retired Mod-Shift-m in a nested editor", () => {
         const spy = vi.fn();
         unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
@@ -216,19 +200,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         nestedView = createNestedView(parentView, revisionId, "Beta");
         nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
 
-        expect(dispatchCommentShortcut(nestedView, "alt-m").defaultPrevented).toBe(false);
-        expect(spy).not.toHaveBeenCalled();
-    });
-
-    it("does not handle the macOS man-page shortcut Mod-Shift-m in a nested editor", () => {
-        const spy = vi.fn();
-        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
-        parentView = createParentView("Alpha Beta Gamma");
-        const revisionId = addRevision(parentView, 6, 10);
-        nestedView = createNestedView(parentView, revisionId, "Beta");
-        nestedView.dispatch({ selection: EditorSelection.range(1, 3) });
-
-        expect(dispatchCommentShortcut(nestedView, "shift-m").defaultPrevented).toBe(false);
+        expect(runNestedKey(nestedView, parentView, revisionId, "Mod-Shift-m")).toBe(false);
         expect(spy).not.toHaveBeenCalled();
     });
 

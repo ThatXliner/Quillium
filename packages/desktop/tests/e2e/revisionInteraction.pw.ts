@@ -112,6 +112,14 @@ test.describe("revision cursor teleport", () => {
 
 test.describe("nested annotation creation from inline editor", () => {
     test.beforeEach(async ({ page }) => {
+        page.on("console", (msg) => {
+            const text = msg.text();
+            if (text.includes("[alt-m nested shortcut]")) {
+                // eslint-disable-next-line no-console
+                console.log("[e2e console]", text);
+            }
+        });
+
         await installTauriMock(page);
         await page.addInitScript(() => {
             localStorage.setItem(
@@ -149,7 +157,7 @@ test.describe("nested annotation creation from inline editor", () => {
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
     });
 
-    test("Mod-Shift-C in inline editor with selection opens modal for comment", async ({
+    test("Mod-Alt-M in inline editor with selection opens modal for comment", async ({
         page,
     }) => {
         await setupFullRevision(page, "hello world");
@@ -162,8 +170,12 @@ test.describe("nested annotation creation from inline editor", () => {
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
 
-        // Press Mod-Shift-C to create a nested comment.
-        await page.keyboard.press("Control+Shift+c");
+        // Press Mod-Alt-M to create a nested comment.
+        await page.keyboard.down("Control");
+        await page.keyboard.down("Alt");
+        await page.keyboard.press("m");
+        await page.keyboard.up("Alt");
+        await page.keyboard.up("Control");
 
         // A revision modal should open (to host the nested comment)
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
@@ -214,8 +226,12 @@ test.describe("revision modal annotation visibility", () => {
         await page.keyboard.press("Home");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
 
-        // Create a comment via Mod-Shift-C.
-        await page.keyboard.press("Control+Shift+c");
+        // Create a comment via Mod-Alt-M.
+        await page.keyboard.down("Control");
+        await page.keyboard.down("Alt");
+        await page.keyboard.press("m");
+        await page.keyboard.up("Alt");
+        await page.keyboard.up("Control");
 
         // The modal's annotations sidebar should show the annotation card
         const annotationCard = page.locator("dialog .annotation-card-inline").first();

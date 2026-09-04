@@ -38,14 +38,14 @@ function runKey(view: EditorView, key: string) {
 
 function dispatchCommentShortcut(
     view: EditorView,
-    retiredChord: "alt-m" | "shift-m" | null = null,
+    retiredChord: "shift-m" | null = null,
 ): KeyboardEvent {
     const event = new KeyboardEvent("keydown", {
-        key: retiredChord === "alt-m" ? "µ" : retiredChord === "shift-m" ? "M" : "C",
-        code: retiredChord === null ? "KeyC" : "KeyM",
+        key: retiredChord === "shift-m" ? "M" : "m",
+        code: "KeyM",
         metaKey: true,
-        altKey: retiredChord === "alt-m",
-        shiftKey: retiredChord !== "alt-m",
+        altKey: true,
+        shiftKey: retiredChord === "shift-m",
         bubbles: true,
         cancelable: true,
     });
@@ -260,15 +260,7 @@ describe("annotation keymap integration", () => {
         expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
     });
 
-    it("does not handle the retired Mod-Alt-m comment shortcut", () => {
-        view = createView("Alpha Beta Gamma");
-        view.dispatch({ selection: { anchor: 0, head: 5 } });
-
-        expect(dispatchCommentShortcut(view, "alt-m").defaultPrevented).toBe(false);
-        expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
-    });
-
-    it("does not handle the macOS man-page shortcut Mod-Shift-m", () => {
+    it("does not handle retired Mod-Shift-m", () => {
         view = createView("Alpha Beta Gamma");
         view.dispatch({ selection: { anchor: 0, head: 5 } });
 
