@@ -89,15 +89,10 @@ import type { NestedEditorCommand } from "$lib/stores";
 import { settingsOpen } from "$lib/stores";
 import { filter, flatMap, isEqual } from "lodash-es";
 import {
-    _addVersionToRevision,
-    _deleteVersionFromRevision,
-    _mergeRevisionVersionState,
-    _nestedEditRevision,
     _revisionCleanup,
-    _updateActiveRevisionVersion,
-    _updateRevisionVersionState,
     addAnnotation,
     annotationField,
+    classifyAnnotationMutation,
     invertedAnnotationFieldEffects,
     makeVersionFromSelection,
     removeAnnotation,
@@ -111,7 +106,7 @@ import {
     type AiGenerationProvenance,
     type Annotation,
     type AnnotationType,
-    type VersionState,
+    type GenericAnnotation,
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
@@ -377,16 +372,8 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             // revision-system replacement; removing its intentionally collapsed
             // target would corrupt the history step.
             if (
-                update.transactions.some((tr) =>
-                    tr.effects.some(
-                        (effect) =>
-                            effect.is(_nestedEditRevision) ||
-                            effect.is(_addVersionToRevision) ||
-                            effect.is(_deleteVersionFromRevision) ||
-                            effect.is(_updateActiveRevisionVersion) ||
-                            effect.is(_updateRevisionVersionState) ||
-                            effect.is(_mergeRevisionVersionState),
-                    ),
+                update.transactions.some(
+                    (tr) => classifyAnnotationMutation(tr) === "revision-replacement",
                 )
             )
                 return;
@@ -790,20 +777,12 @@ export function createComment({
         context,
         document: state.doc,
     });
-    view.dispatch(
-        state.update({
-            effects: [
-                addAnnotation.of({
-                    ...createNewAnnotation(state.field(annotationField), selection, "comment"),
-                    ...(aiProvenance ? { aiProvenance } : {}),
-                    status: "active",
-                    thread: [{ message: comment, author, time: Date.now() }],
-                }),
-            ],
-            annotations: Transaction.addToHistory.of(true),
-        }),
-    );
-    return true;
+    return createAnnotation({
+        state,
+        dispatch: (transaction) => view.dispatch(transaction),
+        selection,
+        creation: { type: "comment", source: "ai", comment, author, aiProvenance },
+    });
 }
 export function createSuggestion({
     targetText,
@@ -828,32 +807,18 @@ export function createSuggestion({
 }): boolean {
     // Locked drafts are read-only — no new annotations (#160).
     if (state.readOnly) return false;
-    // Normalize string shorthand to full shape
-    const normalizedReplacements = replacements.map((r) =>
-        typeof r === "string" ? { text: r } : r,
-    );
     const selection = getSelection({
         editorSelection,
         targetText,
         context,
         document: state.doc,
     });
-    if (!canCreateSuggestion(state.field(annotationField), selection)) return false;
-    dispatch(
-        state.update({
-            effects: [
-                addAnnotation.of({
-                    ...createNewAnnotation(state.field(annotationField), selection, "suggestion"),
-                    ...(aiProvenance ? { aiProvenance } : {}),
-                    replacements: normalizedReplacements,
-                    author,
-                    thread: comment ? [{ message: comment, author, time: Date.now() }] : [],
-                }),
-            ],
-            annotations: Transaction.addToHistory.of(true),
-        }),
-    );
-    return true;
+    return createAnnotation({
+        state,
+        dispatch,
+        selection,
+        creation: { type: "suggestion", source: "ai", replacements, comment, author, aiProvenance },
+    });
 }
 
 export function createRevision({
@@ -884,108 +849,142 @@ export function createRevision({
         context,
         document: state.doc,
     });
-    if (!canCreateRevision(state.field(annotationField), selection)) return false;
-    const { version: originalVersion, containedAnnotations } = makeVersionFromSelection(
+    return createAnnotation({
         state,
+        dispatch: (transaction) => view.dispatch(transaction),
         selection,
-        { label: "Original" },
-    );
-    const allVersions = [
-        originalVersion,
-        ...versions.map(({ label, text }) =>
-            makeVersion({
-                doc: text,
-                label,
-                provenance: "ai",
-                ...(aiProvenance ? { aiProvenance } : {}),
-            }),
-        ),
-    ];
-    view.dispatch(
-        state.update({
-            effects: [
-                ...containedAnnotations.map((annotation) => removeAnnotation.of(annotation)),
-                addAnnotation.of({
-                    ...createNewAnnotation(state.field(annotationField), selection, "revision"),
-                    ...(aiProvenance ? { aiProvenance } : {}),
-                    activeVersionId: originalVersion.id,
-                    versions: allVersions,
-                    thread: [{ message: threadMessage, author, time: Date.now() }],
-                }),
-            ],
-            annotations: Transaction.addToHistory.of(true),
-        }),
-    );
-    return true;
+        creation: { type: "revision", source: "ai", versions, threadMessage, author, aiProvenance },
+    });
 }
 
-export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
-    // Locked drafts are read-only — no new annotations (#160).
-    if (state.readOnly) return false;
-    // locks it so that we can't have multiple pending states
-    if (!canCreateNewComment(state.field(annotationField))) {
-        annotationEventBus.emit({
-            type: "pending-comment-alert",
-        });
-        return true;
-    }
-    // Multi-selection support tracked in issue #38; currently only main range is used.
-    if (state.selection.main.empty) return false;
+type AnnotationCreation =
+    | { source: "human"; type: "comment" | "revision"; nested?: true }
+    | ({ source: "ai"; author: string; aiProvenance?: AiGenerationProvenance } & (
+          | { type: "comment"; comment: string }
+          | {
+                type: "suggestion";
+                replacements: Array<{ text: string; rationale?: string } | string>;
+                comment?: string;
+            }
+          | {
+                type: "revision";
+                versions: Array<{ label: string; text: string }>;
+                threadMessage: string;
+            }
+      ));
 
+/** Shared creation for resolved AI targets and human selections, including modal commands. */
+export function createAnnotation({
+    state,
+    dispatch,
+    selection = state.selection,
+    creation,
+}: {
+    state: EditorState;
+    dispatch: (transaction: Transaction) => void;
+    selection?: EditorSelection;
+    creation: AnnotationCreation;
+}): boolean {
+    if (state.readOnly) return false;
+    const annotations = state.field(annotationField);
+    if (creation.source === "human") {
+        if (creation.type === "comment" && !canCreateNewComment(annotations)) {
+            annotationEventBus.emit({ type: "pending-comment-alert" });
+            return true;
+        }
+        if (selection.main.empty) return false;
+    }
+    if (creation.type === "revision" && !canCreateRevision(annotations, selection)) {
+        if (creation.source === "human") {
+            annotationEventBus.emit({ type: "overlapping-revision-alert" });
+            return true;
+        }
+        return false;
+    }
+    if (creation.type === "suggestion" && !canCreateSuggestion(annotations, selection))
+        return false;
+
+    const autoVersion =
+        creation.source === "human" &&
+        creation.type === "revision" &&
+        appSettings.autoVersionOnRevisionCreate;
+    // Effects use post-change positions when auto-version creation deletes the selection.
+    const annotationSelection = autoVersion
+        ? EditorSelection.single(selection.main.from)
+        : selection;
+    let annotation: GenericAnnotation;
+    let containedAnnotations: GenericAnnotation[] = [];
+    if (creation.type === "revision") {
+        const captured = makeVersionFromSelection(
+            state,
+            selection,
+            creation.source === "ai" ? { label: "Original" } : undefined,
+        );
+        containedAnnotations = captured.containedAnnotations;
+        const versions = [
+            captured.version,
+            ...(creation.source === "ai"
+                ? creation.versions.map(({ label, text }) =>
+                      makeVersion({
+                          doc: text,
+                          label,
+                          provenance: "ai",
+                          ...(creation.aiProvenance ? { aiProvenance: creation.aiProvenance } : {}),
+                      }),
+                  )
+                : autoVersion
+                  ? [makeVersion({ doc: "" })]
+                  : []),
+        ];
+        annotation = {
+            ...createNewAnnotation(annotations, annotationSelection, "revision"),
+            activeVersionId: versions[autoVersion ? 1 : 0].id,
+            versions,
+        };
+        if (creation.source === "human") {
+            posthog.capture("annotation_created", {
+                type: "revision",
+                auto_version: autoVersion,
+                ...(creation.nested ? { nested: true } : {}),
+            });
+        }
+    } else if (creation.type === "suggestion") {
+        annotation = {
+            ...createNewAnnotation(annotations, selection, "suggestion"),
+            replacements: creation.replacements.map((r) =>
+                typeof r === "string" ? { text: r } : r,
+            ),
+            author: creation.author,
+        };
+    } else {
+        annotation = createNewAnnotation(annotations, selection, "comment");
+        if (creation.source === "ai") annotation = { ...annotation, status: "active" };
+    }
+    if (creation.source === "ai") {
+        const message = creation.type === "revision" ? creation.threadMessage : creation.comment;
+        annotation = {
+            ...annotation,
+            ...(creation.aiProvenance ? { aiProvenance: creation.aiProvenance } : {}),
+            thread:
+                creation.type === "suggestion" && !message
+                    ? []
+                    : [{ message: message ?? "", author: creation.author, time: Date.now() }],
+        };
+    }
     dispatch(
         state.update({
             effects: [
-                addAnnotation.of(
-                    createNewAnnotation(state.field(annotationField), state.selection, "comment"),
-                ),
-            ],
-            annotations: Transaction.addToHistory.of(true),
-        }),
-    );
-    return true;
-};
-
-// QUESTION: Should we have some sort of global annotation mutex
-export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
-    // Locked drafts are read-only — no new annotations (#160).
-    if (state.readOnly) return false;
-    if (state.selection.main.empty) return false;
-    if (!canCreateRevision(state.field(annotationField), state.selection)) {
-        annotationEventBus.emit({ type: "overlapping-revision-alert" });
-        return true;
-    }
-    const sel = state.selection.main;
-    const autoVersion = appSettings.autoVersionOnRevisionCreate;
-    const { version: originalVersion, containedAnnotations } = makeVersionFromSelection(
-        state,
-        state.selection,
-    );
-    const versions = autoVersion ? [originalVersion, makeVersion({ doc: "" })] : [originalVersion];
-    // When autoVersion is on, the text under the revision is deleted in the
-    // same transaction. Effects within a transaction are NOT remapped through
-    // that transaction's changes, so the annotation must carry post-change
-    // positions (collapsed at sel.from) to avoid stale out-of-range positions.
-    const annotationSelection = autoVersion ? EditorSelection.single(sel.from) : state.selection;
-    const newAnnotation = createNewAnnotation(
-        state.field(annotationField),
-        annotationSelection,
-        "revision",
-    );
-    posthog.capture("annotation_created", { type: "revision", auto_version: autoVersion });
-    dispatch(
-        state.update({
-            effects: [
-                ...containedAnnotations.map((annotation) => removeAnnotation.of(annotation)),
-                addAnnotation.of({
-                    ...newAnnotation,
-                    activeVersionId: (autoVersion ? versions[1] : versions[0]).id,
-                    versions,
-                }),
+                ...containedAnnotations.map((contained) => removeAnnotation.of(contained)),
+                addAnnotation.of(annotation),
             ],
             ...(autoVersion
                 ? {
-                      changes: state.changes({ from: sel.from, to: sel.to, insert: "" }),
-                      selection: EditorSelection.cursor(sel.from),
+                      changes: state.changes({
+                          from: selection.main.from,
+                          to: selection.main.to,
+                          insert: "",
+                      }),
+                      selection: EditorSelection.cursor(selection.main.from),
                   }
                 : {}),
             annotations: autoVersion
@@ -998,17 +997,26 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
                 : Transaction.addToHistory.of(true),
         }),
     );
-    // The shortcut always enters the new nested editor. The setting controls
-    // whether the original version starts selected, not whether focus moves.
-    annotationEventBus.emit({
-        type: "pending-nested-editor-selection",
-        annotationId: newAnnotation.id,
-        from: 0,
-        to: !autoVersion && appSettings.selectTextInNestedEditor ? sel.to - sel.from : 0,
-        focus: true,
-    });
+    if (creation.source === "human" && creation.type === "revision") {
+        annotationEventBus.emit({
+            type: "pending-nested-editor-selection",
+            annotationId: annotation.id,
+            from: 0,
+            to:
+                !autoVersion && appSettings.selectTextInNestedEditor
+                    ? selection.main.to - selection.main.from
+                    : 0,
+            focus: true,
+        });
+    }
     return true;
-};
+}
+
+export const createCommentCommand: StateCommand = ({ state, dispatch }) =>
+    createAnnotation({ state, dispatch, creation: { source: "human", type: "comment" } });
+
+export const createRevisionCommand: StateCommand = ({ state, dispatch }) =>
+    createAnnotation({ state, dispatch, creation: { source: "human", type: "revision" } });
 
 function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
     return ({ state, dispatch }) => {

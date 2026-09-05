@@ -12,9 +12,11 @@ import {
     _nestedEditRevision,
     addAnnotation,
     annotationField,
+    classifyAnnotationMutation,
     deleteRevisionVersion,
     nestedEditorEdit,
     updateRevisionVersionState,
+    updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
@@ -408,6 +410,22 @@ describe("undo restores annotation boundaries consumed by text edits", () => {
 // single Cmd+Z fully restores the document and annotation.
 
 describe("single undo restores revision after collapsedRevisionResolver fires", () => {
+    it("still cleans up a deletion carrying an ordinary annotation mutation", async () => {
+        view = createView("aaaHELLObbb");
+        const revisionId = addRevision(view, 3, 8, [{ doc: "HELLO" }]);
+        const transaction = view.state.update({
+            changes: { from: 3, to: 8 },
+            effects: updateThread.of({ annotationId: revisionId, newThread: [] }),
+        });
+        expect(classifyAnnotationMutation(transaction)).toBe("annotation");
+        view.dispatch(transaction);
+        await Promise.resolve();
+        expect(getAnnotations(view)).toHaveLength(0);
+        expect(undo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe("aaaHELLObbb");
+        expect(getAnnotations(view)).toHaveLength(1);
+    });
+
     it("restores single-version revision after resolver fires", async () => {
         // "aaaHELLObbb" — revision on "HELLO" [3,8], one version
         view = createView("aaaHELLObbb");

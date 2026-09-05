@@ -24,19 +24,9 @@ import posthog from "$lib/posthog";
 import { Annotation, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
-    _addVersionToRevision,
-    _applySuggestion,
-    _deleteVersionFromRevision,
-    _updateActiveRevisionVersion,
-    _updateRevisionVersionDoc,
-    _updateRevisionVersionLabel,
-    _updateRevisionVersionState,
-    addAnnotation,
-    addSuggestion,
     annotationField,
-    removeAnnotation,
+    classifyAnnotationMutation,
     updateRevisionVersionState,
-    updateThread,
 } from "./annotationField";
 import type { Annotation as AnnotationType, Annotations, VersionState } from "./models";
 import type { GenericAnnotation } from "./models";
@@ -65,22 +55,7 @@ function hasAnnotations(annotations: Annotations): boolean {
 export function transactionsHaveAnnotationMutationEffect(
     transactions: readonly Transaction[],
 ): boolean {
-    return transactions.some((tr) =>
-        tr.effects.some(
-            (e) =>
-                e.is(addAnnotation) ||
-                e.is(removeAnnotation) ||
-                e.is(updateThread) ||
-                e.is(addSuggestion) ||
-                e.is(_applySuggestion) ||
-                e.is(_addVersionToRevision) ||
-                e.is(_deleteVersionFromRevision) ||
-                e.is(_updateActiveRevisionVersion) ||
-                e.is(_updateRevisionVersionDoc) ||
-                e.is(_updateRevisionVersionLabel) ||
-                e.is(_updateRevisionVersionState),
-        ),
-    );
+    return transactions.some((transaction) => classifyAnnotationMutation(transaction) !== "none");
 }
 
 export function serializedNestedAnnotationSnapshot(version: VersionState): string {
