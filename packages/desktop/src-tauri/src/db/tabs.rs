@@ -11,13 +11,12 @@
 //! document-level `doc_events` audit log so the version history can
 //! show — and restore — tab CRUD and draft branching.
 
-use rusqlite::{params, Connection, OptionalExtension, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use super::{DocEventRecord, DocumentStructure, DraftMeta, TabMeta};
+use super::{now_ms, DbError, DbResult, DocEventRecord, DocumentStructure, DraftMeta, TabMeta};
 
 /// One link rewrite made by `orphan_and_delete_draft`: the child that was
 /// re-attached and the parent/branch links it held before. Returned to the
@@ -28,22 +27,6 @@ pub struct ReparentEntry {
     pub draft_id: String,
     pub old_parent_draft_id: Option<String>,
     pub old_branched_from: Option<String>,
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
-}
-
-/// Builds a constraint-style error carrying a human-readable message,
-/// which the command layer surfaces via `e.to_string()`.
-fn refuse(msg: &str) -> rusqlite::Error {
-    rusqlite::Error::SqliteFailure(
-        rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
-        Some(msg.to_string()),
-    )
 }
 
 fn read_tab(row: &rusqlite::Row) -> rusqlite::Result<TabMeta> {
@@ -74,6 +57,14 @@ fn read_draft(row: &rusqlite::Row) -> rusqlite::Result<DraftMeta> {
 const DRAFT_COLS: &str =
     "id, document_id, label, created_at, is_active, tab_id, parent_draft_id, branched_from, locked";
 
+fn get_draft(conn: &Connection, draft_id: &str) -> Result<DraftMeta> {
+    conn.query_row(
+        &format!("SELECT {DRAFT_COLS} FROM drafts WHERE id = ?1"),
+        params![draft_id],
+        read_draft,
+    )
+}
+
 // ── Document-level audit log ──────────────────────────────────────
 
 /// Appends one entry to the document's structural audit log (#160:
@@ -90,6 +81,20 @@ pub fn log_doc_event(
          VALUES (?1, ?2, ?3, ?4)",
         params![doc_id, event_type, payload.to_string(), now_ms()],
     )?;
+    Ok(())
+}
+
+/// Consumes an existing transaction so the mutation and its final activity
+/// event either commit together or roll back together. Compound restores log
+/// several events and retain their own outer transaction.
+fn commit_doc_event(
+    tx: Transaction<'_>,
+    doc_id: &str,
+    event_type: &str,
+    payload: &serde_json::Value,
+) -> DbResult<()> {
+    log_doc_event(&tx, doc_id, event_type, payload)?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -151,7 +156,7 @@ pub fn list_document_structure(conn: &Connection, doc_id: &str) -> Result<Docume
 }
 
 /// Creates a tab plus its root draft ("main") atomically.
-pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMeta> {
+pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> DbResult<TabMeta> {
     let tab_id = Uuid::new_v4().to_string();
     let draft_id = Uuid::new_v4().to_string();
     let now = now_ms();
@@ -171,8 +176,8 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMet
          VALUES (?1, ?2, ?3, 'main', ?4, 1, 0)",
         params![draft_id, doc_id, tab_id, now],
     )?;
-    log_doc_event(
-        &tx,
+    commit_doc_event(
+        tx,
         doc_id,
         "tab_created",
         // `rootDraftId` + `position` let the version-history replay reconstruct
@@ -185,7 +190,6 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMet
             "position": position,
         }),
     )?;
-    tx.commit()?;
     Ok(TabMeta {
         id: tab_id,
         document_id: doc_id.to_string(),
@@ -196,7 +200,7 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMet
     })
 }
 
-fn rename_tab_inner(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
+fn rename_tab_inner(conn: &Connection, tab_id: &str, label: &str) -> DbResult<()> {
     let (doc_id, previous): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
@@ -215,7 +219,7 @@ fn rename_tab_inner(conn: &Connection, tab_id: &str, label: &str) -> Result<()> 
     Ok(())
 }
 
-pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
+pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     rename_tab_inner(&tx, tab_id, label)?;
     tx.commit()?;
@@ -225,7 +229,7 @@ pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
 /// Soft-deletes a tab. Its drafts, events, and snapshots are untouched —
 /// the tab disappears from the bar but can be restored from the
 /// document's version history. Refuses to delete the last live tab.
-fn delete_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
+fn delete_tab_inner(conn: &Connection, tab_id: &str) -> DbResult<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
@@ -237,7 +241,9 @@ fn delete_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
         |row| row.get(0),
     )?;
     if live <= 1 {
-        return Err(refuse("Cannot delete the last tab of a document"));
+        return Err(DbError::Validation(
+            "Cannot delete the last tab of a document".to_string(),
+        ));
     }
     conn.execute(
         "UPDATE tabs SET deleted_at = ?1 WHERE id = ?2",
@@ -252,7 +258,7 @@ fn delete_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+pub fn delete_tab(conn: &Connection, tab_id: &str) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     delete_tab_inner(&tx, tab_id)?;
     tx.commit()?;
@@ -260,7 +266,7 @@ pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
 }
 
 /// Restores a soft-deleted tab (from the version history or undo toast).
-fn restore_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
+fn restore_tab_inner(conn: &Connection, tab_id: &str) -> DbResult<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
@@ -279,7 +285,7 @@ fn restore_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn restore_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+pub fn restore_tab(conn: &Connection, tab_id: &str) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     restore_tab_inner(&tx, tab_id)?;
     tx.commit()?;
@@ -292,7 +298,7 @@ pub fn restore_tab(conn: &Connection, tab_id: &str) -> Result<()> {
 /// doc-event audit trail so the version-history replay can reconstruct
 /// historical tab order (the `position` column alone only reflects the
 /// latest order).
-fn reorder_tabs_inner(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
+fn reorder_tabs_inner(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> DbResult<()> {
     for (position, tab_id) in ordered_ids.iter().enumerate() {
         // Scope the update to the document so a stale/foreign id can't
         // stomp another document's tab positions.
@@ -310,7 +316,7 @@ fn reorder_tabs_inner(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -
     Ok(())
 }
 
-pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
+pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     reorder_tabs_inner(&tx, doc_id, ordered_ids)?;
     tx.commit()?;
@@ -340,7 +346,7 @@ pub fn get_active_tab(conn: &Connection, doc_id: &str) -> Result<Option<String>>
     Ok(None)
 }
 
-pub fn set_active_tab(conn: &Connection, doc_id: &str, tab_id: &str) -> Result<()> {
+pub fn set_active_tab(conn: &Connection, doc_id: &str, tab_id: &str) -> DbResult<()> {
     conn.execute(
         "INSERT INTO _meta (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -466,7 +472,7 @@ pub fn iterate_draft(
     source_draft_id: &str,
     label: &str,
     state_json: Option<&str>,
-) -> Result<DraftMeta> {
+) -> DbResult<DraftMeta> {
     let (doc_id, tab_id): (String, Option<String>) = conn.query_row(
         "SELECT document_id, tab_id FROM drafts WHERE id = ?1",
         params![source_draft_id],
@@ -487,8 +493,8 @@ pub fn iterate_draft(
         state_json,
     )?;
     relock_run(&tx, &draft_id)?;
-    log_doc_event(
-        &tx,
+    commit_doc_event(
+        tx,
         &doc_id,
         "draft_iterated",
         &json!({
@@ -498,7 +504,6 @@ pub fn iterate_draft(
             "tabId": tab_id,
         }),
     )?;
-    tx.commit()?;
     Ok(DraftMeta {
         id: draft_id,
         document_id: doc_id,
@@ -522,7 +527,7 @@ pub fn branch_draft(
     source_draft_id: &str,
     label: &str,
     state_json: Option<&str>,
-) -> Result<DraftMeta> {
+) -> DbResult<DraftMeta> {
     let (doc_id, tab_id): (String, Option<String>) = conn.query_row(
         "SELECT document_id, tab_id FROM drafts WHERE id = ?1",
         params![source_draft_id],
@@ -542,8 +547,8 @@ pub fn branch_draft(
         now,
         state_json,
     )?;
-    log_doc_event(
-        &tx,
+    commit_doc_event(
+        tx,
         &doc_id,
         "draft_branched",
         &json!({
@@ -553,7 +558,6 @@ pub fn branch_draft(
             "tabId": tab_id,
         }),
     )?;
-    tx.commit()?;
     Ok(DraftMeta {
         id: draft_id,
         document_id: doc_id,
@@ -567,7 +571,7 @@ pub fn branch_draft(
     })
 }
 
-fn rename_draft_inner(conn: &Connection, draft_id: &str, label: &str) -> Result<()> {
+fn rename_draft_inner(conn: &Connection, draft_id: &str, label: &str) -> DbResult<()> {
     let (doc_id, previous): (String, String) = conn.query_row(
         "SELECT document_id, label FROM drafts WHERE id = ?1",
         params![draft_id],
@@ -586,14 +590,14 @@ fn rename_draft_inner(conn: &Connection, draft_id: &str, label: &str) -> Result<
     Ok(())
 }
 
-pub fn rename_draft(conn: &Connection, draft_id: &str, label: &str) -> Result<()> {
+pub fn rename_draft(conn: &Connection, draft_id: &str, label: &str) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     rename_draft_inner(&tx, draft_id, label)?;
     tx.commit()?;
     Ok(())
 }
 
-pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Result<()> {
+pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> DbResult<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM drafts WHERE id = ?1",
         params![draft_id],
@@ -604,8 +608,8 @@ pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Resu
         "UPDATE drafts SET locked = ?1 WHERE id = ?2",
         params![locked as i64, draft_id],
     )?;
-    log_doc_event(
-        &tx,
+    commit_doc_event(
+        tx,
         &doc_id,
         if locked {
             "draft_locked"
@@ -613,9 +617,7 @@ pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Resu
             "draft_unlocked"
         },
         &json!({ "draftId": draft_id, "label": label }),
-    )?;
-    tx.commit()?;
-    Ok(())
+    )
 }
 
 /// Non-destructively restores a draft's content to a past snapshot. Rather
@@ -627,7 +629,10 @@ pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Resu
 /// stays append-only, matching the "git reflog" model.
 ///
 /// Returns the new tip draft so the caller can make it active.
-fn restore_content_nondestructive_inner(conn: &Connection, snapshot_id: i64) -> Result<DraftMeta> {
+fn restore_content_nondestructive_inner(
+    conn: &Connection,
+    snapshot_id: i64,
+) -> DbResult<DraftMeta> {
     let (source_draft_id, state_json): (String, String) = conn.query_row(
         "SELECT draft_id, state_json FROM snapshots WHERE id = ?1",
         params![snapshot_id],
@@ -682,7 +687,7 @@ fn restore_content_nondestructive_inner(conn: &Connection, snapshot_id: i64) -> 
     })
 }
 
-pub fn restore_content_nondestructive(conn: &Connection, snapshot_id: i64) -> Result<DraftMeta> {
+pub fn restore_content_nondestructive(conn: &Connection, snapshot_id: i64) -> DbResult<DraftMeta> {
     let tx = conn.unchecked_transaction()?;
     let draft = restore_content_nondestructive_inner(&tx, snapshot_id)?;
     tx.commit()?;
@@ -726,7 +731,11 @@ fn run_tip(conn: &Connection, member: &str) -> Result<String> {
 /// Refuses if `tab_id` is set and the tab would be left with fewer than
 /// `keep` live drafts after a delete (a tab must keep ≥ 1 live draft). `keep`
 /// is the number of drafts the pending delete removes from this tab.
-fn guard_tab_not_emptied(conn: &Connection, tab_id: &Option<String>, removing: i64) -> Result<()> {
+fn guard_tab_not_emptied(
+    conn: &Connection,
+    tab_id: &Option<String>,
+    removing: i64,
+) -> DbResult<()> {
     if let Some(tab) = tab_id {
         let live: i64 = conn.query_row(
             "SELECT COUNT(*) FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL",
@@ -734,13 +743,15 @@ fn guard_tab_not_emptied(conn: &Connection, tab_id: &Option<String>, removing: i
             |row| row.get(0),
         )?;
         if live - removing < 1 {
-            return Err(refuse("Cannot delete the last draft of a tab"));
+            return Err(DbError::Validation(
+                "Cannot delete the last draft of a tab".to_string(),
+            ));
         }
     }
     Ok(())
 }
 
-fn guard_draft_has_no_live_children(conn: &Connection, draft_id: &str) -> Result<()> {
+fn guard_draft_has_no_live_children(conn: &Connection, draft_id: &str) -> DbResult<()> {
     let live_children: i64 = conn.query_row(
         "SELECT COUNT(*) FROM drafts
          WHERE (parent_draft_id = ?1 OR branched_from = ?1) AND deleted_at IS NULL",
@@ -748,8 +759,8 @@ fn guard_draft_has_no_live_children(conn: &Connection, draft_id: &str) -> Result
         |row| row.get(0),
     )?;
     if live_children > 0 {
-        return Err(refuse(
-            "Cannot delete a draft with live children; orphan or cascade it instead",
+        return Err(DbError::Validation(
+            "Cannot delete a draft with live children; orphan or cascade it instead".to_string(),
         ));
     }
     Ok(())
@@ -758,9 +769,11 @@ fn guard_draft_has_no_live_children(conn: &Connection, draft_id: &str) -> Result
 fn guard_not_storyline_root(
     parent_draft_id: &Option<String>,
     branched_from: &Option<String>,
-) -> Result<()> {
+) -> DbResult<()> {
     if parent_draft_id.is_none() && branched_from.is_none() {
-        return Err(refuse("Cannot delete the storyline root draft"));
+        return Err(DbError::Validation(
+            "Cannot delete the storyline root draft".to_string(),
+        ));
     }
     Ok(())
 }
@@ -771,19 +784,15 @@ fn guard_not_storyline_root(
 /// Parent drafts must be deleted with `orphan_and_delete_draft` or
 /// `cascade_delete_draft`, which keep the tree valid. The draft's run relocks
 /// (the tip may move back).
-pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
-    let (doc_id, label, tab_id, parent_draft_id, branched_from): (
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) =
-        conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id, branched_from FROM drafts WHERE id = ?1",
-            params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-        )?;
+pub fn delete_draft(conn: &Connection, draft_id: &str) -> DbResult<()> {
+    let DraftMeta {
+        document_id: doc_id,
+        label,
+        tab_id,
+        parent_draft_id,
+        branched_from,
+        ..
+    } = get_draft(conn, draft_id)?;
     guard_not_storyline_root(&parent_draft_id, &branched_from)?;
     guard_tab_not_emptied(conn, &tab_id, 1)?;
     guard_draft_has_no_live_children(conn, draft_id)?;
@@ -797,14 +806,12 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
     if let Some(ref parent) = parent_draft_id {
         relock_run(&tx, parent)?;
     }
-    log_doc_event(
-        &tx,
+    commit_doc_event(
+        tx,
         &doc_id,
         "draft_deleted",
         &json!({ "draftId": draft_id, "label": label, "tabId": tab_id }),
-    )?;
-    tx.commit()?;
-    Ok(())
+    )
 }
 
 /// Deletes `draft_id` but keeps its children alive by re-attaching them so
@@ -820,19 +827,15 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
 /// - Branch children (`branched_from = D`) re-point to `D`'s anchor, whether
 ///   that anchor is an iteration parent or the source of the deleted branch
 ///   root.
-pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<ReparentEntry>> {
-    let (doc_id, label, tab_id, parent_draft_id, branched_from): (
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) =
-        conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id, branched_from FROM drafts WHERE id = ?1",
-            params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-        )?;
+pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> DbResult<Vec<ReparentEntry>> {
+    let DraftMeta {
+        document_id: doc_id,
+        label,
+        tab_id,
+        parent_draft_id,
+        branched_from,
+        ..
+    } = get_draft(conn, draft_id)?;
     guard_not_storyline_root(&parent_draft_id, &branched_from)?;
     guard_tab_not_emptied(conn, &tab_id, 1)?;
 
@@ -923,19 +926,15 @@ pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<
 /// (iterations and branches, transitively). Refuses if that would empty the
 /// tab or delete the storyline root. Returns the deleted ids (the root first)
 /// so Undo can restore them all.
-fn cascade_delete_draft_inner(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
-    let (doc_id, label, tab_id, parent_draft_id, branched_from): (
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) =
-        conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id, branched_from FROM drafts WHERE id = ?1",
-            params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-        )?;
+fn cascade_delete_draft_inner(conn: &Connection, draft_id: &str) -> DbResult<Vec<String>> {
+    let DraftMeta {
+        document_id: doc_id,
+        label,
+        tab_id,
+        parent_draft_id,
+        branched_from,
+        ..
+    } = get_draft(conn, draft_id)?;
     guard_not_storyline_root(&parent_draft_id, &branched_from)?;
 
     // BFS the live subtree following both links. Runs are shallow, so a plain
@@ -990,7 +989,7 @@ fn cascade_delete_draft_inner(conn: &Connection, draft_id: &str) -> Result<Vec<S
     Ok(subtree)
 }
 
-pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
+pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> DbResult<Vec<String>> {
     let tx = conn.unchecked_transaction()?;
     let subtree = cascade_delete_draft_inner(&tx, draft_id)?;
     tx.commit()?;
@@ -1001,7 +1000,7 @@ pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<Str
 /// structural restore uses this, to delete the drafts of a tab that is itself
 /// being deleted (where "would empty the tab" is moot). Logs `draft_deleted`
 /// and relocks the run, like the guarded variants.
-fn soft_delete_draft_unguarded_inner(conn: &Connection, draft_id: &str) -> Result<()> {
+fn soft_delete_draft_unguarded_inner(conn: &Connection, draft_id: &str) -> DbResult<()> {
     let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
         conn.query_row(
             "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
@@ -1032,7 +1031,7 @@ pub fn reparent_draft(
     draft_id: &str,
     parent_draft_id: Option<&str>,
     branched_from: Option<&str>,
-) -> Result<()> {
+) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "UPDATE drafts SET parent_draft_id = ?1, branched_from = ?2 WHERE id = ?3",
@@ -1045,7 +1044,7 @@ pub fn reparent_draft(
 
 /// Restores a soft-deleted draft. Its run relocks (the restored draft may
 /// reclaim or yield the tip), so lock state stays consistent.
-fn restore_draft_inner(conn: &Connection, draft_id: &str) -> Result<()> {
+fn restore_draft_inner(conn: &Connection, draft_id: &str) -> DbResult<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM drafts WHERE id = ?1",
         params![draft_id],
@@ -1065,7 +1064,7 @@ fn restore_draft_inner(conn: &Connection, draft_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn restore_draft(conn: &Connection, draft_id: &str) -> Result<()> {
+pub fn restore_draft(conn: &Connection, draft_id: &str) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     restore_draft_inner(&tx, draft_id)?;
     tx.commit()?;
@@ -1275,7 +1274,7 @@ fn restore_structure_to_inner(
     doc_id: &str,
     as_of_ms: i64,
     as_of_event_id: Option<i64>,
-) -> Result<()> {
+) -> DbResult<()> {
     let (target_tabs, target_drafts, target_order) =
         reconstruct_structure(conn, doc_id, as_of_ms, as_of_event_id)?;
     let (logged_tabs, logged_drafts) = logged_creations(conn, doc_id)?;
@@ -1477,7 +1476,7 @@ pub fn restore_structure_to(
     doc_id: &str,
     as_of_ms: i64,
     as_of_event_id: Option<i64>,
-) -> Result<()> {
+) -> DbResult<()> {
     let tx = conn.unchecked_transaction()?;
     restore_structure_to_inner(&tx, doc_id, as_of_ms, as_of_event_id)?;
     tx.commit()?;
@@ -1490,7 +1489,7 @@ pub fn restore_coordinate_nondestructive(
     as_of_ms: i64,
     as_of_event_id: Option<i64>,
     snapshot_id: Option<i64>,
-) -> Result<Option<DraftMeta>> {
+) -> DbResult<Option<DraftMeta>> {
     if let Some(id) = snapshot_id {
         let belongs: bool = conn.query_row(
             "SELECT EXISTS(
@@ -1503,7 +1502,9 @@ pub fn restore_coordinate_nondestructive(
             |row| row.get(0),
         )?;
         if !belongs {
-            return Err(refuse("Snapshot does not belong to this document"));
+            return Err(DbError::Validation(
+                "Snapshot does not belong to this document".to_string(),
+            ));
         }
     }
 
@@ -1546,7 +1547,7 @@ pub fn get_active_draft(conn: &Connection, tab_id: &str) -> Result<Option<String
     Ok(None)
 }
 
-pub fn set_active_draft(conn: &Connection, tab_id: &str, draft_id: &str) -> Result<()> {
+pub fn set_active_draft(conn: &Connection, tab_id: &str, draft_id: &str) -> DbResult<()> {
     let belongs_to_tab: bool = conn.query_row(
         "SELECT EXISTS(
             SELECT 1 FROM drafts
@@ -1556,8 +1557,8 @@ pub fn set_active_draft(conn: &Connection, tab_id: &str, draft_id: &str) -> Resu
         |row| row.get(0),
     )?;
     if !belongs_to_tab {
-        return Err(refuse(
-            "Active draft must be a live draft in the selected tab",
+        return Err(DbError::Validation(
+            "Active draft must be a live draft in the selected tab".to_string(),
         ));
     }
 

@@ -5,9 +5,10 @@ use quillium_lib::db::{
     schema::open_db,
     tabs::{
         branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, iterate_draft,
-        list_doc_events, list_tab_drafts, list_tabs, rename_tab, restore_draft, restore_tab,
-        set_active_draft, set_active_tab, set_draft_locked,
+        list_doc_events, list_tab_drafts, list_tabs, orphan_and_delete_draft, rename_tab,
+        restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
     },
+    DbError,
 };
 use rusqlite::Connection;
 
@@ -17,6 +18,113 @@ fn in_memory_db() -> Connection {
     // open_db handles pragmas, extension registration, and migrations;
     // SQLite treats the ":memory:" path specially.
     open_db(std::path::Path::new(":memory:")).expect("in-memory DB")
+}
+
+#[test]
+fn validation_errors_are_distinct_and_keep_command_messages() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Test").unwrap();
+    let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
+    let error = delete_tab(&conn, &tab_id).unwrap_err();
+    assert!(matches!(error, DbError::Validation(_)));
+    assert_eq!(
+        error.to_string(),
+        "Cannot delete the last tab of a document"
+    );
+
+    let error = delete_tab(&conn, "missing").unwrap_err();
+    assert!(matches!(
+        error,
+        DbError::Sql(rusqlite::Error::QueryReturnedNoRows)
+    ));
+    assert_eq!(
+        error.to_string(),
+        rusqlite::Error::QueryReturnedNoRows.to_string()
+    );
+
+    // A genuine SQLite constraint must retain its SQL identity.
+    let error = create_tab(&conn, "missing-document", "Invalid").unwrap_err();
+    assert!(matches!(
+        error,
+        DbError::Sql(rusqlite::Error::SqliteFailure(..))
+    ));
+}
+
+#[test]
+fn activity_failure_rolls_back_tab_and_seeded_iteration() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Test").unwrap();
+    let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
+    let root_id = list_tab_drafts(&conn, &tab_id).unwrap()[0].id.clone();
+    let activity_count = list_doc_events(&conn, &doc_id).unwrap().len();
+    conn.execute_batch(
+        "CREATE TRIGGER reject_activity BEFORE INSERT ON doc_events
+         BEGIN SELECT RAISE(ABORT, 'activity unavailable'); END;",
+    )
+    .unwrap();
+
+    for error in [
+        create_tab(&conn, &doc_id, "New tab").unwrap_err(),
+        iterate_draft(&conn, &root_id, "Next", Some(r#"{"doc":"seed"}"#)).unwrap_err(),
+    ] {
+        assert!(matches!(error, DbError::Sql(_)));
+        assert_eq!(error.to_string(), "activity unavailable");
+    }
+
+    assert_eq!(list_tabs(&conn, &doc_id).unwrap().len(), 1);
+    let drafts = list_tab_drafts(&conn, &tab_id).unwrap();
+    assert_eq!(drafts.len(), 1);
+    assert!(!drafts[0].locked);
+    let snapshots: i64 = conn
+        .query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(snapshots, 0);
+    assert_eq!(
+        list_doc_events(&conn, &doc_id).unwrap().len(),
+        activity_count
+    );
+    assert!(conn.is_autocommit());
+}
+
+#[test]
+fn later_activity_failure_rolls_back_orphan_rewrites_and_earlier_events() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Test").unwrap();
+    let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
+    let root_id = list_tab_drafts(&conn, &tab_id).unwrap()[0].id.clone();
+    let middle = iterate_draft(&conn, &root_id, "Middle", None).unwrap();
+    let child = iterate_draft(&conn, &middle.id, "Child", None).unwrap();
+    let before = serde_json::to_value(list_tab_drafts(&conn, &tab_id).unwrap()).unwrap();
+    let activity_count = list_doc_events(&conn, &doc_id).unwrap().len();
+    conn.execute_batch(
+        "CREATE TRIGGER reject_reparent_activity BEFORE INSERT ON doc_events
+         WHEN NEW.event_type = 'draft_reparented'
+         BEGIN SELECT RAISE(ABORT, 'reparent activity unavailable'); END;",
+    )
+    .unwrap();
+
+    let error = orphan_and_delete_draft(&conn, &middle.id).unwrap_err();
+    assert!(matches!(error, DbError::Sql(_)));
+    assert_eq!(error.to_string(), "reparent activity unavailable");
+    assert_eq!(
+        serde_json::to_value(list_tab_drafts(&conn, &tab_id).unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        list_doc_events(&conn, &doc_id).unwrap().len(),
+        activity_count
+    );
+    assert!(conn.is_autocommit());
+
+    conn.execute_batch("DROP TRIGGER reject_reparent_activity")
+        .unwrap();
+    let rewrites = orphan_and_delete_draft(&conn, &middle.id).unwrap();
+    assert_eq!(rewrites.len(), 1);
+    assert_eq!(rewrites[0].draft_id, child.id);
+    assert_eq!(
+        list_doc_events(&conn, &doc_id).unwrap().len(),
+        activity_count + 2
+    );
 }
 
 #[test]
