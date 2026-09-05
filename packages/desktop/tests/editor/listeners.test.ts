@@ -1,4 +1,10 @@
-import { listeners } from "$lib/editor/listeners";
+import { isCollabJoiner } from "$lib/collab/store";
+import {
+    flushPersistQueue,
+    flushPersistence,
+    listeners,
+    seedPersistenceBookkeeping,
+} from "$lib/editor/listeners";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     _updateRevisionVersionState,
@@ -18,7 +24,14 @@ import {
     createVersionGroup,
     versionGroupField,
 } from "$lib/editor/plugins/annotations/versionGroupField";
-import { currentDocumentId, currentDraftId, lastPersistedEventId, lastSavedAt } from "$lib/stores";
+import {
+    currentDocumentId,
+    currentDocumentTitle,
+    currentDraftId,
+    lastPersistedEventId,
+    lastSavedAt,
+    saveStatus,
+} from "$lib/stores";
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -48,9 +61,14 @@ beforeEach(() => {
     // Set up a document + draft so the persist path is active
     currentDocumentId.set("doc-1");
     currentDraftId.set("draft-1");
+    currentDocumentTitle.set("Untitled");
+    seedPersistenceBookkeeping();
+    isCollabJoiner.set(false);
 });
 
-afterEach(() => {
+afterEach(async () => {
+    await flushPersistence();
+    vi.useRealTimers();
     view?.destroy();
     view = undefined;
     consoleErrorSpy.mockRestore();
@@ -405,6 +423,61 @@ describe("listeners integration", () => {
         expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(false);
     });
 
+    it("does not persist or snapshot an ephemeral collaboration joiner", async () => {
+        isCollabJoiner.set(true);
+        const invoked: string[] = [];
+        mockIPC((cmd) => {
+            invoked.push(cmd);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, to: 11, insert: "Changed" } });
+        await flushPersistence();
+        expect(invoked).toEqual([]);
+        isCollabJoiner.set(false);
+    });
+
+    it("falls back to the threshold snapshot when the comment autosave fails", async () => {
+        const invoked: string[] = [];
+        mockIPC((cmd) => {
+            invoked.push(cmd);
+            if (cmd === "cmd_append_event") return { eventId: 4, needsSnapshot: true };
+            if (cmd === "cmd_create_named_snapshot")
+                return Promise.reject(new Error("named snapshot failed"));
+            return null;
+        });
+        view = makeView();
+        const comment = createNewAnnotation(
+            view.state.field(annotationField),
+            EditorSelection.single(0, 5),
+            "comment",
+        );
+        view.dispatch({ effects: addAnnotation.of(comment) });
+        await flushPersistQueue();
+        expect(invoked).toEqual([
+            "cmd_append_event",
+            "cmd_create_named_snapshot",
+            "cmd_create_snapshot",
+        ]);
+        expect(get(saveStatus)).toBe("saved");
+    });
+
+    it("continues the ordered queue after a failed append", async () => {
+        let count = 0;
+        mockIPC((cmd) => {
+            if (cmd !== "cmd_append_event") return null;
+            if (++count === 1) return Promise.reject(new Error("disk full"));
+            return { eventId: 8, needsSnapshot: false };
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "One " } });
+        view.dispatch({ changes: { from: 0, insert: "Two " } });
+        await flushPersistence();
+        expect(count).toBe(2);
+        expect(get(lastPersistedEventId)).toBe(8);
+        expect(get(saveStatus)).toBe("saved");
+    });
+
     it("respects persist=false and skips saving", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
@@ -622,5 +695,160 @@ describe("listeners integration", () => {
         expect(view.state.doc.toString()).toBe("Hi world");
         expect(payload.provenance?.origin).toBe("ai-revision");
         expect(payload.provenance?.aiGenerations).toEqual([aiGeneration]);
+    });
+});
+
+describe("persistence timing and identity", () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    });
+
+    it("waits for ordered appends, then the latest metadata write", async () => {
+        const writes: string[] = [];
+        let finishAppend!: (value: unknown) => void;
+        let finishMeta!: () => void;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") {
+                writes.push("append");
+                if (writes.length === 1)
+                    return new Promise((resolve) => {
+                        finishAppend = resolve;
+                    });
+                return { eventId: 2, needsSnapshot: false };
+            }
+            if (cmd === "cmd_update_document_meta") {
+                writes.push((args as { bodyText: string }).bodyText);
+                return new Promise<void>((resolve) => {
+                    finishMeta = resolve;
+                });
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "One " } });
+        view.dispatch({ changes: { from: 0, insert: "Two " } });
+        let flushed = false;
+        const flush = flushPersistence().then(() => {
+            flushed = true;
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(writes).toEqual(["append"]);
+        expect(flushed).toBe(false);
+        finishAppend({ eventId: 1, needsSnapshot: false });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(writes).toEqual(["append", "append", "Two One Hello world"]);
+        expect(flushed).toBe(false);
+        finishMeta();
+        await flush;
+        expect(flushed).toBe(true);
+        expect(get(lastPersistedEventId)).toBe(2);
+    });
+
+    it("also awaits a metadata write whose debounce already fired", async () => {
+        let finishMeta!: () => void;
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
+            if (cmd === "cmd_update_document_meta") {
+                return new Promise<void>((resolve) => {
+                    finishMeta = resolve;
+                });
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Hi " } });
+        await flushPersistQueue();
+        await vi.advanceTimersByTimeAsync(500);
+        let flushed = false;
+        const flush = flushPersistence().then(() => {
+            flushed = true;
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(flushed).toBe(false);
+        finishMeta();
+        await flush;
+        expect(flushed).toBe(true);
+    });
+
+    it.each([false, true])(
+        "keeps old-draft completion out of new-draft stores, failure=%s",
+        async (fails) => {
+            let finishAppend!: (value: unknown) => void;
+            let failAppend!: (reason: unknown) => void;
+            const draftIds: string[] = [];
+            mockIPC((cmd, args) => {
+                if (cmd === "cmd_append_event") {
+                    draftIds.push((args as { draftId: string }).draftId);
+                    return new Promise((resolve, reject) => {
+                        finishAppend = resolve;
+                        failAppend = reject;
+                    });
+                }
+                return null;
+            });
+            view = makeView();
+            view.dispatch({ changes: { from: 0, insert: "Hi " } });
+            await vi.advanceTimersByTimeAsync(149);
+            expect(get(saveStatus)).toBe("saved");
+            await vi.advanceTimersByTimeAsync(1);
+            expect(get(saveStatus)).toBe("saving");
+            currentDraftId.set("draft-2");
+            seedPersistenceBookkeeping(90);
+            if (fails) failAppend(new Error("disk full"));
+            else finishAppend({ eventId: 1, needsSnapshot: false });
+            await flushPersistence();
+            expect(draftIds).toEqual(["draft-1"]);
+            expect(get(saveStatus)).toBe("saved");
+            expect(get(lastPersistedEventId)).toBe(90);
+            expect(get(lastSavedAt)).toBe(null);
+        },
+    );
+
+    it("does not show the delayed indicator after switching drafts", async () => {
+        let finishAppend!: (value: unknown) => void;
+        mockIPC((cmd) =>
+            cmd === "cmd_append_event"
+                ? new Promise((resolve) => {
+                      finishAppend = resolve;
+                  })
+                : null,
+        );
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Hi " } });
+        await vi.advanceTimersByTimeAsync(0);
+        currentDraftId.set("draft-2");
+        await vi.advanceTimersByTimeAsync(150);
+        expect(get(saveStatus)).toBe("saved");
+        finishAppend({ eventId: 1, needsSnapshot: false });
+        await flushPersistence();
+    });
+
+    it("flushes old-document metadata without borrowing the new document's title", async () => {
+        const metadata: unknown[] = [];
+        let finishAppend!: (value: unknown) => void;
+        currentDocumentTitle.set("Original title");
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event")
+                return new Promise((resolve) => {
+                    finishAppend = resolve;
+                });
+            if (cmd === "cmd_update_document_meta") metadata.push(args);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Hi " } });
+        await vi.advanceTimersByTimeAsync(0);
+        currentDocumentId.set("doc-2");
+        currentDocumentTitle.set("New title");
+        finishAppend({ eventId: 1, needsSnapshot: false });
+        await flushPersistence();
+        expect(metadata).toEqual([
+            expect.objectContaining({
+                id: "doc-1",
+                title: "Original title",
+                bodyText: "Hi Hello world",
+            }),
+        ]);
+        expect(get(currentDocumentTitle)).toBe("New title");
     });
 });
