@@ -293,6 +293,13 @@
     "ecosystem": "rust"
   },
   {
+    "name": "lib0",
+    "version": "0.2.117",
+    "license": "MIT",
+    "url": "https://github.com/dmonad/lib0",
+    "ecosystem": "js"
+  },
+  {
     "name": "lodash-es",
     "version": "4.18.1",
     "license": "MIT",

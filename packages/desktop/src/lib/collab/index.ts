@@ -38,7 +38,6 @@ import {
     disconnectYjsProvider,
     getCurrentDocId,
     getYjsProvider,
-    handleOwnerLeft,
     relayConfigured,
 } from "./yjsProvider";
 import { createYjsUndoExtension } from "./yjsUndo";
@@ -286,18 +285,6 @@ export async function enableCollab(
     const collabExts = [binding, undoExt, awarenessExt, annotationSync, versionGroupSync];
     view.dispatch({
         effects: [collabCompartment.reconfigure(collabExts), historyCompartment.reconfigure([])],
-    });
-
-    // Listen for owner left (custom message from server)
-    // y-websocket doesn't have built-in custom messages, so we listen on provider events
-    const providerWithConnectionClose = provider as unknown as {
-        on(eventName: "connection-close", handler: (event: CloseEvent | null) => void): void;
-    };
-    providerWithConnectionClose.on("connection-close", (event) => {
-        // Check close reason for owner disconnect (event may be null on manual disconnect)
-        if (event?.reason === "Owner left") {
-            handleOwnerLeft();
-        }
     });
 
     console.log(`[collab] Collab enabled for ${docId.slice(0, 8)}...`);

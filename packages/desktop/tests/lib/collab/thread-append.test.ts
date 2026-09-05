@@ -52,6 +52,34 @@ describe("thread Y.Array sync", () => {
         teardown(peerB);
     });
 
+    it("keeps invalid remote thread entries out of CodeMirror", async () => {
+        peerA.view.dispatch({
+            effects: addAnnotation.of({
+                _type: "comment",
+                status: "active",
+                id: 0,
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+            }),
+        });
+        await flushAll(peerA, peerB);
+        const key = Array.from(peerB.ymap.keys())[0];
+        const node = peerB.ymap.get(key) as YjsAnnotationNode;
+        const thread = node.get("thread") as Y.Array<unknown>;
+        peerB.ydoc.transact(() => thread.push([{ message: 42 }]), "local");
+        await flushAll(peerA, peerB);
+        expect(Object.values(peerA.view.state.field(annotationField))[0].thread).toEqual([]);
+        // A later valid update can recover the same annotation.
+        peerB.ydoc.transact(() => {
+            thread.delete(0, thread.length);
+            thread.push([{ message: "valid", author: "B", time: 1 }]);
+        }, "local");
+        await flushAll(peerA, peerB);
+        expect(Object.values(peerA.view.state.field(annotationField))[0].thread).toEqual([
+            { message: "valid", author: "B", time: 1 },
+        ]);
+    });
+
     // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
     it("concurrent append from two peers surfaces both messages", async () => {
         // Seed a comment annotation on A

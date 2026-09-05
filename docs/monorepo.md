@@ -57,7 +57,7 @@ For package-local one-offs, use `bun run --cwd packages/<name> <script>`.
 
 `@quillium/share` is intentionally app-neutral. It can contain:
 
-- Serialized annotation and document wire types.
+- Serialized annotation, document, and Live Room wire types.
 - Pure fingerprinting, paragraph segmentation, annotation ordering, and revision
   rendering utilities.
 - The canonical CodeMirror annotation fields/models plus the app-neutral
@@ -148,6 +148,10 @@ The repository root `.env.example` is only an index. Use
 Vercel should point the `quillium-landing` project at `packages/landing` as its
 project root. The landing package imports `@quillium/share` through the Bun
 workspace.
+
+The relay build type-checks its sources and bundles the shared Live Room contract
+into `dist/index.js` with Bun for Node. Its Docker build copies `packages/share/src`
+to resolve that workspace dependency.
 
 Fly deploys the relay from the monorepo root so `packages/relay/Dockerfile` can
 install the filtered workspace. Run Fly commands from the root and keep

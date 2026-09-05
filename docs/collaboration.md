@@ -52,6 +52,28 @@ when the owner leaves.
 | `share.ts` | Supabase read-only share CRUD and URL building |
 | `sharePayload.ts` | Public-share annotation serialization |
 
+## Live wire contract
+
+`@quillium/share/collab-contract` owns the handshake schema and custom frame
+codec. The relay validates the URL token and document UUID before calling
+Supabase. JWT verification and owner/live-room permission checks still happen
+in the relay's authentication middleware.
+
+Custom frames retain the deployed encoding: varuint `3`, varuint subtype,
+then a JSON varstring. Subtype `1` is owner-left with `{}`; subtype `2` is
+client-left with `{ userId: string }`. Desktop decodes those frames in the
+provider and ignores unknown or malformed payloads. An empty type-3 frame is
+y-websocket's awareness query and keeps its original handler. The relay still
+closes with `1000 / "Owner left"`, and desktop retains that fallback for older
+relays. Both signals end a session only once.
+
+`@quillium/share/collab-contract/annotations` validates Yjs annotation nodes
+before desktop projects them into CodeMirror. It reuses the shared thread and
+replacement schemas used by persisted annotations and Web Preview. Nested
+annotations are checked individually on read. Invalid nodes are skipped;
+Yjs updates remain opaque to the relay. Missing legacy status and index-keyed
+revision versions remain supported, alongside the relay's v1-to-v2 migration.
+
 ## Yjs Data Model
 
 ```mermaid
@@ -80,7 +102,7 @@ Annotations stored as recursive Y.Map structures:
 }
 
 // Suggestion-only
-{ replacements: Y.Array<string>; author: string | null; }
+{ replacements: Y.Array<{ text: string; rationale?: string }>; author?: string; }
 
 // Revision-only
 {

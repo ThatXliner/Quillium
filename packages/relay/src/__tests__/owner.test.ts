@@ -1,9 +1,12 @@
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
+import { decodeCustomMessage } from "@quillium/share/collab-contract";
 import * as decoding from "lib0/decoding";
 /**
  * owner.test.ts -- Tests for owner disconnect behavior in the Yjs relay.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import {
@@ -108,6 +111,43 @@ describe("owner disconnect", () => {
         rooms = [];
     });
 
+    it("delivers the shared owner-left frame over a real WebSocket before closing", async () => {
+        const room = makeRoom();
+        rooms.push(room);
+        const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+        const sockets: WebSocket[] = [];
+        try {
+            await once(server, "listening");
+            server.on("connection", (socket, request) => {
+                const isOwner = request.url === "/owner";
+                setupYjsConnection(socket, room, makeClient(isOwner ? "owner" : "joiner", isOwner));
+            });
+            const { port } = server.address() as AddressInfo;
+            const owner = new WebSocket(`ws://127.0.0.1:${port}/owner`);
+            sockets.push(owner);
+            await once(owner, "open");
+            const joiner = new WebSocket(`ws://127.0.0.1:${port}/joiner`);
+            sockets.push(joiner);
+            const messages: unknown[] = [];
+            joiner.on("message", (data) => {
+                const decoder = decoding.createDecoder(new Uint8Array(data as Buffer));
+                if (decoding.readVarUint(decoder) === MESSAGE_CUSTOM)
+                    messages.push(decodeCustomMessage(decoder));
+            });
+            await once(joiner, "open");
+            const closed = once(joiner, "close");
+            owner.close();
+            const [code, reason] = await closed;
+            expect(messages).toContainEqual({ subtype: CUSTOM_OWNER_LEFT, payload: {} });
+            expect(code).toBe(1000);
+            expect(reason.toString()).toBe("Owner left");
+        } finally {
+            for (const socket of sockets) socket.terminate();
+            for (const socket of server.clients) socket.terminate();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
+    });
+
     it("tracks owner presence while the owner is connected", () => {
         const room = makeRoom();
         rooms.push(room);
@@ -137,6 +177,13 @@ describe("owner disconnect", () => {
         owner.close();
 
         const messages = customMessages(collaborator);
+        const decoded = collaborator.sent.map((frame) => {
+            const decoder = decoding.createDecoder(frame);
+            return decoding.readVarUint(decoder) === MESSAGE_CUSTOM
+                ? decodeCustomMessage(decoder)
+                : null;
+        });
+        expect(decoded).toContainEqual({ subtype: CUSTOM_OWNER_LEFT, payload: {} });
         expect(messages.some((message) => message.subtype === CUSTOM_OWNER_LEFT)).toBe(true);
         expect(messages.some((message) => message.subtype === CUSTOM_CLIENT_LEFT)).toBe(true);
         expect(collaborator.closeCode).toBe(1000);

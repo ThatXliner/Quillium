@@ -1,4 +1,12 @@
 import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
+import {
+    CUSTOM_CLIENT_LEFT,
+    CUSTOM_OWNER_LEFT,
+    MESSAGE_CUSTOM,
+    encodeCustomMessage,
+} from "@quillium/share/collab-contract";
+import * as decoding from "lib0/decoding";
+import * as encoding from "lib0/encoding";
 import { get } from "svelte/store";
 /**
  * yjsProvider.test.ts -- Tests for WebsocketProvider wrapper.
@@ -25,6 +33,7 @@ interface MockWebsocketProviderOptions {
 }
 
 interface TestWebsocketProvider {
+    _awarenessQueryHandler: MockFunction;
     _opts?: MockWebsocketProviderOptions;
     destroy: MockFunction;
     disconnect: MockFunction;
@@ -45,6 +54,8 @@ vi.mock("y-websocket", () => {
             off: vi.fn(),
             destroy: vi.fn(),
         };
+        _awarenessQueryHandler = vi.fn();
+        messageHandlers = [vi.fn(), vi.fn(), vi.fn(), this._awarenessQueryHandler];
         handlers: Map<string, Set<MockHandler>> = new Map();
         destroy = vi.fn();
         disconnect = vi.fn();
@@ -104,6 +115,66 @@ describe("yjsProvider", () => {
 
     afterEach(() => {
         disconnectYjsProvider();
+    });
+
+    it("preserves y-websocket awareness queries", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+        provider.messageHandlers[MESSAGE_CUSTOM](
+            encoding.createEncoder(),
+            decoding.createDecoder(new Uint8Array()),
+            provider,
+            false,
+            MESSAGE_CUSTOM,
+        );
+        expect(testProvider(provider)._awarenessQueryHandler).toHaveBeenCalledOnce();
+        expect(get(ownerLeftSignal)).toBe(0);
+    });
+
+    it("handles relay owner-left once, before the close event", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+        const decoder = decoding.createDecoder(
+            encodeCustomMessage({ subtype: CUSTOM_OWNER_LEFT, payload: {} }),
+        );
+        decoding.readVarUint(decoder);
+        provider.messageHandlers[MESSAGE_CUSTOM](
+            encoding.createEncoder(),
+            decoder,
+            provider,
+            false,
+            MESSAGE_CUSTOM,
+        );
+        expect(get(ownerLeftSignal)).toBe(1);
+        expect(testProvider(provider).destroy).toHaveBeenCalledTimes(1);
+        testProvider(provider)._testEmit("connection-close", { reason: "Owner left" });
+        expect(get(ownerLeftSignal)).toBe(1);
+        expect(get(collabState)).toBe("disconnected");
+    });
+
+    it("supports older relay close signals", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+        testProvider(provider)._testEmit("connection-close", { reason: "Owner left" });
+        expect(get(ownerLeftSignal)).toBe(1);
+        expect(testProvider(provider).destroy).toHaveBeenCalledOnce();
+    });
+
+    it("ignores client-left and malformed custom frames", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+        for (const frame of [
+            encodeCustomMessage({ subtype: CUSTOM_CLIENT_LEFT, payload: { userId: "other" } }),
+            new Uint8Array([3, 1, 1, 123]),
+        ]) {
+            const decoder = decoding.createDecoder(frame);
+            decoding.readVarUint(decoder);
+            provider.messageHandlers[MESSAGE_CUSTOM](
+                encoding.createEncoder(),
+                decoder,
+                provider,
+                false,
+                MESSAGE_CUSTOM,
+            );
+        }
+        expect(get(ownerLeftSignal)).toBe(0);
+        expect(testProvider(provider).destroy).not.toHaveBeenCalled();
     });
 
     it("returns provider, awareness, ydoc, and ytext", async () => {
