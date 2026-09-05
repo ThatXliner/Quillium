@@ -49,3 +49,5 @@ export {
     versionIndexById,
     versionText,
 } from "./models";
+
+export { buildRevisionAtomicRanges, getPersonaDots } from "./annotationDecorations";

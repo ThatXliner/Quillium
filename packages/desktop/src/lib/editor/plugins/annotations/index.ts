@@ -75,6 +75,7 @@ import {
     WidgetType,
     keymap,
 } from "@codemirror/view";
+import { buildRevisionAtomicRanges, getPersonaDots } from "@quillium/share/core";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
 import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "$lib/editor/diff";
@@ -320,21 +321,9 @@ export function createRevisionFromSelection(view: EditorView): boolean {
 //
 // Provides: EditorView.atomicRanges
 // -------------------------------------------------------
-function buildAtomicRanges(state: EditorState): DecorationSet {
-    if (!appSettings.atomicRevisions) return Decoration.none;
-    const builder = new RangeSetBuilder<Decoration>();
-    const revisions = Object.values(state.field(annotationField))
-        .filter((annotation) => isAnnotationOfType(annotation, "revision"))
-        .sort((a, b) => a.selection.main.from - b.selection.main.from);
-    for (const revision of revisions) {
-        const { from, to } = revision.selection.main;
-        if (from === to) continue;
-        builder.add(from, to, Decoration.mark({}));
-    }
-    return builder.finish();
-}
-
-const revisionAtomicRanges = EditorView.atomicRanges.of((view) => buildAtomicRanges(view.state));
+const revisionAtomicRanges = EditorView.atomicRanges.of((view) =>
+    buildRevisionAtomicRanges(view.state.field(annotationField), appSettings.atomicRevisions),
+);
 
 // -------------------------------------------------------
 // collapsedRevisionResolver ViewPlugin
@@ -481,24 +470,6 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
     },
 );
 
-class PersonaDotWidget extends WidgetType {
-    constructor(readonly color: string) {
-        super();
-    }
-    eq(other: PersonaDotWidget) {
-        return this.color === other.color;
-    }
-    toDOM() {
-        const dot = document.createElement("span");
-        dot.className = "cm-persona-dot";
-        dot.style.backgroundColor = this.color;
-        return dot;
-    }
-    ignoreEvent() {
-        return true;
-    }
-}
-
 class EmptyRevisionMarkerWidget extends WidgetType {
     constructor(
         readonly revisionId: number,
@@ -541,7 +512,7 @@ const annotationDecorations = EditorView.decorations.compute(
             _getAnnotationDecorations(state, "revision", "cm-revision"),
             _getEmptyRevisionMarkers(state),
             _getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
-            getPersonaDots(state),
+            getPersonaDots(state.field(annotationField), readersSettings.personas),
         ]),
 );
 
@@ -620,31 +591,6 @@ export function _getEmptyRevisionMarkers(state: EditorState): DecorationSet {
                     revision.id,
                     revision.id === activeRevisionId,
                 ),
-                side: 1,
-            }),
-        );
-    }
-    return builder.finish();
-}
-
-function getPersonaDots(state: EditorState): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
-    const suggestions = filter(Object.values(state.field(annotationField)), (a) =>
-        isAnnotationOfType(a, "suggestion"),
-    ) as Array<Annotation<"suggestion">>;
-
-    const dots = flatMap(suggestions, (s) => {
-        if (!s.author || s.author === "AI") return [];
-        const persona = readersSettings.personas.find((p) => p.name === s.author);
-        return persona ? [{ pos: s.selection.main.to, color: persona.color }] : [];
-    }).sort((a, b) => a.pos - b.pos);
-
-    for (const { pos, color } of dots) {
-        builder.add(
-            pos,
-            pos,
-            Decoration.widget({
-                widget: new PersonaDotWidget(color),
                 side: 1,
             }),
         );
