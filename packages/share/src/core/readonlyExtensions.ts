@@ -26,16 +26,20 @@ import {
     RangeSetBuilder,
     type SelectionRange,
 } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 import { filter, flatMap } from "lodash-es";
+import {
+    type PersonaColor,
+    buildRevisionAtomicRanges,
+    getPersonaDots,
+} from "./annotationDecorations";
 import { annotationField } from "./annotationField";
-import { type Annotation, type AnnotationType, isAnnotationOfType } from "./models";
+import { type AnnotationType, isAnnotationOfType } from "./models";
 import { getActiveAnnotation } from "./utils";
 import { versionGroupField } from "./versionGroupField";
 
 // ── Injected configuration (replaces desktop global stores) ─────
-/** A named reader persona and the accent color used for its suggestion dot. */
-export type PersonaColor = { name: string; color: string };
+export type { PersonaColor } from "./annotationDecorations";
 
 /** Mirrors appSettings.atomicRevisions. Last provided value wins; default true. */
 export const atomicRevisionsFacet = Facet.define<boolean, boolean>({
@@ -54,24 +58,6 @@ export const personaColorsFacet = Facet.define<PersonaColor[], PersonaColor[]>({
 export const readonlySavedFields = { annotationField, versionGroupField };
 
 // ── Annotation highlight decorations (copied from desktop index.ts) ──
-class PersonaDotWidget extends WidgetType {
-    constructor(readonly color: string) {
-        super();
-    }
-    eq(other: PersonaDotWidget) {
-        return this.color === other.color;
-    }
-    toDOM() {
-        const dot = document.createElement("span");
-        dot.className = "cm-persona-dot";
-        dot.style.backgroundColor = this.color;
-        return dot;
-    }
-    ignoreEvent() {
-        return true;
-    }
-}
-
 function getAnnotationDecorations(
     state: EditorState,
     type: AnnotationType,
@@ -109,25 +95,6 @@ function getAnnotationDecorations(
     return builder.finish();
 }
 
-function getPersonaDots(state: EditorState): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
-    const personas = state.facet(personaColorsFacet);
-    const suggestions = filter(Object.values(state.field(annotationField)), (a) =>
-        isAnnotationOfType(a, "suggestion"),
-    ) as Array<Annotation<"suggestion">>;
-
-    const dots = flatMap(suggestions, (s) => {
-        if (!s.author || s.author === "AI") return [];
-        const persona = personas.find((p) => p.name === s.author);
-        return persona ? [{ pos: s.selection.main.to, color: persona.color }] : [];
-    }).sort((a, b) => a.pos - b.pos);
-
-    for (const { pos, color } of dots) {
-        builder.add(pos, pos, Decoration.widget({ widget: new PersonaDotWidget(color), side: 1 }));
-    }
-    return builder.finish();
-}
-
 const annotationDecorations = EditorView.decorations.compute(
     ["doc", "selection", annotationField],
     (state) =>
@@ -135,26 +102,16 @@ const annotationDecorations = EditorView.decorations.compute(
             getAnnotationDecorations(state, "comment", "cm-comment"),
             getAnnotationDecorations(state, "revision", "cm-revision"),
             getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
-            getPersonaDots(state),
+            getPersonaDots(state.field(annotationField), state.facet(personaColorsFacet)),
         ]),
 );
 
-// ── Revision atomic ranges (copied; gated by facet) ─────────────
-function buildAtomicRanges(state: EditorState): DecorationSet {
-    if (!state.facet(atomicRevisionsFacet)) return Decoration.none;
-    const builder = new RangeSetBuilder<Decoration>();
-    const revisions = Object.values(state.field(annotationField))
-        .filter((annotation) => isAnnotationOfType(annotation, "revision"))
-        .sort((a, b) => a.selection.main.from - b.selection.main.from);
-    for (const revision of revisions) {
-        const { from, to } = revision.selection.main;
-        if (from === to) continue;
-        builder.add(from, to, Decoration.mark({}));
-    }
-    return builder.finish();
-}
-
-const revisionAtomicRanges = EditorView.atomicRanges.of((view) => buildAtomicRanges(view.state));
+const revisionAtomicRanges = EditorView.atomicRanges.of((view) =>
+    buildRevisionAtomicRanges(
+        view.state.field(annotationField),
+        view.state.facet(atomicRevisionsFacet),
+    ),
+);
 
 // ── Public factory ──────────────────────────────────────────────
 export type ReadonlyExtensionConfig = {
