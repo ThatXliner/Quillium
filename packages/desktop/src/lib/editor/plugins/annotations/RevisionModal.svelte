@@ -1,5 +1,4 @@
 <script lang="ts">
-import { isolateHistory } from "@codemirror/commands";
 /**
  * RevisionModal.svelte — Full-screen modal that hosts a nested
  * CodeMirror editor for a single revision version.
@@ -44,15 +43,11 @@ import {
     type Annotations as AnnotationsMap,
     type GenericAnnotation,
     type Thread as ThreadType,
-    addAnnotation,
     annotationField,
     collapseRevision,
+    createAnnotation,
     createNewRevision,
     deleteRevisionVersion,
-    makeVersionFromSelection,
-    removeAnnotation,
-    revisionInternalEdit,
-    revisionProvenance,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
     updateRevisionVersionState,
@@ -69,7 +64,7 @@ import {
     modalStack,
 } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { EditorSelection, Transaction } from "@codemirror/state";
+import { EditorSelection } from "@codemirror/state";
 import Annotations from "./Annotations.svelte";
 import DuplicateDraftWarning from "./DuplicateDraftWarning.svelte";
 import { NestedEditorController } from "./NestedEditorController";
@@ -85,16 +80,14 @@ import {
     type VersionState,
     activeVersion,
     activeVersionIndex,
-    createNewAnnotation,
     getLastId,
     isAnnotationOfType,
-    makeVersion,
     versionById,
     versionText,
 } from "./models";
 import { previewVersionText } from "./nestedEditor";
 import { shouldHandleRevisionModalKeydown } from "./revisionModalKeyguard";
-import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
+import { getActiveAnnotation } from "./utils";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -436,84 +429,12 @@ function executePendingNestedCommand(
         selection: EditorSelection.range(from, to),
     });
     activeEditor.focus();
-    if (cmd.type === "comment") {
-        const s2 = activeEditor.state;
-        if (!s2.selection.main.empty && canCreateNewComment(s2.field(annotationField))) {
-            activeEditor.dispatch(
-                s2.update({
-                    effects: [
-                        addAnnotation.of(
-                            createNewAnnotation(s2.field(annotationField), s2.selection, "comment"),
-                        ),
-                    ],
-                    annotations: Transaction.addToHistory.of(true),
-                }),
-            );
-        }
-    } else if (cmd.type === "revision") {
-        const s2 = activeEditor.state;
-        if (
-            !s2.selection.main.empty &&
-            canCreateRevision(s2.field(annotationField), s2.selection)
-        ) {
-            const sel = s2.selection.main;
-            const autoVersion = appSettings.autoVersionOnRevisionCreate;
-            const { version: originalVersion, containedAnnotations } = makeVersionFromSelection(
-                s2,
-                s2.selection,
-            );
-            const versions: VersionState[] = autoVersion
-                ? [originalVersion, makeVersion({ doc: "" })]
-                : [originalVersion];
-            const annotationSelection = autoVersion
-                ? EditorSelection.single(sel.from)
-                : s2.selection;
-            const newAnnotation = createNewAnnotation(
-                s2.field(annotationField),
-                annotationSelection,
-                "revision",
-            );
-            posthog.capture("annotation_created", {
-                type: "revision",
-                auto_version: autoVersion,
-                nested: true,
-            });
-            activeEditor.dispatch(
-                s2.update({
-                    effects: [
-                        ...containedAnnotations.map((annotation) =>
-                            removeAnnotation.of(annotation),
-                        ),
-                        addAnnotation.of({
-                            ...newAnnotation,
-                            activeVersionId: (autoVersion ? versions[1] : versions[0]).id,
-                            versions,
-                        }),
-                    ],
-                    ...(autoVersion
-                        ? {
-                              changes: s2.changes({ from: sel.from, to: sel.to, insert: "" }),
-                              selection: EditorSelection.cursor(sel.from),
-                          }
-                        : {}),
-                    annotations: autoVersion
-                        ? [
-                              revisionInternalEdit.of(true),
-                              revisionProvenance.of("human"),
-                              Transaction.addToHistory.of(true),
-                              isolateHistory.of("full"),
-                          ]
-                        : Transaction.addToHistory.of(true),
-                }),
-            );
-            annotationEventBus.emit({
-                type: "pending-nested-editor-selection",
-                annotationId: newAnnotation.id,
-                from: 0,
-                to: !autoVersion && appSettings.selectTextInNestedEditor ? sel.to - sel.from : 0,
-                focus: true,
-            });
-        }
+    if (cmd.type === "comment" || cmd.type === "revision") {
+        createAnnotation({
+            state: activeEditor.state,
+            dispatch: (transaction) => activeEditor.dispatch(transaction),
+            creation: { source: "human", type: cmd.type, nested: true },
+        });
     }
 }
 

@@ -1066,6 +1066,43 @@ export const _applySuggestion = StateEffect.define<{
     annotationId: number;
     replacementIndex: number;
 }>();
+/**
+ * Effect-driven annotation mutations, including history-only effects. Plain text
+ * edits can also remap annotations; callers handle docChanged separately.
+ * Revision replacements intentionally allow empty ranges, including on undo/redo.
+ */
+export function classifyAnnotationMutation(
+    transaction: Transaction,
+): "none" | "annotation" | "revision-replacement" {
+    let mutation: "none" | "annotation" = "none";
+    for (const effect of transaction.effects) {
+        if (
+            effect.is(_nestedEditRevision) ||
+            effect.is(_addVersionToRevision) ||
+            effect.is(_deleteVersionFromRevision) ||
+            effect.is(_updateActiveRevisionVersion) ||
+            effect.is(_updateRevisionVersionState) ||
+            effect.is(_mergeRevisionVersionState)
+        ) {
+            return "revision-replacement";
+        }
+        if (
+            effect.is(addAnnotation) ||
+            effect.is(removeAnnotation) ||
+            effect.is(_restoreAnnotation) ||
+            effect.is(_removeAnnotationById) ||
+            effect.is(updateThread) ||
+            effect.is(addSuggestion) ||
+            effect.is(_applySuggestion) ||
+            effect.is(_updateRevisionVersionDoc) ||
+            effect.is(_updateRevisionVersionLabel)
+        ) {
+            mutation = "annotation";
+        }
+    }
+    return mutation;
+}
+
 export function applySuggestion(
     state: EditorState,
     annotationId: number,
