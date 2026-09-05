@@ -33,7 +33,7 @@ The key design decision is that collaboration is additive. Nothing about the cor
 
 Here's a decision we made early that might be controversial: the person who owns the document is the only one with full offline access, version history, and snapshots. Collaborators work through the server.
 
-I'll be honest: part of this is a technical constraint. Quillium's collab protocol is built on CodeMirror's `@codemirror/collab`, which uses [operational transformation](https://en.wikipedia.org/wiki/Operational_transformation). OT requires a central authority to order changes: there's no true peer-to-peer offline editing the way CRDTs allow. The owner's machine is the source of truth, and collaborators work through a relay server.
+Quillium's Live Rooms use Yjs over WebSocket. The owner's SQLite database remains the durable source of truth; joiners edit an ephemeral copy through the relay, and the room ends when the owner leaves. Yjs can support other collaboration models, but this owner-led model keeps Quillium's local writing state authoritative.
 
 But the constraint also happens to match how writing actually works. There's almost always a primary author—the person whose voice the piece is in, the person who makes the final call. In Quillium, the owner of a document keeps full offline access, version history, and snapshots. If the server goes down, the owner keeps writing. Collaborators reconnect when they can.
 

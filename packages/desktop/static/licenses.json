@@ -42,13 +42,6 @@
     "ecosystem": "js"
   },
   {
-    "name": "@codemirror/collab",
-    "version": "6.1.1",
-    "license": "MIT",
-    "url": "https://github.com/codemirror/collab",
-    "ecosystem": "js"
-  },
-  {
     "name": "@codemirror/commands",
     "version": "6.10.3",
     "license": "MIT",
@@ -382,13 +375,6 @@
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/serde-rs/json",
     "ecosystem": "rust"
-  },
-  {
-    "name": "socket.io-client",
-    "version": "4.8.3",
-    "license": "MIT",
-    "url": "https://github.com/socketio/socket.io",
-    "ecosystem": "js"
   },
   {
     "name": "svelte-sonner",

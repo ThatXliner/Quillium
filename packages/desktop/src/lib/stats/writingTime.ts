@@ -37,11 +37,6 @@ type SessionRange = Omit<WritingTimeSession, "durationMs" | "isActive">;
 
 const NON_HUMAN_ORIGINS = new Set(["ai-revision", "restore"]);
 
-/** PostHog boolean flags must opt users in explicitly; missing/stale values stay gated off. */
-export function isNovelNovemberEnabled(flagValue: unknown): boolean {
-    return flagValue === true;
-}
-
 function isHumanEdit(record: EventRecord): boolean {
     try {
         const payload = JSON.parse(record.payload) as EventPayload;

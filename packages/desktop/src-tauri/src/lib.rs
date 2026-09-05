@@ -1056,29 +1056,6 @@ fn cmd_is_doc_open_elsewhere(
     }
 }
 
-// ── Legacy scrap command ──────────────────────────────────────────
-// Kept for Save.svelte compatibility. In the new DB world, "scrapping"
-// a draft means deleting the document. The UI reloads after this call.
-#[tauri::command]
-fn scrap(state: tauri::State<DbState>) -> bool {
-    // Get the first (most-recently-updated) document and delete it.
-    let conn = match state.0.lock() {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    let doc_id: Option<String> = conn
-        .query_row(
-            "SELECT id FROM documents ORDER BY updated_at DESC LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-    if let Some(id) = doc_id {
-        let _ = conn.execute("DELETE FROM documents WHERE id = ?1", rusqlite::params![id]);
-    }
-    true
-}
-
 // ── Native app menu (desktop only) ────────────────────────────────
 
 #[cfg(desktop)]
@@ -1381,7 +1358,6 @@ pub fn run() {
             cmd_set_document_writer_brief,
             cmd_get_document_editorial_decisions,
             cmd_set_document_editorial_decisions,
-            scrap,
             cmd_get_trash_retention,
             cmd_export_pdf,
             cmd_export_text,

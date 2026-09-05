@@ -6,14 +6,14 @@ const {
     mockSetConfig,
     mockRegister,
     mockUnregister,
-    mockIsFeatureEnabled,
+    mockGetFeatureFlag,
     featureFlagCallbacks,
 } = vi.hoisted(() => ({
     mockCapture: vi.fn(),
     mockSetConfig: vi.fn(),
     mockRegister: vi.fn(),
     mockUnregister: vi.fn(),
-    mockIsFeatureEnabled: vi.fn(),
+    mockGetFeatureFlag: vi.fn(),
     featureFlagCallbacks: [] as Array<() => void>,
 }));
 vi.mock("posthog-js", () => ({
@@ -25,7 +25,7 @@ vi.mock("posthog-js", () => ({
         opt_in_capturing: vi.fn(),
         capture: mockCapture,
         set_config: mockSetConfig,
-        isFeatureEnabled: mockIsFeatureEnabled,
+        getFeatureFlag: mockGetFeatureFlag,
         onFeatureFlags: vi.fn((callback: () => void) => {
             featureFlagCallbacks.push(callback);
             return () => {
@@ -90,8 +90,8 @@ describe("capture", () => {
 
 describe("novelNovemberEnabled", () => {
     beforeEach(() => {
-        mockIsFeatureEnabled.mockReset();
-        mockIsFeatureEnabled.mockReturnValue(false);
+        mockGetFeatureFlag.mockReset();
+        mockGetFeatureFlag.mockReturnValue(false);
     });
 
     it("defaults closed when PostHog does not return literal true", () => {
@@ -102,11 +102,11 @@ describe("novelNovemberEnabled", () => {
         const values: boolean[] = [];
         const unsubscribe = novelNovemberEnabled.subscribe((value) => values.push(value));
 
-        mockIsFeatureEnabled.mockReturnValue(true);
+        mockGetFeatureFlag.mockReturnValue(true);
         for (const callback of featureFlagCallbacks) callback();
 
         expect(values.at(-1)).toBe(true);
-        expect(mockIsFeatureEnabled).toHaveBeenCalledWith("novel-november");
+        expect(mockGetFeatureFlag).toHaveBeenCalledWith("novel-november");
         unsubscribe();
     });
 });

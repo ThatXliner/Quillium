@@ -418,9 +418,6 @@ $effect(() => {
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
 
-// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
-// is no longer needed - nested editors always use local-only mode.
-
 /**
  * Execute a pending nested annotation command (comment or
  * sub-revision) that was queued in the modal stack entry

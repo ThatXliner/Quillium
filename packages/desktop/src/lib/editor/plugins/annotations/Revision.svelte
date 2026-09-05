@@ -576,9 +576,6 @@ $effect(() => {
     createNestedEditor(version, current?.versionIndex ?? trackedVersionIndex);
 });
 
-// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
-// is no longer needed - nested editors always use local-only mode.
-
 // When a modal for this revision closes and flushes, rebuild the inline
 // editor from the flushed version blob. The event fires synchronously
 // from onDestroy after the flush dispatch, so view.state already

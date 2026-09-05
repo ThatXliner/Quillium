@@ -1624,10 +1624,7 @@ async function scenarioWritingReminders(ctx: BrowserContext): Promise<void> {
     await installTauriMock(page, { writingReminders: true });
     await page.goto(BASE_URL);
     await waitForEditor(page);
-    await page.evaluate(async () => {
-        const { featureFlags } = await import("/src/lib/featureFlags.svelte.ts");
-        featureFlags.novelNovember = true;
-    });
+    await enableFeatureFlag(page, "novel-november");
     await page.locator("#status-bar").hover();
     await page.locator('[aria-label="Open settings"]').click({ timeout: 5_000 });
     await page.getByText("Writing reminders", { exact: true }).waitFor({ timeout: 5_000 });

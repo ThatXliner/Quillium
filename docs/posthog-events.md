@@ -142,7 +142,6 @@ temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_d
 | `draft_deleted` | Leaf draft soft-deleted | `Editor.svelte` |
 | `draft_restored` | Draft restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
 | `draft_locked` / `draft_unlocked` | Lock toggled | `Editor.svelte` |
-| `draft_scrapped` | Draft scrapped | `Save.svelte` |
 | `delete_toast_view_history` | Delete undo toast opens history | `Editor.svelte` |
 
 ## Collaboration

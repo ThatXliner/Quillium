@@ -18,7 +18,6 @@ Architecture decision: [Supabase collaboration identity](./adr/0007-supabase-col
 | `src/lib/auth/AuthModal.svelte` | Email/password login and gated signup |
 | `src/lib/auth/AvatarDropdown.svelte` | Logged-in account menu |
 | `src/lib/auth/ProfileModal.svelte` | Profile dialog and logout |
-| `src/lib/auth/NameEntryModal.svelte` | Anonymous guest name prompt for joiners |
 | `src/lib/auth/avatarUtils.ts` | Initials and deterministic avatar colors |
 
 ## Environment
@@ -90,6 +89,9 @@ The exported reactive getters are intentionally simple:
 | Signup | `signUp(email, password, displayName)` with `options.data.display_name` |
 | Anonymous guest | `signInAnonymously(displayName)` with `options.data.display_name` |
 | Logout | `signOut()` -> `supabase.auth.signOut()` |
+
+Anonymous sessions remain supported by the auth API and Live Room join flow.
+The desktop has no dedicated anonymous name-entry modal.
 
 During beta, production signup is waitlist-gated in `AuthModal.svelte`.
 Development builds can enable the signup tab unless the debug waitlist mode is

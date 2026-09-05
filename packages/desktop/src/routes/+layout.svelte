@@ -12,7 +12,7 @@ import { onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 import { logAppEvent } from "$lib/appLog";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
-import { featureFlags, startFeatureFlagSync } from "$lib/featureFlags.svelte";
+import { novelNovemberEnabled, startFeatureFlagSync } from "$lib/featureFlags.svelte";
 import posthog from "$lib/posthog";
 import { editorView, errorBanner } from "$lib/stores";
 import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
@@ -32,7 +32,7 @@ const { children } = $props();
 // needed to diagnose a broken state.
 let appLogsOpen = $state(false);
 
-$effect(() => setWritingReminderFeatureEnabled(featureFlags.novelNovember));
+$effect(() => setWritingReminderFeatureEnabled($novelNovemberEnabled));
 
 onMount(() => {
     let destroyed = false;

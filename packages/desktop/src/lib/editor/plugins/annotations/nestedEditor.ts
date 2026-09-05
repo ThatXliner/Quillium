@@ -84,8 +84,7 @@ export function createNestedEditorState(
     revisionId: number,
     historyView?: EditorView,
 ): EditorState {
-    // Phase 10: Collab subtree bindings removed. Nested editors always use
-    // local-only mode. Phase 11 will rebuild unified sync.
+    // Nested edits sync through the parent; presence maps into the shared text.
     const session = get(collabSession);
     const nestedAwareness =
         session === null
