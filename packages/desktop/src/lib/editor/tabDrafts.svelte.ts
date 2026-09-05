@@ -6,7 +6,7 @@
  * iterate/branch/rename/delete/lock drafts, including the orphan-vs-cascade
  * delete prompt and its Undo toasts).
  *
- * Editor.svelte supplies the pieces that belong to the editor lifecycle via
+ * DocumentLoader supplies the pieces that belong to the editor lifecycle via
  * constructor deps: switching the live view to a draft, flushing pending
  * persistence, and serializing a draft's state to seed iterations/branches.
  * See docs/tabs-and-drafts.md for the data model.
@@ -65,6 +65,11 @@ export class TabDraftController {
 
     constructor(deps: TabDraftControllerDeps) {
         this.#deps = deps;
+    }
+
+    /** Invalidate refreshes when the owning editor is unmounted. */
+    cancelPendingLoads(): void {
+        this.#contextGeneration++;
     }
 
     lockedOf(draftId: string | null): boolean {

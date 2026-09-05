@@ -191,7 +191,9 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |
 | `src/lib/editor/DraftDeleteModal.svelte` | Orphan-vs-cascade prompt for deleting a draft with children |
 | `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
-| `src/lib/editor/Editor.svelte` | Tab/draft switching, iterate/branch/delete, lock banner |
+| `src/lib/editor/Editor.svelte` | CodeMirror view lifecycle, store mirrors, lock banner |
+| `src/lib/editor/documentLoader.ts` | Bootstrap, load cancellation, draft commit ordering, state seeding |
+| `src/lib/editor/tabDrafts.svelte.ts` | Tab/draft selection, iterate/branch/delete, tab tree state |
 
 ## Omni Web Preview identity
 
@@ -211,3 +213,23 @@ the active draft; #260 tracks bringing them in line with the tabs/drafts model.
 - Document-wide *content* checkpoints (one snapshot of all tabs/drafts at
   once); content snapshots remain per-draft, structural history is
   document-wide via `doc_events`
+
+### Loading the root editor
+
+`DocumentLoader` starts its document subscription on mount. Bootstrap chooses the
+requested document, the most recently updated document, or creates an initial
+document. The page supplies the first-visit decision used for both the tutorial
+and sample content. Sample content is snapshotted before the document ID becomes
+visible to subscribers.
+
+Document and draft loads return one `LoadedDocument` and share a cancellation
+counter. Pending persistence finishes before reads. A successful commit seeds the
+draft identity and latest event ID, then asks `Editor.svelte` to install the state
+and refresh its Svelte mirrors. Stale reads cannot commit. Once a draft-pointer
+write is queued, its same-tab state commit finishes even if a newer load starts;
+this keeps the editor aligned with the last successful write if the newer load
+fails. Unmount cancels pending loads and tab refreshes.
+
+Iterations and branches seed from the live state when their source is open,
+otherwise from snapshot and event replay. Both paths preserve the document's undo
+policy; reconstructed seeds omit the source draft's lock.
