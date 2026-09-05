@@ -1,22 +1,8 @@
 /**
- * schemas.ts -- Zod validation schemas for WebSocket messages.
+ * schemas.ts -- Relay error codes.
  *
- * Validates client handshake data and defines protocol error codes.
- * Per D-32/D-33: Validates JWT presence and document ID on connect.
+ * Live Room validation is shared through @quillium/share/collab-contract.
  */
-import { z } from "zod";
-
-/**
- * Handshake auth data sent by client on connection.
- * Per RESEARCH.md: token in socket.handshake.auth
- */
-export const HandshakeAuthSchema = z.object({
-    token: z.string().min(1, "Token is required"),
-    documentId: z.string().uuid("Document ID must be a valid UUID"),
-});
-
-export type HandshakeAuth = z.infer<typeof HandshakeAuthSchema>;
-
 /**
  * Error codes returned to client on auth failure.
  * Per D-33: Invalid/expired JWTs rejected immediately.

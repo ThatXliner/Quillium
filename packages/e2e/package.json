@@ -13,7 +13,7 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.6",
     "@quillium/share": "workspace:*",
-    "@supabase/supabase-js": "2.110.0",
+    "@supabase/supabase-js": "2.110.5",
     "lib0": "0.2.117",
     "ws": "8.20.0",
     "y-protocols": "1.0.7",

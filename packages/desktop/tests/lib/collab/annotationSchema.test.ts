@@ -41,6 +41,76 @@ describe("annotationSchema", () => {
         ydoc.destroy();
     });
 
+    it.each([
+        ["thread", () => new Y.Array<unknown>(/* invalid entries added below */)],
+        ["status", () => 42],
+        ["startPos", () => "invalid"],
+    ])("rejects malformed %s before projecting", (field, makeValue) => {
+        const node = codeMirrorToYjsAnnotation(
+            {
+                id: 1,
+                _type: "comment",
+                status: "active",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+            },
+            ytext,
+            CLIENT_ID,
+            ydoc,
+        );
+        ymap.set("test", node);
+        const value = makeValue();
+        node.set(field, value);
+        if (value instanceof Y.Array) value.push([{ message: 42 }]);
+        expect(yjsAnnotationToCodeMirror(node, ydoc, ytext, 1)).toBeNull();
+    });
+
+    it("rejects anchors from another text scope", () => {
+        const otherText = ydoc.getText("other");
+        otherText.insert(0, "a much longer unrelated draft");
+        const node = codeMirrorToYjsAnnotation(
+            {
+                id: 1,
+                _type: "comment",
+                status: "active",
+                selection: EditorSelection.single(15, 20),
+                thread: [],
+            },
+            otherText,
+            CLIENT_ID,
+            ydoc,
+        );
+        ymap.set("test", node);
+        expect(yjsAnnotationToCodeMirror(node, ydoc, ytext, 1)).toBeNull();
+    });
+
+    it("rejects malformed revision children", () => {
+        const version = makeVersion({ doc: "hello" });
+        const node = codeMirrorToYjsAnnotation(
+            {
+                id: 1,
+                _type: "revision",
+                status: "active",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+                versions: [version],
+                activeVersionId: version.id,
+            },
+            ytext,
+            CLIENT_ID,
+            ydoc,
+        );
+        ymap.set("test", node);
+        (node.get("versions") as Y.Map<unknown>).set(version.id, { text: "wrong type" });
+        expect(yjsAnnotationToCodeMirror(node, ydoc, ytext, 1)).toBeNull();
+    });
+
+    it("rejects non-map nodes without throwing", () => {
+        expect(
+            yjsAnnotationToCodeMirror(null as unknown as YjsAnnotationNode, ydoc, ytext, 1),
+        ).toBeNull();
+    });
+
     describe("generateAnnotationId", () => {
         it("generates a string ID with client prefix", () => {
             const id = generateAnnotationId(CLIENT_ID);
@@ -329,6 +399,7 @@ describe("annotationSchema", () => {
                 ydoc,
                 idMap,
             );
+            (v0.get("annotations") as Y.Map<unknown>).set("bad-child", { thread: "invalid" });
             const restored = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 5, {
                 nestedIdMapFor: () => idMap,
             });
@@ -339,6 +410,7 @@ describe("annotationSchema", () => {
                 const restoredField = (
                     restored.versions[0] as VersionState & { annotationField?: RawAnnotations }
                 ).annotationField;
+                expect(Object.keys(restoredField ?? {})).toEqual(["0"]);
                 expect(restoredField?.["0"]?._type).toBe("comment");
                 expect(restoredField?.["0"]?.selection).toEqual(
                     EditorSelection.single(0, 2).toJSON(),

@@ -16,6 +16,7 @@ FROM deps AS build
 
 COPY packages/relay/tsconfig.json packages/relay/tsconfig.json
 COPY packages/relay/src packages/relay/src
+COPY packages/share/src packages/share/src
 # NOT `bun --cwd packages/relay run build`: bun >=1.3 rejects a global --cwd
 # before `run`, prints usage, and exits 0 — a silent no-op that produces no
 # dist/ and only surfaces later as a missing COPY source.

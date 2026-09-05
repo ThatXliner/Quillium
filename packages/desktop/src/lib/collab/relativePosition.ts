@@ -42,14 +42,14 @@ export function absoluteToRelative(ytext: Y.Text, selection: EditorSelection): E
  * Convert encoded RelativePositions back to absolute CodeMirror selection.
  *
  * @param ydoc - Y.Doc containing the Y.Text
- * @param _ytext - Y.Text shared type (unused but kept for API symmetry)
+ * @param ytext - Expected Y.Text for this annotation scope
  * @param startPos - Encoded start RelativePosition
  * @param endPos - Encoded end RelativePosition
  * @returns EditorSelection or null if positions resolve to null (anchored text deleted)
  */
 export function relativeToAbsolute(
     ydoc: Y.Doc,
-    _ytext: Y.Text,
+    ytext: Y.Text,
     startPos: Uint8Array,
     endPos: Uint8Array,
 ): EditorSelection | null {
@@ -61,6 +61,9 @@ export function relativeToAbsolute(
     if (startAbs === null || endAbs === null) {
         return null; // Referenced text was deleted
     }
+    // A valid encoded position can still point at another revision's text.
+    // Never project that index into this editor's document.
+    if (startAbs.type !== ytext || endAbs.type !== ytext) return null;
 
     return EditorSelection.single(startAbs.index, endAbs.index);
 }

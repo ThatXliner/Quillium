@@ -34,6 +34,7 @@ import {
  *   - ../editor/plugins/annotations/models for CM types
  */
 import { EditorSelection } from "@codemirror/state";
+import { YjsAnnotationNodeSchema } from "@quillium/share/collab-contract/annotations";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
@@ -147,12 +148,13 @@ export function yjsAnnotationToCodeMirror(
         nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
     },
 ): GenericAnnotation | null {
-    const startPos = node.get("startPos") as Uint8Array | undefined;
-    const endPos = node.get("endPos") as Uint8Array | undefined;
-    if (!(startPos instanceof Uint8Array) || !(endPos instanceof Uint8Array)) {
-        console.warn("[annotationSchema] Missing or malformed positions");
+    const parsed = YjsAnnotationNodeSchema.safeParse(node);
+    if (!parsed.success) {
+        console.warn("[annotationSchema] Malformed annotation node");
         return null;
     }
+    const data = parsed.data;
+    const { startPos, endPos, thread, status } = data;
 
     let selection: EditorSelection | null;
     try {
@@ -165,18 +167,7 @@ export function yjsAnnotationToCodeMirror(
         return null; // Anchored text was deleted
     }
 
-    const threadArr = node.get("thread");
-    const thread: ThreadMessage[] =
-        threadArr instanceof Y.Array ? (threadArr.toArray() as ThreadMessage[]) : [];
-
-    const type = node.get("_type") as GenericAnnotation["_type"] | undefined;
-    if (type !== "comment" && type !== "suggestion" && type !== "revision") {
-        console.warn("[annotationSchema] Unknown _type:", type);
-        return null;
-    }
-
-    const rawStatus = node.get("status");
-    const status = rawStatus === "pending" || rawStatus === "active" ? rawStatus : undefined;
+    const type = data._type;
     const base = { id: numericId, selection, thread, status };
 
     if (type === "comment") {
@@ -184,10 +175,7 @@ export function yjsAnnotationToCodeMirror(
     }
 
     if (type === "suggestion") {
-        const replArr = node.get("replacements");
-        const replacements: SuggestionReplacement[] =
-            replArr instanceof Y.Array ? (replArr.toArray() as SuggestionReplacement[]) : [];
-        const author = node.get("author");
+        const { replacements, author } = data;
         return normalizeAnnotation({
             ...base,
             _type: "suggestion",

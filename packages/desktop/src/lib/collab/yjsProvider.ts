@@ -25,6 +25,13 @@
 import { PUBLIC_RELAY_URL } from "$env/static/public";
 import { logAppEvent } from "$lib/appLog";
 import { getSession } from "$lib/auth/auth.svelte";
+import {
+    CUSTOM_OWNER_LEFT,
+    LEGACY_OWNER_LEFT_REASON,
+    MESSAGE_CUSTOM,
+    decodeCustomMessage,
+} from "@quillium/share/collab-contract";
+import * as decoding from "lib0/decoding";
 import type { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
@@ -109,6 +116,18 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         maxBackoffTime: 5000, // 5 seconds max between retries (default is 2.5s)
     });
 
+    const awarenessQueryHandler = provider.messageHandlers[MESSAGE_CUSTOM];
+    provider.messageHandlers[MESSAGE_CUSTOM] = (encoder, decoder, ...args) => {
+        if (!decoding.hasContent(decoder)) {
+            awarenessQueryHandler(encoder, decoder, ...args);
+            return;
+        }
+        const message = decodeCustomMessage(decoder);
+        if (message?.subtype === CUSTOM_OWNER_LEFT && currentProvider === provider) {
+            handleOwnerLeft();
+        }
+    };
+
     // Track connection state via provider events
     provider.on("status", ({ status }: { status: string }) => {
         console.log(`[yjsProvider] Status: ${status}`);
@@ -154,9 +173,14 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // y-websocket only emits "disconnected" status on first disconnect, but connection-close
     // fires each time, so we track retry attempts here
     const providerWithConnectionClose = provider as unknown as {
-        on(event: "connection-close", handler: (event: unknown) => void): void;
+        on(event: "connection-close", handler: (event: CloseEvent | null) => void): void;
     };
-    providerWithConnectionClose.on("connection-close", () => {
+    providerWithConnectionClose.on("connection-close", (event) => {
+        // Older relays may only close the socket. Keep their established signal.
+        if (event?.reason === LEGACY_OWNER_LEFT_REASON && currentProvider === provider) {
+            handleOwnerLeft();
+            return;
+        }
         console.log(`[yjsProvider] Connection closed (attempt ${currentAttemptCount})`);
         void logAppEvent("warn", "collab", "connection closed", {
             attempt: currentAttemptCount,

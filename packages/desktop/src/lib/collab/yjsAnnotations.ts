@@ -93,6 +93,7 @@ import { Annotation, Transaction } from "@codemirror/state";
  *                  returns null on malformed data; null entries are skipped.
  */
 import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { YjsThreadSchema } from "@quillium/share/collab-contract/annotations";
 import * as Y from "yjs";
 import {
     AnnotationIdMap,
@@ -191,11 +192,12 @@ export function createAnnotationSyncPlugin(
                             const yjsKey = ev.path[0] as string;
                             const cmId = this.idMap.getCmId(yjsKey);
                             if (cmId === undefined) continue;
-                            const threadArr = ev.target as Y.Array<ThreadMessage>;
+                            const thread = YjsThreadSchema.safeParse(ev.target);
+                            if (!thread.success) continue;
                             effects.push(
                                 updateThread.of({
                                     annotationId: cmId,
-                                    newThread: threadArr.toArray(),
+                                    newThread: thread.data,
                                 }),
                             );
                             continue;

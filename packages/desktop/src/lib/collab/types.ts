@@ -11,29 +11,8 @@ import type { WebsocketProvider } from "y-websocket";
 import type * as Y from "yjs";
 import type { AnnotationIdMap } from "./annotationSchema";
 
-/** Recursive Y.Map node representing a collaborative annotation.
- *
- * Runtime shape (keys and their value types):
- *   "id":                 string
- *   "_type":              "comment" | "suggestion" | "revision"
- *   "startPos":           Uint8Array (encoded RelativePosition)
- *   "endPos":             Uint8Array (encoded RelativePosition)
- *   "thread":             Y.Array<ThreadMessage>
- *   "annotations":        Y.Map<YjsAnnotationNode>
- *   "replacements"?:      Y.Array<SuggestionReplacement>  (suggestion only)
- *   "author"?:            string                           (suggestion only)
- *   "versions"?:          Y.Map<string, Y.Map<unknown>>    (revision only; key = version.id)
- *                            each version Y.Map has { text: Y.Text, label?: string,
- *                                                   annotations: Y.Map<YjsAnnotationNode> }
- *   "order"?:             Y.Array<string>                  (revision only; ordered version ids)
- *   "activeVersionId"?:   string                           (revision only)
- *   "activeVersionIndex"?: number                          (legacy revision rooms only)
- *
- * The TypeScript alias is `Y.Map<unknown>` because Yjs does not support
- * discriminated-union typing of child types; runtime validation is the
- * contract. See annotationSchema.ts for the converter invariants.
- */
-export type YjsAnnotationNode = Y.Map<unknown>;
+import type { YjsAnnotationNode } from "@quillium/share/collab-contract/annotations";
+export type { YjsAnnotationNode } from "@quillium/share/collab-contract/annotations";
 
 /** Stable wire representation. Revision ids are Yjs annotation keys, never peer-local CM ids. */
 export type YjsVersionGroup = {

@@ -1,3 +1,15 @@
+import {
+    CUSTOM_CLIENT_LEFT,
+    CUSTOM_OWNER_LEFT,
+    type CustomMessage,
+    LEGACY_OWNER_LEFT_REASON,
+    encodeCustomMessage,
+} from "@quillium/share/collab-contract";
+export {
+    CUSTOM_CLIENT_LEFT,
+    CUSTOM_OWNER_LEFT,
+    MESSAGE_CUSTOM,
+} from "@quillium/share/collab-contract";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import type { WebSocket as WsWebSocket } from "ws";
@@ -27,11 +39,6 @@ const logger = createLogger("yjs");
 // Message type constants
 export const MESSAGE_SYNC = 0;
 export const MESSAGE_AWARENESS = 1;
-export const MESSAGE_CUSTOM = 3;
-
-// Custom message subtypes
-export const CUSTOM_OWNER_LEFT = 1;
-export const CUSTOM_CLIENT_LEFT = 2;
 
 /**
  * Setup Yjs connection for a WebSocket.
@@ -186,7 +193,10 @@ export function setupYjsConnection(
         }
 
         // Broadcast client left
-        broadcastCustomMessage(clients, CUSTOM_CLIENT_LEFT, { userId: clientData.userId });
+        broadcastCustomMessage(clients, {
+            subtype: CUSTOM_CLIENT_LEFT,
+            payload: { userId: clientData.userId },
+        });
 
         logger.info(
             `Client ${clientData.userId.slice(0, 8)}... left room ${room.documentId.slice(0, 8)}...`,
@@ -200,11 +210,11 @@ export function setupYjsConnection(
             );
 
             // Send ownerLeft message to all remaining clients
-            broadcastCustomMessage(clients, CUSTOM_OWNER_LEFT, {});
+            broadcastCustomMessage(clients, { subtype: CUSTOM_OWNER_LEFT, payload: {} });
 
             // Close all client connections
             for (const client of clients) {
-                client.close(1000, "Owner left");
+                client.close(1000, LEGACY_OWNER_LEFT_REASON);
             }
 
             // Per D-55/D-57: Live Room mode — owner's local SQLite is source of truth.
@@ -277,16 +287,8 @@ function handleMessage(
 /**
  * Broadcast custom message to all clients.
  */
-function broadcastCustomMessage(
-    clients: Set<WebSocket>,
-    subtype: number,
-    payload: Record<string, unknown>,
-): void {
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, MESSAGE_CUSTOM);
-    encoding.writeVarUint(encoder, subtype);
-    encoding.writeVarString(encoder, JSON.stringify(payload));
-    const message = encoding.toUint8Array(encoder);
+function broadcastCustomMessage(clients: Set<WebSocket>, customMessage: CustomMessage): void {
+    const message = encodeCustomMessage(customMessage);
 
     for (const client of clients) {
         if (client.readyState === 1) {
