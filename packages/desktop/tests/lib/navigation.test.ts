@@ -1,24 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-    mockCapture,
-    mockDeregisterOpenDoc,
-    mockFlushMetaDebounces,
-    mockFlushPersistQueue,
-    mockGoto,
-} = vi.hoisted(() => ({
+const { mockCapture, mockDeregisterOpenDoc, mockFlushPersistence, mockGoto } = vi.hoisted(() => ({
     mockCapture: vi.fn(),
     mockDeregisterOpenDoc: vi.fn(),
-    mockFlushMetaDebounces: vi.fn(),
-    mockFlushPersistQueue: vi.fn(),
+    mockFlushPersistence: vi.fn(),
     mockGoto: vi.fn(),
 }));
 
 vi.mock("$app/navigation", () => ({ goto: mockGoto }));
 vi.mock("$lib/db", () => ({ deregisterOpenDoc: mockDeregisterOpenDoc }));
 vi.mock("$lib/editor/listeners", () => ({
-    flushMetaDebounces: mockFlushMetaDebounces,
-    flushPersistQueue: mockFlushPersistQueue,
+    flushPersistence: mockFlushPersistence,
 }));
 vi.mock("$lib/posthog", () => ({ default: { capture: mockCapture } }));
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
@@ -31,11 +23,10 @@ describe("navigation helpers", () => {
     beforeEach(() => {
         mockCapture.mockClear();
         mockDeregisterOpenDoc.mockReset();
-        mockFlushMetaDebounces.mockClear();
-        mockFlushPersistQueue.mockReset();
+        mockFlushPersistence.mockReset();
         mockGoto.mockReset();
         mockDeregisterOpenDoc.mockResolvedValue(undefined);
-        mockFlushPersistQueue.mockResolvedValue(undefined);
+        mockFlushPersistence.mockResolvedValue(undefined);
         mockGoto.mockResolvedValue(undefined);
         document.documentElement.removeAttribute("data-direction");
     });
@@ -46,10 +37,9 @@ describe("navigation helpers", () => {
         expect(document.documentElement.getAttribute("data-direction")).toBe("left");
         expect(mockCapture).toHaveBeenCalledWith("navigated_to_library");
         expect(mockDeregisterOpenDoc).toHaveBeenCalledWith("main-window");
-        expect(mockFlushMetaDebounces).toHaveBeenCalledTimes(1);
-        expect(mockFlushPersistQueue).toHaveBeenCalledTimes(1);
+        expect(mockFlushPersistence).toHaveBeenCalledTimes(1);
         expect(mockGoto).toHaveBeenCalledWith("/library");
-        expect(mockFlushPersistQueue.mock.invocationCallOrder[0]).toBeLessThan(
+        expect(mockFlushPersistence.mock.invocationCallOrder[0]).toBeLessThan(
             mockGoto.mock.invocationCallOrder[0],
         );
     });
@@ -62,10 +52,23 @@ describe("navigation helpers", () => {
 
         expect(document.documentElement.getAttribute("data-direction")).toBe("left");
         expect(mockCapture).toHaveBeenCalledWith(event);
-        expect(mockFlushMetaDebounces).toHaveBeenCalledTimes(1);
-        expect(mockFlushPersistQueue).toHaveBeenCalledTimes(1);
+        expect(mockFlushPersistence).toHaveBeenCalledTimes(1);
         expect(mockGoto).toHaveBeenCalledWith(path);
         expect(mockDeregisterOpenDoc).not.toHaveBeenCalled();
+    });
+
+    it("waits for persistence completion before navigating", async () => {
+        let finish!: () => void;
+        mockFlushPersistence.mockReturnValue(
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        const navigation = goToLibrary();
+        expect(mockGoto).not.toHaveBeenCalled();
+        finish();
+        await navigation;
+        expect(mockGoto).toHaveBeenCalledWith("/library");
     });
 
     it("goes back to the editor without waiting on persistence helpers", async () => {
@@ -73,8 +76,7 @@ describe("navigation helpers", () => {
 
         expect(document.documentElement.getAttribute("data-direction")).toBe("right");
         expect(mockCapture).toHaveBeenCalledWith("navigated_to_editor");
-        expect(mockFlushMetaDebounces).not.toHaveBeenCalled();
-        expect(mockFlushPersistQueue).not.toHaveBeenCalled();
+        expect(mockFlushPersistence).not.toHaveBeenCalled();
         expect(mockGoto).toHaveBeenCalledWith("/");
     });
 });

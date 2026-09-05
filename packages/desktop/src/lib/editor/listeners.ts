@@ -59,6 +59,7 @@ import {
  *   - ./plugins/annotations (addAnnotation, removeAnnotation, updateThread,
  *     annotationsChanged)
  */
+import { documentMetadata, titleForDocument } from "./documentMetadata";
 import { savedFields } from "./extensions";
 import {
     deserializeHistoryEffect,
@@ -92,11 +93,13 @@ export interface ListenerOptions {
 // ── Debounce timers ───────────────────────────────────────────────
 type PendingMeta = {
     timer: ReturnType<typeof setTimeout>;
+    title: string;
     docText: string;
     wordCount: number;
     previewText: string;
 };
 const metaDebounceTimers = new Map<string, PendingMeta>();
+const metaWrites = new Set<Promise<void>>();
 // Only show "Saving…" if the write takes longer than this threshold.
 // This keeps the indicator on "Saved" during normal fast writes.
 let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -557,8 +560,11 @@ function persistTransaction(update: ViewUpdate): void {
 
     const enqueueDocId = get(currentDocumentId);
     const enqueueDraftId = get(currentDraftId);
+    const enqueueTitle = get(currentDocumentTitle);
     persistQueue = persistQueue
-        .then(() => doAppend(update, enqueueDocId, enqueueDraftId))
+        .then(() =>
+            doAppend(update, { docId: enqueueDocId, draftId: enqueueDraftId, title: enqueueTitle }),
+        )
         .catch(() => {});
 }
 
@@ -665,28 +671,28 @@ async function createAutosaveSnapshot(
     }
 }
 
-async function doAppend(
+function autosavePolicy(
     update: ViewUpdate,
-    enqueueDocId: string | null,
-    enqueueDraftId: string | null,
-) {
-    if (!enqueueDocId || !enqueueDraftId) return;
-    if (get(currentDocumentId) !== enqueueDocId) return;
-    const docId = enqueueDocId;
-    const draftId = enqueueDraftId;
-
-    const payload = buildEventPayload(update);
-    if (!payload) return;
+    payload: EventPayload,
+): {
+    beforeRevision: boolean;
+    beforeDeletion: boolean;
+    afterComment: boolean;
+} {
     const isUndoRedo = isUndoRedoUpdate(update);
-    const shouldSnapshotBeforeRevision =
-        !isUndoRedo && payloadAddsAnnotationOfType(payload, "revision");
-    const shouldSnapshotAfterComment =
-        !isUndoRedo && payloadAddsAnnotationOfType(payload, "comment");
-    const removedText = deletionAmount(update);
-    const directUserRemovedText = deletionAmount(update, true);
-    const shouldSnapshotBeforeDeletion = shouldSaveBeforeDeletion(removedText);
+    return {
+        beforeRevision: !isUndoRedo && payloadAddsAnnotationOfType(payload, "revision"),
+        beforeDeletion: shouldSaveBeforeDeletion(deletionAmount(update)),
+        afterComment: !isUndoRedo && payloadAddsAnnotationOfType(payload, "comment"),
+    };
+}
 
-    if (shouldSnapshotBeforeRevision) {
+async function snapshotBeforeChange(
+    update: ViewUpdate,
+    draftId: string,
+    policy: ReturnType<typeof autosavePolicy>,
+): Promise<void> {
+    if (policy.beforeRevision) {
         await createAutosaveSnapshot(
             draftId,
             JSON.stringify(update.startState.toJSON(savedFields)),
@@ -695,7 +701,7 @@ async function doAppend(
         );
     }
 
-    if (shouldSnapshotBeforeDeletion && !shouldSnapshotBeforeRevision) {
+    if (policy.beforeDeletion && !policy.beforeRevision) {
         await createSnapshot(
             draftId,
             JSON.stringify(update.startState.toJSON(savedFields)),
@@ -705,8 +711,10 @@ async function doAppend(
             captureException(e);
         });
     }
+}
 
-    if (deletionBurstTracker.record(draftId, directUserRemovedText)) {
+function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: boolean): void {
+    if (deletionBurstTracker.record(draftId, deletionAmount(update, true))) {
         toast.info("Deleting a lot of text?", {
             description:
                 "Try a revision to keep alternate passages close at hand instead of digging through version history.",
@@ -719,7 +727,7 @@ async function doAppend(
     // If suspicious, snapshot the pre-deletion state so version history
     // has a guaranteed recovery point. Skip if every doc-changing
     // transaction is an explicit user delete or a crash-restore operation.
-    if (update.docChanged && !shouldSnapshotBeforeRevision) {
+    if (update.docChanged && !beforeRevision) {
         const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
             .every((tr) => tr.isUserEvent("delete") || tr.isUserEvent("input.restore"));
@@ -772,105 +780,124 @@ async function doAppend(
             }
         }
     }
+}
 
-    // Only flip to "Saving…" if the write hasn't resolved within 150 ms.
-    // Fast writes (the common case) stay on "Saved" the whole time.
+function isActiveDraft(docId: string, draftId: string): boolean {
+    return get(currentDocumentId) === docId && get(currentDraftId) === draftId;
+}
+
+function clearSavingIndicator(): void {
     if (savingIndicatorTimer !== null) clearTimeout(savingIndicatorTimer);
-    const scheduledDocId = docId;
-    const scheduledDraftId = draftId;
+    savingIndicatorTimer = null;
+}
+
+function showSavingAfterDelay(docId: string, draftId: string): void {
+    clearSavingIndicator();
     savingIndicatorTimer = setTimeout(() => {
-        try {
-            // Guard: abort if the user has navigated to a different document or draft.
-            if (
-                get(currentDocumentId) !== scheduledDocId ||
-                get(currentDraftId) !== scheduledDraftId
-            ) {
-                return;
-            }
-            saveStatus.set("saving");
-        } finally {
-            savingIndicatorTimer = null;
-        }
+        savingIndicatorTimer = null;
+        if (isActiveDraft(docId, draftId)) saveStatus.set("saving");
     }, 150);
+}
+
+/** Call after draining persistence and loading a draft's snapshot and events. */
+export function seedPersistenceBookkeeping(eventId = -1): void {
+    clearSavingIndicator();
+    lastPersistedEventId.set(eventId);
+    lastSavedAt.set(null);
+    saveStatus.set("saved");
+}
+
+async function snapshotAfterChange(
+    update: ViewUpdate,
+    draftId: string,
+    result: { eventId: number; needsSnapshot: boolean },
+    afterComment: boolean,
+): Promise<void> {
+    const wroteCommentSnapshot = afterComment
+        ? await createAutosaveSnapshot(
+              draftId,
+              JSON.stringify(update.state.toJSON(savedFields)),
+              result.eventId,
+              "After comment annotation (auto)",
+          )
+        : false;
+
+    if (result.needsSnapshot && !wroteCommentSnapshot) {
+        const stateJson = JSON.stringify(update.state.toJSON(savedFields));
+        await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
+            console.error(e);
+            captureException(e);
+        });
+    }
+}
+
+async function doAppend(
+    update: ViewUpdate,
+    { docId, draftId, title }: { docId: string | null; draftId: string | null; title: string },
+): Promise<void> {
+    if (!docId || !draftId || get(currentDocumentId) !== docId) return;
+    const payload = buildEventPayload(update);
+    if (!payload) return;
+    const policy = autosavePolicy(update, payload);
+    await snapshotBeforeChange(update, draftId, policy);
+    guardRecovery(update, draftId, policy.beforeRevision);
+    showSavingAfterDelay(docId, draftId);
+
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
-        if (savingIndicatorTimer !== null) {
-            clearTimeout(savingIndicatorTimer);
-            savingIndicatorTimer = null;
+        clearSavingIndicator();
+        if (isActiveDraft(docId, draftId)) {
+            lastPersistedEventId.set(result.eventId);
+            lastSavedAt.set(Date.now());
         }
-
-        lastPersistedEventId.set(result.eventId);
-        lastSavedAt.set(Date.now());
-
-        const wroteCommentSnapshot = shouldSnapshotAfterComment
-            ? await createAutosaveSnapshot(
-                  draftId,
-                  JSON.stringify(update.state.toJSON(savedFields)),
-                  result.eventId,
-                  "After comment annotation (auto)",
-              )
-            : false;
-
-        if (result.needsSnapshot && !wroteCommentSnapshot) {
-            const stateJson = JSON.stringify(update.state.toJSON(savedFields));
-            await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
-                console.error(e);
-                captureException(e);
-            });
-        }
-
-        saveStatus.set("saved");
+        await snapshotAfterChange(update, draftId, result, policy.afterComment);
+        if (isActiveDraft(docId, draftId)) saveStatus.set("saved");
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);
         captureException(e);
-        if (savingIndicatorTimer !== null) {
-            clearTimeout(savingIndicatorTimer);
-            savingIndicatorTimer = null;
-        }
-        saveStatus.set("error");
+        clearSavingIndicator();
+        if (isActiveDraft(docId, draftId)) saveStatus.set("error");
         return;
     }
 
+    scheduleMetadata(update, docId, title);
+}
+
+function scheduleMetadata(update: ViewUpdate, docId: string, title: string): void {
     // Debounce metadata update (title, word count, preview).
     // Capture derived values now so the timer closure doesn't read
     // update.view.state, which may belong to a different document by
     // the time the 500 ms fires.
     const docText = update.state.doc.toString();
-    const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
+    const { wordCount, previewText } = documentMetadata(docText);
     if (update.docChanged) recordWritingActivity(wordCount);
-    const previewText = docText.slice(0, 200);
     const prev = metaDebounceTimers.get(docId);
     if (prev !== undefined) clearTimeout(prev.timer);
     const timer = setTimeout(() => {
         metaDebounceTimers.delete(docId);
         // Guard: abort if the user has navigated to a different document.
         if (get(currentDocumentId) !== docId) return;
-        writeMeta(docId, docText, wordCount, previewText);
+        void writeMeta(docId, { title, docText, wordCount, previewText });
     }, 500);
-    metaDebounceTimers.set(docId, { timer, docText, wordCount, previewText });
+    metaDebounceTimers.set(docId, { timer, title, docText, wordCount, previewText });
 }
 
-function writeMeta(docId: string, docText: string, wordCount: number, previewText: string): void {
-    // Auto-derive title once from the first line, but only while the
-    // title is still "Untitled" and the first line looks ready:
-    //   - user pressed Enter (first line ends / second line exists), OR
-    //   - first line has at least 4 words (enough to be a real title)
-    // After this fires once, the title is owned by the user/AI.
-    let title = get(currentDocumentTitle);
-    if (title === "Untitled") {
-        const firstLine = docText.split("\n")[0].trim();
-        const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
-        const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
-        if (firstLineComplete && firstLine) {
-            title = firstLine.slice(0, 40);
-            currentDocumentTitle.set(title);
-        }
-    }
+function writeMeta(docId: string, pending: Omit<PendingMeta, "timer">): Promise<void> {
+    const { docText, wordCount, previewText } = pending;
+    const active = get(currentDocumentId) === docId;
+    const currentTitle = active ? get(currentDocumentTitle) : pending.title;
+    const title = titleForDocument(currentTitle, docText);
+    if (active && title !== currentTitle) currentDocumentTitle.set(title);
     // docText doubles as the search-index body (FTS + semantic chunks).
-    updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch((e) => {
-        console.error(e);
-        captureException(e);
-    });
+    const write = updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch(
+        (e) => {
+            console.error(e);
+            captureException(e);
+        },
+    );
+    metaWrites.add(write);
+    void write.finally(() => metaWrites.delete(write));
+    return write;
 }
 
 /**
@@ -879,12 +906,19 @@ function writeMeta(docId: string, docText: string, wordCount: number, previewTex
  * so the library view reflects the latest edits without waiting for
  * the 500 ms debounce.
  */
-export function flushMetaDebounces(): void {
+export async function flushMetaDebounces(): Promise<void> {
     for (const [docId, pending] of metaDebounceTimers) {
         clearTimeout(pending.timer);
-        writeMeta(docId, pending.docText, pending.wordCount, pending.previewText);
+        void writeMeta(docId, pending);
     }
     metaDebounceTimers.clear();
+    await Promise.all(metaWrites);
+}
+
+/** Drain event writes before metadata: appends can schedule a new metadata debounce. */
+export async function flushPersistence(): Promise<void> {
+    await flushPersistQueue();
+    await flushMetaDebounces();
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────

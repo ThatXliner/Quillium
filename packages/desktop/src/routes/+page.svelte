@@ -35,7 +35,6 @@ import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
 import { APP_STORE_URL, LATEST_DESKTOP_RELEASE_URL } from "$lib/constants";
-import type { EventPayload } from "$lib/db/events";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
@@ -56,11 +55,7 @@ import {
 import { FOCUS_CONTROLS_HIDE_DELAY_MS, isFocusModeShortcut } from "$lib/focusMode";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
-import {
-    appSettings,
-    getPersistUndoHistoryForNewDocuments,
-    updateSettings,
-} from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     currentDocumentId,
     editorView,
@@ -591,21 +586,7 @@ onMount(() => {
 if (import.meta.env.DEV) {
     onMount(async () => {
         const { scenarios } = await import("$lib/debug/scenarios");
-        const { EditorState } = await import("@codemirror/state");
-        const { EditorView } = await import("@codemirror/view");
-        const { getExtensions, savedFields } = await import("$lib/editor/extensions");
-        const {
-            resetDb,
-            createDocument,
-            createDraft,
-            appendEvent,
-            createSnapshot,
-            updateDocumentMeta,
-        } = await import("$lib/db");
-        const { buildEventPayload } = await import("$lib/editor/listeners");
-        const { currentDocumentId, currentDocumentTitle, currentDraftId } = await import(
-            "$lib/stores"
-        );
+        const { loadScenario } = await import("$lib/debug/loadScenario");
 
         const { createRevision } = await import("$lib/editor/plugins/annotations");
 
@@ -623,57 +604,7 @@ if (import.meta.env.DEV) {
                 return false;
             }
             try {
-                const collectedPayloads: EventPayload[] = [];
-                const persistHistory = getPersistUndoHistoryForNewDocuments();
-
-                const tempState = EditorState.create({
-                    doc: scenario.doc,
-                    extensions: getExtensions({
-                        persist: false,
-                        persistHistory,
-                        updateListener(update) {
-                            const payload = buildEventPayload(update);
-                            if (payload) collectedPayloads.push(payload);
-                        },
-                    }),
-                });
-                const tempParent = document.createElement("div");
-                const tempView = new EditorView({ state: tempState, parent: tempParent });
-                scenario.setup(tempView);
-                const finalState = tempView.state;
-                tempView.destroy();
-
-                await resetDb();
-                const docId = await createDocument(scenario.label, persistHistory);
-                const draftId = await createDraft(docId, "Draft");
-
-                let lastEventId = -1;
-                for (const payload of collectedPayloads) {
-                    const result = await appendEvent(draftId, JSON.stringify(payload));
-                    lastEventId = result.eventId;
-                }
-
-                const stateJson = JSON.stringify(finalState.toJSON(savedFields));
-                await createSnapshot(draftId, stateJson, lastEventId);
-
-                const docText = finalState.doc.toString();
-                const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
-                await updateDocumentMeta(
-                    docId,
-                    scenario.label,
-                    wordCount,
-                    docText.slice(0, 200),
-                    "[]",
-                    docText,
-                );
-
-                // Set stores after snapshot is written to avoid a race
-                // where the Editor subscription loads an empty state.
-                currentDocumentId.set(docId);
-                currentDocumentTitle.set(scenario.label);
-                currentDraftId.set(draftId);
-
-                await editorComponent?.reload();
+                await loadScenario(scenario, () => editorComponent?.reload());
                 return true;
             } catch (e) {
                 console.error("[screenshot] runScenario failed:", e);
