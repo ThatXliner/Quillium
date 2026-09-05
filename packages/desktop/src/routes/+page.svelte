@@ -114,7 +114,7 @@ import { executableDir } from "@tauri-apps/api/path";
 import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
-// set it immediately so Editor.svelte's fromSave picks it up on mount.
+// set it immediately so the document loader picks it up on mount.
 const initialDocId = page.url.searchParams.get("doc");
 if (initialDocId) {
     currentDocumentId.set(initialDocId);
@@ -175,11 +175,13 @@ let editorComponent = $state<{
     createNewTab: () => Promise<void>;
 }>();
 
+const showSample = !localStorage.getItem("quillium_tutorial_seen");
+
 const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
 /** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
-    if (!localStorage.getItem("quillium_tutorial_seen")) {
+    if (showSample) {
         $tutorialActive = true;
     } else if (!betaAccepted()) {
         // Tutorial already seen (e.g. returning user from private beta),
@@ -650,7 +652,7 @@ if (import.meta.env.DEV) {
 </div>
 
 <div class="h-screen w-full">
-    <Editor bind:this={editorComponent} {focusMode} {focusControlsVisible} />
+    <Editor bind:this={editorComponent} {showSample} {focusMode} {focusControlsVisible} />
 </div>
 
 {#if focusMode}
