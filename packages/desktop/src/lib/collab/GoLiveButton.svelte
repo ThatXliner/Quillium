@@ -39,7 +39,7 @@ import { withoutTransientShareSelection } from "$lib/collab/shareState";
 import { getActiveDraft, listTabDrafts, listTabs, loadDocumentState } from "$lib/db";
 import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     annotations,
     currentDocumentId,
@@ -320,24 +320,23 @@ async function buildPublishPayload(scope: ReadonlyShareScope = shareScope) {
 }
 
 function setReadonlyShareAutoUpdate(enabled: boolean) {
-    appSettings.readonlyShareAutoUpdate = enabled;
-    appSettings.readonlyShareAutoUpdateDebounceMs = autoUpdateDebounceMs;
+    updateSettings({
+        readonlyShareAutoUpdate: enabled,
+        readonlyShareAutoUpdateDebounceMs: autoUpdateDebounceMs,
+    });
     publisher.failedFingerprint = "";
-    persistSettings();
     posthog.capture("readonly_share_auto_update_toggled", { enabled });
 }
 
 function handleAutoUpdateDebounceInput(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
-    appSettings.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
-        Number(input.value) * 1000,
-    );
-    persistSettings();
+    updateSettings({ readonlyShareAutoUpdateDebounceMs: Number(input.value) * 1000 });
 }
 
 function resetAutoUpdateDebounce() {
-    appSettings.readonlyShareAutoUpdateDebounceMs = READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS;
-    persistSettings();
+    updateSettings({
+        readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    });
 }
 
 async function copyReadonlyLink() {

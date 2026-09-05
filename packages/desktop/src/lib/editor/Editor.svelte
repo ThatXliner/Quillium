@@ -22,7 +22,7 @@ import posthog from "$lib/posthog";
 import {
     appSettings,
     getPersistUndoHistoryForNewDocuments,
-    persistSettings,
+    updateSettings,
 } from "$lib/settings.svelte";
 import {
     activeAnnotation,
@@ -300,8 +300,9 @@ async function runContextMenuEditCommand(command: EditorEditCommand): Promise<vo
     }
 }
 
+let draggedDraftPanelWidth = $state<number | null>(null);
 const effectiveDraftPanelWidth = $derived(
-    clampDraftPanelWidth(appSettings.draftPanelWidth, viewportWidth),
+    clampDraftPanelWidth(draggedDraftPanelWidth ?? appSettings.draftPanelWidth, viewportWidth),
 );
 const draftPanelMaxWidth = $derived(getDraftPanelMaxWidth(viewportWidth));
 const draftPanelIsFullWidth = $derived(effectiveDraftPanelWidth === draftPanelMaxWidth);
@@ -313,14 +314,17 @@ const draftPanelDragOptions: PointerDragOptions = {
         draftPanelDragStartWidth = effectiveDraftPanelWidth;
     },
     onMove: (dx) => {
-        appSettings.draftPanelWidth = clampDraftPanelWidth(
+        draggedDraftPanelWidth = clampDraftPanelWidth(
             draftPanelDragStartWidth - dx,
             viewportWidth,
         );
     },
     onEnd: () => {
         resizingDraftPanel = false;
-        persistSettings();
+        if (draggedDraftPanelWidth !== null) {
+            updateSettings({ draftPanelWidth: draggedDraftPanelWidth });
+            draggedDraftPanelWidth = null;
+        }
     },
 };
 
@@ -333,20 +337,17 @@ function handleDraftPanelResizeKeydown(event: KeyboardEvent): void {
     );
     if (width === null) return;
     event.preventDefault();
-    appSettings.draftPanelWidth = width;
-    persistSettings();
+    updateSettings({ draftPanelWidth: width });
 }
 
 function resetDraftPanelWidth(): void {
-    appSettings.draftPanelWidth = DRAFT_PANEL_DEFAULT_WIDTH;
-    persistSettings();
+    updateSettings({ draftPanelWidth: DRAFT_PANEL_DEFAULT_WIDTH });
 }
 
 function toggleDraftPanelFullWidth(): void {
-    appSettings.draftPanelWidth = draftPanelIsFullWidth
-        ? DRAFT_PANEL_DEFAULT_WIDTH
-        : draftPanelMaxWidth;
-    persistSettings();
+    updateSettings({
+        draftPanelWidth: draftPanelIsFullWidth ? DRAFT_PANEL_DEFAULT_WIDTH : draftPanelMaxWidth,
+    });
 }
 
 $effect(() => {

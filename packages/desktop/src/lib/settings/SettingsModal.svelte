@@ -7,7 +7,7 @@
     row primitives (SettingToggle, SettingSegmented, SettingSlider,
     FontPickerRow). Shared row styles live in ./settings.css.
 
-    Live apply: every change is applied immediately via applySettings().
+    Live apply: every change is applied immediately via previewSettings().
     Save: persists to localStorage. Close without saving: shake +
     fading red ring on the modal (same pattern as annotation alerts).
     Unsaved changes revert on discard.
@@ -35,7 +35,7 @@ import { appEventBus } from "$lib/events/appEventBus";
 import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
-import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, previewSettings, updateSettings } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
@@ -191,7 +191,7 @@ $effect(() => {
 });
 
 function handleChange() {
-    applySettings(draft);
+    previewSettings(draft);
 }
 
 function save() {
@@ -200,8 +200,7 @@ function save() {
     // const shareDocChanged =
     //     appSettings.shareDocumentAnalytics !== draft.shareDocumentAnalytics ||
     //     appSettings.shareDocumentKey !== draft.shareDocumentKey;
-    Object.assign(appSettings, draft);
-    persistSettings();
+    updateSettings(draft);
 
     // Reconfigure Harper grammar checker; always reset so the dictionary
     // starts clean (removed words are evicted), then re-import the full list.
@@ -268,7 +267,7 @@ function save() {
 }
 
 function discard() {
-    applySettings(savedSnapshot);
+    previewSettings(savedSnapshot);
     dictionaryWords = [...savedDictionaryWords];
     onclose();
 }

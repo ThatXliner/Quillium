@@ -37,7 +37,7 @@ const mockAppSettings = {
 
 vi.mock("$lib/settings.svelte", () => ({
     appSettings: mockAppSettings,
-    applySettings: vi.fn(),
+    previewSettings: vi.fn(),
     getPersistUndoHistoryForNewDocuments: () => false,
-    persistSettings: vi.fn(),
+    updateSettings: vi.fn((patch) => Object.assign(mockAppSettings, patch)),
 }));

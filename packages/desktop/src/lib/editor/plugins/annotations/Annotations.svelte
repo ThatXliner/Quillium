@@ -15,7 +15,7 @@ import {
     ANNOTATION_PANEL_MAX_WIDTH,
     ANNOTATION_PANEL_MIN_WIDTH,
     appSettings,
-    persistSettings,
+    updateSettings,
 } from "$lib/settings.svelte";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -283,7 +283,7 @@ function getAnnotationLeft(): number {
 function getPanelWidth(): number {
     return Math.min(
         ANNOTATION_PANEL_MAX_WIDTH,
-        Math.max(ANNOTATION_PANEL_MIN_WIDTH, appSettings.annotationPanelWidth),
+        Math.max(ANNOTATION_PANEL_MIN_WIDTH, panelWidth),
     );
 }
 
@@ -506,7 +506,7 @@ $effect(() => {
 
 $effect(() => {
     if (!isFloating) return;
-    void appSettings.annotationPanelWidth;
+    void panelWidth;
     // Re-run when the layout mode flips (settings change, AI toggled, or a
     // resize crossing the two-column fit threshold) so the new column set
     // is laid out after the template mounts/unmounts containers.
@@ -647,31 +647,33 @@ function getColumnGeometry(col: Column): { left: number; width: number; topClamp
 // unmount cleanup) is the shared pointerDrag action — same as the AI
 // sidebar's resize handles. Only the width semantics live here.
 let panelDragStartWidth = 0;
+let draggedPanelWidth = $state<number | null>(null);
+const panelWidth = $derived(draggedPanelWidth ?? appSettings.annotationPanelWidth);
 const panelDragOptions: PointerDragOptions = {
     cursor: "ew-resize",
     onStart: () => {
         resizingPanel = true;
-        panelDragStartWidth = appSettings.annotationPanelWidth;
+        panelDragStartWidth = panelWidth;
     },
     onMove: (dx) => {
-        appSettings.annotationPanelWidth = Math.min(
+        draggedPanelWidth = Math.min(
             ANNOTATION_PANEL_MAX_WIDTH,
             Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(panelDragStartWidth + dx)),
         );
     },
     onEnd: () => {
         resizingPanel = false;
-        persistSettings();
+        if (draggedPanelWidth !== null) {
+            updateSettings({ annotationPanelWidth: draggedPanelWidth });
+            draggedPanelWidth = null;
+        }
     },
 };
 
-const isCustomPanelWidth = $derived(
-    appSettings.annotationPanelWidth !== ANNOTATION_PANEL_DEFAULT_WIDTH,
-);
+const isCustomPanelWidth = $derived(panelWidth !== ANNOTATION_PANEL_DEFAULT_WIDTH);
 
 function resetPanelWidth() {
-    appSettings.annotationPanelWidth = ANNOTATION_PANEL_DEFAULT_WIDTH;
-    persistSettings();
+    updateSettings({ annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH });
 }
 
 /**
@@ -838,8 +840,7 @@ onDestroy(() => annotationColumnDom.destroy());
                 type="button"
                 class="mt-1 text-[11px] text-black/30 hover:text-black/50 transition-colors text-left cursor-pointer"
                 onclick={() => {
-                    appSettings.showShortcutHints = false;
-                    persistSettings();
+                    updateSettings({ showShortcutHints: false });
                     posthog.capture("shortcut_hints_hidden");
                 }}
             >Hide hints</button>

@@ -2,7 +2,7 @@
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog, { capture, showFeedbackSurvey } from "$lib/posthog";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import { linkAnchor, versionGroups } from "$lib/stores";
 import { modalStack } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -133,13 +133,11 @@ function currentVersionMatchesPrevious(current: Annotation<"revision">): boolean
 }
 
 function neverShowDuplicateDraftWarning(): void {
-    appSettings.warnBeforeDraftAfterIdenticalVersion = false;
-    persistSettings();
+    updateSettings({ warnBeforeDraftAfterIdenticalVersion: false });
 }
 
 function hideDuplicateDraftWarningForOneHour(): void {
-    appSettings.duplicateDraftWarningHiddenUntil = duplicateDraftWarningSnoozeUntil();
-    persistSettings();
+    updateSettings({ duplicateDraftWarningHiddenUntil: duplicateDraftWarningSnoozeUntil() });
 }
 
 async function createVersion(): Promise<void> {

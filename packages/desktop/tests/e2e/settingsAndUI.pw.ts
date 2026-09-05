@@ -34,6 +34,41 @@ test.describe("settings modal", () => {
         });
     });
 
+    test("previews appearance, cancels without saving, and persists on Save", async ({ page }) => {
+        const q = new QuilliumPage(page, { settings: { docFontSize: 18 } });
+        await q.init();
+        const persisted = await page.evaluate(() => localStorage.getItem("quillium-app-settings"));
+        let modal = await q.openSettings();
+        const fontSize = () =>
+            modal
+                .locator(".setting-row")
+                .filter({
+                    has: page.locator(".setting-title", { hasText: /^Font size$/ }),
+                })
+                .getByRole("slider");
+        await fontSize().fill("22");
+        await expect(page.locator("html")).toHaveCSS("--doc-font-size", "22px");
+        expect(await page.evaluate(() => localStorage.getItem("quillium-app-settings"))).toBe(
+            persisted,
+        );
+        await modal.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(page.locator("html")).toHaveCSS("--doc-font-size", "18px");
+        expect(await page.evaluate(() => localStorage.getItem("quillium-app-settings"))).toBe(
+            persisted,
+        );
+
+        modal = await q.openSettings();
+        await fontSize().fill("21");
+        await modal.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(page.locator("html")).toHaveCSS("--doc-font-size", "21px");
+        expect(
+            await page.evaluate(
+                () => JSON.parse(localStorage.getItem("quillium-app-settings") ?? "{}").docFontSize,
+            ),
+        ).toBe(21);
+        q.expectNoPageErrors();
+    });
+
     test("switches editor mode to plain text", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
@@ -44,6 +79,39 @@ test.describe("settings modal", () => {
 
         await expect(page.getByText("Markdown")).not.toBeVisible();
     });
+});
+
+test("annotation panel previews a drag and saves only on release", async ({ page }) => {
+    await page.setViewportSize({ width: 2000, height: 900 });
+    const q = new QuilliumPage(page, {
+        settings: { annotationLayout: "single", annotationPanelWidth: 280 },
+        initialDoc: "A sentence with a comment.",
+    });
+    await q.init();
+    await q.selectRange(0, 10);
+    await q.createComment();
+    await q.submitComment("A note.");
+    const handle = page.getByRole("separator", { name: "Resize annotations panel" });
+    const panel = page.locator(".annotation-scroll-container");
+    await expect(panel).toHaveCSS("width", "280px");
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+    const storedWidth = () =>
+        page.evaluate(
+            () =>
+                JSON.parse(localStorage.getItem("quillium-app-settings") ?? "{}")
+                    .annotationPanelWidth,
+        );
+    // Only the inner edge of the handle is inside the scroll container clip.
+    await page.mouse.move(box!.x + 1, box!.y + 30);
+    await page.mouse.down();
+    await expect(handle).toHaveClass(/is-resizing/);
+    await page.mouse.move(box!.x + 41, box!.y + 30);
+    await expect(panel).toHaveCSS("width", "320px");
+    expect(await storedWidth()).toBe(280);
+    await page.mouse.up();
+    expect(await storedWidth()).toBe(320);
+    q.expectNoPageErrors();
 });
 
 // ── AI sidebar ──────────────────────────────────────────────────────────────

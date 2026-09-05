@@ -7,15 +7,14 @@
     Visibility controlled by appSettings.showWordCount.
 -->
 <script lang="ts">
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import { writingStats } from "$lib/stores";
 
 const modes = ["words", "chars", "both"] as const;
 
 function cycleMode() {
     const next = modes[(modes.indexOf(appSettings.wordCountDisplayMode) + 1) % modes.length];
-    appSettings.wordCountDisplayMode = next;
-    persistSettings();
+    updateSettings({ wordCountDisplayMode: next });
 }
 
 const label = $derived.by(() => {
