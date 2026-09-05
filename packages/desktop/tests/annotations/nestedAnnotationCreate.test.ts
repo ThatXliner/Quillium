@@ -15,7 +15,7 @@ import {
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { appSettings } from "$lib/settings.svelte";
+import { updateSettings } from "$lib/settings.svelte";
 import { type NestedEditorCommand, modalStack } from "$lib/stores";
 
 function createView(doc: string) {
@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    appSettings.showNestedEditor = true;
+    updateSettings({ showNestedEditor: true });
     for (const c of components) c.destroy();
     components = [];
     for (const v of views) v.destroy();
@@ -120,7 +120,7 @@ describe.skip("nested annotation creation routing", () => {
     });
 
     it("RevisionModal respects showNestedEditor=true and does not push a child modal", async () => {
-        appSettings.showNestedEditor = true;
+        updateSettings({ showNestedEditor: true });
         const view = createView("hello world");
         views.push(view);
         const revisionId = addRevision(view, 0, 5, "hello");
@@ -158,7 +158,7 @@ describe.skip("nested annotation creation routing", () => {
     });
 
     it("RevisionModal pushes a child modal when showNestedEditor=false", async () => {
-        appSettings.showNestedEditor = false;
+        updateSettings({ showNestedEditor: false });
         const view = createView("hello world");
         views.push(view);
         const revisionId = addRevision(view, 0, 5, "hello");

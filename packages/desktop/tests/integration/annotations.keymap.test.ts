@@ -11,7 +11,7 @@ import {
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { appSettings } from "$lib/settings.svelte";
+import { updateSettings } from "$lib/settings.svelte";
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -71,10 +71,10 @@ let view: EditorView | undefined;
 let unsubs: (() => void)[] = [];
 
 beforeEach(() => {
-    appSettings.atomicRevisions = true;
-    appSettings.showNestedEditor = false;
-    appSettings.selectTextInNestedEditor = true;
-    appSettings.autoVersionOnRevisionCreate = true;
+    updateSettings({ atomicRevisions: true });
+    updateSettings({ showNestedEditor: false });
+    updateSettings({ selectTextInNestedEditor: true });
+    updateSettings({ autoVersionOnRevisionCreate: true });
 });
 
 afterEach(() => {
@@ -211,7 +211,7 @@ describe("annotation keymap integration", () => {
     });
 
     it("Mod-Alt-k requests a caret even when automatic selection is disabled", () => {
-        appSettings.selectTextInNestedEditor = false;
+        updateSettings({ selectTextInNestedEditor: false });
         view = createView("Alpha Beta Gamma");
 
         view.dispatch({ selection: { anchor: 0, head: 5 } });

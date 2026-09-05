@@ -1,6 +1,6 @@
 <script lang="ts">
 import { documentContext } from "$lib/ai/settings.svelte";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
@@ -71,8 +71,7 @@ const showContextSummary = $derived(
 );
 
 function hideContextSummary() {
-    appSettings.collapseContextSummary = true;
-    persistSettings();
+    updateSettings({ collapseContextSummary: true });
 }
 
 const theme = $derived(

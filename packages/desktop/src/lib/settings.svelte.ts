@@ -22,15 +22,7 @@ const STORAGE_KEY = "quillium-app-settings";
  * storage must choose the safer session-only default.
  */
 export function getPersistUndoHistoryForNewDocuments(): boolean {
-    try {
-        if (typeof localStorage === "undefined") return false;
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return false;
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        return parsed.persistUndoHistoryForNewDocuments === true;
-    } catch {
-        return false;
-    }
+    return readStoredSettings()?.persistUndoHistoryForNewDocuments === true;
 }
 
 // Clamp bounds + default for the floating annotation panel width. Exported so
@@ -138,71 +130,84 @@ const DEFAULTS: AppSettings = {
     annotationLayout: "visual-split",
 };
 
-function loadSettings(): AppSettings {
+function readStoredSettings(): Partial<AppSettings> | undefined {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { ...DEFAULTS };
-        let parsed = JSON.parse(raw);
-        // Migrate legacy alwaysShowTitle boolean
-        if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
-            const { alwaysShowTitle, ...rest } = parsed;
-            parsed = {
-                ...rest,
-                titleVisibility: alwaysShowTitle ? "always" : "hover",
-            };
-        }
-        const merged = { ...DEFAULTS, ...parsed };
-        if (typeof merged.docFontFamily === "string" && merged.docFontFamily.includes("Inter")) {
-            merged.docFontFamily = DEFAULTS.docFontFamily;
-        }
-        merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
-        merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
-            merged.readonlyShareAutoUpdateDebounceMs,
-        );
-        merged.persistUndoHistoryForNewDocuments =
-            merged.persistUndoHistoryForNewDocuments === true;
-        merged.warnBeforeDraftAfterIdenticalVersion =
-            merged.warnBeforeDraftAfterIdenticalVersion !== false;
-        merged.duplicateDraftWarningHiddenUntil =
-            typeof merged.duplicateDraftWarningHiddenUntil === "number" &&
-            Number.isFinite(merged.duplicateDraftWarningHiddenUntil) &&
-            merged.duplicateDraftWarningHiddenUntil > 0
-                ? merged.duplicateDraftWarningHiddenUntil
-                : 0;
-        merged.writingRemindersEnabled = merged.writingRemindersEnabled === true;
-        merged.writingReminderTimes = Array.isArray(merged.writingReminderTimes)
-            ? [
-                  ...new Set(
-                      merged.writingReminderTimes.filter(
-                          (time: unknown) =>
-                              typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time),
-                      ),
-                  ),
-              ].sort()
-            : [...DEFAULTS.writingReminderTimes];
-        if (merged.writingReminderTimes.length === 0) {
-            merged.writingReminderTimes = [...DEFAULTS.writingReminderTimes];
-        }
-        if (Array.isArray(merged.writingReminderDays)) {
-            const reminderDays = (merged.writingReminderDays as unknown[]).filter(
-                (day): day is number =>
-                    Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6,
-            );
-            merged.writingReminderDays = [...new Set(reminderDays)].sort((a, b) => a - b);
-        } else {
-            merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
-        }
-        if (merged.writingReminderDays.length === 0) {
-            merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
-        }
-        merged.draftPanelWidth =
-            typeof merged.draftPanelWidth === "number" && Number.isFinite(merged.draftPanelWidth)
-                ? Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth))
-                : DRAFT_PANEL_DEFAULT_WIDTH;
-        return merged;
+        const parsed = raw ? JSON.parse(raw) : undefined;
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
     } catch {
-        return { ...DEFAULTS };
+        return undefined;
     }
+}
+
+function loadSettings(fallback: AppSettings = DEFAULTS): AppSettings {
+    let parsed = readStoredSettings();
+    if (!parsed) return { ...fallback };
+    // Migrate legacy alwaysShowTitle boolean.
+    if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
+        const { alwaysShowTitle, ...rest } = parsed;
+        parsed = { ...rest, titleVisibility: alwaysShowTitle ? "always" : "hover" };
+    }
+    return normalizeSettings({ ...DEFAULTS, ...parsed });
+}
+
+function normalizeSettings(settings: AppSettings): AppSettings {
+    const merged = { ...settings };
+    merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
+    merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
+        merged.readonlyShareAutoUpdateDebounceMs,
+    );
+    merged.persistUndoHistoryForNewDocuments = merged.persistUndoHistoryForNewDocuments === true;
+    merged.warnBeforeDraftAfterIdenticalVersion =
+        merged.warnBeforeDraftAfterIdenticalVersion !== false;
+    merged.duplicateDraftWarningHiddenUntil =
+        typeof merged.duplicateDraftWarningHiddenUntil === "number" &&
+        Number.isFinite(merged.duplicateDraftWarningHiddenUntil) &&
+        merged.duplicateDraftWarningHiddenUntil > 0
+            ? merged.duplicateDraftWarningHiddenUntil
+            : 0;
+    merged.writingRemindersEnabled = merged.writingRemindersEnabled === true;
+    merged.writingReminderTimes = Array.isArray(merged.writingReminderTimes)
+        ? [
+              ...new Set(
+                  merged.writingReminderTimes.filter(
+                      (time: unknown) =>
+                          typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time),
+                  ),
+              ),
+          ].sort()
+        : [...DEFAULTS.writingReminderTimes];
+    if (merged.writingReminderTimes.length === 0) {
+        merged.writingReminderTimes = [...DEFAULTS.writingReminderTimes];
+    }
+    if (Array.isArray(merged.writingReminderDays)) {
+        const reminderDays = (merged.writingReminderDays as unknown[]).filter(
+            (day): day is number => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6,
+        );
+        merged.writingReminderDays = [...new Set(reminderDays)].sort((a, b) => a - b);
+    } else {
+        merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
+    }
+    if (merged.writingReminderDays.length === 0) {
+        merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
+    }
+    merged.draftPanelWidth =
+        typeof merged.draftPanelWidth === "number" && Number.isFinite(merged.draftPanelWidth)
+            ? Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth))
+            : DRAFT_PANEL_DEFAULT_WIDTH;
+    merged.uiZoom = Number.isFinite(merged.uiZoom)
+        ? Math.round(Math.min(2, Math.max(0.5, merged.uiZoom)) * 10) / 10
+        : DEFAULTS.uiZoom;
+    merged.docFontSize = Number.isFinite(merged.docFontSize)
+        ? Math.min(24, Math.max(14, merged.docFontSize))
+        : DEFAULTS.docFontSize;
+    merged.annotationPanelWidth = Number.isFinite(merged.annotationPanelWidth)
+        ? Math.min(
+              ANNOTATION_PANEL_MAX_WIDTH,
+              Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(merged.annotationPanelWidth)),
+          )
+        : ANNOTATION_PANEL_DEFAULT_WIDTH;
+    return merged;
 }
 
 function saveSettings(s: AppSettings) {
@@ -211,7 +216,9 @@ function saveSettings(s: AppSettings) {
     } catch {}
 }
 
-export function applySettings(s: AppSettings) {
+/** Preview appearance without committing the Settings modal draft. */
+export function previewSettings(s: Readonly<AppSettings>): void {
+    if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.style.setProperty("--doc-font-family", s.docFontFamily);
     root.style.setProperty("--doc-font-size", `${s.docFontSize}px`);
@@ -219,17 +226,23 @@ export function applySettings(s: AppSettings) {
     root.style.zoom = String(s.uiZoom);
 }
 
-export const appSettings = $state<AppSettings>(loadSettings());
-
-// Apply persisted settings on startup
-if (typeof document !== "undefined") {
-    applySettings(appSettings);
+const initialSettings = loadSettings();
+if (
+    typeof initialSettings.docFontFamily === "string" &&
+    initialSettings.docFontFamily.includes("Inter")
+) {
+    initialSettings.docFontFamily = DEFAULTS.docFontFamily;
 }
+const settings = $state<AppSettings>(initialSettings);
+export const appSettings: Readonly<AppSettings> = settings;
 
-/**
- * Persist settings whenever they change. Call this after mutating
- * any field on appSettings.
- */
-export function persistSettings() {
-    saveSettings(appSettings);
+previewSettings(settings);
+
+/** Commit absolute values, including validation, appearance, and persistence. */
+export function updateSettings(patch: Partial<AppSettings>): void {
+    // Merge against shared storage so an older window cannot overwrite another
+    // window's new-document undo policy while changing an unrelated preference.
+    Object.assign(settings, normalizeSettings({ ...loadSettings(settings), ...patch }));
+    previewSettings(settings);
+    saveSettings(settings);
 }

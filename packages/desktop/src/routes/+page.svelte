@@ -58,9 +58,8 @@ import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import {
     appSettings,
-    applySettings,
     getPersistUndoHistoryForNewDocuments,
-    persistSettings,
+    updateSettings,
 } from "$lib/settings.svelte";
 import {
     currentDocumentId,
@@ -341,19 +340,13 @@ function handleKeydown(e: KeyboardEvent) {
     if (e.metaKey || e.ctrlKey) {
         if (e.key === "=" || e.key === "+") {
             e.preventDefault();
-            appSettings.uiZoom = Math.round(Math.min(2, appSettings.uiZoom + 0.1) * 10) / 10;
-            applySettings(appSettings);
-            persistSettings();
+            updateSettings({ uiZoom: appSettings.uiZoom + 0.1 });
         } else if (e.key === "-") {
             e.preventDefault();
-            appSettings.uiZoom = Math.round(Math.max(0.5, appSettings.uiZoom - 0.1) * 10) / 10;
-            applySettings(appSettings);
-            persistSettings();
+            updateSettings({ uiZoom: appSettings.uiZoom - 0.1 });
         } else if (e.key === "0") {
             e.preventDefault();
-            appSettings.uiZoom = 1;
-            applySettings(appSettings);
-            persistSettings();
+            updateSettings({ uiZoom: 1 });
         }
     }
 }

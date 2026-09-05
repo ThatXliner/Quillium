@@ -2,7 +2,21 @@
 
 ## App Settings (`settings.svelte.ts`)
 
-User preferences in a Svelte 5 `$state` proxy (`appSettings`) persisted to localStorage under `"quillium-app-settings"`. Changes apply immediately via `applySettings()` and save via `persistSettings()`.
+Read preferences through `appSettings`. Commit absolute values with
+`updateSettings({ uiZoom: appSettings.uiZoom + 0.1 })`; the module validates,
+applies appearance, and saves to `"quillium-app-settings"` in localStorage.
+Callers cannot assign top-level settings directly. Updates merge the latest stored
+preferences so an older window does not overwrite an unrelated change.
+
+`previewSettings(draft)` applies appearance without changing committed settings or
+storage. The Settings modal uses it for live preview and Cancel, and calls
+`updateSettings(draft)` on Save. Panel resize gestures likewise keep a local width
+until release, then commit once.
+
+`getPersistUndoHistoryForNewDocuments()` deliberately reads shared storage when a
+document is created. Each Tauri window has its own settings state, so this query
+must see another window's latest undo policy even before a local settings update.
+Missing, malformed, or unavailable storage defaults to session-only undo.
 
 | Setting | Type | Default | Controls |
 |---------|------|---------|----------|

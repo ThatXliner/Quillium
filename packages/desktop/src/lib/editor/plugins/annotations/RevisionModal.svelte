@@ -61,7 +61,7 @@ import {
 
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     type ModalEntry,
     annotations as annotationsStore,
@@ -599,13 +599,11 @@ function commitVersionLabel(trimmed: string) {
 }
 
 function neverShowDuplicateDraftWarning(): void {
-    appSettings.warnBeforeDraftAfterIdenticalVersion = false;
-    persistSettings();
+    updateSettings({ warnBeforeDraftAfterIdenticalVersion: false });
 }
 
 function hideDuplicateDraftWarningForOneHour(): void {
-    appSettings.duplicateDraftWarningHiddenUntil = duplicateDraftWarningSnoozeUntil();
-    persistSettings();
+    updateSettings({ duplicateDraftWarningHiddenUntil: duplicateDraftWarningSnoozeUntil() });
 }
 
 function addVersion(): void {
