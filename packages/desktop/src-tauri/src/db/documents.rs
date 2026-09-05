@@ -1,10 +1,9 @@
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use super::{DocumentMeta, DraftMeta};
+use super::{now_ms, DocumentMeta, DraftMeta};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,13 +11,6 @@ pub struct DuplicateDraftState {
     pub source_draft_id: String,
     pub source_event_id: i64,
     pub state_json: String,
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
 }
 
 pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {

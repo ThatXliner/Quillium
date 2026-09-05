@@ -8,6 +8,26 @@ pub mod search;
 pub mod tabs;
 
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Structural validation stays distinct from SQLite failures until commands
+/// serialize either error with `to_string()`, preserving the frontend contract.
+#[derive(Debug, thiserror::Error)]
+pub enum DbError {
+    #[error("{0}")]
+    Validation(String),
+    #[error(transparent)]
+    Sql(#[from] rusqlite::Error),
+}
+
+pub type DbResult<T> = Result<T, DbError>;
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

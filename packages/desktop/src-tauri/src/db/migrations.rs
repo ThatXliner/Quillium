@@ -15,6 +15,8 @@
 //! already contain the baseline tables, so migrations 1–2 are written to
 //! be safe to re-apply (`IF NOT EXISTS` / column-existence guards).
 
+use super::now_ms;
+
 use rusqlite::{params, Connection, OptionalExtension, Result};
 
 /// 0.22 release boundary. Documents created before 2026-07-14T00:00:00Z
@@ -302,10 +304,7 @@ fn tabs_and_draft_tree(conn: &Connection) -> Result<()> {
             Some(id) => id,
             None => {
                 let id = uuid::Uuid::new_v4().to_string();
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as i64;
+                let now = now_ms();
                 conn.execute(
                     "INSERT INTO tabs (id, document_id, tab_type, label, position, created_at)
                      VALUES (?1, ?2, 'draft', 'Main', 0, ?3)",

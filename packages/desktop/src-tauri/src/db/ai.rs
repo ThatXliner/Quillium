@@ -4,17 +4,11 @@
 //! message schema, while this module enforces ownership, valid modes, and JSON
 //! syntax before a value reaches SQLite.
 
+use super::now_ms;
+
 use rusqlite::{params, Connection, Error, OptionalExtension, Result};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const CONVERSATION_MODES: &[&str] = &["chat", "feedback", "revise"];
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
-}
 
 fn validate_mode(mode: &str) -> Result<()> {
     if CONVERSATION_MODES.contains(&mode) {

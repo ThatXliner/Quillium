@@ -1,17 +1,9 @@
 use rusqlite::{params, Connection, Result};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{AppendEventResult, DocumentSnapshotMeta, EventRecord, SnapshotMeta};
+use super::{now_ms, AppendEventResult, DocumentSnapshotMeta, EventRecord, SnapshotMeta};
 
 const SNAPSHOT_EVENT_THRESHOLD: i64 = 50;
 const SNAPSHOT_TIME_THRESHOLD_SECS: i64 = 120;
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
-}
 
 pub fn append_event(
     conn: &Connection,
