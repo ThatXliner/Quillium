@@ -69,10 +69,7 @@ the codebase. Canonical architecture decisions live in
 | Marker | Decision | Live references |
 | --- | --- | --- |
 | D-20 | Anonymous users choose a display name before joining | `src/lib/auth/auth.svelte.ts:88` |
-| D-22 | No account required; just lightweight name entry | `src/lib/auth/NameEntryModal.svelte:4` |
-| D-23 | Anonymous auth only triggers when joining a shared document | `src/lib/auth/NameEntryModal.svelte:5` |
 | D-24 | Anonymous sessions persist in localStorage across restarts | `src/lib/auth/auth.svelte.ts:89` |
-| D-26 | Anonymous users can sign in while viewing a shared doc | `src/lib/auth/NameEntryModal.svelte:6`<br>`src/lib/auth/NameEntryModal.svelte:163` |
 
 ## Phase 5 Relay Persistence
 
@@ -84,10 +81,8 @@ the codebase. Canonical architecture decisions live in
 
 | Marker | Decision | Live references |
 | --- | --- | --- |
-| D-50 | Per-user undo via author-tagged changes / client identity | `src/lib/collab/GoLiveButton.svelte:246`<br>`src/lib/collab/collabPlugin.ts:9`<br>`src/lib/collab/collabPlugin.ts:126`<br>`src/lib/collab/yjsUndo.ts:5`<br>`src/lib/collab/yjsUndo.ts:28`<br>`tests/lib/collab/yjsUndo.test.ts:5` |
-| D-51 | Collab extension stays in the stack and is enabled/disabled via a Compartment | `src/lib/collab/collabPlugin.ts:8`<br>`src/lib/collab/collabPlugin.ts:23`<br>`src/lib/collab/index.ts:83`<br>`src/lib/editor/extensions.ts:143` |
-| D-52 | Socket lifecycle is per-document and tied to the collab session | `src/lib/collab/socket.ts:7` |
-| D-53 | JWT from `getSession().access_token` is passed in the auth handshake | `src/lib/collab/socket.ts:8`<br>`src/lib/collab/socket.ts:35` |
+| D-50 | Per-user undo via author-tagged changes / client identity | `src/lib/collab/GoLiveButton.svelte:246`<br>`src/lib/collab/yjsUndo.ts:5`<br>`src/lib/collab/yjsUndo.ts:28`<br>`tests/lib/collab/yjsUndo.test.ts:5` |
+| D-51 | Collab extension stays in the stack and is enabled/disabled via a Compartment | `src/lib/collab/index.ts:83`<br>`src/lib/editor/extensions.ts:143` |
 | D-55 | Owner local SQLite is the source of truth; relay is the broadcast / active-session recovery layer | `src/lib/collab/index.ts:167`<br>`src/lib/collab/index.ts:173` |
 | D-56 | "Go Live" toggle sits near auth controls in the top-right area | `src/lib/collab/GoLiveButton.svelte:4` |
 | D-57 | Live Room mode only; the session ends when the owner leaves | `src/lib/collab/GoLiveButton.svelte:5`<br>`src/lib/collab/index.ts:168`<br>`src/lib/collab/yjsProvider.ts:5` |

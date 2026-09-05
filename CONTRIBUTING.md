@@ -255,7 +255,7 @@ Use `snake_case` with the pattern `noun_verb` or `noun_verb_qualifier`:
 
 | Pattern | Example |
 |---------|---------|
-| `noun_verb` | `comment_created`, `draft_scrapped` |
+| `noun_verb` | `comment_created`, `draft_deleted` |
 | `noun_verb_qualifier` | `ai_feedback_requested`, `revision_version_created` |
 | `noun_noun_verb` | `comment_ai_suggestion_requested` |
 
@@ -337,7 +337,6 @@ Include contextual properties that make events useful for analysis:
 |-------|-----------|--------|
 | `tutorial_skipped` | `step_reached`, `total_steps` | `tutorial/Tutorial.svelte` |
 | `tutorial_completed` | `total_steps` | `tutorial/Tutorial.svelte` |
-| `draft_scrapped` | — | `save/Save.svelte` |
 
 ### Feature Flags
 

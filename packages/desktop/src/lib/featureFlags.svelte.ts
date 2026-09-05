@@ -1,95 +1,59 @@
 /**
- * featureFlags.svelte.ts — Shared reactive PostHog feature-flag state.
- *
- * Flags fail closed until PostHog explicitly enables them. Both the Svelte
- * store and rune state are exposed so existing components and services share
- * one PostHog subscription while the seasonal features are integrated.
+ * featureFlags.svelte.ts — Shared PostHog gates for components and services.
+ * Only literal true enables a feature; missing values and loading errors fail closed.
  */
 
 import posthog from "$lib/posthog";
-import { writable } from "svelte/store";
+import { get, readonly, writable } from "svelte/store";
 
 export const NOVEL_NOVEMBER_FEATURE_FLAG = "novel-november";
-export const NOVEL_NOVEMBER_FLAG = NOVEL_NOVEMBER_FEATURE_FLAG;
 /**
- * Gates the authorship-provenance report (`/authorship`, its native menu item,
- * and the report export). The classifier and report builder behind it have not
- * been reviewed, and the feature's whole value is being trustworthy about who
- * wrote what, so it stays off until it has been.
+ * Gates the authorship report, native menu item, and export until its
+ * classifier and report builder have been reviewed.
  */
 export const AUTHORSHIP_FEATURE_FLAG = "authorship-provenance";
 
-let novelNovember = false;
-let authorship = false;
-let stopFeatureFlagSync: () => void = () => {};
-let featureFlagSyncStarted = false;
+const novelNovember = writable(false);
+const authorship = writable(false);
+export const novelNovemberEnabled = readonly(novelNovember);
+export const authorshipEnabled = readonly(authorship);
 
-export const novelNovemberEnabled = writable(false);
-export const authorshipEnabled = writable(false);
-export const featureFlags = $state({
-    novelNovember: false,
-    authorship: false,
-    loaded: false,
-});
-
-export function isNovelNovemberFlagEnabled(value: boolean | string | undefined): boolean {
-    return value === true;
-}
+let stopFeatureFlagSync: (() => void) | undefined;
 
 function readFlag(key: string): boolean {
     try {
-        return posthog.isFeatureEnabled(key) === true;
+        return posthog.getFeatureFlag(key) === true;
     } catch {
         return false;
     }
 }
 
-export function refreshNovelNovemberFlag(): boolean {
-    novelNovember = readFlag(NOVEL_NOVEMBER_FEATURE_FLAG);
-    featureFlags.novelNovember = novelNovember;
-    featureFlags.loaded = true;
-    novelNovemberEnabled.set(novelNovember);
-    return novelNovember;
-}
-
-export function refreshAuthorshipFlag(): boolean {
-    authorship = readFlag(AUTHORSHIP_FEATURE_FLAG);
-    featureFlags.authorship = authorship;
-    featureFlags.loaded = true;
-    authorshipEnabled.set(authorship);
-    return authorship;
-}
-
-/** Re-read every gate. This is what the PostHog subscription calls. */
-export function refreshFeatureFlags(): void {
-    refreshNovelNovemberFlag();
-    refreshAuthorshipFlag();
+function refreshFeatureFlags(errorsLoading = false): void {
+    novelNovember.set(!errorsLoading && readFlag(NOVEL_NOVEMBER_FEATURE_FLAG));
+    authorship.set(!errorsLoading && readFlag(AUTHORSHIP_FEATURE_FLAG));
 }
 
 export function isNovelNovemberEnabled(): boolean {
-    return novelNovember;
-}
-
-export function isAuthorshipEnabled(): boolean {
-    return authorship;
+    return get(novelNovemberEnabled);
 }
 
 /** Start the app-wide feature-flag subscription. Safe to call more than once. */
 export function startFeatureFlagSync(): () => void {
-    if (!featureFlagSyncStarted) {
-        featureFlagSyncStarted = true;
+    if (!stopFeatureFlagSync) {
+        refreshFeatureFlags();
         try {
-            stopFeatureFlagSync = posthog.onFeatureFlags(refreshFeatureFlags) ?? (() => {});
-            refreshFeatureFlags();
+            stopFeatureFlagSync =
+                posthog.onFeatureFlags((_flags, _variants, context) => {
+                    refreshFeatureFlags(context?.errorsLoading);
+                }) ?? (() => {});
         } catch {
-            refreshFeatureFlags();
+            refreshFeatureFlags(true);
         }
     }
 
     return () => {
-        stopFeatureFlagSync();
-        stopFeatureFlagSync = () => {};
-        featureFlagSyncStarted = false;
+        stopFeatureFlagSync?.();
+        stopFeatureFlagSync = undefined;
     };
 }
 

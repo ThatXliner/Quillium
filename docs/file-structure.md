@@ -36,7 +36,6 @@ src/
 │   │   ├── AuthButton.svelte    # Top-right auth/profile button
 │   │   ├── AuthModal.svelte     # Sign in modal
 │   │   ├── AvatarDropdown.svelte # Dropdown menu for logged-in user
-│   │   ├── NameEntryModal.svelte # Anonymous user display name prompt
 │   │   ├── ProfileModal.svelte   # Logged-in profile/settings modal
 │   │   ├── auth.svelte.ts       # Reactive auth state store (Svelte 5 $state runes)
 │   │   ├── avatarUtils.ts       # initials() and avatarColor() helpers
@@ -55,13 +54,10 @@ src/
 │   │   ├── GoLiveButton.svelte    # Top-right Share button + modal
 │   │   ├── annotationSchema.ts    # CM ↔ Yjs bidirectional converters
 │   │   ├── awareness.ts           # Remote cursor rendering, follow mode
-│   │   ├── collabPlugin.ts        # CM extension helpers
 │   │   ├── index.ts               # Public API: enableCollab, disableCollab
-│   │   ├── protocol.ts            # Relay protocol constants
 │   │   ├── relativePosition.ts    # RelativePosition utilities
 │   │   ├── share.ts               # Share link utilities
 │   │   ├── sharePayload.ts        # Share payload encoding/decoding
-│   │   ├── socket.ts              # Relay socket helpers
 │   │   ├── store.ts               # Collab Svelte stores
 │   │   ├── types.ts               # CollabSession, awareness types
 │   │   ├── yjsAnnotations.ts      # Y.Map-based annotation sync
@@ -141,8 +137,6 @@ src/
 │   │   ├── LibraryTopBar.svelte # Library page header
 │   │   ├── PreviewPanel.svelte  # Document preview sidebar
 │   │   └── tags.ts              # Document tagging system
-│   ├── save/
-│   │   └── Save.svelte          # Save indicator
 │   ├── provenance/
 │   │   ├── PlaybackViewer.svelte # Authorship/provenance playback UI
 │   │   ├── classify.ts          # Event-origin classifier

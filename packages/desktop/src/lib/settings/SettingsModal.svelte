@@ -32,7 +32,7 @@ import {
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
 import { appEventBus } from "$lib/events/appEventBus";
-import { featureFlags } from "$lib/featureFlags.svelte";
+import { novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
@@ -259,8 +259,8 @@ function save() {
         // share_document_analytics: draft.shareDocumentAnalytics,
         check_for_updates: draft.checkForUpdates,
         persist_undo_history_for_new_documents: draft.persistUndoHistoryForNewDocuments,
-        writing_reminders_enabled: featureFlags.novelNovember && draft.writingRemindersEnabled,
-        writing_reminder_times_count: featureFlags.novelNovember
+        writing_reminders_enabled: $novelNovemberEnabled && draft.writingRemindersEnabled,
+        writing_reminder_times_count: $novelNovemberEnabled
             ? draft.writingReminderTimes.length
             : 0,
     });
@@ -395,7 +395,7 @@ function handleKeydown(e: KeyboardEvent) {
 
             <div class="section-divider"></div>
 
-            {#if featureFlags.novelNovember}
+            {#if $novelNovemberEnabled}
                 <WritingRemindersSection {draft} onchange={handleChange} />
 
                 <div class="section-divider"></div>

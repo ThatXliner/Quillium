@@ -131,7 +131,6 @@ export class NestedEditorController {
 
     /**
      * Create the nested editor in the given host element.
-     * Phase 10: Collab subtree bindings removed. Local-only mode.
      */
     create(
         host: HTMLDivElement,

@@ -4,11 +4,7 @@
 
 import type { ChangeOrigin, DocChangeEvent } from "$lib/db/events";
 import type { EventRecord } from "$lib/db/types";
-import {
-    computeWritingTime,
-    formatWritingDuration,
-    isNovelNovemberEnabled,
-} from "$lib/stats/writingTime";
+import { computeWritingTime, formatWritingDuration } from "$lib/stats/writingTime";
 import { describe, expect, it } from "vitest";
 
 function edit(id: number, createdAt: number, origin: ChangeOrigin = "type"): EventRecord {
@@ -104,14 +100,5 @@ describe("formatWritingDuration", () => {
         expect(formatWritingDuration(30_000)).toBe("< 1m");
         expect(formatWritingDuration(5 * 60_000)).toBe("5m");
         expect(formatWritingDuration(90 * 60_000)).toBe("1h 30m");
-    });
-});
-
-describe("isNovelNovemberEnabled", () => {
-    it("enables the tracker only for an explicit true PostHog value", () => {
-        expect(isNovelNovemberEnabled(true)).toBe(true);
-        expect(isNovelNovemberEnabled(false)).toBe(false);
-        expect(isNovelNovemberEnabled(undefined)).toBe(false);
-        expect(isNovelNovemberEnabled("true")).toBe(false);
     });
 });
