@@ -1,6 +1,9 @@
 <script lang="ts">
 import { documentContext } from "$lib/ai/settings.svelte";
 import { appSettings, updateSettings } from "$lib/settings.svelte";
+import HelpModal from "$lib/ui/HelpModal.svelte";
+import InfoButton from "$lib/ui/InfoButton.svelte";
+import { getActionHelpTab } from "./helpContent";
 import {
     activeAnnotation,
     annotations,
@@ -62,6 +65,7 @@ const packet = $derived(
     }),
 );
 const actions = $derived(getContextAwareActions(mode, packet));
+let actionHelpTab = $state<string | null>(null);
 const activeSources = $derived(packet.sources.filter((source) => source.active));
 // Card is shown when the packet warrants a summary AND the writer hasn't
 // collapsed it into the header info (ℹ) icon. AISidebar surfaces the same
@@ -165,25 +169,42 @@ function sourceIcon(id: string) {
 
     <div class="grid gap-1.5">
         {#each actions as action (action.id)}
-            <button
-                type="button"
-                onclick={() => onAction(action)}
-                {disabled}
-                class="group w-full rounded-lg border border-black/10 bg-white/80 px-2.5 py-2 text-left shadow-sm transition-all
-                    disabled:opacity-45 disabled:cursor-not-allowed {theme.hover}
-                    focus:outline-none focus:ring-2 {theme.ring}"
-            >
-                <div class="flex items-start gap-2">
-                    <div class="min-w-0 flex-1">
-                        <div class="text-xs font-semibold text-black/75 truncate">{action.label}</div>
-                        <div class="text-[10px] leading-snug text-black/40">{action.detail}</div>
+            <div class="flex items-center gap-1 rounded-lg border border-black/10 bg-white/80 pr-2 shadow-sm">
+                <button
+                    type="button"
+                    onclick={() => onAction(action)}
+                    {disabled}
+                    class="group min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left transition-all
+                        disabled:opacity-45 disabled:cursor-not-allowed {theme.hover}
+                        focus:outline-none focus:ring-2 {theme.ring}"
+                >
+                    <div class="flex items-start gap-2">
+                        <div class="min-w-0 flex-1">
+                            <div class="text-xs font-semibold text-black/75 truncate">{action.label}</div>
+                            <div class="text-[10px] leading-snug text-black/40">{action.detail}</div>
+                        </div>
+                        <ArrowRightIcon
+                            size={13}
+                            class="mt-0.5 shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
+                        />
                     </div>
-                    <ArrowRightIcon
-                        size={13}
-                        class="mt-0.5 shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
-                    />
-                </div>
-            </button>
+                </button>
+                <InfoButton title={action.label} onclick={() => (actionHelpTab = action.id)} />
+            </div>
         {/each}
     </div>
 </div>
+
+{#if actionHelpTab}
+    <HelpModal
+        title={mode === "chat" ? "Chat actions" : mode === "feedback" ? "Feedback actions" : "Revision actions"}
+        tabs={actions.map(getActionHelpTab)}
+        initialTab={actionHelpTab}
+        footer={mode === "chat"
+            ? "The answer appears in chat. Your draft and annotations stay unchanged."
+            : mode === "feedback"
+              ? "Feedback appears in the panel and may add comments anchored to your writing. Your draft's wording stays unchanged."
+              : "AI proposes edits for you to review. You choose which changes to accept."}
+        onclose={() => (actionHelpTab = null)}
+    />
+{/if}

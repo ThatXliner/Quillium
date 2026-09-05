@@ -49,6 +49,9 @@ import {
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
+import HelpModal from "$lib/ui/HelpModal.svelte";
+import InfoButton from "$lib/ui/InfoButton.svelte";
+import { EDITORIAL_HELP_TABS } from "./helpContent";
 import posthog, { captureException } from "$lib/posthog";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -64,6 +67,7 @@ const PROVIDERS: { id: TabProvider; label: string }[] = [
 ];
 
 let showModelGuide = $state(false);
+let editorialHelpTab = $state<string | null>(null);
 
 const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; description: string }[]> = {
     openai: [
@@ -428,8 +432,11 @@ async function saveApiKey() {
         </p>
 
         <div class="mt-3 grid gap-2.5">
-            <label class="grid gap-1" for="editorial-stance">
-                <span class="text-[10px] font-medium text-black/55">Stance</span>
+            <div class="grid gap-1">
+                <div class="flex items-center gap-1">
+                    <label for="editorial-stance" class="text-[10px] font-medium text-black/55">Stance</label>
+                    <InfoButton title="Stance" onclick={() => (editorialHelpTab = "stance")} />
+                </div>
                 <select
                     id="editorial-stance"
                     bind:value={editorialPreferences.stance}
@@ -440,10 +447,13 @@ async function saveApiKey() {
                     <option value="collaborative">Collaborative</option>
                     <option value="exploratory">Exploratory</option>
                 </select>
-            </label>
+            </div>
 
-            <label class="grid gap-1" for="feedback-density">
-                <span class="text-[10px] font-medium text-black/55">Feedback density</span>
+            <div class="grid gap-1">
+                <div class="flex items-center gap-1">
+                    <label for="feedback-density" class="text-[10px] font-medium text-black/55">Feedback density</label>
+                    <InfoButton title="Feedback density" onclick={() => (editorialHelpTab = "density")} />
+                </div>
                 <select
                     id="feedback-density"
                     bind:value={editorialPreferences.feedbackDensity}
@@ -454,10 +464,13 @@ async function saveApiKey() {
                     <option value="focused">Focused</option>
                     <option value="thorough">Thorough</option>
                 </select>
-            </label>
+            </div>
 
-            <label class="grid gap-1" for="voice-latitude">
-                <span class="text-[10px] font-medium text-black/55">Voice latitude</span>
+            <div class="grid gap-1">
+                <div class="flex items-center gap-1">
+                    <label for="voice-latitude" class="text-[10px] font-medium text-black/55">Voice latitude</label>
+                    <InfoButton title="Voice latitude" onclick={() => (editorialHelpTab = "voice")} />
+                </div>
                 <select
                     id="voice-latitude"
                     bind:value={editorialPreferences.voiceLatitude}
@@ -468,7 +481,7 @@ async function saveApiKey() {
                     <option value="adapt">Adapt</option>
                     <option value="transform">Transform</option>
                 </select>
-            </label>
+            </div>
         </div>
     </div>
 
@@ -855,4 +868,14 @@ async function saveApiKey() {
 
 {#if showModelGuide}
     <ModelGuideModal onclose={() => (showModelGuide = false)} />
+{/if}
+
+{#if editorialHelpTab}
+    <HelpModal
+        title="Editorial approach"
+        tabs={EDITORIAL_HELP_TABS}
+        initialTab={editorialHelpTab}
+        footer="These settings guide feedback and proposed revisions. You choose which changes to accept."
+        onclose={() => (editorialHelpTab = null)}
+    />
 {/if}

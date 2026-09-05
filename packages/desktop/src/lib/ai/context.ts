@@ -84,6 +84,7 @@ export type ContextAction = {
     id: string;
     label: string;
     detail: string;
+    description: string;
     prompt: string;
     turn?: EditorialTurn;
 };
@@ -662,6 +663,8 @@ export function getContextAwareActions(
         ? {
               id: "chat-compare-versions",
               label: "Compare versions",
+              description:
+                  "Compares the active revision's alternatives and explains their tradeoffs in meaning, voice, pacing, emphasis, and reader experience.",
               detail: `${activeRevision.versions?.length ?? 0} read-only alternatives`,
               prompt: "Compare the active revision's versions. Explain the concrete tradeoffs in meaning, voice, pacing, emphasis, and reader effect. Do not edit or combine them.",
               turn: { task: "branch-comparison" },
@@ -674,18 +677,24 @@ export function getContextAwareActions(
                 {
                     id: "chat-role",
                     label: "Explain its job",
+                    description:
+                        "Explains the role of your selected passage in the larger piece and where it does too much or too little.",
                     detail: "What this passage is doing for the piece",
                     prompt: "Explain what this selected passage is doing in the larger piece, and where it may be over- or under-serving the draft.",
                 },
                 {
                     id: "chat-reader",
                     label: "Reader question",
+                    description:
+                        "Identifies a specific question a careful reader might have after the selected passage, whether from confusion or curiosity.",
                     detail: "Likely confusion or curiosity",
                     prompt: "What question would a careful reader have after this selected passage? Be specific and concise.",
                 },
                 {
                     id: "chat-alt",
                     label: "Try another angle",
+                    description:
+                        "Suggests two different directions for the selected passage so you can consider another approach before rewriting.",
                     detail: "A different approach without rewriting yet",
                     prompt: "Suggest two different editorial directions for this selected passage without rewriting it yet.",
                 },
@@ -696,6 +705,8 @@ export function getContextAwareActions(
                 {
                     id: "chat-annotations",
                     label: "Use open notes",
+                    description:
+                        "Connects the selected passage to its existing annotations, identifies the most useful note, and suggests a next edit while avoiding duplicate advice.",
                     detail: "Connect this passage to existing annotations",
                     prompt: "Review the existing annotations that relate to this selected text. Which note matters most, what should I avoid duplicating, and what is the next useful edit?",
                 },
@@ -706,6 +717,8 @@ export function getContextAwareActions(
             {
                 id: "chat-map",
                 label: "Reverse outline",
+                description:
+                    "Maps what your existing draft is doing. It lists each paragraph or section in order, summarizes its job in one line, and points out structural gaps, repetition, and weak transitions.",
                 detail: longDraft
                     ? "Sections, turns, and pressure points"
                     : "The job of each paragraph or section",
@@ -715,12 +728,17 @@ export function getContextAwareActions(
             {
                 id: "chat-gap",
                 label: "Find missing context",
+                description:
+                    "Looks for places where a reader needs more background, setup, or a clearer connection between ideas. It prioritizes the gaps that most affect understanding.",
                 detail: "What a reader may need",
                 prompt: "Find places where a reader may need more context, setup, or connective tissue. Prioritize the highest-impact gaps.",
             },
             {
                 id: "chat-brief",
                 label: hasWriterContext ? "Check the brief" : "Shape a brief",
+                description: hasWriterContext
+                    ? "Compares the draft with your document context and explains where it follows your guidance and where it drifts."
+                    : "Proposes a short writing brief based on the draft, covering its goal, audience, tone, emphasis, and what to avoid. You can use it to guide later feedback.",
                 detail: hasWriterContext
                     ? "Compare draft against notes"
                     : "Turn intent into guidance",
@@ -735,6 +753,8 @@ export function getContextAwareActions(
             {
                 id: "chat-annotations",
                 label: "Prioritize notes",
+                description:
+                    "Reviews your open annotations alongside the draft, identifies what to address first, flags duplicate or low-value notes, and suggests a manageable editing pass.",
                 detail: "Turn open annotations into a next pass",
                 prompt: "Review the existing annotations in context. Prioritize what to address first, call out duplicates or low-value notes, and suggest the smallest coherent editing pass.",
             },
@@ -748,18 +768,24 @@ export function getContextAwareActions(
                 {
                     id: "feedback-reader",
                     label: "Reader reaction",
+                    description:
+                        "Reviews how the selected passage lands for a reader and anchors specific observations to the text.",
                     detail: "How the passage lands",
                     prompt: "Give editorial feedback on how this selected passage lands for a reader. Use annotations for specific observations.",
                 },
                 {
                     id: "feedback-function",
                     label: "Passage function",
+                    description:
+                        "Assesses what the selected passage sets up, what it pays off, and whether its placement serves the piece.",
                     detail: "Purpose, placement, payoff",
                     prompt: "Assess the function of this selected passage: what it sets up, what it pays off, and whether it belongs here.",
                 },
                 {
                     id: "feedback-hard-question",
                     label: "Hard question",
+                    description:
+                        "Raises the most useful difficult editorial question about the selected passage and points to the text that prompted it.",
                     detail: "The note an honest editor would ask",
                     prompt: "Ask the hardest useful editorial question about this selected passage, then point to the exact text that triggered it.",
                 },
@@ -769,6 +795,8 @@ export function getContextAwareActions(
                 {
                     id: "feedback-annotations",
                     label: "Audit notes",
+                    description:
+                        "Reviews the writing alongside existing annotations, identifies overlap and gaps, and adds feedback only where a distinct issue needs attention.",
                     detail: "Build on nearby annotations",
                     prompt: "Give feedback on this selected passage while accounting for the existing annotations. Add new annotations only for distinct issues that are not already covered.",
                 },
@@ -779,12 +807,17 @@ export function getContextAwareActions(
             {
                 id: "feedback-structure",
                 label: "Structure scan",
+                description:
+                    "Reviews the draft's order, emphasis, and momentum, with notes on passages where the structure or focus weakens the piece.",
                 detail: "Order, emphasis, momentum",
                 prompt: "Review this draft for structure, emphasis, and momentum. Annotate passages where the order or focus weakens the piece.",
             },
             {
                 id: "feedback-brief",
                 label: hasWriterContext ? "Against the brief" : "Audience fit",
+                description: hasWriterContext
+                    ? "Reviews the draft against your document context and identifies passages that drift from its goal, audience, or tone."
+                    : "Assesses who the draft seems to be written for and where that reader may lose interest or understanding.",
                 detail: hasWriterContext ? "Goal, audience, tone" : "Who this is serving",
                 prompt: hasWriterContext
                     ? "Evaluate this draft against the document context. Annotate places that drift from the stated goal, audience, or tone."
@@ -793,6 +826,8 @@ export function getContextAwareActions(
             {
                 id: "feedback-patterns",
                 label: "Recurring patterns",
+                description:
+                    "Looks for editorial issues that recur across the draft and points to representative examples instead of marking every occurrence.",
                 detail: "Issues that repeat across the draft",
                 prompt: "Look for recurring editorial patterns across the draft. Annotate representative examples instead of every instance.",
             },
@@ -802,6 +837,8 @@ export function getContextAwareActions(
             {
                 id: "feedback-annotations",
                 label: "Audit notes",
+                description:
+                    "Reviews the writing alongside existing annotations, identifies overlap and gaps, and adds feedback only where a distinct issue needs attention.",
                 detail: "Coverage, duplicates, and gaps",
                 prompt: "Review this draft with the existing annotations in mind. Identify what is already covered, where annotations overlap, and where a new high-value note would add distinct guidance.",
             },
@@ -817,6 +854,7 @@ export function getContextAwareActions(
                 ? {
                       id: "revise-exact-compression",
                       label: `Cut to ${compressionTarget} words`,
+                      description: `Proposes two versions of the selected passage, each targeting exactly ${compressionTarget} words, while preserving its meaning, factual claims, and voice. The original stays available in the revision.`,
                       detail: `Exact target from ${selectedWordCount} words`,
                       prompt: `Compress this selected passage to exactly ${compressionTarget} words. Preserve its meaning, factual claims, and distinctive voice. Propose two alternatives as one reversible revision.`,
                       turn: {
@@ -830,18 +868,24 @@ export function getContextAwareActions(
             {
                 id: "revise-tighten",
                 label: "Tighten",
+                description:
+                    "Suggests small cuts and wording changes that make the selected passage more concise while preserving its meaning and voice.",
                 detail: "Keep meaning, reduce drag",
                 prompt: "Tighten this selected text while preserving its meaning and voice. Use granular suggestions.",
             },
             {
                 id: "revise-rhythm",
                 label: "Improve rhythm",
+                description:
+                    "Suggests changes to sentence flow and transitions in the selected passage while preserving your voice.",
                 detail: "Sentence movement and transitions",
                 prompt: "Improve the rhythm and movement of this selected text. Preserve the writer's voice and annotate precise changes.",
             },
             {
                 id: "revise-variants",
                 label: "Two directions",
+                description:
+                    "Proposes two different revision directions for the selected passage and explains their tradeoffs.",
                 detail: "Compare different revision paths",
                 prompt: "Offer two meaningfully different revision directions for this selected text, with tradeoffs.",
             },
@@ -851,6 +895,8 @@ export function getContextAwareActions(
             {
                 id: "revise-annotations",
                 label: "Revise to notes",
+                description:
+                    "Proposes changes to the selected passage that address existing annotations while avoiding suggestions already present.",
                 detail: "Use existing comments and suggestions",
                 prompt: "Revise this selected text in response to the existing annotations. Use precise suggestions and do not repeat suggestions already present.",
             },
@@ -862,18 +908,24 @@ export function getContextAwareActions(
         {
             id: "revise-hotspots",
             label: "Line-edit hotspots",
+            description:
+                "Looks for the places in the draft that would benefit most from changes to word choice, clarity, rhythm, or repetition.",
             detail: "Only places worth touching",
             prompt: "Line-edit this draft selectively. Only annotate high-value word choice, clarity, rhythm, or redundancy issues.",
         },
         {
             id: "revise-transitions",
             label: "Transitions",
+            description:
+                "Finds weak connections or abrupt turns between ideas and proposes wording to help the draft flow.",
             detail: "Connection between ideas",
             prompt: "Find and improve weak transitions or abrupt turns in this draft. Use precise suggestions.",
         },
         {
             id: "revise-voice",
             label: "Protect the voice",
+            description:
+                "Proposes selective improvements that strengthen the prose while keeping your distinctive style.",
             detail: "Polish without flattening",
             prompt: "Polish this draft while preserving the writer's voice. Avoid generic smoothing; annotate only changes that strengthen the prose.",
         },
@@ -883,6 +935,8 @@ export function getContextAwareActions(
         {
             id: "revise-annotations",
             label: "Resolve notes",
+            description:
+                "Proposes line edits that address open annotations, with care to avoid duplicate advice.",
             detail: "Line edit with open annotations in view",
             prompt: "Line-edit this draft with the existing annotations in mind. Suggest changes that help resolve open notes, and avoid adding duplicate annotations.",
         },
