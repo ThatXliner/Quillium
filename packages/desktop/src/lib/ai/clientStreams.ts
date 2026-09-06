@@ -75,6 +75,8 @@ interface StreamOpts extends BaseOpts {
     editorialPreferences?: EditorialPreferences;
     editorialTask?: EditorialTask;
     exactWordCount?: number;
+    /** Internal fan-out contract: persona output must be annotation tools or noAction. */
+    annotationOnly?: boolean;
 }
 
 export type { StreamOpts };
@@ -209,8 +211,16 @@ const createRevisionTool = () =>
         }),
     });
 
+const noActionTool = tool({
+    description:
+        "Complete this review without annotations when no useful permitted action is warranted or a safe target is unavailable.",
+    inputSchema: z.object({}),
+    execute: async () => ({ ok: true }),
+});
+
 function toolsForActions(
     actions: readonly EditorialAction[],
+    annotationOnly = false,
 ): Parameters<typeof streamText>[0]["tools"] {
     const tools = {
         ...(actions.includes("comment")
@@ -222,6 +232,7 @@ function toolsForActions(
             : {}),
         ...(actions.includes("suggestion") ? { createSuggestion: createSuggestionTool() } : {}),
         ...(actions.includes("revision") ? { createRevision: createRevisionTool() } : {}),
+        ...(annotationOnly ? { noAction: noActionTool } : {}),
     };
     return Object.keys(tools).length > 0 ? tools : undefined;
 }
@@ -235,11 +246,17 @@ async function buildStream(
     mode: AiContextMode,
 ): Promise<ReadableStream<UIMessageChunk>> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
+    const annotationOnly =
+        opts.annotationOnly === true &&
+        opts.persona !== undefined &&
+        (mode === "feedback" || mode === "revise") &&
+        (task === "global-review" || task === "local-rewrite" || task === "exact-compression");
     const policy = compileEditorialPolicy({
         task,
         hasSelection: !!opts.selectedText,
         exactWordCount: opts.exactWordCount,
         preferences: opts.editorialPreferences,
+        annotationOnly,
     });
     const contextMessage = injectDocumentContext({
         documentContent: opts.documentContent,
@@ -264,8 +281,11 @@ async function buildStream(
             ...modelMessages,
         ],
         system: policy.systemPrompt,
-        tools: toolsForActions(policy.allowedActions),
+        tools: toolsForActions(policy.allowedActions, annotationOnly),
         abortSignal: opts.abortSignal,
+        // Keep the SDK's one-step default so executing noAction never starts a
+        // follow-up model step that could generate another discarded summary.
+        ...(annotationOnly ? { toolChoice: "required" as const } : {}),
     });
     return result.toUIMessageStream();
 }

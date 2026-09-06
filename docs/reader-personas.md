@@ -110,10 +110,16 @@ When feedback is triggered:
 If the mode is OFF, or it is ON but no personas are enabled, it falls back to standard single-stream.
 
 Persona streams consume tool-call chunks directly instead of rendering each
-persona's conversational text in the panel. Feedback personas can create
-comments; Revise personas can create comments, suggestions, and revisions.
-The global AI stop control cancels every persona stream through the shared abort
-signal.
+persona's conversational text in the panel. Each fan-out request requires one
+or more permitted annotation tool calls, or an empty `noAction` call when none
+is warranted. The policy omits prose-summary instructions, and the SDK stays at
+one generation step with no follow-up summary request. Standard single-persona
+streams retain their text behavior. Providers and custom endpoints may ignore
+or reject required tool selection or emit accompanying text or reasoning, so
+this cannot guarantee zero billed non-annotation tokens; `noAction` never
+creates an annotation. Feedback personas can create comments; Revise personas
+can create comments, suggestions, and revisions. The global AI stop control
+cancels every persona stream through the shared abort signal.
 
 ## Per-Mode Opt-In
 
