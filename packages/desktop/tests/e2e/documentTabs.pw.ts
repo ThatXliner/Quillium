@@ -99,3 +99,64 @@ test.describe("DocumentTabs", () => {
         expect(await q.countInvocations("cmd_delete_tab")).toBeGreaterThanOrEqual(1);
     });
 });
+
+test("tab menu renames an inactive tab and closes it with Undo", async ({ page }, testInfo) => {
+    const q = new QuilliumPage(page);
+    await q.init();
+    await page.getByRole("button", { name: "New tab", exact: true }).click();
+    const main = page.getByRole("tab", { name: "Main", exact: true });
+    await expect(main).toHaveAttribute("aria-selected", "false");
+    await main.click({ button: "right" });
+    const menu = page.getByRole("menu", { name: "Actions for Main" });
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    const tabBox = await main.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(tabBox!.x);
+    expect(box!.y).toBeGreaterThanOrEqual(tabBox!.y);
+    await testInfo.attach("Tab context menu", {
+        body: await page.screenshot(),
+        contentType: "image/png",
+    });
+    await page.getByRole("menuitem", { name: "Rename tab" }).click();
+    const input = page.getByRole("textbox", { name: "Rename tab" });
+    await expect(input).toBeFocused();
+    await input.fill("Notes");
+    await input.press("Enter");
+    const notes = page.getByRole("tab", { name: "Notes", exact: true });
+    await expect(notes).toHaveAttribute("aria-selected", "false");
+    expect(await q.countInvocations("cmd_rename_tab")).toBe(1);
+    await notes.focus();
+    await notes.press("Shift+F10");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(notes).toHaveCount(0);
+    expect(await q.countInvocations("cmd_delete_tab")).toBe(1);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(notes).toBeVisible();
+    expect(await q.countInvocations("cmd_restore_tab")).toBe(1);
+});
+
+test("tab menu stays in the viewport and dismisses without selecting its tab", async ({ page }) => {
+    const q = new QuilliumPage(page);
+    await q.init();
+    await page.setViewportSize({ width: 600, height: 500 });
+    for (let i = 0; i < 5; i++) {
+        await page.getByRole("button", { name: "New tab", exact: true }).click();
+        await expect(page.getByRole("tab")).toHaveCount(i + 2);
+    }
+    const active = page.getByRole("tab", { name: "Tab 6", exact: true });
+    await active.click({ button: "right" });
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(8);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(592);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(492);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(active).toBeFocused();
+    await active.press("Shift+F10");
+    await page.mouse.click(580, 460);
+    await expect(menu).toHaveCount(0);
+    await expect(active).toHaveAttribute("aria-selected", "true");
+});
