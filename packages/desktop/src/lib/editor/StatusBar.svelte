@@ -28,6 +28,7 @@ import {
     reconnectAttempt,
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import { type ExportFormat, exportDocument } from "$lib/export";
 import { authorshipEnabled, novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
@@ -35,7 +36,9 @@ import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { activeSprint, sprintOpen } from "$lib/sprint/state";
 import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Play, Settings, Timer, X } from "lucide-svelte";
+import {
+    BarChart3, BookmarkPlus, Download, History, LayoutGrid, Play, Settings, Timer, X,
+} from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -334,6 +337,14 @@ $effect(() => {
                 class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-blue-400 hover:text-blue-600 shrink-0"
             >
                 <LayoutGrid size={20} />
+            </button>
+            <button
+                onclick={() => appEventBus.emit({ type: "name-version" })}
+                aria-label="Name this version"
+                title="Name this version ({modKey}{isMac ? '' : '+'}Shift+S)"
+                class="w-12 h-12 rounded-full bg-white/50 shadow-md flex items-center justify-center hover:bg-white/70 transition-colors text-black/60 hover:text-blue-600 shrink-0"
+            >
+                <BookmarkPlus size={20} />
             </button>
             <button
                 onclick={goToHistory}

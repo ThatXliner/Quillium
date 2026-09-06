@@ -671,15 +671,21 @@ export class QuilliumPage {
                             return before - payload.snapshots.length;
                         }
                         if (cmd === "cmd_create_named_snapshot") {
-                            const a = args as { label: string; upToEventId: number };
+                            const a = args as {
+                                label: string;
+                                upToEventId: number;
+                                draftId: string;
+                                stateJson: string;
+                            };
                             const newId = payload.snapshots.length + 100;
                             payload.snapshots.unshift({
                                 id: newId,
-                                draftId: "draft-test-1",
+                                draftId: a.draftId,
                                 upToEventId: a.upToEventId,
                                 createdAt: Date.now(),
                                 label: a.label,
-                                doc: "",
+                                doc: JSON.parse(a.stateJson).doc,
+                                stateJson: a.stateJson,
                             });
                             return newId;
                         }

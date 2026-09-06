@@ -37,6 +37,7 @@ const db = vi.hoisted(() => ({
 }));
 const persistence = vi.hoisted(() => ({
     flushPersistence: vi.fn(),
+    persistNamedVersion: vi.fn(),
     listeners: () => [],
 }));
 vi.mock("$lib/db", () => db);
@@ -327,5 +328,64 @@ describe("DocumentLoader", () => {
         expect(state.readOnly).toBe(false);
         expect(get(currentDraftId)).toBe("old-draft");
         expect(commits).toHaveLength(0);
+    });
+});
+
+describe("named version targets", () => {
+    async function target() {
+        await loader.load({ documentId: "doc-1" });
+        editorView.set({ state: commits[0].state } as EditorView);
+        return loader.namedVersionTarget()!;
+    }
+
+    it("trims labels, ignores empty labels, and suppresses repeated submission", async () => {
+        const request = await target();
+        const pending = deferred<number>();
+        persistence.persistNamedVersion.mockReturnValue(pending.promise);
+        expect(await request.save("  ")).toBeNull();
+        const saving = request.save("  Opening  ");
+        expect(await request.save("Opening")).toBeNull();
+        expect(persistence.persistNamedVersion).toHaveBeenCalledOnce();
+        expect(persistence.persistNamedVersion.mock.calls[0].slice(0, 3)).toEqual([
+            "draft-1",
+            JSON.stringify(commits[0].state.toJSON(savedFields)),
+            "Opening",
+        ]);
+        pending.resolve(5);
+        expect(await saving).toBe(5);
+    });
+
+    it.each(["document", "tab", "draft", "reload", "dispose"])(
+        "rejects stale prompt after %s changes",
+        async (change) => {
+            const request = await target();
+            if (change === "document") currentDocumentId.set("elsewhere");
+            if (change === "tab") currentTabId.set("elsewhere");
+            if (change === "draft") await loader.switchToDraft("tab-1", "next");
+            if (change === "reload") await loader.load({ documentId: "doc-1" });
+            if (change === "dispose") loader.dispose();
+            expect(await request.save("Opening")).toBeNull();
+            expect(persistence.persistNamedVersion).not.toHaveBeenCalled();
+        },
+    );
+
+    it("invalidates an already queued request when navigation begins", async () => {
+        const request = await target();
+        let valid!: () => boolean;
+        persistence.persistNamedVersion.mockImplementation(
+            async (_draft, _state, _label, isCurrent) => {
+                valid = isCurrent;
+                return 5;
+            },
+        );
+        await request.save("Opening");
+        expect(valid()).toBe(true);
+        const pending = deferred<void>();
+        persistence.flushPersistence.mockReturnValue(pending.promise);
+        const navigation = loader.switchToDraft("tab-1", "next");
+        expect(valid()).toBe(false);
+        expect(loader.namedVersionTarget()).toBeUndefined();
+        pending.resolve();
+        await navigation;
     });
 });

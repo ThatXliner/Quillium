@@ -297,6 +297,12 @@ function toggleFocusMode() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (!e.repeat) appEventBus.emit({ type: "name-version" });
+        return;
+    }
     if (focusMode && e.key === "Tab") revealFocusControls();
     if (isFocusModeShortcut(e)) {
         if (!focusModeAvailable) return;
