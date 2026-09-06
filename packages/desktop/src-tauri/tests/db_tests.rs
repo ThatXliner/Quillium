@@ -574,7 +574,7 @@ fn named_checkpoint_survives_reopen_and_restores_latest_state() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("checkpoint.db");
     let conn = open_db(&path).unwrap();
-    let doc = create_document(&conn, "Checkpoint test").unwrap();
+    let doc = create_document(&conn, "Checkpoint test", None).unwrap();
     let tab = create_tab(&conn, &doc, "Main").unwrap();
     let draft = list_tab_drafts(&conn, &tab.id).unwrap()[0].id.clone();
     let event = append_event(
