@@ -1,22 +1,63 @@
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { mount, unmount } from "svelte";
+import { mount, tick, unmount } from "svelte";
 import { get } from "svelte/store";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import Revision from "$lib/editor/plugins/annotations/Revision.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { updateSettings } from "$lib/settings.svelte";
-import { type NestedEditorCommand, modalStack } from "$lib/stores";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
+import { type NestedEditorCommand, modalAnnotationStores, modalStack } from "$lib/stores";
+
+const browserApiRestorers: (() => void)[] = [];
+
+function installMissingMethod(target: object, name: string, implementation: unknown): void {
+    if (typeof (target as Record<string, unknown>)[name] === "function") return;
+    const descriptor = Object.getOwnPropertyDescriptor(target, name);
+    Object.defineProperty(target, name, { configurable: true, value: implementation });
+    browserApiRestorers.push(() => {
+        if (descriptor) Object.defineProperty(target, name, descriptor);
+        else Reflect.deleteProperty(target, name);
+    });
+}
+
+beforeAll(() => {
+    installMissingMethod(
+        HTMLDialogElement.prototype,
+        "showModal",
+        function (this: HTMLDialogElement) {
+            this.open = true;
+        },
+    );
+    installMissingMethod(HTMLDialogElement.prototype, "close", function (this: HTMLDialogElement) {
+        this.open = false;
+    });
+    installMissingMethod(Element.prototype, "animate", () => {
+        const animation = {
+            cancel: vi.fn(),
+            currentTime: 0,
+            effect: null,
+            onfinish: null,
+            playState: "finished",
+        } as unknown as Animation;
+        queueMicrotask(() => animation.onfinish?.call(animation, {} as AnimationPlaybackEvent));
+        return animation;
+    });
+});
+
+afterAll(() => {
+    for (const restore of browserApiRestorers.reverse()) restore();
+});
 
 function createView(doc: string) {
     const state = EditorState.create({
@@ -25,6 +66,7 @@ function createView(doc: string) {
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
+    containers.push(el);
     return new EditorView({ state, parent: el });
 }
 
@@ -52,25 +94,31 @@ function publishNestedCommand(command: NestedEditorCommand, sourceView: EditorVi
 }
 
 let views: EditorView[] = [];
-let components: { destroy: () => void }[] = [];
+let components: { destroy: () => Promise<void> }[] = [];
+let containers: HTMLElement[] = [];
+let initialShowNestedEditor = appSettings.showNestedEditor;
 
 beforeEach(() => {
+    initialShowNestedEditor = appSettings.showNestedEditor;
     modalStack.clear();
+    annotationEventBus.clearPendingSelections();
 });
 
-afterEach(() => {
-    updateSettings({ showNestedEditor: true });
-    for (const c of components) c.destroy();
-    components = [];
+afterEach(async () => {
+    for (const component of [...components].reverse()) await component.destroy();
+    await tick();
     for (const v of views) v.destroy();
-    views = [];
     modalStack.clear();
+    annotationEventBus.clearPendingSelections();
+    for (const container of containers) container.remove();
+    Reflect.deleteProperty(window, "__modalEditors__");
+    updateSettings({ showNestedEditor: initialShowNestedEditor });
+    components = [];
+    views = [];
+    containers = [];
 });
 
-// TODO: enable client-side component mounting in Vitest (Svelte 5).
-// These tests encode the expected modal-stack behavior and should be
-// un-skipped once the runner is wired to use the client renderer.
-describe.skip("nested annotation creation routing", () => {
+describe("nested annotation creation routing", () => {
     it("Revision.svelte pushes a modal with pending command when no modal is open", async () => {
         const view = createView("hello world");
         views.push(view);
@@ -81,6 +129,7 @@ describe.skip("nested annotation creation routing", () => {
 
         const target = document.createElement("div");
         document.body.appendChild(target);
+        containers.push(target);
         const comp = mount(Revision, {
             target,
             props: {
@@ -91,7 +140,10 @@ describe.skip("nested annotation creation routing", () => {
                 updateThread: () => {},
             },
         });
-        components.push({ destroy: () => void unmount(comp) });
+        components.push({ destroy: () => unmount(comp) });
+
+        // Effects register event listeners asynchronously.
+        await tick();
 
         publishNestedCommand(
             {
@@ -103,7 +155,7 @@ describe.skip("nested annotation creation routing", () => {
             view,
         );
 
-        await Promise.resolve();
+        await tick();
 
         const stack = get(modalStack);
         expect(stack).toHaveLength(1);
@@ -134,11 +186,17 @@ describe.skip("nested annotation creation routing", () => {
 
         const target = document.createElement("div");
         document.body.appendChild(target);
+        containers.push(target);
         const modal = mount(RevisionModal, {
             target,
             props: { revisionId, view, stackIndex: 0 },
         });
-        components.push({ destroy: () => void unmount(modal) });
+        components.push({ destroy: () => unmount(modal) });
+
+        // Effects register event listeners and build the modal editor asynchronously.
+        await tick();
+
+        expect(Object.values(get(modalAnnotationStores)[0] ?? {})).toHaveLength(0);
 
         publishNestedCommand(
             {
@@ -150,11 +208,24 @@ describe.skip("nested annotation creation routing", () => {
             view,
         );
 
-        await Promise.resolve();
+        await tick();
 
         const stack = get(modalStack);
         // Still only the parent modal
         expect(stack).toHaveLength(1);
+        const nestedAnnotations = Object.values(get(modalAnnotationStores)[0] ?? {});
+        expect(nestedAnnotations).toHaveLength(1);
+        const nestedAnnotation = nestedAnnotations[0];
+        expect(nestedAnnotation).toBeDefined();
+        if (!nestedAnnotation) return;
+        expect(isAnnotationOfType(nestedAnnotation, "revision")).toBe(true);
+        if (isAnnotationOfType(nestedAnnotation, "revision")) {
+            expect(nestedAnnotation.selection.main.from).toBe(0);
+            expect(nestedAnnotation.selection.main.to).toBe(0);
+            expect(nestedAnnotation.versions).toHaveLength(2);
+            expect(nestedAnnotation.versions[0].doc).toBe("he");
+            expect(activeVersion(nestedAnnotation).doc).toBe("");
+        }
     });
 
     it("RevisionModal pushes a child modal when showNestedEditor=false", async () => {
@@ -172,11 +243,15 @@ describe.skip("nested annotation creation routing", () => {
 
         const target = document.createElement("div");
         document.body.appendChild(target);
+        containers.push(target);
         const modal = mount(RevisionModal, {
             target,
             props: { revisionId, view, stackIndex: 0 },
         });
-        components.push({ destroy: () => void unmount(modal) });
+        components.push({ destroy: () => unmount(modal) });
+
+        // Effects register event listeners and build the modal editor asynchronously.
+        await tick();
 
         publishNestedCommand(
             {
@@ -188,7 +263,7 @@ describe.skip("nested annotation creation routing", () => {
             view,
         );
 
-        await Promise.resolve();
+        await tick();
 
         const stack = get(modalStack);
         expect(stack).toHaveLength(2);
@@ -196,6 +271,16 @@ describe.skip("nested annotation creation routing", () => {
         expect(top.type).toBe("revision");
         if (top.type === "revision") {
             expect(top.parentView).toBeTruthy();
+            expect(top.parentView).not.toBe(view);
+            const nestedRevision = top.parentView.state.field(annotationField)[top.revisionId];
+            expect(isAnnotationOfType(nestedRevision, "revision")).toBe(true);
+            if (isAnnotationOfType(nestedRevision, "revision")) {
+                expect(nestedRevision.selection.main.from).toBe(0);
+                expect(nestedRevision.selection.main.to).toBe(0);
+                expect(nestedRevision.versions).toHaveLength(2);
+                expect(nestedRevision.versions[0].doc).toBe("he");
+                expect(activeVersion(nestedRevision).doc).toBe("");
+            }
         }
     });
 });
