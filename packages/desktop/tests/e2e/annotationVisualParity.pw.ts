@@ -406,6 +406,65 @@ async function openMainRevisionModal(
     await settleVisuals(page);
 }
 
+test("inactive revisions recede, reveal on hover, and retain active styling", async ({
+    page,
+}, testInfo) => {
+    await preparePage(page, "light", VIEWPORTS[0]);
+    const qp = new QuilliumPage(page, fixtureOptions());
+    qp.capturePageErrors();
+    await qp.init();
+    await expectDesktopFixtureReady(page, qp);
+    const revision = page.locator("#editor-document .cm-revision").first();
+    await page.mouse.move(0, 0);
+    await expect(revision).toHaveCSS("text-decoration-color", "rgba(168, 85, 247, 0.35)");
+    await expect(revision).toHaveCSS("text-decoration-thickness", "1px");
+    await testInfo.attach("inactive-revisions", {
+        body: await page.screenshot({
+            ...SCREENSHOT_OPTIONS,
+            path: testInfo.outputPath("inactive-revisions.png"),
+        }),
+        contentType: "image/png",
+    });
+    await revision.hover();
+    await expect(revision).toHaveCSS("text-decoration-color", "rgb(168, 85, 247)");
+    await expect(revision).toHaveCSS("text-decoration-thickness", "2px");
+    await testInfo.attach("hovered-revision", {
+        body: await page.screenshot({
+            ...SCREENSHOT_OPTIONS,
+            path: testInfo.outputPath("hovered-revision.png"),
+        }),
+        contentType: "image/png",
+    });
+    await page.mouse.move(0, 0);
+    await expect(revision).toHaveCSS("text-decoration-thickness", "1px");
+    const focusRevision = mainAnnotationCard(page, VISUAL_FIXTURE.ids.rootRevision).getByRole(
+        "button",
+        { name: "Focus annotation" },
+    );
+    await focusRevision.focus();
+    await page.keyboard.press("Enter");
+    const active = page.locator("#editor-document .cm-revision-active").first();
+    await expect(active).toHaveCSS("background-color", "rgb(216, 180, 254)");
+    await active.hover();
+    await expect(active).toHaveCSS("text-decoration-line", "none");
+    qp.expectNoPageErrors();
+});
+
+test.describe("touch revision decorations", () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    test("inactive revision marks stay visible without hover", async ({ page }) => {
+        await preparePage(page, "light", VIEWPORTS[2]);
+        const qp = new QuilliumPage(page, fixtureOptions());
+        await qp.init();
+        await expectDesktopFixtureReady(page, qp, 0);
+        expect(await page.evaluate(() => matchMedia("(hover: none)").matches)).toBe(true);
+        const revision = page.locator("#editor-document .cm-revision").first();
+        await expect(revision).toHaveCSS("text-decoration-color", "rgb(168, 85, 247)");
+        await expect(revision).toHaveCSS("text-decoration-thickness", "2px");
+    });
+});
+
 for (const viewport of VIEWPORTS) {
     for (const colorScheme of COLOR_SCHEMES) {
         test(`desktop shared annotations — ${viewport.name} ${colorScheme}`, async ({ page }) => {
@@ -449,6 +508,15 @@ for (const viewport of VIEWPORTS) {
             });
             await qp.initHistory();
             await expectHistoryFixtureReady(page);
+            // Narrow previews virtualize this passage until their anchor is selected below.
+            if (viewport.name === "wide") {
+                const inactiveRevision = page.locator(".version-preview .cm-revision").first();
+                await page.mouse.move(0, 0);
+                await expect(inactiveRevision).toHaveCSS("text-decoration-thickness", "1px");
+                await inactiveRevision.hover();
+                await expect(inactiveRevision).toHaveCSS("text-decoration-thickness", "2px");
+                await page.mouse.move(0, 0);
+            }
             await isolateHistoryPreview(page);
             await expect(page.locator(".history-preview-stage")).toHaveCSS(
                 "flex-direction",
