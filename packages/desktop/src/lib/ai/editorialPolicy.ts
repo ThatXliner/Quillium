@@ -53,6 +53,8 @@ type CompileEditorialPolicyOptions = {
     exactWordCount?: number;
     requestedActions?: readonly EditorialAction[];
     preferences?: EditorialPreferences;
+    /** Require an annotation tool (or the transport-only noAction tool) instead of prose. */
+    annotationOnly?: boolean;
 };
 
 const EDITORIAL_CONSTITUTION = `You are Quillium's editorial collaborator. The writer owns the intent, voice, and final wording.
@@ -128,7 +130,12 @@ function preferencePrompt(preferences: EditorialPreferences): string {
     ].join("\n");
 }
 
-function taskPrompt(task: EditorialTask, hasSelection: boolean, exactWordCount?: number): string {
+function taskPrompt(
+    task: EditorialTask,
+    hasSelection: boolean,
+    exactWordCount?: number,
+    annotationOnly = false,
+): string {
     switch (task) {
         case "conversation":
             return "Task: discuss the writer's question about the current writing. Answer directly and concisely. Diagnose before prescribing, and offer wording only when the writer asks for wording.";
@@ -139,7 +146,7 @@ function taskPrompt(task: EditorialTask, hasSelection: boolean, exactWordCount?:
         case "global-review":
             return `Task: review structure, argument, scope, pacing, voice, and the reader's experience.
 
-Start with a compact overall read. Surface only passage-level concerns that meet the configured feedback density. Do not create rewrites during a broad review. A strong draft may need no comments.${
+${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passage-level concerns that meet the configured feedback density. Do not create rewrites during a broad review. A strong draft may need no comments.${
                 hasSelection
                     ? " The writer selected a passage, so make it the focus while considering its role in the larger draft."
                     : " Review the whole included draft."
@@ -150,7 +157,9 @@ Start with a compact overall read. Surface only passage-level concerns that meet
 Use a suggestion for a small local replacement. Use a revision when the passage needs a coherent sentence-level or larger alternative. Use a comment for a question or diagnosis that should precede rewriting. Match the configured stance and voice latitude. Do not spray the passage with word-level edits or invent a minimum number of changes.${
                 hasSelection
                     ? " Work only inside the selected passage."
-                    : " The writer has not selected text. Ask them to identify the passage if their request does not name a clear target."
+                    : annotationOnly
+                      ? " The writer has not selected text. Use an anchored comment for needed clarification when a safe target is available; otherwise use noAction."
+                      : " The writer has not selected text. Ask them to identify the passage if their request does not name a clear target."
             }`;
         case "exact-compression":
             return `Task: compress the selected passage to exactly ${exactWordCount ?? "the requested number of"} words while preserving its meaning, factual claims, and distinctive voice.
@@ -158,7 +167,9 @@ Use a suggestion for a small local replacement. Use a revision when the passage 
 Use one revision action containing two meaningfully different compressed alternatives. Every proposed version must meet the exact word count. The application preserves the original as the active version, so do not repeat it as a proposed version. Do not use comments or suggestions.${
                 hasSelection
                     ? " Work only inside the selected passage."
-                    : " No passage is selected, so explain that the writer must select text before exact compression."
+                    : annotationOnly
+                      ? " No passage is selected, so use noAction."
+                      : " No passage is selected, so explain that the writer must select text before exact compression."
             }`;
         case "thread-reply":
             return "Task: reply inside an editorial comment thread. Read the whole exchange, account for the anchored passage, and respond to the writer's latest point. If the writer pushes back, reassess the original concern. Withdraw it, narrow it, or explain the remaining reader risk. Do not propose unrelated edits.";
@@ -178,8 +189,8 @@ export function resolveEditorialTask(
     return PANEL_TASKS[mode].includes(requestedTask) ? requestedTask : "conversation";
 }
 
-function capabilityPrompt(actions: readonly EditorialAction[]): string {
-    if (actions.length === 0) {
+function capabilityPrompt(actions: readonly EditorialAction[], annotationOnly = false): string {
+    if (actions.length === 0 && !annotationOnly) {
         return "Action permission: respond with text only. No document action is allowed for this turn.";
     }
 
@@ -189,6 +200,12 @@ function capabilityPrompt(actions: readonly EditorialAction[]): string {
         revision: "revision for a coherent passage-level alternative that preserves the original",
     };
     const allowed = actions.map((action) => `- ${action}: ${descriptions[action]}`).join("\n");
+
+    if (annotationOnly) {
+        return `Action permission: return only tool calls. Use one or more of the permitted annotation tools below, or use noAction. Do not produce introductions, summaries, or conversational text. Put useful explanation in annotation fields. If no meaningful permitted action is warranted or no safe target is available, use noAction alone. Never manufacture an issue or change.
+${allowed}
+- noAction: complete this review without annotations when no useful permitted action is warranted or a safe target is unavailable.`;
+    }
 
     return `Action permission: you may propose only the actions listed below. Tool use is optional. Any unlisted action is forbidden.
 ${allowed}`;
@@ -200,17 +217,21 @@ export function compileEditorialPolicy({
     exactWordCount,
     requestedActions,
     preferences = DEFAULT_EDITORIAL_PREFERENCES,
+    annotationOnly = false,
 }: CompileEditorialPolicyOptions): EditorialPolicy {
     const limit = TASK_ACTION_LIMITS[task];
     const requested = requestedActions ?? limit;
     const allowedActions = limit.filter((action) => requested.includes(action));
+    const usesAnnotationOnlyOutput =
+        annotationOnly &&
+        (task === "global-review" || task === "local-rewrite" || task === "exact-compression");
 
     return {
         systemPrompt: [
             EDITORIAL_CONSTITUTION,
-            capabilityPrompt(allowedActions),
+            capabilityPrompt(allowedActions, usesAnnotationOnlyOutput),
             preferencePrompt(preferences),
-            taskPrompt(task, hasSelection, exactWordCount),
+            taskPrompt(task, hasSelection, exactWordCount, usesAnnotationOnlyOutput),
         ].join("\n\n"),
         allowedActions,
     };

@@ -508,6 +508,9 @@ function executeForward(
                     EditorSelection.single(range[0], range[1]),
                     "comment",
                 ),
+                // This fixture already contains a posted message; pending comments have a different
+                // first-message undo contract.
+                status: "active" as const,
                 thread: [{ message: operation.text, author: "fuzz", time: operation.time }],
             };
             dispatchHistorySpec(harness, { effects: [addAnnotation.of(annotation)] });

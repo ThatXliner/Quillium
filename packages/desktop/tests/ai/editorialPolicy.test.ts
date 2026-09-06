@@ -16,6 +16,7 @@ describe("compileEditorialPolicy", () => {
         const policy = compileEditorialPolicy({ task: "global-review" });
 
         expect(policy.allowedActions).toEqual(["comment"]);
+        expect(policy.systemPrompt).toContain("Start with a compact overall read");
         expect(policy.systemPrompt).toContain("Do not create rewrites during a broad review");
         expect(policy.systemPrompt).toContain("A strong draft may need no comments");
     });
@@ -30,6 +31,71 @@ describe("compileEditorialPolicy", () => {
         expect(policy.systemPrompt).toContain("Tool use is optional");
         expect(policy.systemPrompt).toContain("Work only inside the selected passage");
         expect(policy.systemPrompt).toContain("invent a minimum number of changes");
+    });
+
+    it("uses a required tool-only contract for persona output", () => {
+        const policy = compileEditorialPolicy({
+            task: "global-review",
+            annotationOnly: true,
+        });
+
+        expect(policy.allowedActions).toEqual(["comment"]);
+        expect(policy.systemPrompt).toContain("return only tool calls");
+        expect(policy.systemPrompt).toContain("noAction");
+        expect(policy.systemPrompt).toContain("Never manufacture an issue or change");
+        expect(policy.systemPrompt).not.toContain("Tool use is optional");
+        expect(policy.systemPrompt).not.toContain("Start with a compact overall read");
+    });
+
+    it("keeps no-action valid when requested actions are empty", () => {
+        const policy = compileEditorialPolicy({
+            task: "local-rewrite",
+            requestedActions: [],
+            annotationOnly: true,
+        });
+
+        expect(policy.allowedActions).toEqual([]);
+        expect(policy.systemPrompt).toContain("return only tool calls");
+        expect(policy.systemPrompt).toContain("use noAction alone");
+        expect(policy.systemPrompt).not.toContain("respond with text only");
+    });
+
+    it("keeps normal prose instructions for non-persona output", () => {
+        const policy = compileEditorialPolicy({
+            task: "local-rewrite",
+            hasSelection: true,
+        });
+
+        expect(policy.systemPrompt).toContain("Tool use is optional");
+        expect(policy.systemPrompt).not.toContain("return only tool calls");
+    });
+
+    it("does not enable annotation-only output for unsupported tasks", () => {
+        const policy = compileEditorialPolicy({
+            task: "background-review",
+            annotationOnly: true,
+        });
+
+        expect(policy.allowedActions).toEqual(["comment", "suggestion", "revision"]);
+        expect(policy.systemPrompt).toContain("Tool use is optional");
+        expect(policy.systemPrompt).not.toContain("use noAction alone");
+    });
+
+    it("uses no-action guidance for persona requests without a safe target", () => {
+        const localRewrite = compileEditorialPolicy({
+            task: "local-rewrite",
+            annotationOnly: true,
+        });
+        const exactCompression = compileEditorialPolicy({
+            task: "exact-compression",
+            annotationOnly: true,
+            exactWordCount: 5,
+        });
+
+        expect(localRewrite.systemPrompt).toContain("anchored comment for needed clarification");
+        expect(localRewrite.systemPrompt).toContain("otherwise use noAction");
+        expect(exactCompression.systemPrompt).toContain("No passage is selected, so use noAction");
+        expect(exactCompression.systemPrompt).not.toContain("explain that the writer must select");
     });
 
     it("keeps reverse outlines and branch comparisons text-only", () => {

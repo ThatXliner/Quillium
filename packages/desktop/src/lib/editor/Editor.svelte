@@ -1,6 +1,7 @@
 <script lang="ts">
 import { logAppEvent } from "$lib/appLog";
 import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
@@ -46,6 +47,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { onMount, tick } from "svelte";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
+import NameVersionPrompt from "./NameVersionPrompt.svelte";
 import { loadUserDictionary } from "./harper/harperLinter";
 import "./plugins/annotations/default.css";
 import "./harper/harper.css";
@@ -423,6 +425,13 @@ const loader = new DocumentLoader(getExtensionOptions, ({ state }) => {
     }
     syncStoresToEditorState(state);
 });
+let nameVersionTarget = $state<ReturnType<DocumentLoader["namedVersionTarget"]>>();
+$effect(() =>
+    appEventBus.on("name-version", () => {
+        if (!nameVersionTarget) nameVersionTarget = loader.namedVersionTarget();
+    }),
+);
+
 const drafts = loader.drafts;
 
 const currentDraft = $derived(drafts.tabDrafts.find((d) => d.id === $currentDraftId));
@@ -807,3 +816,14 @@ onMount(() => {
         color: rgb(180 83 9 / 80%);
     }
 </style>
+
+{#if nameVersionTarget}
+    <NameVersionPrompt
+        save={nameVersionTarget.save}
+        onclose={async () => {
+            nameVersionTarget = undefined;
+            await tick();
+            view?.focus();
+        }}
+    />
+{/if}
