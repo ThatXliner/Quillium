@@ -85,6 +85,7 @@ fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta,
     let sql = format!(
         "SELECT d.id, d.title, d.created_at, d.updated_at, d.word_count,
                 d.preview_text, d.tags, d.deleted_at, d.persist_history,
+                d.created_with_version,
                 snippet(documents_fts, 1, '{HIGHLIGHT_START}', '{HIGHLIGHT_END}', '…', 12)
          FROM documents_fts
          JOIN documents d ON d.rowid = documents_fts.rowid
@@ -105,8 +106,9 @@ fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta,
                 tags: row.get(6)?,
                 deleted_at: row.get(7)?,
                 persist_history: row.get(8)?,
+                created_with_version: row.get(9)?,
             },
-            row.get(9)?,
+            row.get(10)?,
         ))
     })?;
     rows.collect()
@@ -290,7 +292,7 @@ mod tests {
     #[test]
     fn finds_phrase_buried_in_body_beyond_preview() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "My Essay").unwrap();
+        let id = create_document(&conn, "My Essay", Some("0.24.4-rc.1")).unwrap();
         let body = format!(
             "{}{}",
             "padding ".repeat(50), // pushes the phrase past the 200-char preview
@@ -301,6 +303,10 @@ mod tests {
         let hits = search_documents(&conn, "silver heron", None).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].meta.id, id);
+        assert_eq!(
+            hits[0].meta.created_with_version.as_deref(),
+            Some("0.24.4-rc.1")
+        );
         assert_eq!(hits[0].match_type, "keyword");
         assert!(hits[0].snippet.contains(HIGHLIGHT_START));
         assert!(hits[0].snippet.contains("heron"));
@@ -309,7 +315,7 @@ mod tests {
     #[test]
     fn last_term_matches_as_prefix() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "Doc").unwrap();
+        let id = create_document(&conn, "Doc", None).unwrap();
         update_document_meta(
             &conn,
             &id,
@@ -327,7 +333,7 @@ mod tests {
     #[test]
     fn trashed_documents_are_excluded() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "Doomed").unwrap();
+        let id = create_document(&conn, "Doomed", None).unwrap();
         update_document_meta(
             &conn,
             &id,
@@ -346,7 +352,7 @@ mod tests {
     #[test]
     fn meta_update_without_body_preserves_index() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "Doc").unwrap();
+        let id = create_document(&conn, "Doc", None).unwrap();
         update_document_meta(
             &conn,
             &id,
@@ -367,8 +373,8 @@ mod tests {
     #[test]
     fn vec_knn_roundtrip_and_fusion() {
         let (_dir, conn) = test_db();
-        let id_a = create_document(&conn, "Doc A").unwrap();
-        let id_b = create_document(&conn, "Doc B").unwrap();
+        let id_a = create_document(&conn, "Doc A", None).unwrap();
+        let id_b = create_document(&conn, "Doc B", None).unwrap();
         update_document_meta(&conn, &id_a, "Doc A", 2, "", "[]", Some("about grief")).unwrap();
         update_document_meta(&conn, &id_b, "Doc B", 2, "", "[]", Some("about carpentry")).unwrap();
 

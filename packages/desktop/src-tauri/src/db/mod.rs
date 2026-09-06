@@ -41,6 +41,9 @@ pub struct DocumentMeta {
     pub tags: String,
     pub deleted_at: Option<i64>,
     pub persist_history: bool,
+    /// Version of the Quillium app that originally created this document.
+    /// `None` means the provenance is unknown, such as for legacy rows.
+    pub created_with_version: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -9,7 +9,7 @@ Architecture decisions: [event log and snapshots](./adr/0001-event-log-with-snap
 
 | Table | Purpose |
 |-------|---------|
-| `documents` | Document metadata (title, word count, preview, tags, undo-history policy) |
+| `documents` | Document metadata (title, word count, preview, tags, undo-history policy, creator version) |
 | `tabs` | Document tabs (label, position, type, soft-delete) — see [Tabs & Drafts](./tabs-and-drafts.md) |
 | `drafts` | Draft tree per tab (`tab_id`, `parent_draft_id`, `locked`, soft-delete) |
 | `doc_events` | Document-level structural audit log (tab CRUD, branching, locks, checkpoints) |
@@ -40,6 +40,30 @@ safe to re-apply (`IF NOT EXISTS` / column-existence guards).
 
 The full numbered list of migrations lives in
 [search.md § Schema & migrations](./search.md#schema--migrations).
+
+## Document creator provenance
+
+`documents.created_with_version` records the exact version from the Tauri app's
+runtime package metadata when a new document is created. The value follows the
+configured Quillium version string, including SemVer prerelease and build
+metadata such as `0.24.4-dev.7+sha.abc123`. Development builds keep the
+configured runtime value as-is; the database does not invent a separate dev
+label or infer a suffix from the frontend build.
+
+The column is nullable. Documents created before migration 12, and imported
+metadata whose creator version is unavailable, remain `NULL` because their
+provenance is unknown. Duplication copies the source document's value,
+including `NULL`, so creating a new database row does not replace its original
+creator provenance. There is no full document importer today. Any future
+importer must pass the original creator version to the database insertion
+helper, or `NULL` if it is absent. The Rust tests cover this metadata
+deserialization and insertion boundary. There is no `imported_with_version` or
+`last_migrated_with_version` column yet because no operation needs that
+separate history.
+
+Migrations 8 and 9 still use the documented creation-time boundary for undo
+history because that policy predates creator-version metadata. Retiring that
+temporary cutoff is tracked separately in [issue #344](https://github.com/ThatXliner/Quillium/issues/344).
 
 ## Event Log Flow
 
