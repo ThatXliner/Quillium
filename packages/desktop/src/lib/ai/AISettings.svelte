@@ -424,24 +424,24 @@ async function saveApiKey() {
     {/if}
 
     <div class="rounded-xl border border-black/8 bg-white/35 p-3">
-        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
-            Editorial approach
-        </p>
+        <div class="flex items-center gap-1">
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+                Editorial approach
+            </p>
+            <InfoButton title="Editorial approach" onclick={() => (editorialHelpTab = "stance")} />
+        </div>
         <p class="mt-1 text-[10px] leading-relaxed text-black/35">
             These guide feedback and proposals. They never let AI replace your draft directly.
         </p>
 
-        <div class="mt-3 grid gap-2.5">
-            <div class="grid gap-1">
-                <div class="flex items-center gap-1">
-                    <label for="editorial-stance" class="text-[10px] font-medium text-black/55">Stance</label>
-                    <InfoButton title="Stance" onclick={() => (editorialHelpTab = "stance")} />
-                </div>
+        <div class="mt-3 grid gap-2">
+            <div class="flex items-center justify-between gap-3">
+                <label for="editorial-stance" class="text-xs font-medium text-black/55">Stance</label>
                 <select
                     id="editorial-stance"
                     bind:value={editorialPreferences.stance}
                     onchange={persistEditorialPreferences}
-                    class="rounded-lg border border-black/10 bg-white/60 px-2.5 py-2 text-xs text-black/70 outline-none focus:border-blue-400"
+                    class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
                 >
                     <option value="author-first">Author-first</option>
                     <option value="collaborative">Collaborative</option>
@@ -449,16 +449,13 @@ async function saveApiKey() {
                 </select>
             </div>
 
-            <div class="grid gap-1">
-                <div class="flex items-center gap-1">
-                    <label for="feedback-density" class="text-[10px] font-medium text-black/55">Feedback density</label>
-                    <InfoButton title="Feedback density" onclick={() => (editorialHelpTab = "density")} />
-                </div>
+            <div class="flex items-center justify-between gap-3">
+                <label for="feedback-density" class="text-xs font-medium text-black/55">Feedback density</label>
                 <select
                     id="feedback-density"
                     bind:value={editorialPreferences.feedbackDensity}
                     onchange={persistEditorialPreferences}
-                    class="rounded-lg border border-black/10 bg-white/60 px-2.5 py-2 text-xs text-black/70 outline-none focus:border-blue-400"
+                    class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
                 >
                     <option value="quiet">Quiet</option>
                     <option value="focused">Focused</option>
@@ -466,16 +463,13 @@ async function saveApiKey() {
                 </select>
             </div>
 
-            <div class="grid gap-1">
-                <div class="flex items-center gap-1">
-                    <label for="voice-latitude" class="text-[10px] font-medium text-black/55">Voice latitude</label>
-                    <InfoButton title="Voice latitude" onclick={() => (editorialHelpTab = "voice")} />
-                </div>
+            <div class="flex items-center justify-between gap-3">
+                <label for="voice-latitude" class="text-xs font-medium text-black/55">Voice latitude</label>
                 <select
                     id="voice-latitude"
                     bind:value={editorialPreferences.voiceLatitude}
                     onchange={persistEditorialPreferences}
-                    class="rounded-lg border border-black/10 bg-white/60 px-2.5 py-2 text-xs text-black/70 outline-none focus:border-blue-400"
+                    class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
                 >
                     <option value="preserve">Preserve</option>
                     <option value="adapt">Adapt</option>
