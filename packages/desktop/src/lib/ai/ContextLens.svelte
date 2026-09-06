@@ -178,14 +178,14 @@ function sourceIcon(id: string) {
                         disabled:opacity-45 disabled:cursor-not-allowed {theme.hover}
                         focus:outline-none focus:ring-2 {theme.ring}"
                 >
-                    <div class="flex items-start gap-2">
+                    <div class="flex items-center gap-2">
                         <div class="min-w-0 flex-1">
                             <div class="text-xs font-semibold text-black/75 truncate">{action.label}</div>
                             <div class="text-[10px] leading-snug text-black/40">{action.detail}</div>
                         </div>
                         <ArrowRightIcon
                             size={13}
-                            class="mt-0.5 shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
+                            class="shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
                         />
                     </div>
                 </button>

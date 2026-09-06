@@ -7,6 +7,7 @@ export type HelpTab = {
     scenario: string;
     examples: { label: string; response: string; explanation?: string }[];
     guidance: string;
+    prompt?: string;
 };
 </script>
 
@@ -47,6 +48,12 @@ $effect(() => {
 });
 </script>
 
+{#snippet helpText(text: string)}
+    {#each text.split("**") as part, index}
+        {#if index % 2 === 1}<strong class="font-semibold text-black/85">{part}</strong>{:else}{part}{/if}
+    {/each}
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <dialog
     bind:this={dialogEl}
@@ -84,7 +91,7 @@ $effect(() => {
             </Tabs.List>
             {#each tabs as tab (tab.id)}
                 <Tabs.Content value={tab.id} class="overflow-y-auto px-5 py-4 text-[13px] leading-relaxed text-black/75 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-500">
-                    <p>{tab.description}</p>
+                    <p>{@render helpText(tab.description)}</p>
                     <div class="mt-4 rounded-xl border border-black/[0.06] bg-black/[0.025] px-4 py-3">
                         <h3 class="text-xs font-semibold text-black/80">Example</h3>
                         <p class="mt-1 whitespace-pre-line">{tab.scenario}</p>
@@ -102,10 +109,19 @@ $effect(() => {
                     </div>
                     <div class="mt-5 border-t border-black/[0.06] pt-4">
                         <h3 class="text-xs font-semibold text-black/80">When to use it</h3>
-                        <p class="mt-1">{tab.guidance}</p>
+                        <p class="mt-1">{@render helpText(tab.guidance)}</p>
                     </div>
-                    <p class="mt-4 text-xs text-black/60">{footer}</p>
-                    <p class="mt-2 text-[11px] text-black/55">Illustrative examples. Responses depend on your writing, request, and other AI settings.</p>
+                    {#if tab.prompt}
+                        <details class="mt-5 rounded-xl border border-black/10 bg-black/[0.025]">
+                            <summary class="cursor-pointer rounded-xl px-4 py-3 text-xs font-medium text-black/65 hover:text-black/85 focus-visible:outline-2 focus-visible:outline-blue-500">View the prompt</summary>
+                            <div class="border-t border-black/[0.06] px-4 py-3">
+                                <p class="mb-3 text-xs text-black/60">This action sends the prompt below, along with your writing context and AI settings.</p>
+                                <pre class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-black/75">{tab.prompt}</pre>
+                            </div>
+                        </details>
+                    {/if}
+                    <p class="mt-5 text-xs leading-normal text-black/60">{footer}</p>
+                    <p class="mt-3 border-t border-black/[0.06] pt-3 text-[11px] leading-normal italic text-black/55">Illustrative examples. Responses depend on your writing, request, and other AI settings.</p>
                 </Tabs.Content>
             {/each}
         </Tabs.Root>

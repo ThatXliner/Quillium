@@ -7,7 +7,7 @@ export const EDITORIAL_HELP_TABS: HelpTab[] = [
         id: "stance",
         label: "Stance",
         description:
-            "Controls how AI approaches a writing problem: ask about your intent first, offer a concrete alternative, or explore several directions. It does not decide how much of your style may change; that is Voice latitude.",
+            "Controls how AI approaches a writing problem: ask about your intent first, offer a concrete alternative, or explore several directions. It does not decide how much of your style may change; that is **Voice latitude**.",
         scenario:
             'Your opening: "Mara entered the house. She was afraid. She was very afraid."\nYou ask: "Help me make this opening tense. I am open to different approaches."',
         examples: [
@@ -34,13 +34,13 @@ export const EDITORIAL_HELP_TABS: HelpTab[] = [
             },
         ],
         guidance:
-            "Choose Author-first when you want help thinking through a problem. Choose Collaborative when you want concrete alternatives to react to. Choose Exploratory when you are still deciding what the piece could become. Your request and the panel you use also shape the response.",
+            "Choose **Author-first** when you want help thinking through a problem. Choose **Collaborative** when you want concrete alternatives to react to. Choose **Exploratory** when you are still deciding what the piece could become. Your request and the panel you use also shape the response.",
     },
     {
         id: "density",
         label: "Feedback density",
         description:
-            "Controls which concerns are worth mentioning. Quiet reserves feedback for problems that obstruct the draft's goal. Focused picks a few useful concerns. Thorough examines a wider range of issues and recurring patterns.",
+            "Controls which concerns are worth mentioning. **Quiet** reserves feedback for problems that obstruct the draft's goal. **Focused** picks a few useful concerns. **Thorough** examines a wider range of issues and recurring patterns.",
         scenario:
             'You ask for feedback on this scene:\n"Mara had never visited the house. She found the spare key in its usual hiding place. She felt afraid, terribly afraid. Upstairs, she lit a candle."',
         examples: [
@@ -67,13 +67,13 @@ export const EDITORIAL_HELP_TABS: HelpTab[] = [
             },
         ],
         guidance:
-            "Use Quiet to keep interruptions low while drafting, Focused to choose a next editing pass, and Thorough when you have time for a broader review. These are thresholds, not comment counts. Any setting can return no feedback when the writing needs none.",
+            "Use **Quiet** to keep interruptions low while drafting, **Focused** to choose a next editing pass, and **Thorough** when you have time for a broader review. These are thresholds, not comment counts. Any setting can return no feedback when the writing needs none.",
     },
     {
         id: "voice",
         label: "Voice latitude",
         description:
-            "Controls how far proposed wording may move from your style. Preserve stays close to your syntax, diction, and rhythm. Adapt allows moderate changes that serve your request. Transform allows a substantially different treatment in a revision proposal.",
+            "Controls how far proposed wording may move from your style. **Preserve** stays close to your syntax, diction, and rhythm. **Adapt** allows moderate changes that serve your request. **Transform** allows a substantially different treatment in a revision proposal.",
         scenario:
             'Original: "Rain again. The house sat there, stubborn as a bad thought. I went in."\nYou ask: "Smooth this passage while keeping the uneasy mood."',
         examples: [
@@ -100,7 +100,7 @@ export const EDITORIAL_HELP_TABS: HelpTab[] = [
             },
         ],
         guidance:
-            "Use Preserve when the passage already sounds like you, Adapt when you want room for phrasing improvements, and Transform when you want to try a different style. Transform permits a bigger change; it does not require one or let AI replace your draft directly.",
+            "Use **Preserve** when the passage already sounds like you, **Adapt** when you want room for phrasing improvements, and **Transform** when you want to try a different style. **Transform** permits a bigger change; it does not require one or let AI replace your draft directly.",
     },
 ];
 
@@ -122,7 +122,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this when you have several open notes and need to decide what to tackle first. Reverse outline is more useful when you want to examine the draft's structure itself.",
+            "Use this when you have several open notes and need to decide what to tackle first. **Reverse outline** is more useful when you want to examine the draft's structure itself.",
     },
     "Reverse outline": {
         scenario: SCENE,
@@ -136,7 +136,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this when a draft feels repetitive, disorganized, or slow and you want to see what each part contributes. For a single unexplained detail, try Find missing context.",
+            "Use this when a draft feels repetitive, disorganized, or slow and you want to see what each part contributes. For a single unexplained detail, try **Find missing context**.",
     },
     "Find missing context": {
         scenario: SCENE,
@@ -176,7 +176,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this to check what a reader is likely to wonder at a particular moment. Find missing context looks more broadly for information the draft may need.",
+            "Use this to check what a reader is likely to wonder at a particular moment. **Find missing context** looks more broadly for information the draft may need.",
     },
     "Try another angle": {
         scenario: "You select Mara entering the house and ask for another approach.",
@@ -203,7 +203,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this when you are editing a specific passage with notes already attached. Prioritize notes makes a plan for the broader draft.",
+            "Use this when you are editing a specific passage with notes already attached. **Prioritize notes** makes a plan for the broader draft.",
     },
     "Check the brief": {
         scenario:
@@ -313,7 +313,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this when the order or emphasis feels wrong. Reverse outline first maps the structure in chat; Structure scan gives feedback on passages where it may need work.",
+            "Use this when the order or emphasis feels wrong. **Reverse outline** first maps the structure in chat; **Structure scan** gives feedback on passages where it may need work.",
     },
     "Against the brief": {
         scenario:
@@ -398,7 +398,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this when you want contrasting revision proposals to compare. Try another angle discusses possible approaches in chat before rewriting.",
+            "Use this when you want contrasting revision proposals to compare. **Try another angle** discusses possible approaches in chat before rewriting.",
     },
     "Revise to notes": {
         scenario:
@@ -455,7 +455,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this when you want a cleaner draft that still sounds like its narrator. Voice latitude also guides how far proposed phrasing may move.",
+            "Use this when you want a cleaner draft that still sounds like its narrator. **Voice latitude** also guides how far proposed phrasing may move.",
     },
     "Resolve notes": {
         scenario:
@@ -469,7 +469,7 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
             },
         ],
         guidance:
-            "Use this for a draft-wide pass that turns open notes into proposed line edits. Prioritize notes helps decide which notes to address before requesting changes.",
+            "Use this for a draft-wide pass that turns open notes into proposed line edits. **Prioritize notes** helps decide which notes to address before requesting changes.",
     },
 };
 
@@ -481,7 +481,7 @@ const COMPRESSION_EXAMPLE: ActionExample = {
         { label: "Alternative 2, six words", response: "Rain hammered hard on the roof." },
     ],
     guidance:
-        "Use this when you need a specific length. The button calculates a target of roughly three quarters of your selection and requests two alternatives at that word count. Tighten aims for concision without an exact target.",
+        "Use this when you need a specific length. The button calculates a target of roughly three quarters of your selection and requests two alternatives at that word count. **Tighten** aims for concision without an exact target.",
 };
 
 export function getActionHelpTab(action: ContextAction): HelpTab {
@@ -493,6 +493,7 @@ export function getActionHelpTab(action: ContextAction): HelpTab {
         id: action.id,
         label: action.label,
         description: action.description,
+        prompt: action.prompt,
         ...example,
     };
 }
