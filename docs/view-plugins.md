@@ -17,6 +17,11 @@ Builds `DecorationSet`s for all annotation types on every `selectionSet`, `docCh
 | `cm-revision` / `cm-revision-active` | Revision annotation |
 | `cm-suggestion` / `cm-suggestion-active` | Suggestion annotation |
 
+Inactive revisions use a thin, muted purple underline that returns to full strength on hover.
+Touch devices keep the full underline; active revisions retain their purple background.
+The shared read-only renderer follows the same treatment, and legacy preview buttons also reveal
+the underline on keyboard focus. Empty-revision markers remain visible.
+
 Active state is determined by `getActiveAnnotation()` — the annotation whose range contains the cursor. If multiple ranges overlap, the narrowest one wins.
 
 ## revisionAtomicRanges

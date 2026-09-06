@@ -91,6 +91,21 @@ async function openVisualShare(
         await expect(page.locator('[data-readonly-renderer="legacy-static"]')).toBeVisible();
     }
     await settleVisualPage(page, options.renderer === "modern" ? 6 : 9);
+    const revision = page
+        .locator(options.renderer === "modern" ? ".cm-revision" : ".annotation-inline-revision")
+        .first();
+    await page.mouse.move(0, 0);
+    await expect(revision).toHaveCSS("text-decoration-thickness", "1px");
+    await revision.hover();
+    await expect(revision).toHaveCSS("text-decoration-thickness", "2px");
+    await page.mouse.move(0, 0);
+    await expect(revision).toHaveCSS("text-decoration-thickness", "1px");
+    if (options.renderer === "legacy") {
+        await page.keyboard.press("Tab");
+        await revision.focus();
+        await expect(revision).toHaveCSS("text-decoration-thickness", "2px");
+        await revision.evaluate((element) => (element as HTMLElement).blur());
+    }
 }
 
 async function focusVisualAnchor(

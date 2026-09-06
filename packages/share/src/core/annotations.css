@@ -16,9 +16,22 @@
 }
 .cm-revision {
     text-decoration: underline;
-    text-decoration-color: #a855f7;
-    text-decoration-thickness: 2px;
+    text-decoration-color: rgb(168 85 247 / 35%);
+    text-decoration-thickness: 1px;
     text-underline-offset: 3px;
+}
+/* Reveal the full mark on pointer hover; touch keeps a discoverable underline. */
+@media (hover: hover) {
+    .cm-revision:hover {
+        text-decoration-color: #a855f7;
+        text-decoration-thickness: 2px;
+    }
+}
+@media (hover: none) {
+    .cm-revision {
+        text-decoration-color: #a855f7;
+        text-decoration-thickness: 2px;
+    }
 }
 .cm-revision-active .cm-revision,
 .cm-revision-active {
