@@ -50,6 +50,98 @@ function defaultProps(
 }
 
 describe("DocumentTabs", () => {
+    it("opens at the pointer without selecting, dragging, or renaming", async () => {
+        const props = defaultProps();
+        const { getByRole } = render(DocumentTabs, { props });
+        const tab = getByRole("tab", { name: "Tab B" });
+        await fireEvent.pointerDown(tab, { button: 2, clientX: 160 });
+        await fireEvent.contextMenu(tab, { clientX: 160, clientY: 80 });
+        const menu = getByRole("menu", { name: "Actions for Tab B" });
+        expect(menu.parentElement).toBe(document.body);
+        expect(menu).toHaveStyle({ left: "160px", top: "80px" });
+        expect(getByRole("menuitem", { name: "Rename tab" })).toHaveFocus();
+        expect(props.ontabselect).not.toHaveBeenCalled();
+        expect(props.ontabreorder).not.toHaveBeenCalled();
+        expect(props.ontabrename).not.toHaveBeenCalled();
+    });
+
+    it.each(["ContextMenu", "F10"])(
+        "opens with %s and supports keyboard dismissal",
+        async (key) => {
+            const { getByRole, queryByRole } = render(DocumentTabs, { props: defaultProps() });
+            const tab = getByRole("tab", { name: "Tab A" });
+            await fireEvent.keyDown(tab, { key, shiftKey: key === "F10" });
+            const rename = getByRole("menuitem", { name: "Rename tab" });
+            const close = getByRole("menuitem", { name: "Close tab" });
+            await fireEvent.keyDown(rename, { key: "ArrowDown" });
+            expect(close).toHaveFocus();
+            await fireEvent.keyDown(close, { key: "ArrowDown" });
+            expect(rename).toHaveFocus();
+            await fireEvent.keyDown(rename, { key: "End" });
+            expect(close).toHaveFocus();
+            await fireEvent.keyDown(close, { key: "Escape" });
+            expect(queryByRole("menu")).not.toBeInTheDocument();
+            expect(tab).toHaveFocus();
+        },
+    );
+
+    it("renames the target without switching tabs", async () => {
+        const props = defaultProps();
+        const { getByRole } = render(DocumentTabs, { props });
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        await fireEvent.click(getByRole("menuitem", { name: "Rename tab" }));
+        const input = getByRole("textbox", { name: "Rename tab" });
+        expect(input).toHaveFocus();
+        await fireEvent.input(input, { target: { value: "Notes" } });
+        await fireEvent.keyDown(input, { key: "Enter" });
+        expect(props.ontabrename).toHaveBeenCalledExactlyOnceWith("b", "Notes");
+        expect(props.ontabselect).not.toHaveBeenCalled();
+    });
+
+    it("closes the target through the existing callback", async () => {
+        const props = defaultProps();
+        const { getByRole, queryByRole } = render(DocumentTabs, { props });
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        await fireEvent.click(getByRole("menuitem", { name: "Close tab" }));
+        expect(props.ontabdelete).toHaveBeenCalledExactlyOnceWith("b");
+        expect(props.ontabselect).not.toHaveBeenCalled();
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+        expect(getByRole("tab", { name: "Tab A" })).toHaveFocus();
+    });
+
+    it("protects the final tab and omits unsupported duplication", async () => {
+        const { getByRole, queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ tabs: [TAB_A] }),
+        });
+        await fireEvent.contextMenu(getByRole("tab"));
+        expect(getByRole("menuitem", { name: "Close tab" })).toBeDisabled();
+        expect(queryByRole("menuitem", { name: /duplicate/i })).not.toBeInTheDocument();
+    });
+
+    it("does not offer mutations in read-only mode", async () => {
+        const { getByRole, queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true }),
+        });
+        const tab = getByRole("tab", { name: "Tab A" });
+        await fireEvent.contextMenu(tab);
+        await fireEvent.keyDown(tab, { key: "ContextMenu" });
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    it("dismisses on outside interaction and when the target disappears", async () => {
+        const props = defaultProps();
+        const { getByRole, queryByRole, rerender } = render(DocumentTabs, { props });
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        await fireEvent.pointerDown(document.body);
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        for (const tab of document.querySelectorAll<HTMLElement>('[role="tab"]')) {
+            tab.getAnimations = () => [];
+        }
+        await rerender({ ...props, tabs: [TAB_A] });
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+    });
+
     it("renders all tab labels", () => {
         const { getByText } = render(DocumentTabs, { props: defaultProps() });
         expect(getByText("Tab A")).toBeInTheDocument();

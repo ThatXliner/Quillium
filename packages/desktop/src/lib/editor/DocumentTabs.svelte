@@ -68,6 +68,101 @@ let renamingTabId = $state<string | null>(null);
 let renameValue = $state("");
 let renameInputEl = $state<HTMLInputElement | undefined>();
 
+// Render outside the scrolling/masked strip so it cannot clip the menu.
+let contextMenu = $state<{ tabId: string; x: number; y: number } | null>(null);
+
+function closeContextMenu(restoreFocus = false): void {
+    const id = contextMenu?.tabId;
+    contextMenu = null;
+    if (restoreFocus && id) (tabEls[id] ?? tabEls[activeTabId ?? ""])?.focus();
+}
+
+function openContextMenu(event: MouseEvent | KeyboardEvent, tab: TabMeta): void {
+    if ((event.target as HTMLElement).closest("input")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (readOnly || renamingTabId || draggingId) return;
+    const rect = tabEls[tab.id]?.getBoundingClientRect();
+    const pointer = event instanceof MouseEvent && (event.clientX !== 0 || event.clientY !== 0);
+    contextMenu = {
+        tabId: tab.id,
+        x: pointer ? event.clientX : (rect?.left ?? 8),
+        y: pointer ? event.clientY : (rect?.bottom ?? 8),
+    };
+}
+
+function mountContextMenu(node: HTMLDivElement): { destroy: () => void } {
+    document.body.appendChild(node);
+    const rect = node.getBoundingClientRect();
+    node.style.left = `${Math.max(8, Math.min(contextMenu?.x ?? 8, window.innerWidth - rect.width - 8))}px`;
+    node.style.top = `${Math.max(8, Math.min(contextMenu?.y ?? 8, window.innerHeight - rect.height - 8))}px`;
+    node.querySelector<HTMLButtonElement>("button")?.focus();
+    const outside = (event: Event): void => {
+        if (!node.contains(event.target as Node)) closeContextMenu();
+    };
+    const dismiss = (): void => closeContextMenu(true);
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("focusin", outside);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("wheel", dismiss, { passive: true });
+    window.addEventListener("blur", dismiss);
+    return {
+        destroy: () => {
+            document.removeEventListener("pointerdown", outside, true);
+            document.removeEventListener("focusin", outside);
+            window.removeEventListener("resize", dismiss);
+            window.removeEventListener("wheel", dismiss);
+            window.removeEventListener("blur", dismiss);
+            node.remove();
+        },
+    };
+}
+
+function onMenuKeyDown(event: KeyboardEvent): void {
+    if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeContextMenu(true);
+        return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(
+        (event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>(
+            "button:not(:disabled)",
+        ),
+    );
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+        event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? items.length - 1
+              : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
+}
+
+function runTabAction(action: "rename" | "close"): void {
+    const tab = tabs.find((candidate) => candidate.id === contextMenu?.tabId);
+    closeContextMenu(true);
+    if (!tab || readOnly) return;
+    if (action === "rename") startRename(tab);
+    else if (tabs.length > 1) {
+        // Focus a surviving tab before the asynchronous controller removes this one.
+        const next =
+            tabs.find((candidate) => candidate.id === activeTabId && candidate.id !== tab.id) ??
+            tabs.find((candidate) => candidate.id !== tab.id);
+        if (next) tabEls[next.id]?.focus();
+        ontabdelete?.(tab.id);
+    }
+}
+
+$effect(() => {
+    if (contextMenu && (readOnly || !tabs.some((tab) => tab.id === contextMenu?.tabId))) {
+        closeContextMenu(true);
+    }
+});
+
 // Once tabs have shrunk to their minimum and still don't fit, the strip
 // scrolls horizontally. We track overflow + scroll position to fade the
 // edges with a gradient mask, mirroring the AI sidebar's icon wheel.
@@ -178,7 +273,7 @@ let pressedTabId: string | null = null;
 function onTabPointerDown(e: PointerEvent, tab: TabMeta) {
     // Left button only; ignore presses on the × or the rename input, and
     // never start a drag while renaming. Bail if a press is already in flight.
-    if (readOnly || e.button !== 0 || renamingTabId !== null || pointerId !== -1) return;
+    if (readOnly || e.ctrlKey || contextMenu || e.button !== 0 || renamingTabId !== null || pointerId !== -1) return;
     const target = e.target as HTMLElement;
     if (target.closest('[aria-label="Close tab"]') || target.closest("input")) return;
     if (!stripEl) return;
@@ -349,10 +444,14 @@ function startRename(tab: TabMeta) {
     if (readOnly) return;
     renamingTabId = tab.id;
     renameValue = tab.label;
-    setTimeout(() => renameInputEl?.select(), 0);
+    void tick().then(() => {
+        renameInputEl?.focus();
+        renameInputEl?.select();
+    });
 }
 
 function commitRename(tabId: string) {
+    if (renamingTabId !== tabId) return;
     const trimmed = renameValue.trim() || "Tab";
     renamingTabId = null;
     if (!readOnly) ontabrename?.(tabId, trimmed);
@@ -364,6 +463,11 @@ function cancelRename() {
 
 function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
     if ((event.target as HTMLElement).closest("input")) return;
+
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        openContextMenu(event, tab);
+        return;
+    }
 
     if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -424,18 +528,23 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                 data-tab-id={tab.id}
                 animate:flip={{ duration: isDragged ? 0 : FLIP_MS }}
                 role="tab"
+                aria-label={tab.label}
                 aria-selected={isActive}
+                aria-haspopup={!readOnly ? "menu" : undefined}
+                aria-expanded={!readOnly ? contextMenu?.tabId === tab.id : undefined}
+                oncontextmenu={(e) => openContextMenu(e, tab)}
                 aria-describedby={[isHighlighted ? "document-tab-timeline-target" : null, isDeleted ? "document-tab-deleted" : null].filter(Boolean).join(" ") || undefined}
                 data-highlighted={isHighlighted}
                 data-deleted={isDeleted}
                 tabindex={isActive ? 0 : -1}
                 onpointerdown={(e) => onTabPointerDown(e, tab)}
                 onkeydown={(e) => onTabKeyDown(e, tab)}
-                onclick={() => {
+                onclick={(e) => {
+                    if (e.button !== 0 || e.ctrlKey || contextMenu) return;
                     if (suppressClick) { suppressClick = false; return; }
                     if (!isActive) ontabselect(tab.id);
                 }}
-                ondblclick={() => { if (!readOnly) startRename(tab); }}
+                ondblclick={(e) => { if (!readOnly && !contextMenu && e.button === 0 && !e.ctrlKey) startRename(tab); }}
                 style={isDragged ? `transform: translateX(${dragDx}px); z-index: 30;` : ""}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
@@ -470,8 +579,13 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                         onpointerdown={(e) => e.stopPropagation()}
                         onblur={() => commitRename(tab.id)}
                         onkeydown={(e) => {
-                            if (e.key === "Enter") { e.preventDefault(); commitRename(tab.id); }
-                            if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
+                            if (e.key === "Enter" || e.key === "Escape") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (e.key === "Enter") commitRename(tab.id);
+                                else cancelRename();
+                                tabEls[tab.id]?.focus();
+                            }
                         }}
                         class="bg-transparent border-none outline-none w-24 text-sm text-black/90 text-center"
                         aria-label="Rename tab"
@@ -521,7 +635,42 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
 
 </div>
 
+{#if contextMenu}
+    {#key contextMenu}
+        <div
+            use:mountContextMenu
+            role="menu"
+            tabindex="-1"
+            aria-label={`Actions for ${tabs.find((tab) => tab.id === contextMenu?.tabId)?.label ?? "tab"}`}
+            onkeydown={onMenuKeyDown}
+            class="fixed z-[90] w-48 max-w-[calc(100vw-16px)] rounded-xl shadow-xl border border-white/40 bg-white/90 p-1 backdrop-blur-md"
+        >
+            <button type="button" role="menuitem" tabindex="-1"
+                class="tab-menu-item" onclick={() => runTabAction("rename")}>Rename tab</button>
+            <button type="button" role="menuitem" tabindex="-1" disabled={tabs.length <= 1}
+                class="tab-menu-item" onclick={() => runTabAction("close")}>Close tab</button>
+        </div>
+    {/key}
+{/if}
+
 <style>
+    .tab-menu-item {
+        display: block;
+        width: 100%;
+        border-radius: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        font-size: 0.875rem;
+        color: rgb(0 0 0 / 0.7);
+    }
+    .tab-menu-item:hover:not(:disabled), .tab-menu-item:focus-visible {
+        background: #eff6ff;
+        color: #000;
+        outline: 2px solid #3b82f6;
+        outline-offset: -2px;
+    }
+    .tab-menu-item:disabled { opacity: 0.45; }
+
     /* Hide the scrollbar; the mask gradient + drag/wheel handle scrubbing. */
     .strip {
         scrollbar-width: none;

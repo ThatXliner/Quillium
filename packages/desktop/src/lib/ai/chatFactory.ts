@@ -284,6 +284,7 @@ export async function runMultiPersonaStreams({
             exactWordCount,
             annotationContext: annotationContextAtStart,
             persona,
+            annotationOnly: true,
             abortSignal,
         });
 
@@ -296,19 +297,24 @@ export async function runMultiPersonaStreams({
                 }
                 const { value, done } = await reader.read();
                 if (done) break;
-                if (value?.type === "tool-input-available") {
-                    if (!provenance) continue;
-                    handleToolCall(
-                        { toolName: value.toolName, input: value.input } as ToolCall,
-                        {
-                            target: targetAtStart,
-                            allowedActions: policy.allowedActions,
-                            provenance,
-                            exactWordCount,
-                        },
-                        persona.name,
-                    );
+                if (value?.type === "error") {
+                    if (abortSignal.aborted) return;
+                    toast.error(value.errorText);
+                    throw new Error(value.errorText);
                 }
+                if (value?.type !== "tool-input-available") continue;
+                if (value.toolName === "noAction") continue;
+                if (!provenance) continue;
+                handleToolCall(
+                    { toolName: value.toolName, input: value.input } as ToolCall,
+                    {
+                        target: targetAtStart,
+                        allowedActions: policy.allowedActions,
+                        provenance,
+                        exactWordCount,
+                    },
+                    persona.name,
+                );
             }
         } catch (e) {
             if (abortSignal.aborted) return;

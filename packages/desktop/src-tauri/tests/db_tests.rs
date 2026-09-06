@@ -561,3 +561,49 @@ impl CloneId for quillium_lib::db::DraftMeta {
         self.id.clone()
     }
 }
+
+#[test]
+fn named_checkpoint_survives_reopen_and_restores_latest_state() {
+    use quillium_lib::db::events::{create_named_snapshot, list_snapshots, load_snapshot_state};
+    use quillium_lib::db::tabs::restore_coordinate_nondestructive;
+
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("checkpoint.db");
+    let conn = open_db(&path).unwrap();
+    let doc = create_document(&conn, "Checkpoint test").unwrap();
+    let tab = create_tab(&conn, &doc, "Main").unwrap();
+    let draft = list_tab_drafts(&conn, &tab.id).unwrap()[0].id.clone();
+    let event = append_event(
+        &conn,
+        &draft,
+        r#"{"type":"doc_change","changes":[{"from":0,"to":0,"insert":"Latest opening"}]}"#,
+    )
+    .unwrap();
+    let state =
+        r#"{"doc":"Latest opening","selection":{"ranges":[{"anchor":14,"head":14}],"main":0}}"#;
+    let snapshot = create_named_snapshot(&conn, &draft, state, event.event_id, "Opening").unwrap();
+    drop(conn);
+
+    let conn = open_db(&path).unwrap();
+    let named = list_snapshots(&conn, &draft)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == snapshot)
+        .unwrap();
+    assert_eq!(named.label.as_deref(), Some("Opening"));
+    assert_eq!(named.up_to_event_id, event.event_id);
+    assert_eq!(
+        load_snapshot_state(&conn, snapshot).unwrap().as_deref(),
+        Some(state)
+    );
+    let loaded = load_document_state(&conn, &doc, Some(&draft)).unwrap();
+    assert_eq!(loaded.snapshot_state_json.as_deref(), Some(state));
+    assert!(loaded.events_since.is_empty());
+
+    let restored =
+        restore_coordinate_nondestructive(&conn, &doc, named.created_at, None, Some(snapshot))
+            .unwrap()
+            .unwrap();
+    let loaded = load_document_state(&conn, &doc, Some(&restored.id)).unwrap();
+    assert_eq!(loaded.snapshot_state_json.as_deref(), Some(state));
+}

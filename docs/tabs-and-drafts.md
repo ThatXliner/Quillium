@@ -52,6 +52,20 @@ the rare action gets the expensive one (indentation). See the #160 thread.
 | Lock | Soft read-only state: a superseded iteration, or set manually | Amber strip inside the page; read-only state |
 | Document activity | Audit log of all structural ops (tab CRUD, iterate/branch, locks, checkpoints) | Unified history timeline, with Restore actions |
 
+## Tab actions
+
+Right-click a tab, or focus it and press Shift+F10 or the context-menu key, to
+open Rename tab and Close tab. Opening the menu leaves the active tab unchanged.
+Rename focuses the existing inline editor. Close uses the same soft-delete,
+Undo toast, and history restoration as the tab's × button; the final tab cannot
+be closed. Read-only tab bars omit the menu. Duplicate is omitted because there
+is no tab-level operation that copies a complete draft tree.
+
+Use arrow keys or Home/End within the menu. Escape or Tab dismisses it and returns
+focus to the originating tab; outside interaction also dismisses it.
+
+![Tab context menu](screenshots/tab-context-menu.png)
+
 ## Schema
 
 ```sql

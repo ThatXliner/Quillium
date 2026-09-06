@@ -22,6 +22,7 @@ afterEach(() => {
 const mockAppSettings = {
     selectTextInNestedEditor: true,
     showNestedEditor: true,
+    annotationPanelWidth: 280,
     atomicRevisions: true,
     editorMode: "markdown",
     docFontFamily: "",
@@ -37,6 +38,9 @@ const mockAppSettings = {
 
 vi.mock("$lib/settings.svelte", () => ({
     appSettings: mockAppSettings,
+    ANNOTATION_PANEL_MIN_WIDTH: 180,
+    ANNOTATION_PANEL_MAX_WIDTH: 420,
+    ANNOTATION_PANEL_DEFAULT_WIDTH: 280,
     previewSettings: vi.fn(),
     getPersistUndoHistoryForNewDocuments: () => false,
     updateSettings: vi.fn((patch) => Object.assign(mockAppSettings, patch)),

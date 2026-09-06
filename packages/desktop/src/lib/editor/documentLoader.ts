@@ -24,7 +24,12 @@ import {
 import { EditorState } from "@codemirror/state";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
-import { type ListenerOptions, flushPersistence, seedPersistenceBookkeeping } from "./listeners";
+import {
+    type ListenerOptions,
+    flushPersistence,
+    persistNamedVersion,
+    seedPersistenceBookkeeping,
+} from "./listeners";
 import { reconstructState } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
 import { TabDraftController } from "./tabDrafts.svelte";
@@ -46,6 +51,10 @@ export class DocumentLoader {
         seedStateJson: (draftId) => this.seedStateJson(draftId),
     });
     #generation = 0;
+    #committedGeneration = -1;
+    #committedTabId: string | null = null;
+    #committedDocument: LoadedDocument | undefined;
+    #naming = false;
     #disposed = false;
     #selectingDocument = false;
     #activeDraftWrite: Promise<void> = Promise.resolve();
@@ -101,7 +110,10 @@ export class DocumentLoader {
         ]);
     }
 
-    #commit(loaded: LoadedDocument, updateTitle: boolean): void {
+    #commit(loaded: LoadedDocument, updateTitle: boolean, generation: number): void {
+        this.#committedGeneration = generation;
+        this.#committedTabId = get(currentTabId);
+        this.#committedDocument = loaded;
         annotationEventBus.clearPendingSelections();
         if (updateTitle) currentDocumentTitle.set(loaded.title);
         currentDraftId.set(loaded.draftId);
@@ -179,8 +191,43 @@ export class DocumentLoader {
         if (document && !target) {
             posthog.capture("undo_history_policy_loaded", getUndoHistoryPolicyAnalytics(document));
         }
-        this.#commit(result, !target);
+        this.#commit(result, !target, generation);
         return result;
+    }
+
+    /** Bind the prompt to the committed editor, not stores already moving to another draft. */
+    namedVersionTarget(): { save: (label: string) => Promise<number | null> } | undefined {
+        const loaded = this.#committedDocument;
+        const generation = this.#generation;
+        const tabId = get(currentTabId);
+        const view = get(editorView);
+        const isCurrent = () =>
+            !!loaded?.draftId &&
+            !!view &&
+            this.#isCurrent(generation, loaded.documentId, tabId ?? undefined) &&
+            this.#committedGeneration === generation &&
+            this.#committedTabId === tabId &&
+            get(currentDraftId) === loaded.draftId &&
+            get(editorView) === view;
+        if (!isCurrent() || !loaded?.draftId || !view) return;
+        const draftId = loaded.draftId;
+        return {
+            save: async (rawLabel: string) => {
+                const label = rawLabel.trim();
+                if (!label || this.#naming || !isCurrent()) return null;
+                this.#naming = true;
+                try {
+                    return await persistNamedVersion(
+                        draftId,
+                        JSON.stringify(view.state.toJSON(savedFields)),
+                        label,
+                        isCurrent,
+                    );
+                } finally {
+                    this.#naming = false;
+                }
+            },
+        };
     }
 
     async switchToDraft(tabId: string, draftId: string): Promise<void> {

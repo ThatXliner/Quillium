@@ -14,6 +14,7 @@ export type AppEvent =
     | { type: "ai-open-settings" }
     | { type: "restore-backup"; backup: BackupEntry }
     | { type: "manual-review" }
+    | { type: "name-version" }
     | { type: "show-changelog"; version?: string }
     | { type: "show-licenses" }
     | { type: "show-update-banner"; version: string; mas: boolean }

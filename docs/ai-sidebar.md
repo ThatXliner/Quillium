@@ -98,7 +98,10 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 - Uses `createComment` for a small number of high-impact passage observations.
 - Does not create rewrites during broad review. The writer can move to Revise or
   ask for a targeted rewrite afterward.
-- Tool use is optional, and a strong draft may receive no annotations.
+- Standard Feedback requests leave tool use optional, and a strong draft may
+  receive no annotations. Persona fan-out requests require one or more
+  annotation tools or the transport-only `noAction` tool; their generated text
+  is not shown in the panel. See [Reader Personas](./reader-personas.md).
 - Includes user-defined Feedback quick actions from general app settings.
 - Can fan out through enabled reader personas when Feedback's persona toggle is on.
 

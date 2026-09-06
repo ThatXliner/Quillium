@@ -1062,3 +1062,55 @@ test("named checkpoints are never deleted by keep-last-N prune", async ({ page }
     await expect(list.getByText("Before refactor")).toBeVisible();
     await expect(list.getByText("Initial draft")).toBeVisible();
 });
+
+test("name from visible UI, preview the latest content, and restore from history", async ({
+    page,
+}, testInfo) => {
+    const qp = new QuilliumPage(page);
+    await qp.init();
+    await qp.typeInEditor("The latest opening.");
+    await page.getByRole("button", { name: "Name this version", exact: true }).click();
+    const input = page.getByLabel("Version name", { exact: true });
+    await expect(input).toBeFocused();
+    await input.fill("  Opening milestone  ");
+    await testInfo.attach("Name this version prompt", {
+        body: await page.screenshot(),
+        contentType: "image/png",
+    });
+    await input.press("Enter");
+    await expect(page.getByRole("dialog", { name: "Name this version" })).not.toBeVisible();
+    await expect(page.getByText("Version saved", { exact: true })).toBeVisible();
+    expect(await qp.countInvocations("cmd_create_named_snapshot")).toBe(1);
+    await qp.openHistoryFromStatusBar();
+    await page
+        .getByLabel("History timeline")
+        .getByText("Opening milestone", { exact: true })
+        .click();
+    await expect(
+        page.locator(".cm-content").filter({ hasText: "The latest opening." }).first(),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /restore to here/i }).click();
+    await page.getByRole("button", { name: /confirm restore/i }).click();
+    await expect(qp.editor).toBeVisible();
+    expect(await qp.countInvocations("cmd_restore_to_coordinate")).toBe(1);
+});
+
+for (const modifier of ["Meta", "Control"]) {
+    test(`${modifier}+Shift+S opens; whitespace and Escape create nothing`, async ({ page }) => {
+        const qp = new QuilliumPage(page);
+        await qp.init();
+        await qp.editor.click();
+        await page.keyboard.press(`${modifier}+Shift+S`);
+        const input = page.getByLabel("Version name", { exact: true });
+        await expect(input).toBeFocused();
+        await input.fill("   ");
+        await input.press("Enter");
+        await expect(page.getByRole("dialog", { name: "Name this version" })).toBeVisible();
+        expect(await qp.countInvocations("cmd_create_named_snapshot")).toBe(0);
+        await input.fill("Canceled");
+        await input.press("Escape");
+        await expect(input).not.toBeVisible();
+        expect(await qp.countInvocations("cmd_create_named_snapshot")).toBe(0);
+        await expect(qp.editor).toBeFocused();
+    });
+}
