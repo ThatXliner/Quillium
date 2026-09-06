@@ -3,6 +3,7 @@ import {
     flushPersistQueue,
     flushPersistence,
     listeners,
+    persistNamedVersion,
     seedPersistenceBookkeeping,
 } from "$lib/editor/listeners";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
@@ -851,4 +852,110 @@ describe("persistence timing and identity", () => {
         ]);
         expect(get(currentDocumentTitle)).toBe("New title");
     });
+});
+
+describe("named version persistence", () => {
+    it("waits for pending edits and keeps later edits after the captured snapshot", async () => {
+        let release!: (result: unknown) => void;
+        const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
+        let eventId = 40;
+        mockIPC((cmd, args) => {
+            calls.push({ cmd, args: args as Record<string, unknown> });
+            if (cmd === "cmd_append_event") {
+                eventId++;
+                if (eventId === 41)
+                    return new Promise((resolve) => {
+                        release = resolve;
+                    });
+                return { eventId, needsSnapshot: false };
+            }
+            if (cmd === "cmd_create_named_snapshot") return 9;
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: " latest" } });
+        await vi.waitFor(() => expect(release).toBeDefined());
+        const checkpoint = persistNamedVersion(
+            "draft-1",
+            JSON.stringify(view.state.toJSON()),
+            "Opening",
+            () => true,
+        );
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " later" } });
+        expect(calls.some((call) => call.cmd === "cmd_create_named_snapshot")).toBe(false);
+        release({ eventId: 41, needsSnapshot: false });
+        expect(await checkpoint).toBe(9);
+        await flushPersistence();
+        const snapshot = calls.find((call) => call.cmd === "cmd_create_named_snapshot")!;
+        expect(snapshot.args).toMatchObject({
+            draftId: "draft-1",
+            upToEventId: 41,
+            label: "Opening",
+        });
+        expect(JSON.parse(snapshot.args.stateJson as string).doc).toBe("Hello world latest");
+        expect(
+            calls
+                .filter((call) =>
+                    ["cmd_append_event", "cmd_create_named_snapshot"].includes(call.cmd),
+                )
+                .map((call) => call.cmd),
+        ).toEqual(["cmd_append_event", "cmd_create_named_snapshot", "cmd_append_event"]);
+    });
+
+    it("does not create a checkpoint after an event failure, even if a later event succeeds", async () => {
+        const named = vi.fn();
+        let appends = 0;
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") {
+                if (++appends === 1) throw new Error("disk full");
+                return { eventId: 2, needsSnapshot: false };
+            }
+            if (cmd === "cmd_create_named_snapshot") named();
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "a" } });
+        view.dispatch({ changes: { from: 0, insert: "b" } });
+        await expect(persistNamedVersion("draft-1", "{}", "Opening", () => true)).rejects.toThrow(
+            "could not be saved",
+        );
+        expect(named).not.toHaveBeenCalled();
+    });
+
+    it("discards a request invalidated while persistence was pending", async () => {
+        const named = vi.fn();
+        mockIPC((cmd) => {
+            if (cmd === "cmd_create_named_snapshot") named();
+            return null;
+        });
+        expect(await persistNamedVersion("draft-1", "{}", "Opening", () => false)).toBeNull();
+        expect(named).not.toHaveBeenCalled();
+    });
+});
+
+it("keeps navigation behind a named snapshot write and permits retry after snapshot failure", async () => {
+    let reject!: (error: Error) => void;
+    let attempts = 0;
+    mockIPC((cmd) => {
+        if (cmd === "cmd_create_named_snapshot") {
+            if (++attempts === 1)
+                return new Promise((_resolve, no) => {
+                    reject = no;
+                });
+            return 12;
+        }
+        return null;
+    });
+    const saving = persistNamedVersion("draft-1", "{}", "Opening", () => true);
+    const failure = expect(saving).rejects.toThrow("disk full");
+    let flushed = false;
+    const navigation = flushPersistence().then(() => {
+        flushed = true;
+    });
+    await vi.waitFor(() => expect(reject).toBeDefined());
+    expect(flushed).toBe(false);
+    reject(new Error("disk full"));
+    await failure;
+    await navigation;
+    expect(await persistNamedVersion("draft-1", "{}", "Opening", () => true)).toBe(12);
 });

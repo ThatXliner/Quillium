@@ -51,7 +51,10 @@ function resolveKeys(keys: string[]): string[] {
 const shortcutGroups = [
     {
         title: "Navigation",
-        shortcuts: [{ keys: [mod, "O"], label: "Open library" }],
+        shortcuts: [
+            { keys: [mod, "O"], label: "Open library" },
+            { keys: [mod, "Shift", "S"], label: "Name this version" },
+        ],
     },
     {
         title: "AI Panels",

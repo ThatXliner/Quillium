@@ -578,6 +578,32 @@ export function flushPersistQueue(): Promise<void> {
     return persistQueue.catch(() => {});
 }
 
+/** Queue the captured state immediately after its edits, before any later edits. */
+export function persistNamedVersion(
+    draftId: string,
+    stateJson: string,
+    label: string,
+    isCurrent: () => boolean,
+): Promise<number | null> {
+    const write = persistQueue.then(async () => {
+        if (!isCurrent()) return null;
+        if (persistenceFailed)
+            throw new Error(
+                "Your latest changes could not be saved. Reopen the draft before naming a version.",
+            );
+        return createNamedSnapshot(draftId, stateJson, get(lastPersistedEventId), label);
+    });
+    // Navigation and subsequent edits must wait for this snapshot too.
+    persistQueue = write.then(
+        () => {},
+        () => {},
+    );
+    return write;
+}
+
+// A later successful append cannot repair a missing event in the replay chain.
+let persistenceFailed = false;
+
 function annotationEventsForPayload(payload: EventPayload): AnnotationEvent[] {
     if (payload.type === "compound") return payload.annotationEvents;
     if (
@@ -801,6 +827,7 @@ function showSavingAfterDelay(docId: string, draftId: string): void {
 
 /** Call after draining persistence and loading a draft's snapshot and events. */
 export function seedPersistenceBookkeeping(eventId = -1): void {
+    persistenceFailed = false;
     clearSavingIndicator();
     lastPersistedEventId.set(eventId);
     lastSavedAt.set(null);
@@ -853,6 +880,7 @@ async function doAppend(
         await snapshotAfterChange(update, draftId, result, policy.afterComment);
         if (isActiveDraft(docId, draftId)) saveStatus.set("saved");
     } catch (e) {
+        persistenceFailed = true;
         console.error("[listeners] appendEvent failed:", e);
         captureException(e);
         clearSavingIndicator();

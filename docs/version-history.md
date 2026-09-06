@@ -66,7 +66,13 @@ Two-click confirmation:
 
 ## Named Checkpoint Creation
 
-Top bar has text input + "Save" button:
+The editor status bar also offers "Name this version" (`Cmd/Ctrl+Shift+S`). Its focused
+prompt trims the name, saves on Enter, and cancels on Escape. The loader binds the
+prompt to its committed document/tab/draft and cancels stale submissions. The
+persistence queue writes the captured state after its pending events and before
+later edits; a failed event write blocks naming until the draft is reloaded.
+
+Version History retains its top-bar text input + "Save" button:
 - Calls `createNamedSnapshot(draftId, stateJson, eventId, label)`
 - State serialized via `view.state.toJSON(savedFields)`
 - Pressing Escape with unsaved text triggers shake animation

@@ -22,6 +22,7 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 
 | Key | Action |
 |-----|--------|
+| `Mod-Shift-S` | Name this version |
 | `Mod-D` | Open dictionary popover (single word selected) |
 | `Mod-B` | Toggle bold (markdown) |
 | `Mod-I` | Toggle italic (markdown) |
