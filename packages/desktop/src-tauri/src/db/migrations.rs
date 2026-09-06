@@ -174,6 +174,11 @@ pub const MIGRATIONS: &[Migration] = &[
             ",
         ),
     },
+    Migration {
+        version: 12,
+        name: "document_creator_version",
+        kind: MigrationKind::Sql("ALTER TABLE documents ADD COLUMN created_with_version TEXT;"),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -526,6 +531,125 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn creator_version_migration_preserves_legacy_rows_as_unknown() {
+        // Open a temporary database first so sqlite-vec is registered for the
+        // fresh connection below, then build an authentic version-11 schema.
+        let registration_dir = tempfile::tempdir().unwrap();
+        let registration_path = registration_dir.path().join("registration.db");
+        drop(open_db(&registration_path).unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        for migration in &MIGRATIONS[..11] {
+            match &migration.kind {
+                MigrationKind::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                MigrationKind::Rust(f) => f(&conn).unwrap(),
+            }
+            conn.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents
+             (id, title, created_at, updated_at, preview_text, deleted_at)
+             VALUES ('old', 'Old title', ?1, 10, 'old preview', NULL)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents
+             (id, title, created_at, updated_at, preview_text, deleted_at)
+             VALUES ('new-trash', 'New title', ?1, 20, 'new preview', 30)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS + 1],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 12);
+        let metadata: Vec<(
+            String,
+            String,
+            i64,
+            i64,
+            String,
+            Option<i64>,
+            Option<String>,
+        )> = conn
+            .prepare(
+                "SELECT id, title, created_at, updated_at, preview_text, deleted_at,
+                        created_with_version
+                 FROM documents ORDER BY id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            metadata,
+            vec![
+                (
+                    "new-trash".into(),
+                    "New title".into(),
+                    LEGACY_PERSIST_HISTORY_CUTOFF_MS + 1,
+                    20,
+                    "new preview".into(),
+                    Some(30),
+                    None,
+                ),
+                (
+                    "old".into(),
+                    "Old title".into(),
+                    LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1,
+                    10,
+                    "old preview".into(),
+                    None,
+                    None,
+                ),
+            ]
+        );
+
+        drop(conn);
+        let reopened = open_db(&path).unwrap();
+        let creator_version: Option<String> = reopened
+            .query_row(
+                "SELECT created_with_version FROM documents WHERE id = 'old'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(creator_version, None);
+    }
+
+    #[test]
+    fn creator_version_column_is_nullable_on_fresh_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("fresh.db")).unwrap();
+        let column: (i64, Option<String>) = conn
+            .query_row(
+                "SELECT \"notnull\", dflt_value FROM pragma_table_info('documents')
+                 WHERE name = 'created_with_version'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(column, (0, None));
     }
 
     #[test]

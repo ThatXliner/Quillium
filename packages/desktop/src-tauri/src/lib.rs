@@ -142,12 +142,19 @@ fn cmd_get_document(
 #[tauri::command]
 fn cmd_create_document(
     state: tauri::State<DbState>,
+    app: tauri::AppHandle,
     title: String,
     persist_history: Option<bool>,
 ) -> Result<String, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    create_document_with_history(&conn, &title, persist_history.unwrap_or(false))
-        .map_err(|e| e.to_string())
+    let created_with_version = app.package_info().version.to_string();
+    create_document_with_history(
+        &conn,
+        &title,
+        persist_history.unwrap_or(false),
+        Some(&created_with_version),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

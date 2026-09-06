@@ -18,6 +18,8 @@ export type DocumentMeta = {
     deletedAt: number | null;
     /** Whether snapshots retain undo/redo across app restarts. */
     persistHistory: boolean;
+    /** Original Quillium creator version; null when provenance is unknown (legacy/import). */
+    createdWithVersion: string | null;
 };
 
 /** One fully materialized live draft used by the atomic document-copy command. */

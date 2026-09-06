@@ -23,7 +23,7 @@ fn in_memory_db() -> Connection {
 #[test]
 fn validation_errors_are_distinct_and_keep_command_messages() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test").unwrap();
+    let doc_id = create_document(&conn, "Test", None).unwrap();
     let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
     let error = delete_tab(&conn, &tab_id).unwrap_err();
     assert!(matches!(error, DbError::Validation(_)));
@@ -53,7 +53,7 @@ fn validation_errors_are_distinct_and_keep_command_messages() {
 #[test]
 fn activity_failure_rolls_back_tab_and_seeded_iteration() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test").unwrap();
+    let doc_id = create_document(&conn, "Test", None).unwrap();
     let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
     let root_id = list_tab_drafts(&conn, &tab_id).unwrap()[0].id.clone();
     let activity_count = list_doc_events(&conn, &doc_id).unwrap().len();
@@ -89,7 +89,7 @@ fn activity_failure_rolls_back_tab_and_seeded_iteration() {
 #[test]
 fn later_activity_failure_rolls_back_orphan_rewrites_and_earlier_events() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test").unwrap();
+    let doc_id = create_document(&conn, "Test", None).unwrap();
     let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
     let root_id = list_tab_drafts(&conn, &tab_id).unwrap()[0].id.clone();
     let middle = iterate_draft(&conn, &root_id, "Middle", None).unwrap();
@@ -145,7 +145,7 @@ fn test_schema_creation() {
 #[test]
 fn test_append_event_increments_id() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     let payload = r#"{"type":"doc_change","changes":[]}"#;
@@ -162,7 +162,7 @@ fn test_append_event_increments_id() {
 #[test]
 fn test_snapshot_threshold_event_count() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     let payload = r#"{"type":"doc_change","changes":[]}"#;
@@ -182,7 +182,7 @@ fn test_snapshot_threshold_event_count() {
 fn test_snapshot_threshold_time() {
     // This test injects a fake old snapshot to simulate time passage.
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     // Insert a snapshot that's 130 seconds old
@@ -208,7 +208,7 @@ fn test_snapshot_threshold_time() {
 #[test]
 fn test_load_with_events_since_snapshot() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     // Register active draft in _meta
@@ -241,7 +241,7 @@ fn test_load_with_events_since_snapshot() {
 #[test]
 fn test_create_draft_creates_main_tab() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("draft");
 
     let tabs = list_tabs(&conn, &doc_id).expect("tabs");
@@ -259,7 +259,7 @@ fn test_create_draft_creates_main_tab() {
 #[test]
 fn test_create_tab_seeds_root_draft() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Notes").expect("tab");
 
     assert_eq!(tab.label, "Notes");
@@ -272,7 +272,7 @@ fn test_create_tab_seeds_root_draft() {
 #[test]
 fn test_iterate_chains_and_locks_superseded() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -312,7 +312,7 @@ fn test_iterate_chains_and_locks_superseded() {
 #[test]
 fn test_branch_starts_new_run_without_locking() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -342,7 +342,7 @@ fn test_branch_starts_new_run_without_locking() {
 #[test]
 fn test_branch_from_root_is_allowed() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -354,7 +354,7 @@ fn test_branch_from_root_is_allowed() {
 #[test]
 fn test_delete_draft_refusals() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -375,7 +375,7 @@ fn test_delete_draft_refusals() {
 #[test]
 fn test_delete_tab_is_soft_and_restorable() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab1 = create_tab(&conn, &doc_id, "Main").expect("tab1");
     assert!(
         delete_tab(&conn, &tab1.id).is_err(),
@@ -407,7 +407,7 @@ fn test_delete_tab_is_soft_and_restorable() {
 #[test]
 fn test_delete_draft_is_soft_and_restorable() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let v1 = iterate_draft(&conn, &root, "v1", Some(r#"{"doc":"hi"}"#)).expect("iterate");
@@ -429,7 +429,7 @@ fn test_delete_draft_is_soft_and_restorable() {
 #[test]
 fn test_run_tip_moves_back_on_delete_and_returns_on_restore() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
@@ -458,7 +458,7 @@ fn test_run_tip_moves_back_on_delete_and_returns_on_restore() {
 #[test]
 fn test_doc_events_record_structural_ops() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
@@ -487,7 +487,7 @@ fn test_doc_events_record_structural_ops() {
 #[test]
 fn test_load_resolves_active_tab_and_draft() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab1 = create_tab(&conn, &doc_id, "Main").expect("tab1");
     let tab2 = create_tab(&conn, &doc_id, "Notes").expect("tab2");
 
@@ -519,7 +519,7 @@ fn test_load_resolves_active_tab_and_draft() {
 #[test]
 fn test_migration_backfills_pre_tabs_drafts() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Old Doc").expect("doc");
+    let doc_id = create_document(&conn, "Old Doc", None).expect("doc");
     // Simulate a pre-migration draft: inserted without a tab.
     conn.execute(
         "INSERT INTO drafts (id, document_id, label, created_at, is_active)
@@ -527,6 +527,10 @@ fn test_migration_backfills_pre_tabs_drafts() {
         rusqlite::params![doc_id],
     )
     .expect("legacy draft");
+    // Rewind the schema past migration 12 as well so the replay exercises the
+    // creator-version migration against a genuinely pre-column database.
+    conn.execute("ALTER TABLE documents DROP COLUMN created_with_version", [])
+        .expect("drop creator-version column");
     conn.pragma_update(None, "user_version", 5)
         .expect("rewind version");
 
@@ -542,7 +546,7 @@ fn test_migration_backfills_pre_tabs_drafts() {
 #[test]
 fn test_set_draft_locked_roundtrip() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let draft = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 

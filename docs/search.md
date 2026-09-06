@@ -38,6 +38,7 @@ change the schema, **append a new numbered migration**; never edit shipped ones.
 | 9 | grandfather_document_history_policy | backfills persistent undo for pre-cutoff documents created after pre-release migration 8 had already run |
 | 10 | ai_conversations_and_profiles | adds draft-scoped AI conversations and document-scoped writer briefs |
 | 11 | document_editorial_decisions | adds explicit document-scoped editorial decisions |
+| 12 | document_creator_version | adds nullable `documents.created_with_version`; legacy rows remain unknown (`NULL`) |
 
 Key files:
 
