@@ -1,6 +1,24 @@
 # PostHog Events
 
-Analytics event catalog (curated subset). All events are captured via `posthog.capture()`. To find all events, grep for `posthog.capture` in the codebase.
+This catalog covers selected product events. Find other call sites with
+`rg -n 'posthog\.capture' packages/desktop/src`.
+
+## Add or change an event
+
+Desktop analytics initialization and privacy handling live in
+[posthog.ts](../packages/desktop/src/lib/posthog.ts); startup hooks live in
+[hooks.client.ts](../packages/desktop/src/hooks.client.ts). Use the existing
+`$lib/posthog` client at the user-action boundary. Keep analytics in app adapters,
+not the shared annotation core or presentation.
+
+Use a `snake_case` event name with the existing feature prefix, such as
+`revision_version_created`. Include properties that explain the action, such as
+`trigger`, `has_selection`, a count, or a mode. Follow existing privacy handling
+for document content. Add or update the corresponding row in this catalog.
+
+Local configuration uses `PUBLIC_POSTHOG_KEY` and `PUBLIC_POSTHOG_HOST` from the
+[desktop environment example](../packages/desktop/.env.example). The client can
+remain unconfigured for unrelated development.
 
 ## Session & Editor
 

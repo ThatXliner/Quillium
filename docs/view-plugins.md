@@ -1,6 +1,11 @@
 # ViewPlugins and Extensions
 
-`index.ts` registers several `ViewPlugin`s and facet extensions that react to editor updates.
+[Desktop annotations/index.ts](../packages/desktop/src/lib/editor/plugins/annotations/index.ts)
+registers view plugins and facet extensions that react to editor updates. Shared
+annotation decorations live in
+[annotationDecorations.ts](../packages/share/src/core/annotationDecorations.ts).
+The field owns annotation data; these extensions control how it looks and how
+the cursor interacts with it. Read [annotations](annotations.md) for the data model.
 
 ## annotationDecorations
 

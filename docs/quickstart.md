@@ -1,135 +1,116 @@
-# Quickstart Guide
+# Run Quillium and make a first change
 
-Get up and running as a Quillium contributor.
+The full writing app runs in Tauri. Start there to try saving, reopening drafts,
+native menus, and keychain-backed credentials. A browser dev server is useful for
+UI work, but it does not provide the native backend.
 
 ## Prerequisites
 
-- **Node.js** (for bun)
-- **bun** — `npm install -g bun`
-- **Rust** — [rustup.rs](https://rustup.rs/)
-- **Tauri CLI** — `cargo install tauri-cli`
+Install Git and Bun. Native desktop development also needs Rust/Cargo and your
+platform's Tauri system dependencies. The project includes the Tauri JavaScript
+CLI as a development dependency, so a separate global CLI is unnecessary.
 
-## Setup
+CI pins its Bun version in [the test workflow](../.github/workflows/test.yml).
+The package manifests and lockfiles record dependency versions.
+
+## Install and configure
 
 ```bash
-# Clone
 git clone https://github.com/ThatXliner/Quillium.git
 cd Quillium
-
-# Install dependencies
 bun install
+```
 
-# Run in browser (faster iteration, no Tauri features)
-bun run desktop:dev
+Run all commands on this page from the repository root.
 
-# Run as desktop app (full features)
+The desktop app reads public configuration from `packages/desktop/.env.local`
+or `.env`. If you do not already have either file, create `.env.local` with the
+following values for local editing without connected services:
+
+```dotenv
+PUBLIC_SUPABASE_URL=
+PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+PUBLIC_RELAY_URL=
+PUBLIC_POSTHOG_KEY=
+PUBLIC_POSTHOG_HOST=
+```
+
+Keep these names defined, even when their values are empty, because the desktop
+imports them from SvelteKit's generated `$env/static/public` module. Empty values
+disable the corresponding services. Restart the dev server after changing them.
+
+When you need accounts, sharing, or analytics, fill in the relevant values using
+[the desktop environment example](../packages/desktop/.env.example). Package-specific
+configuration belongs beside its consuming package, as explained in
+[the monorepo guide](monorepo.md#environment-files).
+
+Configure AI connections in the app's AI settings. API-key connections use the
+OS keychain; adding `OPENAI_API_KEY` to the frontend environment is not the setup
+path. AI is optional for editing and annotation work.
+
+## Launch the desktop app
+
+```bash
 bun run desktop:tauri:dev
 ```
 
-## Project Structure at a Glance
+This starts Vite and builds the native app. The first Rust build can take longer
+than subsequent runs. You should see the writing workspace and onboarding UI.
 
-```
-packages/desktop/src/
-├── routes/           # SvelteKit pages (/, /library, /history, /authorship)
-├── lib/
-│   ├── editor/       # CodeMirror setup, extensions, plugins
-│   │   └── plugins/annotations/  # THE CORE — comments, revisions, suggestions
-│   ├── ai/           # AI sidebar modes
-│   ├── collab/       # Real-time collaboration (Yjs)
-│   └── db/           # Tauri command wrappers
-packages/desktop/src-tauri/src/        # Rust backend (SQLite, keychain, menu)
-```
-
-## The Mental Model
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Svelte Components                     │
-│  (reactive UI — reads from stores, dispatches actions)   │
-└─────────────────────────────────────────────────────────┘
-                            ↑ reads
-                            │
-┌─────────────────────────────────────────────────────────┐
-│                     Svelte Stores                        │
-│    ($annotations, $documentContent, $editorView...)      │
-└─────────────────────────────────────────────────────────┘
-                            ↑ updateListener pushes
-                            │
-┌─────────────────────────────────────────────────────────┐
-│                   CodeMirror State                       │
-│  (immutable, transaction-based — THE source of truth)    │
-│      annotationField, historyField, document            │
-└─────────────────────────────────────────────────────────┘
-                            ↑ transactions
-                            │
-┌─────────────────────────────────────────────────────────┐
-│                      User Input                          │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Key insight**: CodeMirror state is the source of truth. Svelte stores are mirrors that `updateListener` pushes to. Components read stores but dispatch transactions to CodeMirror.
-
-## Common Tasks
-
-### Adding a new annotation feature
-
-1. Define types in `packages/desktop/src/lib/editor/plugins/annotations/models.ts`
-2. Add StateEffect in `annotationField.ts`
-3. Handle in `annotationField.update()` Phase 2
-4. Add inversion in `invertedAnnotationFieldEffects`
-5. Create UI component in the same directory
-
-### Adding a new AI mode
-
-1. Create component in `packages/desktop/src/lib/ai/`
-2. Add tab in `AISidebar.svelte`
-3. Add stream handler in `clientStreams.ts` if needed
-
-### Adding a Tauri command
-
-1. Add Rust function in `packages/desktop/src-tauri/src/lib.rs` or appropriate module
-2. Register in `tauri::Builder`
-3. Add TypeScript wrapper in `packages/desktop/src/lib/db/index.ts`
-
-### Adding a keybinding
-
-1. Editor shortcuts: add to keymap in `extensions.ts` or `annotations/index.ts`
-2. App-wide: add to native menu in `lib.rs`
-
-## Key Files to Know
-
-| File | What it does |
-|------|--------------|
-| `packages/desktop/src/lib/editor/Editor.svelte` | Mounts CodeMirror, sets up all extensions |
-| `packages/desktop/src/lib/editor/extensions.ts` | The extension stack |
-| `packages/desktop/src/lib/editor/listeners.ts` | Persistence + store sync |
-| `packages/desktop/src/lib/editor/plugins/annotations/annotationField.ts` | THE core state management |
-| `packages/desktop/src/lib/stores.ts` | All Svelte stores |
-| `packages/desktop/src/routes/+page.svelte` | Main editor page, modal rendering |
-
-## Running Tests
+To work on browser UI separately:
 
 ```bash
-bun run desktop:test:run              # Unit tests
-bun run desktop:test:e2e              # E2E tests (headless)
-bun run desktop:test:e2e:headed       # E2E with browser window
+bun run desktop:dev
 ```
 
-## Code Style
+Vite uses port 1420 by default. This launches the frontend only. Database,
+keychain, and native menu calls need Tauri or a test harness that mocks them;
+a page loading in the browser is not evidence that saving works.
 
-- **4-space indentation** (2 for JSON)
-- **100-char line width**
-- **Trailing commas and semicolons**
-- Run `bun run biome` before committing
+## Try the writing model
 
-## Getting Help
+Use a disposable document for this exercise:
 
-- Check [Known Limitations](./known-limitations.md) before filing a bug
-- Architecture questions? Start with [State Management](./state-management.md)
-- File issues at https://github.com/ThatXliner/Quillium/issues
+1. Open the Library, create a document, and type a short paragraph.
+2. Select a sentence and create a revision. Add another version with different wording.
+3. Switch versions. The active version replaces that sentence in the root editor.
+4. Edit the active version in its revision card. Watch the same prose change in
+   the root editor, then undo and redo the edit.
+5. Return to the Library and reopen the document. Check that its text and
+   revision alternatives remain.
 
-## Next Steps
+A revision holds alternatives for a passage. A draft holds a complete writing
+state inside a document tab. [The architecture walkthrough](architecture-overview.md)
+uses this distinction to explain the code behind the exercise.
 
-1. Read [Architecture Overview](./architecture-overview.md) for the full mental model
-2. Read [State Management](./state-management.md) — this is where most confusion happens
-3. Pick a feature area and dive into its doc
+## Make a first change
+
+A label or layout adjustment is a useful first task. Find its component with the
+[code map](file-structure.md), read the nearby code and relevant system guide,
+then make a small change. Shared annotation cards live in `packages/share`;
+desktop adapters supply editing and app-specific behavior.
+
+Run the relevant checks from [CONTRIBUTING.md](../CONTRIBUTING.md#verify-your-change).
+For an introduction to the annotation state tests, run:
+
+```bash
+bun run --cwd packages/desktop test:run tests/lib/editor/plugins/annotations/annotationField.test.ts
+```
+
+Open that test file beside `packages/share/src/core/annotationField.ts` to see
+how transactions, version switching, and undo are exercised without starting
+an app or calling an AI provider.
+
+## If setup fails
+
+| Symptom | Check |
+|---|---|
+| Missing `$env/static/public` export | Define all five variables above and restart Vite. |
+| Port 1420 is occupied | Stop the existing dev server before starting another; Tauri expects this port. |
+| Missing compiler or native library | Check the platform dependencies reported by the Tauri build. |
+| Database or keychain call fails in a browser | Reproduce with `desktop:tauri:dev`; browser mode has no native backend. |
+| Build rejects missing account configuration | Production builds require the public Supabase values. For an intentionally offline local frontend build, use `QUILLIUM_ALLOW_MISSING_SUPABASE_ENV=1 bun run desktop:build`. |
+
+For relay development, follow [the relay README](../packages/relay/README.md).
+For tests that bring up connected services, follow
+[the E2E guide](../packages/e2e/README.md).

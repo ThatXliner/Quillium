@@ -2,6 +2,11 @@
 
 Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline editor inside the revision card and a full-screen modal. Both are full `CodeMirror EditorView` instances. The parent document remains the **single source of truth**.
 
+Implementation: [NestedEditorController.ts](../packages/desktop/src/lib/editor/plugins/annotations/NestedEditorController.ts)
+owns lifecycle; [nestedEditor.ts](../packages/desktop/src/lib/editor/plugins/annotations/nestedEditor.ts)
+contains state creation, edit translation, and parent undo helpers. Read
+[state management](state-management.md) for the reactive boundary.
+
 Architecture decision: [nested editors use parent authority](./adr/0004-nested-editors-use-parent-authority.md).
 
 ## Architecture: Direct Parent Dispatch
@@ -36,8 +41,8 @@ Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors deleg
 | Method | Purpose |
 |--------|---------|
 | `constructor` | Creates `EditorView` from `VersionState` blob |
-| `syncFromParent(doc)` | Replaces nested buffer on external changes |
-| `translateAndDispatch` | Maps nested edits to parent coordinates |
+| `syncFromParent(doc)` | Patches nested text from current parent authority |
+| `translateAndDispatch` helper | Maps nested edits to parent coordinates |
 | `needsVersionSwitch()` | Detects when to rebuild for new version |
 | `needsAnnotationRebuild()` | Detects when annotation blob changed |
 | `destroy()` | Cleanup, optional flush |
@@ -53,7 +58,14 @@ The flush is believed to be redundant (translateAndDispatch syncs per-keystroke)
 
 ### Parent Sync Edit Annotation
 
-The controller tags sync transactions with `parentSyncEdit` so the listener reliably skips them regardless of async callback timing. This prevents feedback loops when external changes arrive.
+The controller checks the mounted version against the live parent state before
+syncing, because Svelte mirrors can trail a parent transaction. It computes a
+common prefix and suffix, then replaces only the changed middle of the text.
+CodeMirror can map nested annotation positions through that localized change.
+
+The sync transaction carries `parentSyncEdit` and `addToHistory.of(false)`.
+The nested listener skips forwarding it, which prevents an update from the
+parent from becoming another parent edit or undo step.
 
 ## Inline Editor (Revision.svelte)
 

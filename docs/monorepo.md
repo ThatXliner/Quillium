@@ -13,7 +13,8 @@ Architecture decision: [app-neutral editor capabilities](./adr/0009-app-neutral-
 | `packages/desktop` | `@quillium/desktop` | Tauri + SvelteKit desktop app |
 | `packages/landing` | `@quillium/landing` | Public SvelteKit site deployed on Vercel |
 | `packages/relay` | `@quillium/relay` | Omni WebSocket relay deployed with Fly/Docker |
-| `packages/share` | `@quillium/share` | Shared wire types, rendering utilities, and read-only share UI |
+| `packages/share` | `@quillium/share` | Canonical annotation core, shared UI, rendering utilities, and wire contracts |
+| `packages/e2e` | `@quillium/e2e` | Cross-package integration and browser tests |
 | `supabase` | n/a | Single source for Omni schema and migrations |
 
 ## Dependency Rules
@@ -52,6 +53,8 @@ bun run share:test:run
 ```
 
 For package-local one-offs, use `bun run --cwd packages/<name> <script>`.
+`test:all` runs the default Vitest suites; service-backed and browser verification
+have additional setup and commands in [packages/e2e/README.md](../packages/e2e/README.md).
 
 ## Shared Package
 

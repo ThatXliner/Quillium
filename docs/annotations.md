@@ -4,15 +4,25 @@ The annotation system is the core of Quillium's non-linear editing model. It ena
 
 Architecture decision: [stable revision-version identities](./adr/0005-stable-revision-version-identities.md).
 
-## Architecture Layers
+## Where the implementation lives
 
-```
-models.ts           — Plain types, factory helpers, type guards (no CM imports)
-annotationField.ts  — StateField + StateEffects + undo/redo (CM state layer)
-utils.ts            — Pure query helpers: range mapping, active annotation
-index.ts            — ViewPlugins + keybindings + public factory functions
-Svelte components   — UI rendering, nested editor lifecycle
-```
+Select a passage and create a revision: the field stores its range and alternate
+versions, the card renders them, and the nested editor edits the active one.
+Read [state management](state-management.md) first if the boundary between
+CodeMirror state and Svelte cards is unfamiliar.
+
+| Layer | Implementation |
+|---|---|
+| Types, schemas, factories, version helpers | [Shared models.ts](../packages/share/src/core/models.ts) |
+| StateField, effects, commands, undo inversion | [Shared annotationField.ts](../packages/share/src/core/annotationField.ts) |
+| Range and active-annotation queries | [Shared utils.ts](../packages/share/src/core/utils.ts) |
+| Desktop view plugins, keymaps, creation commands | [Desktop index.ts](../packages/desktop/src/lib/editor/plugins/annotations/index.ts) |
+| Shared card presentation | [share/src/cards](../packages/share/src/cards/) |
+| Editable cards and nested-editor integration | [Desktop adapters](../packages/desktop/src/lib/editor/plugins/annotations/) |
+
+The desktop `models.ts` and `annotationField.ts` are re-export shims. References
+to those module names below mean the shared implementations, which import
+CodeMirror state types and run in both desktop and read-only hosts.
 
 ## Data Model
 

@@ -1,216 +1,114 @@
-# File Structure
+# Code map
 
-Complete source tree with file purposes.
+Use this page to find the implementation for a task. Paths link directly to code;
+for the relationships between these pieces, read the
+[architecture walkthrough](architecture-overview.md).
 
-## Desktop Frontend (`packages/desktop/src/`)
+## Package boundaries
 
+| Location | Owns |
+|---|---|
+| [packages/desktop/src](../packages/desktop/src/) | Desktop SvelteKit app |
+| [packages/desktop/src-tauri/src](../packages/desktop/src-tauri/src/) | Rust commands and local SQLite storage |
+| [packages/share/src](../packages/share/src/) | Shared annotation state, UI, and wire contracts |
+| [packages/landing/src](../packages/landing/src/) | Website, auth-link handling, and public preview routes |
+| [packages/relay/src](../packages/relay/src/) | Live Room WebSocket service |
+| [packages/e2e](../packages/e2e/README.md) | Cross-package and service-backed tests |
+| [supabase](../supabase/) | Omni database configuration and migrations |
+
+Run dependency installs from the root. See [the monorepo guide](monorepo.md) for
+which dependencies and capabilities may cross these boundaries.
+
+## Open a document and mount the editor
+
+Read these files in order to follow desktop startup:
+
+1. [src/routes/+page.svelte](../packages/desktop/src/routes/+page.svelte) mounts
+   the workspace and app-wide overlays.
+2. [Editor.svelte](../packages/desktop/src/lib/editor/Editor.svelte) connects the
+   workspace, CodeMirror instance, and Svelte mirrors.
+3. [documentLoader.ts](../packages/desktop/src/lib/editor/documentLoader.ts)
+   coordinates document/draft loading and switching.
+4. [extensions.ts](../packages/desktop/src/lib/editor/extensions.ts) assembles
+   the editable extension stack and saved fields.
+5. [listeners.ts](../packages/desktop/src/lib/editor/listeners.ts) registers
+   persistence and other update listeners.
+
+Other pages live under desktop [routes](../packages/desktop/src/routes/), including
+Library, Version History, and authorship playback. [navigation.ts](../packages/desktop/src/lib/navigation.ts)
+coordinates page transitions. The shared reactive values are in
+[stores.ts](../packages/desktop/src/lib/stores.ts).
+
+## Change annotations or revision behavior
+
+| Task | Start here |
+|---|---|
+| Types, schemas, factories, type guards, version identity | [Shared models.ts](../packages/share/src/core/models.ts) |
+| Annotation reducer, effects, commands, undo inversion | [Shared annotationField.ts](../packages/share/src/core/annotationField.ts) |
+| Linked revision-version groups | [Shared versionGroupField.ts](../packages/share/src/core/versionGroupField.ts) |
+| Shared range and selection queries | [Shared utils.ts](../packages/share/src/core/utils.ts) |
+| Desktop commands, keymaps, view plugins | [Desktop annotations/index.ts](../packages/desktop/src/lib/editor/plugins/annotations/index.ts) |
+| Editable cards and modals | [Desktop annotation adapters](../packages/desktop/src/lib/editor/plugins/annotations/) |
+| Nested editor lifecycle and parent synchronization | [NestedEditorController.ts](../packages/desktop/src/lib/editor/plugins/annotations/NestedEditorController.ts) |
+| Nested coordinate translation and parent undo | [nestedEditor.ts](../packages/desktop/src/lib/editor/plugins/annotations/nestedEditor.ts) |
+| Shared card visuals and threads | [share/src/cards](../packages/share/src/cards/) |
+| Shared modal and annotation-column layout | [share/src/modals](../packages/share/src/modals/), [share/src/layout](../packages/share/src/layout/) |
+| Read-only editor orchestration | [ReadonlyEditorHost.svelte](../packages/share/src/ReadonlyEditorHost.svelte) |
+
+Desktop `models.ts` and `annotationField.ts` only re-export the shared
+implementations. Put core changes in the shared files above. Read
+[annotations](annotations.md), [nested editors](nested-editors.md), or
+[view plugins](view-plugins.md) before changing their invariants.
+
+## Save, load, recover, and browse history
+
+| Task | Start here |
+|---|---|
+| Typed calls into Rust | [db/index.ts](../packages/desktop/src/lib/db/index.ts) |
+| Event payload types and construction | [db/events.ts](../packages/desktop/src/lib/db/events.ts) |
+| Transaction replay | [editor/replay.ts](../packages/desktop/src/lib/editor/replay.ts) |
+| Persisted undo serialization | [editor/persistentHistory.ts](../packages/desktop/src/lib/editor/persistentHistory.ts) |
+| SQLite setup and schema evolution | [db/schema.rs](../packages/desktop/src-tauri/src/db/schema.rs), [db/migrations.rs](../packages/desktop/src-tauri/src/db/migrations.rs) |
+| Events, snapshots, state loading | [db/events.rs](../packages/desktop/src-tauri/src/db/events.rs), [db/load.rs](../packages/desktop/src-tauri/src/db/load.rs) |
+| Document and tab/draft operations | [db/documents.rs](../packages/desktop/src-tauri/src/db/documents.rs), [db/tabs.rs](../packages/desktop/src-tauri/src/db/tabs.rs) |
+| Draft navigation UI and state | [tabDrafts.svelte.ts](../packages/desktop/src/lib/editor/tabDrafts.svelte.ts), [DraftTreePanel.svelte](../packages/desktop/src/lib/editor/DraftTreePanel.svelte) |
+| Historical browsing | [VersionHistory.svelte](../packages/desktop/src/lib/editor/VersionHistory.svelte), [editor/history](../packages/desktop/src/lib/editor/history/) |
+| Suspicious edits and recovery | [errorGuard.ts](../packages/desktop/src/lib/errorGuard.ts), [editor/restore.ts](../packages/desktop/src/lib/editor/restore.ts) |
+
+Read [persistence](persistence.md) for content history and
+[tabs and drafts](tabs-and-drafts.md) for document structure.
+
+## Work on a feature
+
+| Feature | Code | Guide |
+|---|---|---|
+| AI requests | [ai/chatFactory.ts](../packages/desktop/src/lib/ai/chatFactory.ts), [ai/clientStreams.ts](../packages/desktop/src/lib/ai/clientStreams.ts) | [AI pipeline](ai-sidebar.md) |
+| AI providers and connections | [ai/provider.ts](../packages/desktop/src/lib/ai/provider.ts), [ai/settings.svelte.ts](../packages/desktop/src/lib/ai/settings.svelte.ts) | [AI pipeline](ai-sidebar.md) |
+| Background reviews | [autoai/engine.ts](../packages/desktop/src/lib/autoai/engine.ts) | [AutoAI](autoai.md) |
+| Reader personas | [readers](../packages/desktop/src/lib/readers/) | [Reader personas](reader-personas.md) |
+| Live editing and publishing | [collab](../packages/desktop/src/lib/collab/), [shared contract](../packages/share/src/collab-contract/) | [Collaboration](collaboration.md) |
+| Sign-in and account UI | [auth](../packages/desktop/src/lib/auth/) | [Auth](auth.md) |
+| Library and document search | [library](../packages/desktop/src/lib/library/), [db/search.rs](../packages/desktop/src-tauri/src/db/search.rs) | [Library](library.md), [search](search.md) |
+| Authorship playback and export | [provenance](../packages/desktop/src/lib/provenance/) | [Provenance](provenance.md) |
+| Preferences | [settings.svelte.ts](../packages/desktop/src/lib/settings.svelte.ts), [settings](../packages/desktop/src/lib/settings/) | [Settings](settings.md) |
+| Native commands and registration | [src-tauri/src/lib.rs](../packages/desktop/src-tauri/src/lib.rs) | [Native integration](native-integration.md) |
+| Analytics initialization and privacy | [posthog.ts](../packages/desktop/src/lib/posthog.ts), [hooks.client.ts](../packages/desktop/src/hooks.client.ts) | [PostHog events](posthog-events.md) |
+
+## Find tests and captures
+
+Desktop tests live in [packages/desktop/tests](../packages/desktop/tests/).
+Start with [annotationField.test.ts](../packages/desktop/tests/lib/editor/plugins/annotations/annotationField.test.ts)
+for state and undo examples. Browser scenarios live in
+[tests/e2e](../packages/desktop/tests/e2e/). Collaboration also has
+[co-located fuzz tests](../packages/desktop/src/lib/collab/fuzz/README.md).
+
+[CONTRIBUTING.md](../CONTRIBUTING.md#verify-your-change) explains which checks to
+run. [Visual regression](visual-regression.md) covers browser baselines;
+[the changelog guide](changelog.md) covers feature captures.
+
+To find files outside this map, search from the root:
+
+```bash
+rg --files packages/desktop/src/lib
+rg -n 'syncStoresToEditorState|translateAndDispatch' packages/desktop/src
 ```
-src/
-├── hooks.client.ts            # Global error handlers, crash backup, PostHog exception capture
-├── lib/
-│   ├── ai/
-│   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise / Context / Readers / Settings)
-│   │   ├── AISettings.svelte  # Connection, provider, model, and credential configuration
-│   │   ├── Chat.svelte        # General AI chat
-│   │   ├── ContextInfoButton.svelte # Compact context-source popover trigger
-│   │   ├── ContextLens.svelte # Context summary and context-aware action cards
-│   │   ├── CustomQuickActions.svelte # User-defined Feedback/Revise actions
-│   │   ├── DocumentContext.svelte # Writer brief, saved decisions, and generator
-│   │   ├── Feedback.svelte    # AI feedback on document or selection
-│   │   ├── ModelGuideModal.svelte # Curated model rationale and recommendations
-│   │   ├── PersonaInfoModal.svelte # Reader-persona explanation
-│   │   ├── Readers.svelte     # Reader persona configuration panel
-│   │   ├── Revise.svelte      # Line-edit suggestions and comments
-│   │   ├── annotationContext.ts # Convert open annotations into AI context
-│   │   ├── editorialAction.ts # Guard, resolve, dedupe, and dispatch AI annotations
-│   │   ├── editorialTarget.ts # Map in-flight selection targets through editor changes
-│   │   ├── chatFactory.ts     # Chat transport, persona fan-out, and tool dispatch
-│   │   ├── clientStreams.ts   # Mode prompts, streaming, tools, and structured generation
-│   │   ├── context.ts         # Context packet budgeting and source metadata
-│   │   ├── openaiOAuth.ts     # ChatGPT PKCE session, refresh, and model discovery
-│   │   ├── panelResize.svelte.ts # AI sidebar resize controller
-│   │   ├── provider.ts        # Provider-agnostic LanguageModel creation
-│   │   ├── settings.svelte.ts # AI settings, credentials, tasks, and cancellation
-│   │   └── utils.ts           # Context injection and shared prompt helpers
-│   ├── auth/
-│   │   ├── AuthButton.svelte    # Top-right auth/profile button
-│   │   ├── AuthModal.svelte     # Sign in modal
-│   │   ├── AvatarDropdown.svelte # Dropdown menu for logged-in user
-│   │   ├── ProfileModal.svelte   # Logged-in profile/settings modal
-│   │   ├── auth.svelte.ts       # Reactive auth state store (Svelte 5 $state runes)
-│   │   ├── avatarUtils.ts       # initials() and avatarColor() helpers
-│   │   ├── schemas.ts           # Zod schemas for auth forms
-│   │   ├── supabase.ts          # Supabase client singleton
-│   │   └── index.ts             # Re-exports for public API
-│   ├── autoai/
-│   │   ├── AutoAIFace.svelte         # Animated face SVG component
-│   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI
-│   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state
-│   │   ├── engine.ts            # Review orchestration, AI calls
-│   │   ├── outcome.ts           # Last-review status model and labels
-│   │   ├── reviewSchema.ts       # Structured response normalization
-│   │   └── settings.svelte.ts   # AutoAI settings store
-│   ├── collab/
-│   │   ├── GoLiveButton.svelte    # Top-right Share button + modal
-│   │   ├── annotationSchema.ts    # CM ↔ Yjs bidirectional converters
-│   │   ├── awareness.ts           # Remote cursor rendering, follow mode
-│   │   ├── index.ts               # Public API: enableCollab, disableCollab
-│   │   ├── relativePosition.ts    # RelativePosition utilities
-│   │   ├── share.ts               # Share link utilities
-│   │   ├── sharePayload.ts        # Share payload encoding/decoding
-│   │   ├── store.ts               # Collab Svelte stores
-│   │   ├── types.ts               # CollabSession, awareness types
-│   │   ├── yjsAnnotations.ts      # Y.Map-based annotation sync
-│   │   ├── yjsBinding.ts          # CodeMirror ↔ Y.Text binding
-│   │   ├── yjsProvider.ts         # Y.Doc + WebsocketProvider setup
-│   │   ├── yjsUndo.ts             # Unified undo stack via Y.UndoManager
-│   │   ├── fuzz/                  # Fuzz testing for sync
-│   │   ├── probes/                # Sync probes for debugging
-│   │   └── test-helpers/
-│   │       └── twoPeerHarness.ts  # Two-peer test harness
-│   ├── db/
-│   │   ├── index.ts           # Typed invoke() wrappers for Rust commands
-│   │   ├── types.ts           # TypeScript mirrors of Rust structs
-│   │   └── events.ts          # Event payload types and builders
-│   ├── debug/
-│   │   ├── DebugPanel.svelte  # Development-only debug overlay
-│   │   ├── scenarios.ts       # Canned test scenarios
-│   │   └── store.svelte.ts    # Debug panel visibility state
-│   ├── editor/
-│   │   ├── Editor.svelte      # CodeMirror mount point + state sync
-│   │   ├── extensions.ts      # Full CodeMirror extension stack
-│   │   ├── listeners.ts       # Persistence + change listeners
-│   │   ├── replay.ts          # Event log replay for state reconstruction
-│   │   ├── restore.ts         # Crash-recovery restore with re-anchoring
-│   │   ├── dictionaryPlugin.ts # Mod-D keymap for dictionary trigger
-│   │   ├── dictionaryUtils.ts # Pure helper functions for dictionary
-│   │   ├── DictionaryPopover.svelte # Floating dictionary/thesaurus UI
-│   │   ├── markdownFormatting.ts # Markdown keyboard shortcuts (bold, italic, etc.)
-│   │   ├── richMarkdown.ts    # Rich markdown rendering (hides syntax)
-│   │   ├── StatusBar.svelte   # Word count, WPM, character count
-│   │   ├── VersionHistory.svelte # Full-screen snapshot browser
-│   │   ├── WordCountOverlay.svelte # Bottom-left word/char pill
-│   │   ├── sampleDocument.ts   # Seed content for first-run
-│   │   ├── harper/
-│   │   │   ├── harperLinter.ts  # Grammar-check integration
-│   │   │   ├── lint.ts          # Harper issue translation
-│   │   │   ├── lintKindColor.ts # Severity/color mapping
-│   │   │   ├── HarperTooltip.svelte # Hover tooltip
-│   │   │   └── harper.css       # Grammar-check styling
-│   │   └── plugins/
-│   │       └── annotations/
-│   │           ├── models.ts          # Type defs, factory helpers, type guards
-│   │           ├── annotationField.ts # StateField + StateEffects + undo
-│   │           ├── utils.ts           # Range mapping, active annotation queries
-│   │           ├── diff.ts            # Diff computation for suggestions
-│   │           ├── nestedEditor.ts    # Nested editor lifecycle helpers
-│   │           ├── commentAi.ts       # AI prompt/stream helpers for threads
-│   │           ├── revisionModalKeyguard.ts # Modal shortcut conflict guard
-│   │           ├── NestedEditorController.ts # Shared lifecycle/sync
-│   │           ├── index.ts           # Keybindings, ViewPlugins, public API
-│   │           ├── Annotations.svelte # Right panel container
-│   │           ├── Comment.svelte     # Comment card
-│   │           ├── CommentModal.svelte # Full-screen comment modal
-│   │           ├── DiffModal.svelte   # Full-screen diff view
-│   │           ├── PreComment.svelte  # Draft form for new comment
-│   │           ├── Revision.svelte    # Revision card + inline editor
-│   │           ├── RevisionModal.svelte # Full-screen nested editor
-│   │           ├── Suggestion.svelte  # Suggestion card with diff
-│   │           ├── Thread.svelte      # Message list inside card
-│   │           ├── ThreadMessage.svelte # Single message
-│   │           ├── TutorialGuide.svelte # In-editor tutorial callouts
-│   │           └── default.css        # Highlight CSS classes
-│   ├── events/
-│   │   ├── createEventBus.ts    # Generic typed event bus primitive
-│   │   ├── appEventBus.ts       # App-wide event channels
-│   │   └── annotationEventBus.ts # Annotation-specific event bus
-│   ├── readers/
-│   │   ├── colors.ts            # Hex → tint helpers for personas
-│   │   ├── presets.ts           # ReaderPersona type, DEFAULT_PERSONAS
-│   │   ├── prompt.ts            # buildPersonaPrompt()
-│   │   └── settings.svelte.ts   # Persona list store, persistence
-│   ├── library/
-│   │   ├── ContinuePill.svelte  # "Continue writing" shortcut
-│   │   ├── DocumentCard.svelte  # Single document card
-│   │   ├── DocumentGrid.svelte  # Grid layout
-│   │   ├── EmptyState.svelte    # Empty library placeholder
-│   │   ├── LibraryTopBar.svelte # Library page header
-│   │   ├── PreviewPanel.svelte  # Document preview sidebar
-│   │   └── tags.ts              # Document tagging system
-│   ├── provenance/
-│   │   ├── PlaybackViewer.svelte # Authorship/provenance playback UI
-│   │   ├── classify.ts          # Event-origin classifier
-│   │   ├── export.ts            # Authorship report export
-│   │   └── report.ts            # Authorship report builder
-│   ├── settings/
-│   │   ├── SettingsModal.svelte # App-level settings overlay
-│   │   ├── FontGuideModal.svelte # Font guide with samples
-│   │   └── fonts.ts             # Canonical font list
-│   ├── stats/
-│   │   ├── compute.ts           # Writing-stats calculations
-│   │   ├── StatsModal.svelte    # Full statistics modal
-│   │   └── StatsInfoModal.svelte # Explainer modal
-│   ├── tutorial/
-│   │   ├── Tutorial.svelte      # Onboarding tutorial
-│   │   └── steps.ts             # Tutorial step definitions
-│   ├── ui/
-│   │   ├── BetaDisclaimer.svelte # First-run beta terms
-│   │   ├── BottomLeftStack.svelte # Fixed bottom-left container
-│   │   ├── ChangelogModal.svelte # "What's New" overlay
-│   │   ├── Kbd.svelte           # Keyboard shortcut display
-│   │   ├── LicensesModal.svelte # Open-source licenses
-│   │   ├── PrivacyNudgeToast.svelte # Analytics reminder
-│   │   └── UpdateBanner.svelte  # Auto-update notification
-│   ├── updater/
-│   │   ├── schedule.ts          # Update check rate limiting
-│   │   └── errors.ts            # Update error handling
-│   ├── constants.ts             # App-wide constants
-│   ├── errorGuard.ts            # Suspicious change detection
-│   ├── ErrorBanner.svelte       # Error/recovery banner UI
-│   ├── export.ts                # Document export (txt, json, md, pdf)
-│   ├── navigation.ts            # Page transitions
-│   ├── posthog.ts               # PostHog analytics init
-│   ├── stores.ts                # Global Svelte stores
-│   ├── settings.svelte.ts       # App settings (reactive)
-│   └── changelog.json           # Version changelog data
-├── routes/
-│   ├── +layout.svelte           # Root layout
-│   ├── +layout.ts               # SvelteKit layout config
-│   ├── +page.svelte             # Editor page
-│   ├── library/
-│   │   └── +page.svelte         # Library page
-│   ├── history/
-│   │   └── +page.svelte         # Version history page
-│   └── authorship/
-│       └── +page.svelte         # Authorship/provenance playback page
-```
-
-## Tauri Backend (`packages/desktop/src-tauri/src/`)
-
-```
-packages/desktop/src-tauri/src/
-├── lib.rs                       # Command registration + native app menu
-├── main.rs                      # Entry point
-├── keychain.rs                  # OS keychain for API key storage
-├── pdf_export.rs                # PDF export with annotation cards
-└── db/
-    ├── mod.rs                   # Re-exports and shared types
-    ├── schema.rs                # DB open + WAL pragmas; runs migrations
-    ├── migrations.rs            # Versioned migration framework (PRAGMA user_version)
-    ├── documents.rs             # Document CRUD, trash, drafts
-    ├── events.rs                # Event log append, snapshot CRUD
-    ├── tabs.rs                  # Tab CRUD, iterate/branch, run relocking
-    ├── search.rs                # FTS5 + semantic search (query, KNN, RRF)
-    └── load.rs                  # State reconstruction from snapshots
-```
-
-## Icons and Logo
-
-| File | Purpose |
-|------|---------|
-| `packages/desktop/static/logo.svg` | Quill mark on transparent background |
-| `packages/desktop/static/icon.svg` | Source of truth for app icon |
-| `packages/desktop/src-tauri/icons/Quillium.png` | Pre-rendered 512×512 PNG |
-| `packages/desktop/src-tauri/icons/*` | Generated platform icons |
-
-To regenerate icons: `bun run desktop:icons`

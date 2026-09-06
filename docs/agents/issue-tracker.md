@@ -1,27 +1,28 @@
 # Issue tracker
 
-Issues and specs live in GitHub Issues for `ThatXliner/Quillium`. Use the `gh`
-CLI from this repository.
+Issues and specs live in `ThatXliner/Quillium` GitHub Issues. Use `gh` from the
+repository root so it infers the repository from the clone. Track requests and
+specs in issues; use pull requests for implementation review.
 
-## Operations
+## Read and find work
 
-- Create: `gh issue create --title "..." --body "..."`
-- Read: `gh issue view <number> --comments`
-- List: `gh issue list --state open`
-- Comment: `gh issue comment <number> --body "..."`
-- Close: `gh issue close <number> --comment "..."`
-- Add a label: `gh issue edit <number> --add-label "..."`
-- Remove a label: `gh issue edit <number> --remove-label "..."`
+```bash
+gh issue list --state open
+gh issue view <number> --comments
+```
 
-Infer the repository from the current clone.
+When a workflow asks for the relevant ticket, read the issue and its comments.
+When it asks to publish a spec to the issue tracker, the destination is an issue.
 
-## Pull requests as a request surface
+## Write when the task calls for it
 
-**PRs as a request surface: no.**
+For multiline bodies, write the exact Markdown to a temporary file and use
+`--body-file` so newlines and shell-sensitive text are preserved:
 
-## Skill language
-
-When a skill says "publish to the issue tracker," create a GitHub issue.
-
-When a skill says "fetch the relevant ticket," read the GitHub issue and its
-comments.
+```bash
+gh issue create --title "Short description" --body-file /tmp/issue-body.md
+gh issue comment <number> --body-file /tmp/comment-body.md
+gh issue edit <number> --add-label "label-name"
+gh issue edit <number> --remove-label "label-name"
+gh issue close <number>
+```

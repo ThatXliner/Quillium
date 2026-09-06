@@ -1,6 +1,8 @@
 # Known Limitations
 
-Current gaps and technical debt.
+Constraints to check when scoping work. Use the linked system guides and current
+code to confirm a limitation before designing around it; planned work belongs in
+[GitHub Issues](https://github.com/ThatXliner/Quillium/issues).
 
 ## Annotations
 
@@ -9,7 +11,6 @@ Current gaps and technical debt.
 | **Multi-selection not supported** | System assumes one selection range per annotation (`selection.main`). Multi-cursor not handled. |
 | **Thread updates are coarse-grained** | `updateThread` replaces entire thread array. Undo of a single message edit reverts the entire thread. |
 | **One pending comment at a time** | `canCreateNewComment()` enforces a single annotation with `status: "pending"`. Finer-grained locking unresolved. |
-| **`addSuggestion` inversion uses `Math.max` on IDs** | Assumes IDs are sequential and increasing; works until suggestions are added in bulk. |
 
 ## Nested Editors
 
@@ -17,7 +18,6 @@ Current gaps and technical debt.
 |------------|--------|
 | **`queueMicrotask` in `collapsedRevisionResolver`** | Necessary to avoid dispatching inside a `ViewPlugin.update`, but ordering relative to other queued microtasks not guaranteed under rapid undo. |
 | **Deeply nested modal external-sync relies on `modalAnnotationStores`** | Each RevisionModal publishes nested editor annotations to a global per-level store. Could be replaced with direct parent-child signal. |
-| **No cursor persistence on buffer replacement** | `syncFromParent` replaces entire buffer; cursor/selection and scroll position don't survive. |
 
 ## Collaboration
 
@@ -48,12 +48,11 @@ Current gaps and technical debt.
 
 | Limitation | Impact |
 |------------|--------|
-| **Full buffer replacement for nested editor sync** | Could be optimized with incremental patches, but complexity vs. frequency tradeoff. |
 | **All personas run in parallel** | No rate limiting or queuing for multi-persona feedback. |
 
 ## Platform
 
 | Limitation | Impact |
 |------------|--------|
-| **Desktop only** | No web or mobile version. |
-| **No sync across devices** | Each device has its own local SQLite database. |
+| **Web Preview is read-only** | Published pages reuse editor presentation but do not provide the full editable app. |
+| **No general background library sync** | Each installation has local SQLite storage; Live Rooms exchange edits during a session. |

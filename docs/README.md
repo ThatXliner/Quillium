@@ -1,98 +1,67 @@
-# Quillium Architecture Documentation
+# Developer guide
 
-Quillium is a modern writing application built with Tauri + SvelteKit + TypeScript. This documentation covers the internal architecture for contributors.
+Quillium lets a writer keep several versions of a passage and edit them inside
+the surrounding prose. Most of the codebase exists to make that behave like one
+document, including selection, undo, saving, and collaboration.
 
-**New here?** Start with the [Quickstart Guide](./quickstart.md).
+## Start here
 
-## Quick Orientation
+1. [Run the app](quickstart.md). Create a document, edit a revision, and reopen it.
+2. [Follow an edit through the architecture](architecture-overview.md). Learn
+   where state lives and how the desktop, shared UI, and relay fit together.
+3. [Understand the CodeMirror/Svelte boundary](state-management.md). This explains
+   why a visible UI change can fail to change the saved document.
+4. Pick a system below. Use the [code map](file-structure.md) to jump into its
+   implementation and [CONTRIBUTING.md](../CONTRIBUTING.md) to verify your change.
 
-- **Main routes**: `/` (editor), `/library` (document grid), `/history`
-  (version browser), `/authorship` (provenance playback)
-- **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
-- **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
+You do not need to read every system guide before contributing. The
+[glossary](../CONTEXT.md) distinguishes draft, revision, version, and snapshot;
+keep it nearby as you read. [DESIGN.md](../DESIGN.md) explains the intended writing
+experience, and [BRANDING.md](../BRANDING.md) covers visual design and copy.
 
-## Recommended Reading Order
+## Choose a system
 
-### Essential (read first)
-1. [Quickstart](./quickstart.md) — Setup, running, making your first change
-2. [Monorepo Guide](./monorepo.md) — Package layout, commands, deploy roots, shared package rules
-3. [Architecture Overview](./architecture-overview.md) — Mental model of the system
-4. [State Management](./state-management.md) — The dual-state system is the #1 source of confusion
+| What you are trying to understand or change | Read |
+|---|---|
+| Comments, suggestions, alternate versions, annotation undo | [Annotations](annotations.md) |
+| Editing inside a revision card or modal | [Nested editors](nested-editors.md) |
+| Highlights, cursor boundaries, collapsed revisions | [View plugins](view-plugins.md) |
+| Save/load, event replay, SQLite migrations, persisted undo | [Persistence](persistence.md) |
+| Tabs, draft runs, iteration, branching, locks | [Tabs and drafts](tabs-and-drafts.md) |
+| Document grid, navigation, trash | [Library](library.md) |
+| Full-text and semantic search | [Search](search.md) |
+| Historical snapshots, document activity, restore | [Version history](version-history.md) |
+| Suspicious edits, recovery, error banners | [Error handling](error-handling.md) |
+| Live Rooms, owner/joiner behavior, Web Preview publishing | [Collaboration](collaboration.md) |
+| Accounts, sign-in, guest sessions | [Auth](auth.md) |
+| AI context, providers, streaming, tools, cancellation | [AI request pipeline](ai-sidebar.md) |
+| Background review scheduling and status | [AutoAI](autoai.md) |
+| Feedback from multiple reader perspectives | [Reader personas](reader-personas.md) |
+| Authorship classification, playback, report export | [Provenance](provenance.md) |
+| Preferences and fonts | [Settings](settings.md) |
+| Native menus, keychain, updater, exports | [Native integration](native-integration.md) |
 
-### Core Systems (read based on what you're touching)
-5. [Annotations](./annotations.md) — If touching comments, suggestions, or revisions
-6. [Nested Editors](./nested-editors.md) — If touching revision modals or inline editors
-7. [Persistence](./persistence.md) — If touching save/load or crash recovery
+## Reference
 
-### Feature Areas (reference as needed)
-- [Tabs & Drafts](./tabs-and-drafts.md) — Document tabs, draft trees, forking, locks
-- [Collaboration](./collaboration.md) — Yjs sync, real-time collab
-- [AutoAI](./autoai.md) — Background AI review system
-- [AI Features and Request Pipeline](./ai-sidebar.md) — End-to-end context, provider, streaming, tools, and cancellation flow
-- [Auth](./auth.md) — Supabase Auth, account UI, guest collaborators
-- [Provenance](./provenance.md) — Authorship report and playback
+| Question | Read |
+|---|---|
+| Where does this code belong? | [Code map](file-structure.md), [package boundaries](monorepo.md) |
+| Why was it designed this way? | [Architecture decision records](adr/README.md) |
+| How do I run the browser suites and review image differences? | [Visual regression and CI](visual-regression.md), [cross-package E2E](../packages/e2e/README.md) |
+| Which shortcuts exist? | [Keybindings](keybindings.md) |
+| How do I add or find analytics events? | [PostHog events](posthog-events.md) |
+| How do I write release notes and capture a feature? | [Changelog guide](changelog.md) |
+| Which constraints should I check before investigating? | [Known limitations](known-limitations.md) |
+| Where are proposed changes tracked? | [GitHub Issues](https://github.com/ThatXliner/Quillium/issues) |
 
-### Reference (look up when needed)
-- [Architecture Decision Records](./adr/README.md) — Durable architectural choices and their rationale
-- [File Structure](./file-structure.md) — "Where is X?"
-- [Visual Regression and CI](./visual-regression.md) — Required checks, artifacts, and baseline policy
-- [Keybindings](./keybindings.md) — All shortcuts
-- [PostHog Events](./posthog-events.md) — Analytics catalog
-- [Known Limitations](./known-limitations.md) — Current gaps
+## Keep the docs useful
 
-## Documentation Index
+Put setup steps in the quickstart, contribution rules in CONTRIBUTING.md, and
+implementation details in the owning system guide. Link between them instead of
+copying a command catalog or source tree into each page. Explain the user action
+and state ownership before introducing implementation names.
 
-| Document | Description |
-|----------|-------------|
-| [Architecture Decision Records](./adr/README.md) | Durable architectural choices and their rationale |
-| [Monorepo Guide](./monorepo.md) | Package layout, workspace commands, deployment boundaries |
-| [Architecture Overview](./architecture-overview.md) | Core technologies, layers, data flow |
-| [File Structure](./file-structure.md) | Complete source tree with descriptions |
-| [Visual Regression and CI](./visual-regression.md) | Required checks, failure artifacts, and baseline update policy |
-| [State Management](./state-management.md) | CodeMirror ↔ Svelte sync, transactions vs effects |
-| [Annotations](./annotations.md) | Data model, annotationField, three-phase update, undo/redo |
-| [Nested Editors](./nested-editors.md) | Controller lifecycle, parent sync, infinite nesting |
-| [View Plugins](./view-plugins.md) | Decorations, atomic ranges, collapsed resolver, nudge |
-| [Persistence](./persistence.md) | Event log, snapshots, crash safety matrix, schema migrations |
-| [Tabs & Drafts](./tabs-and-drafts.md) | Document tabs, draft trees, iterate/branch, locks |
-| [Collaboration](./collaboration.md) | Yjs sync, relay architecture, awareness, owner/joiner flows |
-| [Auth](./auth.md) | Supabase Auth, account UI, anonymous guest sessions |
-| [Provenance](./provenance.md) | Authorship report, provenance classification, playback/export |
-| [AutoAI](./autoai.md) | Review engine, widget UI, face state machine |
-| [Reader Personas](./reader-personas.md) | Multi-persona parallel feedback system |
-| [AI Features and Request Pipeline](./ai-sidebar.md) | End-to-end AI flow, providers, models, context, streaming, tools, and other AI surfaces |
-| [Settings](./settings.md) | App preferences, fonts, localStorage vs SQLite |
-| [Library](./library.md) | Document management, trash, navigation |
-| [Search](./search.md) | FTS5 + semantic search, schema migrations |
-| [Version History](./version-history.md) | Snapshots, restore, storage management |
-| [Error Handling](./error-handling.md) | Error guard, crash recovery, banners |
-| [Native Integration](./native-integration.md) | Tauri menu, keychain, auto-updater, PDF export |
-| [Keybindings](./keybindings.md) | All keyboard shortcuts |
-| [PostHog Events](./posthog-events.md) | Analytics event catalog |
-| [Known Limitations](./known-limitations.md) | Current gaps and technical debt |
-
-## Core Technologies
-
-| Layer | Technology | Why |
-|-------|------------|-----|
-| Frontend framework | SvelteKit + TypeScript | Reactivity, SSG mode for Tauri |
-| Editor engine | CodeMirror 6 | Full state management, extensible plugins |
-| Desktop runtime | Tauri (Rust) | Cross-platform packaging, native file I/O |
-| Styling | Tailwind CSS v4 | Utility-first, co-located styles |
-| State management | CodeMirror StateFields + Svelte stores | Hybrid: editor state in CM, UI state in Svelte |
-| AI integration | Vercel AI SDK | Provider-agnostic, streaming |
-| Linting/formatting | Biome | 4-space indent, 100-char line width |
-
-## Development Commands
-
-```bash
-bun run desktop:dev  # Desktop development server
-bun run desktop:build # Desktop production build
-bun run check:all    # Type checking
-bun run biome        # Lint and format
-bun run test:all     # Run tests
-bun run desktop:tauri:dev # Tauri development mode
-```
-
-See the root `README.md`, `AGENTS.md`, and [Monorepo Guide](./monorepo.md) for the
-complete command reference.
+When behavior changes, update the affected guide and its source links. Add a new
+ADR when a resolved architectural decision needs a durable explanation. The
+older [decision log](../DECISION.md) and [refactoring suggestions](refactoring-suggestions.md)
+provide historical context; verify their claims against current code and ADRs.

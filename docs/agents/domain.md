@@ -1,25 +1,10 @@
-# Domain docs
+# Domain guidance
 
-Quillium is a single-context repository.
+Before naming or changing a domain concept, read the canonical terms in
+[CONTEXT.md](../../CONTEXT.md). Use those terms in code, tests, issues, and docs.
+Check whether an existing term covers the concept before adding a new one;
+record a new term once its meaning is resolved.
 
-## Before exploring
-
-Read `CONTEXT.md` before naming or changing domain concepts. Read relevant ADRs
-under `docs/adr/` before changing architecture.
-
-If either location does not exist, proceed silently. Domain-modeling workflows
-create files only when a term or decision has been resolved.
-
-## Vocabulary
-
-Use the canonical terms from `CONTEXT.md` in code, tests, issues, and design
-documents. Avoid synonyms listed by the glossary.
-
-If a required concept is missing, check whether existing Quillium language
-already covers it. Record a new term through domain modeling when it represents
-a real gap.
-
-## Decisions
-
-Surface conflicts with an existing ADR explicitly. Do not silently replace a
-recorded decision.
+Before changing architecture, read the relevant [ADRs](../adr/README.md).
+Surface conflicts with an existing decision explicitly. Add or amend a decision
+record when the decision is resolved; preserve historical rationale.
