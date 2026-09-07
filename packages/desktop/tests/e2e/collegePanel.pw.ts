@@ -59,6 +59,9 @@ test("selected prompts create independent named tabs and context without provide
     await expect(q.editor).toBeVisible();
     await openCollege(page);
     await expect(panel(page).getByRole("button", { name: "Change prompt" })).toBeVisible();
+    await expect
+        .poll(async () => (await page.locator("#ai-sidebar").boundingBox())!.height)
+        .toBeLessThan(450);
     await page.screenshot({
         animations: "disabled",
         path: "../../docs/assets/issue-422/college-panel.png",

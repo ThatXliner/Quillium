@@ -18,7 +18,7 @@ let unit = $state<"words" | "characters">("words");
 let busy = $state(false);
 let error = $state("");
 let removing = $state(false);
-let heading: HTMLHeadingElement | undefined;
+let heading = $state<HTMLHeadingElement>();
 let previousTarget = $state("");
 const targetKey = $derived(session ? JSON.stringify(session.target) : "");
 const options = $derived(kind === "uc-piq" ? UC_PROMPTS : COMMON_APP_PROMPTS);
@@ -111,8 +111,8 @@ async function update(setup: CollegeSetup | null): Promise<void> {
 }
 </script>
 
-<div class="college-panel p-4 space-y-4 text-sm text-black/80">
-    <h2 bind:this={heading} tabindex="-1" class="font-semibold">{choosing || !view?.setup ? (replacing ? "Choose a prompt" : "Which prompts are you answering?") : view.tabLabel}</h2>
+<div data-sidebar-size={!choosing && view?.setup ? "compact" : undefined} class="college-panel p-4 space-y-4 text-sm text-black/80">
+    {#if choosing || !view?.setup}<h2 bind:this={heading} tabindex="-1" class="font-semibold">{choosing || !view?.setup ? (replacing ? "Choose a prompt" : "Which prompts are you answering?") : view.tabLabel}</h2>{/if}
     {#if error || view?.error}<p role="alert" class="rounded-lg bg-red-50 text-red-800 p-3">{error || view?.error}</p>{/if}
     {#if !view?.documentId || !view.tabId}
         <p>Open a document to get started.</p>
@@ -164,18 +164,19 @@ async function update(setup: CollegeSetup | null): Promise<void> {
     {:else}
         {@const setup = view.setup}
         {#each setup.prompts as prompt (prompt.id)}
-            <details class="prompt-box">
-                <summary>{prompt.label || "Your prompt"}</summary>
-                <p class="whitespace-pre-wrap mt-3">{prompt.text}</p>
-                {#if prompt.sourceUrl}<a class="link inline-block mt-2" href={prompt.sourceUrl} target="_blank" rel="noreferrer">Original prompt</a>{/if}
-                {#if setup.kind !== "supplemental"}<p class="text-xs text-black/60 mt-2">Summary · check the original wording in your application.</p>{/if}
-            </details>
-            {#each prompt.constraints.filter(c => c.unit !== "other") as constraint (constraint.id)}
-                <p class="text-xs text-black/60" aria-label="Essay length">{constraint.unit === "characters" ? view.characterCount : view.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</p>
-            {/each}
+            <section class="space-y-2" aria-label={prompt.label || "Your prompt"}>
+                <div class="flex items-baseline justify-between gap-3">
+                    <h2 class="font-semibold">{prompt.label || "Your prompt"}</h2>
+                    {#each prompt.constraints.filter(c => c.unit !== "other") as constraint (constraint.id)}
+                        <span class="text-xs text-black/60 whitespace-nowrap" aria-label="Essay length">{constraint.unit === "characters" ? view.characterCount : view.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</span>
+                    {/each}
+                </div>
+                <p class="whitespace-pre-wrap leading-relaxed">{prompt.text}</p>
+                {#if prompt.sourceUrl}<a class="link" href={prompt.sourceUrl} target="_blank" rel="noreferrer">Original prompt</a>{/if}
+            </section>
         {/each}
         {#if setup.prompts.length > 1}<p class="text-xs text-black/60">This earlier setup has multiple prompts. Change prompt to replace it with one; your writing stays.</p>{/if}
-        <p class="text-xs text-black/60">{setup.active ? "Feedback uses this tab’s prompt and word limit." : "Paused. Feedback isn’t using this prompt."}</p>
+        {#if !setup.active}<p class="text-xs text-black/60">Paused. Feedback isn’t using this prompt.</p>{/if}
         <div class="flex flex-wrap gap-3">
             <button class="link" onclick={() => start(true)}>Change prompt</button>
             <button class="link" onclick={() => start()}>Add essays</button>
@@ -206,7 +207,6 @@ async function update(setup: CollegeSetup | null): Promise<void> {
     .primary { padding:.7rem; border-radius:.5rem; background:#2563eb; color:white; }
     .secondary { padding:.45rem .65rem; border-radius:.4rem; background:rgb(255 255 255 / .7); font-size:.75rem; }
     .link { font-size:.75rem; color:#1d4ed8; text-decoration:underline; text-underline-offset:3px; }
-    .prompt-box { padding:.75rem; border-radius:.6rem; background:rgb(255 255 255 / .65); }
     summary { cursor:pointer; }
     button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
 </style>

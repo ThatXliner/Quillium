@@ -649,6 +649,17 @@ function handleKeydown(e: KeyboardEvent) {
 {/if}
 
 <style>
+  /* Compact contributions grow with their content; the picker keeps its saved size. */
+  #ai-sidebar:has(:global([data-sidebar-size="compact"])) {
+    height: auto !important;
+    max-height: calc(100dvh - 64px);
+  }
+  #ai-sidebar:has(:global([data-sidebar-size="compact"])) :global([data-panel-id]:has([data-sidebar-size="compact"])) {
+    position: relative;
+    max-height: calc(100dvh - 170px);
+    overflow-y: auto;
+  }
+
   @keyframes fade-in {
     from {
       opacity: 0;
