@@ -19,8 +19,12 @@ import {
     removeCustomPersona,
     togglePersona,
 } from "$lib/readers/settings.svelte";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { Plus, Trash2 } from "lucide-svelte";
 import { slide } from "svelte/transition";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let showCreateForm = $state(false);
 let expandedId = $state<string | null>(null);

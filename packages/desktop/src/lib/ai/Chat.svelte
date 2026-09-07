@@ -23,6 +23,7 @@ import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
 /*
  * Chat.svelte
  *
@@ -59,6 +60,9 @@ import { documentContent, selectedText } from "$lib/stores";
 import ContextLens from "./ContextLens.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
 const { chat, clearChat, sendMessage } = createAiChat({ mode: "chat" });

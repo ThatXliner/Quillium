@@ -68,7 +68,7 @@ const actions = $derived(getContextAwareActions(mode, packet));
 let actionHelpTab = $state<string | null>(null);
 const activeSources = $derived(packet.sources.filter((source) => source.active));
 // Card is shown when the packet warrants a summary AND the writer hasn't
-// collapsed it into the header info (ℹ) icon. AISidebar surfaces the same
+// collapsed it into the header info (ℹ) icon. Sidebar surfaces the same
 // packet via that icon's popover whenever this card is hidden.
 const showContextSummary = $derived(
     shouldShowContextSummary(packet) && !appSettings.collapseContextSummary,

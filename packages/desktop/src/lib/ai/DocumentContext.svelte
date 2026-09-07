@@ -18,31 +18,50 @@ import {
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
+    hasApiKey,
     saveDocumentContext,
 } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
+import { currentDocumentId } from "$lib/stores";
 import { SparklesIcon } from "lucide-svelte";
+import { get } from "svelte/store";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let promptInput = $state("");
 let decisionInput = $state("");
 let generating = $state(false);
 let generateError = $state("");
 
+$effect(() => {
+    $currentDocumentId;
+    promptInput = "";
+    decisionInput = "";
+    generateError = "";
+});
+
 async function generate() {
-    if (!promptInput.trim() || generating) return;
+    if (!promptInput.trim() || generating || !appSettings.aiEnabled || !hasApiKey()) return;
     generating = true;
     generateError = "";
     const task = beginAiTask("document-context");
     const abortSignal = getAiAbortSignal();
+    const documentId = get(currentDocumentId);
     try {
         await ensureApiKeyLoaded();
-        documentContext.freeform = await generateContext({
+        if (abortSignal.aborted) return;
+        const generated = await generateContext({
             prompt: promptInput,
             provider: aiSettings.provider,
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
             abortSignal,
         });
+        if (abortSignal.aborted || get(currentDocumentId) !== documentId) return;
+        documentContext.freeform = generated;
         saveDocumentContext();
     } catch (e) {
         if (!abortSignal.aborted) generateError = String(e);
@@ -102,7 +121,7 @@ function removeDecision(index: number) {
         ></textarea>
         <button
             onclick={generate}
-            disabled={!promptInput.trim() || generating || !aiSettings.apiKey}
+            disabled={!promptInput.trim() || generating || !appSettings.aiEnabled || !hasApiKey()}
             class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
                 {generating
                     ? 'bg-blue-500/10 text-blue-600/60 cursor-wait'

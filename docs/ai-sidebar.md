@@ -1,11 +1,11 @@
-# AI Features and Request Pipeline
+# Sidebar and AI request pipeline
 
 Quillium's AI features run in the desktop client using the writer's selected
 provider and credentials. There is no Quillium inference server in the request
 path: prompts are assembled locally and sent directly to the selected provider,
 ChatGPT connection, or OpenAI-compatible endpoint.
 
-The AI sidebar is the main entry point, but the same provider, context, and
+The sidebar hosts both local writing panels and AI panels. It is the main AI entry point, but the same provider, context, and
 cancellation infrastructure also powers AutoAI, document-context generation,
 the dictionary assistant, annotation-thread suggestions, title suggestions, and
 the writing characterizer.
@@ -50,7 +50,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
 | File | Purpose |
 |------|---------|
-| `AISidebar.svelte` | Panel navigation, resize behavior, context summary, global stop button |
+| `sidebar/Sidebar.svelte` | Panel navigation, resize behavior, context summary, global stop button |
 | `AISettings.svelte` | Connection, provider, model, and API-key UI |
 | `settings.svelte.ts` | Shared settings, lazy key loading, task tracking, and cancellation |
 | `provider.ts` | Converts the selected provider and model ID into an AI SDK `LanguageModel` |
@@ -64,6 +64,94 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `provenance.ts` | Stable request metadata for AI-created annotations and accepted text |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
 | `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
+
+## Built-in panel host
+
+`Sidebar.svelte` consumes the typed contributions in
+[`sidebar/builtInPanels.ts`](../packages/desktop/src/lib/sidebar/builtInPanels.ts).
+Each contribution declares its stable ID, accessible label, title, icon, order,
+optional shortcut, dimensions, model prerequisite, content layout, and mount
+policy. Adding a contribution adds its navigation and component through the same
+loops; it does not require another rendering branch in the host. Settings uses
+the utility placement. The `ai_sidebar_opened` analytics event and `ai-sidebar`
+DOM IDs remain unchanged for compatibility.
+
+Context, Readers, and Settings open without model credentials, including when AI
+is disabled. Generating a Context brief still requires an enabled model connection.
+Opening Context or Readers does not load credentials; Settings retains its explicit
+connection and credential controls. Chat, Feedback,
+and Revise retain their credential-to-Settings navigation.
+
+The five writing panels retain their mounted state while hidden; Settings mounts
+only while active. Hiding a panel ends its host session but does not erase saved
+writing context. Removing its contribution or adding its ID to `disabledPanelIds`
+unmounts it and stops outstanding built-in AI work; re-enabling creates one instance keyed by the stable ID. Duplicate
+IDs and shortcuts are rejected when the contribution list is assembled. The
+`ai_sidebar_opened` analytics event and `ai-sidebar` DOM IDs remain unchanged
+for compatibility.
+
+A contribution receives only `active` and a nullable `session` prop. The session
+contains a copied document/tab/draft identity, an abort signal, a guarded selection
+read, and an `isCurrent()` check. Hiding, disabling, changing writing targets, and
+unmounting dispose the session. Panel-owned async work must use the signal and
+check `isCurrent()` before applying its result. A session is available only while
+active. It is not a mutable editor handle, credential source, storage API, or
+permission to dispatch arbitrary transactions. Render/effect failures are caught
+per panel with a retry control; panel event handlers and async operations remain
+responsible for catching their own errors.
+
+The built-in conversation components continue using `createAiChat()` and the
+existing policy, target, and annotation gateways. Their requests may continue when
+the sidebar is merely hidden, preserving current behavior. A document, tab, or
+draft identity change synchronously aborts host sessions and calls `stopAllAi()`;
+existing send-time target checks remain authoritative for annotation dispatch.
+Context generation also checks cancellation and document identity before saving
+its result. No editor transaction, annotation, or undo machinery is replaced.
+
+Opening focuses the panel region. Escape or Close restores the opening control
+(or the first remaining sidebar control when it is no longer available); outside
+clicks retain their destination focus. Hidden chrome and panels are inert. Icon
+strips support arrow keys, Home, End, and native Tab navigation. Extra icons scroll
+vertically in the pill and horizontally in the expanded strip, and panel dimensions
+are capped to the viewport.
+
+### Scope of issue #84
+
+This is the host foundation, not the complete plugin interface. A **preset**
+configures existing behavior; a **plugin** adds capabilities and may supply presets.
+Bundled contributions do not imply external installation or distribution.
+
+The foundation supplies declarative built-in rendering, local panels, navigation,
+mount/disposal rules, target-scoped read sessions, and per-panel render failure
+containment. Existing AI actions retain their validated gateways. The college
+consumer in #422 still needs deliberate preset and review operations; namespaced
+storage, bounded context/provenance reads, navigation, and action capabilities
+should be added with that consumer. Registration is not a security sandbox for
+untrusted executable code. External loading, compatibility, isolation, consent,
+updates, removal, and a marketplace remain deferred.
+
+The college design must allow each tab's writing brief to cover one or multiple
+prompts, with drafts representing alternate attempts at that writing task. A
+plugin can work across a document. School-specific review must distinguish which
+responses are read together; reuse between schools is not inherently a problem.
+No essay schema, research workflow (#423), or cross-essay review (#424) is introduced
+here. LaTeX compilation and word-processor/debate formatting are outside the intended
+prose-development scope.
+
+### Acceptance coverage for this slice
+
+| #84 criterion | Status |
+|---|---|
+| Preserve six built-in panels | Implemented; existing sidebar browser regressions pass. |
+| Add an icon and panel without rendering branches | Implemented; test-only contributions exercise the real host. |
+| Local operations without credentials | Implemented; browser tests edit Context and Readers without credential loading or provider traffic. |
+| Activation, hiding, disable/re-enable, focus, errors, cancellation | Implemented for built-in contributions and host sessions; async handlers own their error reporting. |
+| Stable document/tab/draft targets | Implemented for host sessions; existing request guards retained and late Context generation rejected. |
+| Plugin action permission, annotation, and undo guarantees | Existing built-in gateways retained and regression-tested. New contribution action capabilities are deferred. |
+| College panel, setup presets, and review without globals | Panel mounting and target reads are available. Preset/review adapters and the #422 consumer are deferred. |
+| Keyboard names/navigation, narrow layout, icon overflow | Automated keyboard/layout checks plus a browser check with 14 contributions at 320×600. |
+| Lifecycle, target, capability tests and real sidebar exercise | Covered by `tests/sidebar`, `tests/e2e/sidebarHost.pw.ts`, existing sidebar E2E, and editorial-target tests. |
+| Owning documentation distinguishes sidebar/presets/plugins/distribution | Documented here and in the glossary. |
 
 ## Sidebar Tabs
 

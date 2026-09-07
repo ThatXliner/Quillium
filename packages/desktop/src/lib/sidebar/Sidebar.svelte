@@ -1,30 +1,6 @@
-<!--
-    AISidebar.svelte — Top-level container for all AI features.
-
-    This component renders a floating, resizable sidebar anchored to the
-    left edge of the viewport. It acts as a shell/router for the six AI
-    panels: Chat, Feedback, Revise, DocumentContext, Readers, and AISettings.
-
-    UI states:
-      - Collapsed (pill): a narrow vertical strip of icon buttons.
-      - Expanded: a resizable panel showing the active sub-panel with a
-        header row of icon tabs, title bar, and close/settings controls.
-
-    State variables:
-      `action` — which panel is active (null = collapsed).
-      `resize` — PanelResizeController (panelResize.svelte.ts) owning the
-                 user-resized dimensions and the drag lifecycle.
-
-    The sidebar reads `aiProcessing.active` from settings.svelte.ts to
-    show a rainbow glow animation while any AI request is in flight.
-
-    All five sub-panels are mounted eagerly (visibility toggled via CSS)
-    to avoid re-mount jank when switching tabs.
-
-    Dependencies: Chat, Feedback, Revise, DocumentContext, Readers, AISettings
-    components; aiProcessing from settings.svelte.ts; posthog analytics.
--->
+<!-- Sidebar.svelte — Built-in sidebar navigation, sizing, and panel lifecycle. -->
 <script lang="ts">
+import ContextInfoButton from "$lib/ai/ContextInfoButton.svelte";
 import {
     aiProcessing,
     documentContext,
@@ -36,143 +12,105 @@ import {
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
+import { builtInPanels } from "$lib/sidebar/builtInPanels";
+import {
+    type SidebarPanelContribution,
+    type SidebarPanelSession,
+    createSidebarPanelSession,
+    createSidebarPanels,
+} from "$lib/sidebar/panels";
 import {
     activeAnnotation,
     annotations,
+    currentDocumentId,
+    currentDraftId,
+    currentTabId,
     documentContent,
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
 import { pointerDrag } from "$lib/ui/pointerDrag";
-import {
-    CompassIcon,
-    MessageCircleIcon,
-    Minimize2Icon,
-    PenLineIcon,
-    SettingsIcon,
-    SquareIcon,
-    UsersIcon,
-    XIcon,
-    ZapIcon,
-} from "lucide-svelte";
-/*
- * AISidebar.svelte
- *
- * Top-level container and tab router for all AI feature panels.
- *
- * Renders:
- *   A fixed, resizable sidebar anchored to the left viewport edge.
- *   Two visual states: collapsed pill (icon buttons) and expanded
- *   panel (icon tabs + active sub-panel).
- *
- * Props: none (standalone root component).
- * Events: none dispatched.
- *
- * Stores read:
- *   - aiProcessing.active (settings.svelte.ts) — drives the rainbow
- *     glow animation while any AI request is in flight.
- *
- * Stores written: none.
- *
- * Children: Chat, Feedback, Revise, DocumentContext, Readers, AISettings.
- *   All six sub-panels are mounted eagerly and toggled via CSS
- *   visibility to avoid re-mount jank on tab switches.
- *
- * Resize system: see PanelResizeController in panelResize.svelte.ts.
- * `resize.isResizing` disables CSS transitions so the panel tracks the
- * cursor without animation lag.
- */
-import { tick } from "svelte";
-import AISettings from "./AISettings.svelte";
-import Chat from "./Chat.svelte";
-import ContextInfoButton from "./ContextInfoButton.svelte";
-import DocumentContext from "./DocumentContext.svelte";
-import Feedback from "./Feedback.svelte";
-import Readers from "./Readers.svelte";
+import { Minimize2Icon, SquareIcon, XIcon } from "lucide-svelte";
+import { onDestroy, tick, untrack } from "svelte";
+import { derived, get } from "svelte/store";
+
+import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
+import { buildAiContextPacket, shouldShowContextSummary } from "$lib/ai/context";
+import { PanelResizeController } from "$lib/ai/panelResize.svelte";
 
 useDocumentContextEffects();
-import Revise from "./Revise.svelte";
-import { buildAnnotationContextInputs } from "./annotationContext";
-import { buildAiContextPacket, shouldShowContextSummary } from "./context";
-import { PanelResizeController } from "./panelResize.svelte";
 
-type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
-type ContextPanelAction = "chat" | "feedback" | "revise";
-let action = $state<Action>(null);
-
+let {
+    contributions = builtInPanels,
+    disabledPanelIds = [],
+}: {
+    contributions?: readonly SidebarPanelContribution[];
+    disabledPanelIds?: readonly string[];
+} = $props();
+let action = $state<string | null>(null);
+const panels = $derived(
+    createSidebarPanels(contributions).filter(
+        (panel) =>
+            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresModel),
+    ),
+);
+const actions = $derived(panels.filter((panel) => panel.placement === "main"));
+const utilities = $derived(panels.filter((panel) => panel.placement === "utility"));
+const activePanel = $derived(panels.find((panel) => panel.id === action));
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
-const actions: {
-    id: NonNullable<Action>;
-    icon: typeof MessageCircleIcon;
-    label: string;
-    shortcut: string;
-    activeClass: string;
-    hoverClass: string;
-    requiresApiKey: boolean;
-    preferredWidth?: number;
-    preferredHeight?: number;
-}[] = [
-    {
-        id: "chat",
-        icon: MessageCircleIcon,
-        label: "Chat",
-        shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
-        activeClass: "text-blue-600 bg-white/60",
-        hoverClass: "hover:text-blue-600",
-        requiresApiKey: true,
-        preferredHeight: 600,
-    },
-    {
-        id: "feedback",
-        icon: ZapIcon,
-        label: "Feedback",
-        shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
-        activeClass: "text-green-600 bg-white/60",
-        hoverClass: "hover:text-green-600",
-        requiresApiKey: true,
-        preferredHeight: 600,
-    },
-    {
-        id: "revise",
-        icon: PenLineIcon,
-        label: "Revise",
-        shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
-        activeClass: "text-purple-600 bg-white/60",
-        hoverClass: "hover:text-purple-600",
-        requiresApiKey: true,
-        preferredHeight: 600,
-    },
-    {
-        id: "context",
-        icon: CompassIcon,
-        label: "Document Context",
-        shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
-        activeClass: "text-amber-600 bg-white/60",
-        hoverClass: "hover:text-amber-600",
-        requiresApiKey: true,
-        preferredWidth: 380,
-    },
-    {
-        id: "readers",
-        icon: UsersIcon,
-        label: "Readers",
-        shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
-        activeClass: "text-rose-600 bg-white/60",
-        hoverClass: "hover:text-rose-600",
-        requiresApiKey: true,
-        preferredWidth: 440,
-    },
-];
-
-const panelTitles: Record<NonNullable<Action>, string> = {
-    chat: "Chat with AI",
-    feedback: "Get Feedback",
-    revise: "Revise & Rewrite",
-    context: "Document Context",
-    readers: "Reader Personas",
-    settings: "AI Settings",
-};
+function shortcut(panel: SidebarPanelContribution): string {
+    return panel.shortcutKey ? `${isMac ? "⌘⇧" : "Ctrl+Shift+"}${panel.shortcutKey}` : "";
+}
+let session = $state.raw<SidebarPanelSession | null>(null);
+let disposeSession: (() => void) | undefined;
+const readTarget = () => ({
+    documentId: get(currentDocumentId),
+    tabId: get(currentTabId),
+    draftId: get(currentDraftId),
+});
+let targetEpoch = $state(0);
+let previousTarget = JSON.stringify(readTarget());
+const unsubscribeTarget = derived([currentDocumentId, currentTabId, currentDraftId], (ids) =>
+    JSON.stringify(ids),
+).subscribe(() => {
+    const next = JSON.stringify(readTarget());
+    if (next === previousTarget) return;
+    previousTarget = next;
+    disposeSession?.();
+    stopAllAi();
+    targetEpoch += 1;
+});
+$effect(() => {
+    targetEpoch;
+    const panel = activePanel;
+    disposeSession?.();
+    session = null;
+    if (!panel) {
+        if (action !== null) closePanel(true);
+        return;
+    }
+    const current = untrack(() =>
+        createSidebarPanelSession(readTarget(), {
+            readTarget,
+            readSelection: () => get(selectedText),
+        }),
+    );
+    session = current.session;
+    disposeSession = current.dispose;
+    return current.dispose;
+});
+// A removed built-in must not leave its retained request running after unmount.
+let previousPanelIds = new Set<string>();
+$effect(() => {
+    const next = new Set(panels.map((panel) => panel.id));
+    if ([...previousPanelIds].some((id) => !next.has(id))) untrack(stopAllAi);
+    previousPanelIds = next;
+});
+onDestroy(() => {
+    unsubscribeTarget();
+    disposeSession?.();
+    stopAllAi();
+});
 
 const expanded = $derived(action !== null);
 const DEFAULT_WIDTH = 320;
@@ -193,16 +131,12 @@ const resize: PanelResizeController = new PanelResizeController({
     }),
 });
 
-const defaultWidthForTab = $derived(
-    actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
-);
-const defaultHeightForTab = $derived(
-    actions.find((a) => a.id === action)?.preferredHeight ?? DEFAULT_HEIGHT,
-);
+const defaultWidthForTab = $derived(activePanel?.preferredWidth ?? DEFAULT_WIDTH);
+const defaultHeightForTab = $derived(activePanel?.preferredHeight ?? DEFAULT_HEIGHT);
 const effectiveWidth = $derived(resize.customWidth ?? defaultWidthForTab);
 const effectiveHeight = $derived(resize.customHeight ?? defaultHeightForTab);
 const isCustomSize = $derived(resize.customWidth !== null || resize.customHeight !== null);
-const contextPanelMode = $derived(isContextPanelAction(action) ? action : null);
+const contextPanelMode = $derived(activePanel?.contextMode ?? null);
 const headerAnnotationContext = $derived(
     buildAnnotationContextInputs({
         annotations: $annotations,
@@ -227,7 +161,7 @@ const headerContextPacket = $derived(
           })
         : null,
 );
-// The header info (ℹ) icon stands in for the in-panel context summary card
+// The header info (i) icon stands in for the in-panel context summary card
 // whenever that card isn't shown — either because the packet doesn't warrant a
 // full summary, or because the writer collapsed it via "Hide" / Settings
 // (appSettings.collapseContextSummary). ContextLens hides its card under the
@@ -236,13 +170,7 @@ const showHeaderContextInfo = $derived(
     headerContextPacket !== null &&
         (appSettings.collapseContextSummary || !shouldShowContextSummary(headerContextPacket)),
 );
-const headerContextRing = $derived(
-    action === "feedback"
-        ? "focus:ring-green-500"
-        : action === "revise"
-          ? "focus:ring-purple-500"
-          : "focus:ring-blue-500",
-);
+const headerContextRing = $derived(activePanel?.contextRingClass ?? "focus:ring-blue-500");
 
 // Context detail popover (opened by the header info button, rendered by
 // ContextInfoButton). Closed on click-outside, Escape, panel switch, or when
@@ -261,8 +189,13 @@ $effect(() => {
 
 // Inline style when expanded: always set width/height so tab-specific defaults
 // and reset-to-default transitions animate smoothly.
+const collapsedHeight = $derived(
+    Math.max(appSettings.aiEnabled ? 280 : 100, panels.length * 38 + 24),
+);
 const containerSizeStyle = $derived(
-    expanded ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;` : "",
+    expanded
+        ? `width: min(${effectiveWidth}px, calc(100vw - 32px)); height: min(${effectiveHeight}px, calc(100dvh - 64px));`
+        : `height: min(${collapsedHeight}px, calc(100dvh - 64px));`,
 );
 
 // Disable transition during active drag; keep it for expand/collapse
@@ -287,8 +220,36 @@ function updateScrollState() {
     canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
 }
 
-function isContextPanelAction(value: Action): value is ContextPanelAction {
-    return value === "chat" || value === "feedback" || value === "revise";
+let returnFocus: HTMLElement | null = null;
+function closePanel(restoreFocus = false): void {
+    disposeSession?.();
+    action = null;
+    showContextPopover = false;
+    if (restoreFocus)
+        tick().then(() => {
+            if (returnFocus?.isConnected && !returnFocus.closest("[inert]")) returnFocus.focus();
+            else container?.querySelector<HTMLButtonElement>("button")?.focus();
+        });
+}
+function navigateIcons(event: KeyboardEvent): void {
+    const buttons = Array.from(
+        event.currentTarget instanceof HTMLElement
+            ? event.currentTarget.querySelectorAll<HTMLButtonElement>("button")
+            : [],
+    );
+    const index = buttons.indexOf(event.target as HTMLButtonElement);
+    if (index < 0) return;
+    let next = index;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown")
+        next = (index + 1) % buttons.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+        next = (index - 1 + buttons.length) % buttons.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = buttons.length - 1;
+    else return;
+    event.preventDefault();
+    buttons[next]?.focus();
+    buttons[next]?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function handleClickOutside(e: MouseEvent) {
@@ -304,25 +265,34 @@ function handleClickOutside(e: MouseEvent) {
         !(target as Element).closest?.(".dictionary-backdrop") &&
         !(target as Element).closest?.("#ai-stop-button")
     ) {
-        action = null;
+        closePanel();
     }
 }
 
-function selectAction(id: NonNullable<Action>) {
-    // Lazily load the API key from the keychain on first interaction,
-    // avoiding the macOS keychain permission prompt on app startup.
-    ensureApiKeyLoaded();
-    const def = actions.find((a) => a.id === id);
-    if (def?.requiresApiKey && !hasApiKey()) {
-        action = "settings";
-        return;
-    }
-    action = id;
-    posthog.capture("ai_sidebar_opened", { mode: id });
-    scrollActiveIntoCenter(id);
+function selectAction(id: string): void {
+    const def = panels.find((panel) => panel.id === id);
+    if (!def) return;
+    if (!expanded)
+        returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    showContextPopover = false;
+    if (def.requiresModel) ensureApiKeyLoaded();
+    const next =
+        def.requiresModel && !hasApiKey()
+            ? (panels.find((panel) => panel.id === "settings")?.id ?? null)
+            : id;
+    if (next !== action) disposeSession?.();
+    action = next;
+    posthog.capture("ai_sidebar_opened", { mode: action });
+    if (action) scrollActiveIntoCenter(action);
+    tick().then(() => {
+        if (!expanded || !container) return;
+        container
+            .querySelector<HTMLElement>(`[data-panel-id="${CSS.escape(action ?? "")}"]`)
+            ?.focus({ preventScroll: true });
+    });
 }
 
-function scrollActiveIntoCenter(id: NonNullable<Action>) {
+function scrollActiveIntoCenter(id: string) {
     tick().then(() => {
         if (!iconStrip) return;
         const idx = actions.findIndex((a) => a.id === id);
@@ -338,11 +308,11 @@ function scrollActiveIntoCenter(id: NonNullable<Action>) {
 }
 
 function openAiSettingsFromExternalRequest() {
-    action = "settings";
+    selectAction("settings");
 }
 
 function openChatFromExternalRequest() {
-    action = hasApiKey() ? "chat" : "settings";
+    selectAction("chat");
 }
 
 // Center the active icon whenever the panel opens
@@ -377,14 +347,6 @@ $effect(() => {
 });
 
 // Keyboard shortcuts for the sidebar
-const actionKeys: Record<string, NonNullable<Action>> = {
-    "1": "chat",
-    "2": "feedback",
-    "3": "revise",
-    "4": "context",
-    "5": "readers",
-};
-
 // Dismiss the context popover when clicking anywhere inside the sidebar that
 // isn't the info button or the popover itself. The sidebar container stops
 // click propagation to the window, so handleClickOutside never fires for
@@ -412,14 +374,15 @@ function handleKeydown(e: KeyboardEvent) {
         const target = e.target as HTMLElement;
         const isInInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
         if (!isInInput) {
-            action = null;
+            closePanel(true);
         }
         return;
     }
-    // Cmd/Ctrl+Shift+1-4 to open specific panels
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && actionKeys[e.key]) {
+    // Shortcuts come from the same contributions as the icon strips.
+    const panel = panels.find((panel) => panel.shortcutKey === e.key);
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && panel) {
         e.preventDefault();
-        selectAction(actionKeys[e.key]);
+        selectAction(panel.id);
     }
 }
 </script>
@@ -460,21 +423,23 @@ function handleKeydown(e: KeyboardEvent) {
   >
   <!-- Collapsed pill icons -->
   <div
-    class="absolute inset-0 flex flex-col items-center py-3 px-2 transition-opacity duration-150
+    inert={expanded}
+    role="toolbar" tabindex="-1" aria-label="Sidebar panels" onkeydown={navigateIcons}
+    class="absolute inset-0 flex flex-col items-center py-3 px-2 overflow-y-auto transition-opacity duration-150
             {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
   >
     <div class="flex flex-col gap-1">
-      {#each actions as a}
-        {@const disabled = a.requiresApiKey && !hasApiKey()}
+      {#each actions as a (a.id)}
+        {@const disabled = a.requiresModel && !hasApiKey()}
         <button
           id="ai-tab-{a.id}"
           onclick={() => selectAction(a.id)}
           aria-label={disabled
             ? `${a.label} (add API key in settings)`
-            : `${a.label} (${a.shortcut})`}
+            : `${a.label}${shortcut(a) ? ` (${shortcut(a)})` : ""}`}
           title={disabled
             ? `${a.label} — add an API key in settings`
-            : `${a.label} ${a.shortcut}`}
+            : `${a.label} ${shortcut(a)}`}
           class="p-2 rounded-full transition-colors
                         {disabled
             ? 'text-black/20 cursor-pointer'
@@ -485,30 +450,17 @@ function handleKeydown(e: KeyboardEvent) {
       {/each}
     </div>
     <div class="flex-1"></div>
-    <button
-      onclick={() => (action = "settings")}
-      aria-label={hasApiKey()
-        ? "AI Settings"
-        : "AI Settings — add an API key to get started"}
-      title={hasApiKey()
-        ? "AI Settings"
-        : "AI Settings — add an API key to get started"}
-      class="relative p-2 rounded-full transition-colors
-                {hasApiKey()
-        ? 'text-black/30 hover:text-black/60'
-        : 'text-amber-600/80 hover:text-amber-700'}"
-    >
-      <SettingsIcon size={15} />
-      {#if !hasApiKey()}
-        <span
-          class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"
-        ></span>
-      {/if}
-    </button>
+    {#each utilities as panel (panel.id)}
+      <button onclick={() => selectAction(panel.id)} aria-label={panel.label} title={panel.title}
+        class="p-2 rounded-full text-black/30 {panel.hoverClass}">
+        <panel.icon size={15} />
+      </button>
+    {/each}
   </div>
 
   <!-- Expanded panel -->
   <div
+    inert={!expanded}
     class="w-full h-full flex flex-col transition-opacity duration-150
             {expanded
       ? 'opacity-100 delay-[80ms]'
@@ -517,13 +469,14 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- Row 1: icon wheel -->
     <div class="shrink-0 pt-2.5 pb-1">
       <div
+        role="toolbar" tabindex="-1" aria-label="Sidebar panels" onkeydown={navigateIcons}
         bind:this={iconStrip}
         class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
         style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
           ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'});`
           : ''}"
       >
-        {#each actions as a, i}
+        {#each actions as a, i (a.id)}
           {@const activeIdx = actions.findIndex((x) => x.id === action)}
           {@const dist = activeIdx < 0 ? 0 : Math.abs(i - activeIdx)}
           {@const maxDist =
@@ -532,16 +485,17 @@ function handleKeydown(e: KeyboardEvent) {
               : Math.max(activeIdx, actions.length - 1 - activeIdx)}
           {@const t = maxDist === 0 ? 0 : dist / maxDist}
           {@const opacity = activeIdx < 0 ? 0.7 : 1 - (1 - 0.45) * Math.sqrt(t)}
-          {@const disabled = a.requiresApiKey && !hasApiKey()}
+          {@const disabled = a.requiresModel && !hasApiKey()}
           <button
+            aria-pressed={action === a.id}
             bind:this={iconEls[i]}
             onclick={() => selectAction(a.id)}
             aria-label={disabled
               ? `${a.label} (add API key in settings)`
-              : `${a.label} (${a.shortcut})`}
+              : `${a.label}${shortcut(a) ? ` (${shortcut(a)})` : ""}`}
             title={disabled
               ? `${a.label} — add an API key in settings`
-              : `${a.label} ${a.shortcut}`}
+              : `${a.label} ${shortcut(a)}`}
             style="opacity: {disabled ? opacity * 0.4 : opacity};"
             class="p-2 rounded-full shrink-0 transition-all duration-200
                             {action === a.id
@@ -559,7 +513,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- Row 2: title + reset + settings + close -->
     <div class="flex items-center px-3 pb-2 shrink-0">
       <span class="flex-1 text-xs font-semibold text-black/50 truncate">
-        {action ? panelTitles[action] : ""}
+        {activePanel?.title ?? ""}
       </span>
       {#if isCustomSize}
         <button
@@ -578,19 +532,15 @@ function handleKeydown(e: KeyboardEvent) {
           bind:open={showContextPopover}
         />
       {/if}
+      {#each utilities as panel (panel.id)}
+        <button onclick={() => action === panel.id ? closePanel(true) : selectAction(panel.id)}
+          aria-label={panel.label} title={panel.title} aria-pressed={action === panel.id}
+          class="p-1.5 rounded-full transition-colors shrink-0 {action === panel.id ? panel.activeClass : 'text-black/30 ' + panel.hoverClass}">
+          <panel.icon size={14} />
+        </button>
+      {/each}
       <button
-        onclick={() => (action = action === "settings" ? null : "settings")}
-        aria-label="AI Settings"
-        title="AI Settings"
-        class="p-1.5 rounded-full transition-colors shrink-0
-                    {action === 'settings'
-          ? 'text-black/60 bg-white/60'
-          : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
-      >
-        <SettingsIcon size={14} />
-      </button>
-      <button
-        onclick={() => (action = null)}
+        onclick={() => closePanel(true)}
         aria-label="Close"
         class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
       >
@@ -600,46 +550,29 @@ function handleKeydown(e: KeyboardEvent) {
 
     <div class="w-full h-px bg-black/10 shrink-0"></div>
 
-    <!-- Content — all panels mounted upfront to avoid mount-time jank -->
+    <!-- Retained built-ins keep their conversations while hidden; active-only panels dispose on hide. -->
     <div class="flex-1 flex flex-col min-h-0 relative">
-      <div
-        class="absolute inset-0 flex flex-col {action === 'chat'
-          ? ''
-          : 'hidden'}"
-      >
-        <Chat />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'feedback'
-          ? ''
-          : 'hidden'}"
-      >
-        <Feedback />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'revise'
-          ? ''
-          : 'hidden'}"
-      >
-        <Revise />
-      </div>
-      <div
-        class="absolute inset-0 overflow-y-auto {action === 'context'
-          ? ''
-          : 'hidden'}"
-      >
-        <DocumentContext />
-      </div>
-      <div
-        class="absolute inset-0 flex flex-col {action === 'readers'
-          ? ''
-          : 'hidden'}"
-      >
-        <Readers />
-      </div>
-      {#if action === "settings"}<div class="absolute inset-0 flex flex-col">
-          <AISettings />
-        </div>{/if}
+      {#each panels as panel (panel.id)}
+        {#if panel.mount === "eager" || action === panel.id}
+          <div data-panel-id={panel.id} role="region" aria-label={panel.title} tabindex="-1"
+            inert={action !== panel.id}
+            class="absolute inset-0 outline-none {panel.contentClass} {action === panel.id ? '' : 'hidden'}">
+            <svelte:boundary onerror={(error) => {
+                if (action === panel.id) disposeSession?.();
+                stopAllAi();
+                console.error("[Sidebar] panel failed", panel.id, error);
+              }}>
+              <panel.component active={action === panel.id} session={action === panel.id ? session : null} />
+              {#snippet failed(error, reset)}
+                <div role="alert" class="p-4 text-sm text-black/70">
+                  <p>{panel.label} could not be displayed.</p>
+                  <button class="mt-2 underline" onclick={() => { targetEpoch += 1; reset(); }}>Try again</button>
+                </div>
+              {/snippet}
+            </svelte:boundary>
+          </div>
+        {/if}
+      {/each}
     </div>
   </div>
 
@@ -676,7 +609,7 @@ function handleKeydown(e: KeyboardEvent) {
        geometrically invisible here, but split for consistency.) -->
   <div
     class="fixed left-4 z-50 rounded-full shadow-lg animate-fade-in"
-    style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
+    style="top: calc(50% + min({(expanded ? effectiveHeight : collapsedHeight) / 2}px, calc((100dvh - 64px) / 2)) + 8px);"
   >
     <button
       id="ai-stop-button"

@@ -49,13 +49,17 @@ import {
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
+import posthog, { captureException } from "$lib/posthog";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import HelpModal from "$lib/ui/HelpModal.svelte";
 import InfoButton from "$lib/ui/InfoButton.svelte";
-import { EDITORIAL_HELP_TABS } from "./helpContent";
-import posthog, { captureException } from "$lib/posthog";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { CheckIcon, EyeIcon, EyeOffIcon, InfoIcon, KeyRoundIcon } from "lucide-svelte";
+import { EDITORIAL_HELP_TABS } from "./helpContent";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 type TabProvider = "openai" | "anthropic" | "google" | "deepseek";
 

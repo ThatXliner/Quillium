@@ -158,3 +158,13 @@ _Avoid_: Host
 **Joiner**:
 A participant who enters an existing Live Room.
 _Avoid_: Owner, guest
+
+## Writing extensions
+
+**Preset**:
+Configuration of existing writing behavior for a task.
+_Avoid_: Plugin
+
+**Plugin**:
+An addition to Quillium's writing capabilities, which may also supply presets.
+_Avoid_: Preset, distribution package

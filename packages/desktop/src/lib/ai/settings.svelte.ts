@@ -31,7 +31,7 @@ import { currentDocumentId, currentDraftId } from "$lib/stores";
  *   AISettings.svelte  -->  aiSettings / documentContext (writes)
  *   chatFactory.ts     <--  aiSettings (reads provider/model/key)
  *   clientStreams.ts    <--  documentContext (reads context fields)
- *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
+ *   Sidebar.svelte      <--  aiProcessing (reads glow flag)
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { UIMessage } from "ai";
