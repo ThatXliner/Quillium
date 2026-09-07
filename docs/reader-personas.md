@@ -64,9 +64,16 @@ The directive is sent as a writer-selected reader lens in a user-role message vi
 ## College tab overrides
 
 An active [College setup](college-applications.md) supplies the effective reader
-list and per-mode opt-ins for its tab. General Readers edits update that saved
-setup; device defaults remain untouched. Pausing or removing setup returns to
-device defaults. Feedback still displays and requires explicit fan-out opt-in.
+list and per-mode opt-ins for its one-prompt workspace tab. Selecting several
+prompts creates one named tab and setup per prompt in one atomic batch. Applying
+one prompt to an existing workspace tab updates only that setup, preserving the
+tab label, existing prose, and document-owned notes and decisions. General
+Readers edits update the saved setup; device defaults remain untouched. There is
+no preview acknowledgment or separate context-confirmation screen. Pausing or
+removing setup returns to device defaults. Legacy saved setups containing
+multiple prompts remain readable until explicit replacement, with no automatic
+migration or deletion. Feedback still displays and requires explicit fan-out
+opt-in.
 
 ## Settings Persistence
 

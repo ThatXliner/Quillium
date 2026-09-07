@@ -155,34 +155,41 @@ pub fn list_document_structure(conn: &Connection, doc_id: &str) -> Result<Docume
     Ok(DocumentStructure { tabs, drafts })
 }
 
-/// Creates a tab plus its root draft ("main") atomically.
-pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> DbResult<TabMeta> {
+/// Creates a tab plus its root draft ("main") on an existing connection.
+///
+/// Callers that need atomicity across additional rows should wrap this helper
+/// in their own transaction. The helper deliberately does not begin or commit
+/// one so the tab, root draft, and audit event can share that transaction.
+pub(crate) fn create_tab_in_connection(
+    conn: &Connection,
+    doc_id: &str,
+    label: &str,
+) -> DbResult<TabMeta> {
     let tab_id = Uuid::new_v4().to_string();
     let draft_id = Uuid::new_v4().to_string();
     let now = now_ms();
-    let tx = conn.unchecked_transaction()?;
-    let position: i64 = tx.query_row(
+    let position: i64 = conn.query_row(
         "SELECT COALESCE(MAX(position), -1) + 1 FROM tabs WHERE document_id = ?1",
         params![doc_id],
         |row| row.get(0),
     )?;
-    tx.execute(
+    conn.execute(
         "INSERT INTO tabs (id, document_id, tab_type, label, position, created_at)
          VALUES (?1, ?2, 'draft', ?3, ?4, ?5)",
         params![tab_id, doc_id, label, position, now],
     )?;
-    tx.execute(
+    conn.execute(
         "INSERT INTO drafts (id, document_id, tab_id, label, created_at, is_active, locked)
          VALUES (?1, ?2, ?3, 'main', ?4, 1, 0)",
         params![draft_id, doc_id, tab_id, now],
     )?;
-    commit_doc_event(
-        tx,
+    // `rootDraftId` + `position` let the version-history replay reconstruct
+    // the tab (and its auto-created "main" draft) at any past point without
+    // consulting the live `drafts`/`tabs` rows.
+    log_doc_event(
+        conn,
         doc_id,
         "tab_created",
-        // `rootDraftId` + `position` let the version-history replay reconstruct
-        // the tab (and its auto-created "main" draft) at any past point without
-        // consulting the live `drafts`/`tabs` rows.
         &json!({
             "tabId": tab_id,
             "label": label,
@@ -198,6 +205,14 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> DbResult<TabM
         position,
         created_at: now,
     })
+}
+
+/// Creates a tab plus its root draft ("main") atomically.
+pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> DbResult<TabMeta> {
+    let tx = conn.unchecked_transaction()?;
+    let tab = create_tab_in_connection(&tx, doc_id, label)?;
+    tx.commit()?;
+    Ok(tab)
 }
 
 fn rename_tab_inner(conn: &Connection, tab_id: &str, label: &str) -> DbResult<()> {

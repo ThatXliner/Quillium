@@ -43,6 +43,7 @@ type TabMutationCallbacks = {
 type Props = {
     tabs: TabMeta[];
     activeTabId: string | null;
+    selectingTarget?: boolean;
     highlightedTabId?: string | null;
     deletedTabId?: string | null;
     ontabselect: (tabId: string) => void;
@@ -55,6 +56,7 @@ const {
     tabs,
     activeTabId,
     readOnly = false,
+    selectingTarget = false,
     highlightedTabId = null,
     deletedTabId = null,
     ontabselect,
@@ -471,7 +473,7 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
 
     if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        if (tab.id !== activeTabId) ontabselect(tab.id);
+        if (selectingTarget || tab.id !== activeTabId) ontabselect(tab.id);
         return;
     }
 
@@ -486,7 +488,7 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
 
     event.preventDefault();
     const nextTab = tabs[nextIndex];
-    if (nextTab.id !== activeTabId) ontabselect(nextTab.id);
+    if (!selectingTarget && nextTab.id !== activeTabId) ontabselect(nextTab.id);
     void tick().then(() => tabEls[nextTab.id]?.focus());
 }
 </script>
@@ -534,6 +536,7 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                 aria-expanded={!readOnly ? contextMenu?.tabId === tab.id : undefined}
                 oncontextmenu={(e) => openContextMenu(e, tab)}
                 aria-describedby={[isHighlighted ? "document-tab-timeline-target" : null, isDeleted ? "document-tab-deleted" : null].filter(Boolean).join(" ") || undefined}
+                data-college-target={selectingTarget}
                 data-highlighted={isHighlighted}
                 data-deleted={isDeleted}
                 tabindex={isActive ? 0 : -1}
@@ -542,13 +545,14 @@ function onTabKeyDown(event: KeyboardEvent, tab: TabMeta) {
                 onclick={(e) => {
                     if (e.button !== 0 || e.ctrlKey || contextMenu) return;
                     if (suppressClick) { suppressClick = false; return; }
-                    if (!isActive) ontabselect(tab.id);
+                    if (selectingTarget || !isActive) ontabselect(tab.id);
                 }}
                 ondblclick={(e) => { if (!readOnly && !contextMenu && e.button === 0 && !e.ctrlKey) startRename(tab); }}
                 style={isDragged ? `transform: translateX(${dragDx}px); z-index: 30;` : ""}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg overflow-hidden transition-colors duration-100
+                    {selectingTarget ? 'ring-2 ring-inset ring-blue-400 hover:ring-blue-600 !cursor-pointer' : ''}
                     {isHighlighted && !isDeleted ? 'ring-1 ring-inset ring-blue-300' : ''}
                     {isDragged ? '!transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]' : ''}
                     {isDeleted

@@ -5,6 +5,8 @@
 // opening another panel, so a late click cannot act on a newly selected tab.
 
 import { getEffectiveDocumentContext, hasApiKey } from "$lib/ai/settings.svelte";
+import { createCollegeTabs } from "$lib/db";
+import type { TabMeta } from "$lib/db/types";
 import { appEventBus } from "$lib/events/appEventBus";
 import { appSettings } from "$lib/settings.svelte";
 import type { SidebarPanelSession } from "$lib/sidebar/panels";
@@ -18,13 +20,15 @@ import {
     documentContent,
 } from "$lib/stores";
 import { get } from "svelte/store";
-import { type CollegeSetup, cloneCollegeSetup } from "./model";
+import { type CollegeSetup, cloneCollegeSetup, serializeCollegeSetup } from "./model";
+import { UC_PROMPTS } from "./presets";
 import {
     collegeState,
     getActiveCollegeSetup,
     reloadCollegeSetup,
     saveCollegeSetup,
 } from "./state.svelte";
+import { beginCollegeTabPick } from "./workspace.svelte";
 
 export type CollegeAction = "prompt-fit" | "specificity" | "plan";
 export type CollegeOpenPanel = "context" | "readers" | "settings";
@@ -44,6 +48,8 @@ export type CollegeCapabilitiesSnapshot = {
     sharedBrief: string;
     decisions: string[];
     hasProse: boolean;
+    wordCount: number;
+    characterCount: number;
     canRequest: boolean;
     requestCount: number;
 };
@@ -52,6 +58,8 @@ export interface CollegeCapabilities {
     readonly read: () => CollegeCapabilitiesSnapshot;
     readonly save: (setup: CollegeSetup | null) => Promise<void>;
     readonly retry: () => Promise<void>;
+    readonly createTabs: (setups: CollegeSetup[]) => Promise<void>;
+    readonly applyToExistingTab: (setup: CollegeSetup) => void;
     readonly openPanel: (id: CollegeOpenPanel) => void;
     readonly request: (action: CollegeAction) => void;
 }
@@ -75,6 +83,47 @@ function readersRequestCount(setup: CollegeSetup | null): number {
     return Math.max(1, setup.readers.filter((reader) => reader.enabled).length);
 }
 
+function assertTabOperationReady(): void {
+    if (!collegeState.hostEnabled) {
+        throw new Error("College applications are disabled in this workspace.");
+    }
+    if (collegeState.saving) {
+        throw new Error("A College setup save is already in progress.");
+    }
+    if (collegeState.status !== "ready") {
+        throw new Error(
+            collegeState.error ||
+                (collegeState.status === "loading"
+                    ? "The College setup is still loading. Try again shortly."
+                    : "The College setup is unavailable. Reload it before continuing."),
+        );
+    }
+}
+
+function tabLabelForSetup(setup: CollegeSetup): string {
+    const promptLabel = setup.prompts[0]?.label.replace(/\s*\(summary\)\s*$/i, "").trim();
+    const label = promptLabel || "College prompt";
+    if (setup.kind !== "uc-piq") return label;
+    const presetIndex = UC_PROMPTS.findIndex((prompt) => prompt.label === setup.prompts[0]?.label);
+    return presetIndex < 0 ? label : `PIQ ${presetIndex + 1} · ${label}`;
+}
+
+function createTabPayload(setups: CollegeSetup[]): Array<{ label: string; setupJson: string }> {
+    if (setups.length < 1 || setups.length > 12) {
+        throw new Error("Choose between 1 and 12 College prompts.");
+    }
+    return setups.map((setup) => {
+        const validated = cloneCollegeSetup(setup);
+        if (validated.prompts.length !== 1) {
+            throw new Error("Each College tab must contain exactly one prompt.");
+        }
+        return {
+            label: tabLabelForSetup(validated),
+            setupJson: serializeCollegeSetup(validated),
+        };
+    });
+}
+
 /**
  * Create the narrow capability object passed to one College panel instance.
  * The callback is intentionally supplied by the sidebar host; the College
@@ -89,6 +138,7 @@ export function createCollegeCapabilities(
         tabId: session.target.tabId,
         draftId: session.target.draftId,
     });
+    let creatingTabs = false;
 
     function assertCurrent(): void {
         if (!session.isCurrent()) throw new Error(STALE_SESSION_MESSAGE);
@@ -110,6 +160,8 @@ export function createCollegeCapabilities(
             sharedBrief: "",
             decisions: [],
             hasProse: false,
+            wordCount: 0,
+            characterCount: 0,
             canRequest: false,
             requestCount: 1,
         };
@@ -134,6 +186,8 @@ export function createCollegeCapabilities(
             currentTab === target.tabId &&
             currentDraft === target.draftId;
         const currentProse = targetIsCurrent ? get(documentContent) : "";
+        const wordCount = currentProse.trim().split(/\s+/).filter(Boolean).length;
+        const characterCount = Array.from(currentProse).length;
         const aiAvailable = appSettings.aiEnabled && hasApiKey();
         const ready = collegeState.status === "ready" && !collegeState.saving;
 
@@ -164,6 +218,8 @@ export function createCollegeCapabilities(
             sharedBrief: effectiveContext.freeform,
             decisions: [...effectiveContext.decisions],
             hasProse: currentProse.trim().length > 0,
+            wordCount,
+            characterCount,
             canRequest: collegeState.hostEnabled && aiAvailable && ready,
             requestCount: readersRequestCount(setup),
         };
@@ -177,6 +233,43 @@ export function createCollegeCapabilities(
     async function retry(): Promise<void> {
         assertCurrent();
         await reloadCollegeSetup();
+    }
+
+    async function createTabsForSetups(setups: CollegeSetup[]): Promise<void> {
+        assertCurrent();
+        assertTabOperationReady();
+        if (creatingTabs) throw new Error("College tabs are already being created.");
+        creatingTabs = true;
+        const documentId = target.documentId;
+        try {
+            if (!documentId || get(currentDocumentId) !== documentId) {
+                throw new Error(STALE_SESSION_MESSAGE);
+            }
+            const payload = createTabPayload(setups);
+            const tabs: TabMeta[] = await createCollegeTabs(documentId, payload);
+            if (get(currentDocumentId) !== documentId || !collegeState.hostEnabled) return;
+            appEventBus.emit({
+                type: "college-tabs-created",
+                documentId,
+                tabs,
+                selectFirst: session.isCurrent(),
+            });
+        } finally {
+            creatingTabs = false;
+        }
+    }
+
+    function applyToExistingTab(setup: CollegeSetup): void {
+        assertCurrent();
+        assertTabOperationReady();
+        if (!target.documentId || get(currentDocumentId) !== target.documentId) {
+            throw new Error(STALE_SESSION_MESSAGE);
+        }
+        const validated = cloneCollegeSetup(setup);
+        if (validated.prompts.length !== 1) {
+            throw new Error("Choose exactly one prompt before applying it to a tab.");
+        }
+        beginCollegeTabPick(target.documentId, validated);
     }
 
     function openPanelFromCapability(id: CollegeOpenPanel): void {
@@ -222,6 +315,8 @@ export function createCollegeCapabilities(
         read,
         save,
         retry,
+        createTabs: createTabsForSetups,
+        applyToExistingTab,
         openPanel: openPanelFromCapability,
         request,
     });

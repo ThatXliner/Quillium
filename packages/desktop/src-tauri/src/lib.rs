@@ -14,7 +14,7 @@ use db::{
         clear_conversation, get_editorial_decisions, get_writer_brief, load_conversation,
         save_conversation, set_editorial_decisions, set_writer_brief,
     },
-    college::{get_college_tab_setup, set_college_tab_setup},
+    college::{create_college_tabs, get_college_tab_setup, set_college_tab_setup, CollegeTabInput},
     documents::{
         create_document_with_history, create_draft, delete_document, duplicate_document,
         get_document, get_semantic_search_enabled, get_trash_retention, list_documents,
@@ -143,6 +143,16 @@ fn cmd_set_college_tab_setup(
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     set_college_tab_setup(&conn, &document_id, &tab_id, setup_json.as_deref())
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_college_tabs(
+    state: tauri::State<DbState>,
+    document_id: String,
+    entries: Vec<CollegeTabInput>,
+) -> Result<Vec<TabMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_college_tabs(&conn, &document_id, &entries).map_err(|e| e.to_string())
 }
 
 // ── Document commands ─────────────────────────────────────────────
@@ -1390,6 +1400,7 @@ pub fn run() {
             cmd_set_document_editorial_decisions,
             cmd_get_college_tab_setup,
             cmd_set_college_tab_setup,
+            cmd_create_college_tabs,
             cmd_get_trash_retention,
             cmd_export_pdf,
             cmd_export_text,

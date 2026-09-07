@@ -168,6 +168,35 @@ export class TabDraftController {
         await this.handleTabSelect(tab.id);
     }
 
+    /**
+     * Merge tabs created by the College host only when they still belong to
+     * the open document, then use the normal selection pipeline for the first
+     * one. That pipeline flushes pending prose and loads its root draft.
+     */
+    async acceptCreatedCollegeTabs(
+        documentId: string,
+        tabs: TabMeta[],
+        selectFirst = true,
+    ): Promise<void> {
+        if (!documentId || get(currentDocumentId) !== documentId) return;
+        const knownIds = new Set(this.tabs.map((tab) => tab.id));
+        const accepted: TabMeta[] = [];
+        for (const tab of tabs) {
+            if (
+                tab.documentId !== documentId ||
+                !tab.id ||
+                knownIds.has(tab.id) ||
+                accepted.some((existing) => existing.id === tab.id)
+            ) {
+                continue;
+            }
+            accepted.push(tab);
+        }
+        if (accepted.length === 0 || get(currentDocumentId) !== documentId) return;
+        this.tabs = [...this.tabs, ...accepted];
+        if (selectFirst) await this.handleTabSelect(accepted[0].id);
+    }
+
     async handleTabRename(tabId: string, label: string) {
         await renameTab(tabId, label).catch(console.error);
         this.tabs = this.tabs.map((t) => (t.id === tabId ? { ...t, label } : t));

@@ -1,5 +1,6 @@
 import { createCollegeCapabilities } from "$lib/college/capabilities";
 import { newCollegeSetup } from "$lib/college/presets";
+import type { TabMeta } from "$lib/db/types";
 import type { SidebarPanelSession, SidebarPanelTarget } from "$lib/sidebar/panels";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,6 +53,8 @@ const mocks = vi.hoisted(() => {
         state.saveArgs = args;
     });
     const reloadCollegeSetup = vi.fn(async () => undefined);
+    const createCollegeTabs = vi.fn(async (): Promise<TabMeta[]> => []);
+    const beginCollegeTabPick = vi.fn();
     const appEventBus = { emit: vi.fn() };
 
     function reset(): void {
@@ -80,6 +83,8 @@ const mocks = vi.hoisted(() => {
         getActiveCollegeSetup.mockClear();
         saveCollegeSetup.mockClear();
         reloadCollegeSetup.mockClear();
+        createCollegeTabs.mockClear();
+        beginCollegeTabPick.mockClear();
         appEventBus.emit.mockClear();
     }
 
@@ -100,6 +105,8 @@ const mocks = vi.hoisted(() => {
         getActiveCollegeSetup,
         saveCollegeSetup,
         reloadCollegeSetup,
+        createCollegeTabs,
+        beginCollegeTabPick,
         appEventBus,
         reset,
     };
@@ -110,6 +117,7 @@ vi.mock("$lib/ai/settings.svelte", () => ({
     hasApiKey: mocks.hasApiKey,
     ensureApiKeyLoaded: mocks.ensureApiKeyLoaded,
 }));
+vi.mock("$lib/db", () => ({ createCollegeTabs: mocks.createCollegeTabs }));
 vi.mock("$lib/settings.svelte", () => ({ appSettings: mocks.appSettings }));
 vi.mock("$lib/stores", () => mocks.stores);
 vi.mock("$lib/college/state.svelte", () => ({
@@ -117,6 +125,9 @@ vi.mock("$lib/college/state.svelte", () => ({
     getActiveCollegeSetup: mocks.getActiveCollegeSetup,
     reloadCollegeSetup: mocks.reloadCollegeSetup,
     saveCollegeSetup: mocks.saveCollegeSetup,
+}));
+vi.mock("$lib/college/workspace.svelte", () => ({
+    beginCollegeTabPick: mocks.beginCollegeTabPick,
 }));
 vi.mock("$lib/events/appEventBus", () => ({ appEventBus: mocks.appEventBus }));
 
@@ -152,6 +163,17 @@ function activeSetup(): ReturnType<typeof newCollegeSetup> {
     return setup;
 }
 
+function createdTab(id = "tab-created"): TabMeta {
+    return {
+        id,
+        documentId: "document-1",
+        tabType: "draft",
+        label: "Leadership",
+        position: 1,
+        createdAt: 1,
+    };
+}
+
 beforeEach(() => mocks.reset());
 afterEach(() => vi.restoreAllMocks());
 
@@ -173,6 +195,8 @@ describe("createCollegeCapabilities", () => {
             sharedBrief: "Shared notes",
             decisions: ["Keep the ending open."],
             hasProse: true,
+            wordCount: 5,
+            characterCount: Array.from("A real draft with evidence.").length,
             canRequest: true,
             aiEnabled: true,
             requestCount: 1,
@@ -181,6 +205,102 @@ describe("createCollegeCapabilities", () => {
         snapshot.setup!.school = "Changed only in the snapshot";
         expect(setup.school).toBe("Example University");
         expect(mocks.ensureApiKeyLoaded).not.toHaveBeenCalled();
+    });
+
+    it("creates validated single-prompt tabs and emits an event for the original session", async () => {
+        const setup = activeSetup();
+        mocks.createCollegeTabs.mockResolvedValue([createdTab()]);
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await capabilities.createTabs([setup]);
+
+        expect(mocks.createCollegeTabs).toHaveBeenCalledWith("document-1", [
+            {
+                label: "PIQ 1 · Leadership",
+                setupJson: JSON.stringify(setup),
+            },
+        ]);
+        expect(mocks.appEventBus.emit).toHaveBeenCalledWith({
+            type: "college-tabs-created",
+            documentId: "document-1",
+            tabs: [createdTab()],
+            selectFirst: true,
+        });
+    });
+
+    it("merges a same-document late result without selecting after the session changes", async () => {
+        const setup = activeSetup();
+        let resolve!: (tabs: TabMeta[]) => void;
+        mocks.createCollegeTabs.mockReturnValue(
+            new Promise<TabMeta[]>((done) => {
+                resolve = done;
+            }),
+        );
+        const sessionHandle = sessionFor();
+        const capabilities = createCollegeCapabilities(sessionHandle.session, vi.fn());
+        const request = capabilities.createTabs([setup]);
+
+        await vi.waitFor(() => expect(mocks.createCollegeTabs).toHaveBeenCalledOnce());
+        sessionHandle.moveTo(target({ tabId: "tab-other" }));
+        resolve([createdTab("tab-late")]);
+        await request;
+
+        expect(mocks.appEventBus.emit).toHaveBeenCalledWith({
+            type: "college-tabs-created",
+            documentId: "document-1",
+            tabs: [createdTab("tab-late")],
+            selectFirst: false,
+        });
+    });
+
+    it("rejects multi-prompt or oversized tab creation before IPC", async () => {
+        const setup = activeSetup();
+        const multi = {
+            ...setup,
+            prompts: [
+                setup.prompts[0],
+                { ...setup.prompts[0], id: "second-prompt", label: "Second" },
+            ],
+        };
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await expect(capabilities.createTabs([multi])).rejects.toThrow(/exactly one prompt/i);
+        await expect(
+            capabilities.createTabs(Array.from({ length: 13 }, () => setup)),
+        ).rejects.toThrow(/between 1 and 12/i);
+        expect(mocks.createCollegeTabs).not.toHaveBeenCalled();
+    });
+
+    it("guards repeated create requests and applies only single-prompt setups", async () => {
+        const setup = activeSetup();
+        let resolve!: (tabs: TabMeta[]) => void;
+        mocks.createCollegeTabs.mockReturnValue(
+            new Promise<TabMeta[]>((done) => {
+                resolve = done;
+            }),
+        );
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+        const first = capabilities.createTabs([setup]);
+
+        await vi.waitFor(() => expect(mocks.createCollegeTabs).toHaveBeenCalledOnce());
+        await expect(capabilities.createTabs([setup])).rejects.toThrow(/already being created/i);
+        resolve([createdTab()]);
+        await first;
+
+        capabilities.applyToExistingTab(setup);
+        expect(mocks.beginCollegeTabPick).toHaveBeenCalledWith("document-1", setup);
+        expect(() =>
+            capabilities.applyToExistingTab({
+                ...setup,
+                prompts: [
+                    setup.prompts[0],
+                    { ...setup.prompts[0], id: "second-prompt", label: "Second" },
+                ],
+            }),
+        ).toThrow(/exactly one prompt/i);
     });
 
     it("keeps request availability false while loading or saving", () => {

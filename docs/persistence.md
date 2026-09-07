@@ -266,8 +266,19 @@ conversation JSON, brief length, and the saved-decision array before writing.
 ## College tab setups
 
 The appended `college_tab_setups` migration stores a versioned JSON snapshot per
-tab, with a foreign key that cascades on permanent deletion. Native get/set
-commands validate document/tab ownership; upsert/removal is atomic. Document
-duplication copies setup rows through its existing tab ID map and transaction.
-Soft deletion preserves the rows. See [College applications](college-applications.md)
-for effective-state loading, failure handling, and separation from writer notes.
+tab, with a foreign key that cascades on permanent deletion. A newly configured
+tab contains one prompt. Selecting several prompts sends one named entry per
+prompt to the atomic College tab-creation command; it validates every setup
+before creating any tab, root draft, or setup row. A validation or persistence
+failure leaves the whole batch unchanged.
+
+Applying one prompt to an existing workspace tab updates only that tab's College
+setup. Its label and existing prose remain unchanged, as do document-owned
+writer notes and confirmed decisions. The flow has no preview acknowledgment or
+separate context-confirmation screen. Native get/set commands validate
+document/tab ownership; upsert/removal is atomic. Document duplication copies
+setup rows through its existing tab ID map and transaction. Soft deletion
+preserves the rows. Legacy saved setups containing multiple prompts remain
+readable until the writer explicitly replaces them; no automatic migration or
+deletion occurs. See [College applications](college-applications.md) for
+effective-state loading, failure handling, and separation from writer notes.

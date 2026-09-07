@@ -132,9 +132,15 @@ only with concrete consumers. Registration is not a security sandbox for
 untrusted executable code. External loading, compatibility, isolation, consent,
 updates, removal, and a marketplace remain deferred.
 
-The college design must allow each tab's writing brief to cover one or multiple
-prompts, with drafts representing alternate attempts at that writing task. A
-plugin can work across a document. School-specific review must distinguish which
+Each configured College workspace tab owns one prompt, with drafts representing
+alternate attempts at that writing task. A plugin can work across a document:
+selecting multiple prompts creates one named tab per prompt, with one root draft
+and setup per tab, in a prevalidated atomic batch. Applying one prompt to an
+existing workspace tab changes only its College setup and preserves the tab label,
+existing prose, and document-owned notes and decisions. There is no preview
+acknowledgment or separate context-confirmation screen. Legacy saved setups that
+contain multiple prompts remain readable until explicit replacement; no automatic
+migration or deletion occurs. School-specific review must distinguish which
 responses are read together; reuse between schools is not inherently a problem.
 The College consumer now persists independent tab briefs. Research (#423) and
 cross-essay review (#424) remain deferred. LaTeX compilation and word-processor/debate formatting are outside the intended
@@ -280,7 +286,7 @@ a deterministic, mode-specific packet with these possible sources:
 | Annotations | Up to six relevant open comments, suggestions, or revisions within a separate character budget |
 | Brief | Writer-provided context, kept logically separate from draft text |
 | Decisions | Explicit document-scoped choices, labeled as writer-confirmed |
-| Tab writing brief | Active College prompts, per-prompt constraints, intent, and feedback focus, capped at 8,000 characters |
+| Tab writing brief | Active College prompt, constraints, intent, and feedback focus, capped at 8,000 characters |
 | College guidance | Accepted reference snapshots with provenance, capped at 6,000 characters with omissions |
 
 Open annotations include their target, nearby context, recent thread messages,

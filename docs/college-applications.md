@@ -12,39 +12,45 @@ credentials, Context and Readers remain available for local configuration.
 
 ## Document and tab ownership
 
-The plugin works across a document. Each tab owns a writing brief containing one
-or multiple prompts, each with its own constraints. All drafts and runs in that
-tab are alternative attempts at that writing task. A UC document might have a
-separate tab for each PIQ. A Common App document might have a personal statement
-tab and separate Duke and Stanford supplements tabs; a supplements tab can hold
-several prompts. Neither a document nor a tab is restricted to one essay.
+The plugin works across a document. Each configured workspace tab owns one
+College prompt and its constraints. A document can hold multiple College tabs:
+selecting several prompts creates one named tab per prompt, including its root
+draft and setup, in one atomic operation. A UC document might have a separate
+tab for each PIQ. A Common App document might have a personal statement tab and
+separate Duke and Stanford supplement tabs. All drafts and runs in a tab remain
+alternative attempts at that tab's writing task.
 
 Shared writer notes and confirmed decisions stay in the existing document-owned
 Context state. The plugin never replaces them with prompt text. Setup answers
-(intent and feedback focus), prompts, constraints, and sourced guidance remain
+(intent and feedback focus), the prompt, constraints, and sourced guidance remain
 separate from those notes. Prose and annotations continue through CodeMirror.
 
 The panel names its current document, tab, and draft. Select a different document
-tab to change its target. Changing targets or hiding the panel abandons unsaved
-setup edits. Apply saves to the captured document/tab before updating effective
-state. An already-started write may finish for that original tab after navigation;
-its completion must not update the new tab's UI. Failed writes retain the accepted
+tab to change its target. Applying one prompt to an existing tab uses the actual
+workspace tab selection and changes only that tab's College setup; the tab label,
+existing prose, and document-owned notes and decisions stay intact. Selecting
+several prompts creates the named tabs and their setups together, with no partial
+batch. Changing targets or hiding the panel abandons unsaved setup edits. An
+already-started write may finish for that original tab after navigation; its
+completion must not update the new tab's UI. Failed writes retain the accepted
 setup and expose an error.
 
 ## Setup and guidance
 
-The main setup asks for a prompt, its length limit, and an optional idea to convey.
-Prompt metadata, additional prompts, readers, and editorial preferences sit behind
-disclosure controls. The saved panel shows one primary action: planning for an
-empty draft, or checking prompt fit once there is prose. Sources and setup
-management stay available under More options. Preview requires no acknowledgment
-checkbox; Use this prompt saves the reviewed setup.
+The main setup asks for one prompt, its length limit, and an optional idea to
+convey. Prompt metadata, readers, and editorial preferences sit behind disclosure
+controls. The saved panel shows one primary action: planning for an empty draft,
+or checking prompt fit once there is prose. Sources and setup management stay
+available under More options. Preview is informational and requires no
+acknowledgment checkbox or separate context-confirmation screen; applying the
+prompt saves the reviewed setup.
 
 UC PIQ, personal statement, and supplemental presets support edit, preview,
-cancel, apply, pause/resume, and removal preview. Prompts and constraints are
-repeatable. Length constraints preserve words versus characters; blank bounds
-mean unknown, not zero. The preset picker uses short labeled prompt summaries.
-Writers can replace them with exact application wording and enter source URLs.
+cancel, apply, pause/resume, and removal preview. Each selected prompt becomes a
+named tab when configuring new tabs; the complete selection commits atomically.
+Length constraints preserve words versus characters; blank bounds mean unknown,
+not zero. The preset picker uses short labeled prompt summaries. Writers can
+replace a summary with exact application wording and enter source URLs.
 
 The initial sources were checked on September 7, 2026:
 
@@ -58,10 +64,10 @@ The initial sources were checked on September 7, 2026:
   a source of general advice, shown with its original date rather than treated
   as current-cycle requirements.
 
-Supplemental setup supplies no invented school requirements. The writer enters
-the school, optional program, exact prompts, source links, cycle, and known
-constraints. A URL entered by the writer is not independently verified by the
-plugin. There is no background school research.
+Supplemental setup supplies no invented school requirements. For each tab, the
+writer enters the school, optional program, one exact prompt, source links, cycle,
+and known constraints. A URL entered by the writer is not independently verified
+by the plugin. There is no background school research.
 
 Accepted references include publisher, URL, check date, cycle or unknown, and a
 classification: official requirement, official advice, or Quillium editorial
@@ -95,12 +101,13 @@ General Context shows shared notes separately from the tab brief and accepted
 sources. Context Lens uses the same packet builder as requests. Tab brief context
 has an 8,000-character budget; accepted reference context has a 6,000-character
 budget with visible omissions. Both are reference material, never extra tool or
-model permissions. Prompts do not grant broader editing authority.
+model permissions. There is no separate context-confirmation screen. Prompts do
+not grant broader editing authority.
 
 Hiding the panel leaves an active setup in requests, visibly available in general
 Context and Readers while AI features are enabled. Pause setup excludes its owned
 context and preferences but keeps the data. Disabling/removing the host
-contribution also excludes it. Removing setup deletes its owned prompts,
+contribution also excludes it. Removing setup deletes its owned prompt,
 references, readers, and overrides, preserving shared notes, confirmed decisions,
 prose, and annotations. Load errors and unsupported saved versions block
 editorial requests rather than guessing context.
@@ -108,11 +115,17 @@ editorial requests rather than guessing context.
 ## Persistence and extension boundary
 
 `college_tab_setups` stores one versioned JSON snapshot per stable tab ID. The
-native API validates document/tab ownership. Duplication copies rows under the new
-tab IDs in the same document-duplication transaction; copied JSON contains no
-source target IDs. Soft deletion and restoration retain setup. Permanent deletion
-cascades through tab ownership. No plugin metadata is added to Web Preview or
-Live Room payloads.
+native API validates document/tab ownership. Selecting multiple prompts for new
+tabs validates every one-prompt setup before creating any tab, root draft, or
+setup row; the tab, draft, and setup batch commits all at once or not at all.
+Applying one prompt to an existing workspace tab updates only its College setup,
+preserving that tab's label and prose plus the document's shared notes and
+decisions. Duplication copies rows under the new tab IDs in the same
+document-duplication transaction; copied JSON contains no source target IDs. Soft
+deletion and restoration retain setup. Permanent deletion cascades through tab
+ownership. No plugin metadata is added to Web Preview or Live Room payloads.
+Legacy saved setups containing multiple prompts remain readable until the writer
+explicitly replaces them; there is no automatic migration or deletion.
 
 The panel receives a narrow host adapter for reading its snapshot, saving setup,
 retrying loads, opening general panels, and requesting three fixed actions. It

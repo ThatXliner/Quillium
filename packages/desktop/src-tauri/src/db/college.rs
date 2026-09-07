@@ -5,12 +5,21 @@
 //! the JSON opaquely after validating the version-1 shape on writes so a newer
 //! frontend can be read and blocked without being overwritten by an older one.
 
-use super::now_ms;
+use super::tabs::create_tab_in_connection;
+use super::{now_ms, DbError, DbResult, TabMeta};
 
 use rusqlite::{params, Connection, Error, OptionalExtension, Result};
+use serde::Deserialize;
 
 const MAX_SETUP_BYTES: usize = 128 * 1024;
 const CURRENT_SETUP_VERSION: i64 = 1;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollegeTabInput {
+    pub label: String,
+    pub setup_json: String,
+}
 
 fn validate_tab_target(conn: &Connection, document_id: &str, tab_id: &str) -> Result<()> {
     let belongs_to_document: bool = conn.query_row(
@@ -76,6 +85,66 @@ fn validate_setup_json(setup_json: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_batch_setup_json(setup_json: &str) -> DbResult<()> {
+    validate_setup_json(setup_json)?;
+    let value: serde_json::Value = serde_json::from_str(setup_json)
+        .map_err(|error| Error::InvalidParameterName(error.to_string()))?;
+    let prompt_count = value
+        .get("prompts")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::len);
+    if prompt_count != Some(1) {
+        return Err(DbError::Validation(
+            "College tab setup must contain exactly one prompt when creating tabs".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_live_document(conn: &Connection, document_id: &str) -> DbResult<()> {
+    let is_live: bool = conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM documents WHERE id = ?1 AND deleted_at IS NULL
+        )",
+        params![document_id],
+        |row| row.get(0),
+    )?;
+    if is_live {
+        Ok(())
+    } else {
+        Err(DbError::Validation(
+            "College tabs require a live document".to_string(),
+        ))
+    }
+}
+
+fn validate_batch_inputs(
+    conn: &Connection,
+    document_id: &str,
+    entries: &[CollegeTabInput],
+) -> DbResult<()> {
+    validate_live_document(conn, document_id)?;
+    if entries.is_empty() || entries.len() > 12 {
+        return Err(DbError::Validation(
+            "College tab creation requires between 1 and 12 entries".to_string(),
+        ));
+    }
+    for entry in entries {
+        if entry.label.trim().is_empty() {
+            return Err(DbError::Validation(
+                "College tab labels must not be blank".to_string(),
+            ));
+        }
+        if entry.label.chars().count() > 200 {
+            return Err(DbError::Validation(
+                "College tab labels must be at most 200 characters".to_string(),
+            ));
+        }
+        validate_batch_setup_json(&entry.setup_json)?;
+    }
+    Ok(())
+}
+
 /// Loads a tab's College setup. Stored JSON is returned unchanged, including
 /// versions newer than this backend understands, so the frontend can block
 /// editing without losing data.
@@ -123,6 +192,27 @@ pub fn set_college_tab_setup(
     Ok(())
 }
 
+/// Creates tabs, root drafts, audit events, and tab-owned College setups as
+/// one all-or-none operation. Inputs are fully validated before any row is
+/// inserted, and this operation never changes active-tab metadata.
+pub fn create_college_tabs(
+    conn: &Connection,
+    document_id: &str,
+    entries: &[CollegeTabInput],
+) -> DbResult<Vec<TabMeta>> {
+    validate_batch_inputs(conn, document_id, entries)?;
+
+    let tx = conn.unchecked_transaction()?;
+    let mut tabs = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let tab = create_tab_in_connection(&tx, document_id, &entry.label)?;
+        set_college_tab_setup(&tx, document_id, &tab.id, Some(&entry.setup_json))?;
+        tabs.push(tab);
+    }
+    tx.commit()?;
+    Ok(tabs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,7 +220,14 @@ mod tests {
         create_document, delete_document, restore_document, trash_document,
     };
     use crate::db::schema::open_db;
-    use crate::db::tabs::create_tab;
+    use crate::db::tabs::{create_tab, list_tabs};
+
+    fn batch_entry(label: &str, setup_json: &str) -> CollegeTabInput {
+        CollegeTabInput {
+            label: label.to_string(),
+            setup_json: setup_json.to_string(),
+        }
+    }
 
     fn seeded_db() -> (tempfile::TempDir, Connection, String, String, String) {
         let dir = tempfile::tempdir().unwrap();
@@ -288,6 +385,168 @@ mod tests {
         assert_eq!(
             get_college_tab_setup(&conn, &document_a, &tab_a).unwrap(),
             Some(future.to_string())
+        );
+    }
+
+    #[test]
+    fn batch_creation_creates_roots_events_and_setups_without_active_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+        let document_id = create_document(&conn, "College", None).unwrap();
+        let setup_a = r#"{"version":1,"prompts":[{"id":"a"}]}"#;
+        let setup_b = r#"{"version":1,"prompts":[{"id":"b"}]}"#;
+
+        let tabs = create_college_tabs(
+            &conn,
+            &document_id,
+            &[
+                batch_entry("Common App", setup_a),
+                batch_entry("UC PIQ", setup_b),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(tabs.len(), 2);
+        assert_eq!(tabs[0].label, "Common App");
+        assert_eq!(tabs[0].position, 0);
+        assert_eq!(tabs[1].label, "UC PIQ");
+        assert_eq!(tabs[1].position, 1);
+        assert_eq!(list_tabs(&conn, &document_id).unwrap().len(), 2);
+        assert_eq!(
+            get_college_tab_setup(&conn, &document_id, &tabs[0].id).unwrap(),
+            Some(setup_a.to_string())
+        );
+        assert_eq!(
+            get_college_tab_setup(&conn, &document_id, &tabs[1].id).unwrap(),
+            Some(setup_b.to_string())
+        );
+
+        let root_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE document_id = ?1 AND tab_id IS NOT NULL",
+                params![document_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let event_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM doc_events WHERE document_id = ?1 AND event_type = 'tab_created'",
+                params![document_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let setup_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM college_tab_setups WHERE tab_id IN (?1, ?2)",
+                params![tabs[0].id, tabs[1].id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let active_meta_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _meta WHERE key = ?1 OR key = ?2",
+                params![
+                    format!("active_tab:{document_id}"),
+                    format!("active_draft:{}", tabs[0].id)
+                ],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(root_count, 2);
+        assert_eq!(event_count, 2);
+        assert_eq!(setup_count, 2);
+        assert_eq!(active_meta_count, 0);
+
+        for tab in &tabs {
+            let (draft_tab_id, label, is_active): (String, String, i64) = conn
+                .query_row(
+                    "SELECT tab_id, label, is_active FROM drafts WHERE tab_id = ?1",
+                    params![tab.id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(draft_tab_id, tab.id);
+            assert_eq!(label, "main");
+            assert_eq!(is_active, 1);
+        }
+    }
+
+    #[test]
+    fn batch_creation_prevalidates_all_entries_and_rolls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+        let document_id = create_document(&conn, "College", None).unwrap();
+        let valid = r#"{"version":1,"prompts":[{"id":"a"}]}"#;
+        let two_prompts = r#"{"version":1,"prompts":[{"id":"a"},{"id":"b"}]}"#;
+
+        assert!(create_college_tabs(
+            &conn,
+            &document_id,
+            &[
+                batch_entry("First", valid),
+                batch_entry("Second", two_prompts),
+            ],
+        )
+        .is_err());
+        assert_eq!(list_tabs(&conn, &document_id).unwrap().len(), 0);
+        for table in ["drafts", "doc_events", "college_tab_setups"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0, "{table} should remain empty after failed batch");
+        }
+
+        assert!(create_college_tabs(&conn, &document_id, &[batch_entry(" ", valid)],).is_err());
+        assert!(create_college_tabs(
+            &conn,
+            &document_id,
+            &[batch_entry("x".repeat(201).as_str(), valid)],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn batch_creation_rejects_missing_or_trashed_documents() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+        let document_id = create_document(&conn, "College", None).unwrap();
+        let setup = r#"{"version":1,"prompts":[{"id":"a"}]}"#;
+        let entry = [batch_entry("Common App", setup)];
+
+        assert!(create_college_tabs(&conn, "missing", &entry).is_err());
+        trash_document(&conn, &document_id).unwrap();
+        assert!(create_college_tabs(&conn, &document_id, &entry).is_err());
+        assert_eq!(list_tabs(&conn, &document_id).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn single_create_tab_still_creates_its_root_and_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("test.db")).unwrap();
+        let document_id = create_document(&conn, "College", None).unwrap();
+
+        let tab = create_tab(&conn, &document_id, "Single").unwrap();
+
+        assert_eq!(tab.label, "Single");
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM drafts WHERE tab_id = ?1",
+                params![tab.id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT event_type FROM doc_events WHERE document_id = ?1",
+                params![document_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+            "tab_created"
         );
     }
 }

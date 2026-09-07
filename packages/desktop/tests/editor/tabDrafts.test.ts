@@ -178,4 +178,61 @@ describe("TabDraftController", () => {
         expect(get(currentTabId)).toBe(freshTab.id);
         expect(db.getActiveDraft).toHaveBeenCalledWith(freshTab.id);
     });
+
+    it("accepts only owned College tabs and selects the first through the normal pipeline", async () => {
+        const existing = tab("existing", 0);
+        const created = tab("college", 1);
+        const foreign = { ...tab("foreign", 2), documentId: "doc-2" };
+        const createdDraft = draft("college-draft", created.id);
+        const switchToDraft = vi.fn().mockResolvedValue(undefined);
+        const controller = new TabDraftController({
+            switchToDraft,
+            flushPendingPersist: vi.fn().mockResolvedValue(undefined),
+            seedStateJson: vi.fn(),
+        });
+        controller.tabs = [existing];
+        currentTabId.set(existing.id);
+        db.listTabDrafts.mockResolvedValue([createdDraft]);
+        db.getActiveDraft.mockResolvedValue(createdDraft.id);
+
+        await controller.acceptCreatedCollegeTabs("doc-1", [created, foreign, existing]);
+
+        expect(controller.tabs).toEqual([existing, created]);
+        expect(switchToDraft).toHaveBeenCalledWith(created.id, createdDraft.id);
+        expect(get(currentTabId)).toBe(created.id);
+    });
+
+    it("can merge late College tabs without stealing focus", async () => {
+        const existing = tab("existing", 0);
+        const created = tab("college", 1);
+        const controller = new TabDraftController({
+            switchToDraft: vi.fn(),
+            flushPendingPersist: vi.fn(),
+            seedStateJson: vi.fn(),
+        });
+        controller.tabs = [existing];
+        currentTabId.set(existing.id);
+
+        await controller.acceptCreatedCollegeTabs("doc-1", [created], false);
+
+        expect(controller.tabs).toEqual([existing, created]);
+        expect(db.listTabDrafts).not.toHaveBeenCalled();
+        expect(get(currentTabId)).toBe(existing.id);
+    });
+
+    it("ignores College tabs for a different current document", async () => {
+        const existing = tab("existing", 0);
+        const created = tab("college", 1);
+        const controller = new TabDraftController({
+            switchToDraft: vi.fn(),
+            flushPendingPersist: vi.fn(),
+            seedStateJson: vi.fn(),
+        });
+        controller.tabs = [existing];
+        currentDocumentId.set("doc-2");
+
+        await controller.acceptCreatedCollegeTabs("doc-1", [created]);
+
+        expect(controller.tabs).toEqual([existing]);
+    });
 });
