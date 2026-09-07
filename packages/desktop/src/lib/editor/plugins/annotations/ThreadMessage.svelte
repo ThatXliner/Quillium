@@ -1,5 +1,5 @@
 <script lang="ts">
-import { parsePassageLink, serializePassageLink } from "$lib/editor/passageLink";
+import { parsePassageLink, serializePassageLink } from "@quillium/share";
 import { appEventBus } from "$lib/events/appEventBus";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 import { readersSettings } from "$lib/readers/settings.svelte";

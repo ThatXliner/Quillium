@@ -7,9 +7,9 @@
 import { abortError, linkAbortSignals, raceWithAbort } from "$lib/abort";
 import { applyEditorialAction } from "$lib/ai/editorialAction";
 import { compileEditorialPolicy } from "$lib/ai/editorialPolicy";
+import { captureEditorialTarget } from "$lib/ai/editorialTarget";
 import { createAiGenerationProvenance } from "$lib/ai/provenance";
 import { createModel } from "$lib/ai/provider";
-import { captureEditorialTarget } from "$lib/ai/editorialTarget";
 import {
     aiSettings,
     beginAiTask,
@@ -19,16 +19,16 @@ import {
     getAiAbortSignal,
     hasApiKey,
 } from "$lib/ai/settings.svelte";
-import { appSettings } from "$lib/settings.svelte";
 import { getCollegeTabSetup, listTabDrafts, listTabs, loadDocumentState } from "$lib/db";
 import type { DraftMeta, TabMeta } from "$lib/db/types";
 import { getExtensions } from "$lib/editor/extensions";
 import { reconstructState } from "$lib/editor/replay";
-import { serializePassageLink } from "$lib/editor/passageLink";
+import { appSettings } from "$lib/settings.svelte";
 import type { SidebarPanelSession } from "$lib/sidebar/panels";
 import { currentDocumentId, currentDraftId, currentTabId, editorView } from "$lib/stores";
-import { Output, generateText } from "ai";
 import type { EditorView } from "@codemirror/view";
+import { serializePassageLink } from "@quillium/share";
+import { Output, generateText } from "ai";
 import { get } from "svelte/store";
 import { z } from "zod";
 import { type CollegeSetup, parseCollegeSetup, serializeCollegeSetup } from "./model";

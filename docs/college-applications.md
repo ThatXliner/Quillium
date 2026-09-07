@@ -152,6 +152,8 @@ across schools are not inherently problems. Each comment includes a supporting
 passage button. Exact captured quotes and source identities are validated before
 comments are created, and navigation checks the source fingerprint before
 selecting a passage. Changed or missing sources never select an unrelated range.
+Read-only previews show the source quote without exposing encoded link data; jumping
+to another draft is a desktop action.
 
 The target and up to three selected source drafts are captured with a maximum
 of 12,000 characters each. The picker discloses omitted characters. The request

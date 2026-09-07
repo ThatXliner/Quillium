@@ -2,7 +2,7 @@
 import { collegeWorkspace, cancelCollegeTabPick, applyCollegeToExistingTab } from "$lib/college/workspace.svelte";
 import { logAppEvent } from "$lib/appLog";
 import { researchFingerprint } from "$lib/college/researchModel";
-import type { PassageLink } from "./passageLink";
+import type { PassageLink } from "@quillium/share";
 import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";

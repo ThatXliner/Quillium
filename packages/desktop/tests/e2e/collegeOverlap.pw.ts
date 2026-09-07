@@ -54,7 +54,16 @@ test("College overlap is an editable Feedback action that creates linked, undoab
         });
     });
     await q.init();
-    await page.locator("#ai-tab-college").click();
+    await expect(page.locator("#ai-tab-college")).toHaveCount(0);
+    await page.locator("#ai-tab-feedback").click();
+    await expect(
+        page.getByRole("button", { name: "Check overlap with other essays", exact: true }),
+    ).toHaveCount(0);
+    await page.locator('button[aria-label="AI Settings"]:visible').first().click();
+    await page
+        .getByRole("region", { name: "College applications setup" })
+        .getByRole("button", { name: "UC PIQ", exact: true })
+        .click();
     const college = page.locator('[data-panel-id="college"]');
     await college.getByRole("checkbox", { name: /PIQ 1/ }).check();
     await college.getByRole("checkbox", { name: /PIQ 7/ }).check();

@@ -1,4 +1,3 @@
-import { parsePassageLink, serializePassageLink } from "$lib/editor/passageLink";
 import {
     OVERLAP_MAX_SOURCES,
     OVERLAP_SOURCE_CHAR_LIMIT,
@@ -11,6 +10,7 @@ import { newCollegeSetup } from "$lib/college/presets";
 import { collegeState } from "$lib/college/state.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import { currentDocumentId, currentDraftId, currentTabId, editorView } from "$lib/stores";
+import { parsePassageLink, serializePassageLink } from "@quillium/share";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
     endAiTask: vi.fn(),
     outputObject: vi.fn((value: unknown) => value),
     generateText: vi.fn(),
-    applyEditorialAction: vi.fn(() => ({ ok: true })),
+    applyEditorialAction: vi.fn((_request: unknown) => ({ ok: true })),
     captureEditorialTarget: vi.fn(() => ({
         documentId: "document-1",
         tabId: "tab-1",
@@ -223,7 +223,7 @@ afterEach(() => {
     currentDocumentId.set(null);
     currentTabId.set(null);
     currentDraftId.set(null);
-    editorView.set(undefined);
+    editorView.set(undefined as never);
 });
 
 describe("overlap source selection", () => {
@@ -266,7 +266,10 @@ describe("overlap source selection", () => {
         expect(preview.sources).toHaveLength(3);
         expect(preview.sources).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ totalChars: 13_000, sentChars: OVERLAP_SOURCE_CHAR_LIMIT }),
+                expect.objectContaining({
+                    totalChars: 13_000,
+                    sentChars: OVERLAP_SOURCE_CHAR_LIMIT,
+                }),
             ]),
         );
         expect(preview.omittedChars).toBe(4_000);
@@ -482,5 +485,127 @@ describe("overlap request and gateway", () => {
         await expect(
             runOverlap(session(), stalePreview, new AbortController().signal),
         ).rejects.toThrow(/stale|changed/i);
+    });
+
+    it("rejects target, source, setup, tab, draft, and session mutations during generation", async () => {
+        const mutations: Array<[string, () => void]> = [
+            [
+                "target",
+                () => {
+                    targetText = "The target changed while the model was running.";
+                },
+            ],
+            ["source", () => mocks.contents.set("draft-2", "The source changed while reviewing.")],
+            ["setup", () => mocks.setups.set(`${documentId}/tab-2`, setup("Another University"))],
+            [
+                "tab deletion",
+                () => {
+                    mocks.tabs = [mocks.tabs[0]!];
+                },
+            ],
+            ["draft deletion", () => mocks.drafts.set("tab-2", [])],
+            ["current identity", () => currentTabId.set("another-tab")],
+        ];
+
+        for (const [name, mutate] of mutations) {
+            configureFixture();
+            const prepared = await prepareOverlap(
+                session(),
+                [{ tabId: "tab-2", draftId: "draft-2" }],
+                "Example University",
+            );
+            const currentSession = session();
+            mocks.generateText.mockImplementationOnce(() => {
+                mutate();
+                return Promise.resolve({ output: { findings: [] } });
+            });
+            await expect(
+                runOverlap(currentSession, prepared, new AbortController().signal),
+            ).rejects.toThrow(/stale|changed/i);
+            expect(mocks.applyEditorialAction).not.toHaveBeenCalled();
+            expect(name).toBeTruthy();
+        }
+
+        configureFixture();
+        const prepared = await prepareOverlap(
+            session(),
+            [{ tabId: "tab-2", draftId: "draft-2" }],
+            "Example University",
+        );
+        const currentSession = session();
+        mocks.generateText.mockImplementationOnce(() => {
+            currentSession.isCurrent = () => false;
+            return Promise.resolve({ output: { findings: [] } });
+        });
+        await expect(
+            runOverlap(currentSession, prepared, new AbortController().signal),
+        ).rejects.toThrow(/stale|changed/i);
+        expect(mocks.applyEditorialAction).not.toHaveBeenCalled();
+    });
+
+    it("gates host, key, global, session, and caller cancellation before any request", async () => {
+        const sessionAbort = new AbortController();
+        const callerAbort = new AbortController();
+        sessionAbort.abort();
+        callerAbort.abort();
+        const cases: Array<[string, () => void, () => AbortSignal]> = [
+            [
+                "host",
+                () => {
+                    mocks.collegeState.hostEnabled = false;
+                },
+                () => new AbortController().signal,
+            ],
+            [
+                "key",
+                () => mocks.hasApiKey.mockReturnValue(false),
+                () => new AbortController().signal,
+            ],
+            ["global abort", () => mocks.globalAbort.abort(), () => new AbortController().signal],
+            ["session abort", () => undefined, () => sessionAbort.signal],
+            ["caller abort", () => undefined, () => new AbortController().signal],
+        ];
+
+        for (const [name, mutate, signalForCase] of cases) {
+            configureFixture();
+            const prepared = await prepareOverlap(
+                session(),
+                [{ tabId: "tab-2", draftId: "draft-2" }],
+                "Example University",
+            );
+            mutate();
+            const requestSession =
+                name === "session abort" ? { ...session(), signal: signalForCase() } : session();
+            const callerSignal =
+                name === "caller abort" ? callerAbort.signal : new AbortController().signal;
+            const result = runOverlap(requestSession, prepared, callerSignal);
+            if (name.includes("abort")) {
+                await expect(result).rejects.toMatchObject({ name: "AbortError" });
+            } else {
+                await expect(result).rejects.toThrow();
+            }
+            expect(mocks.ensureApiKeyLoaded).not.toHaveBeenCalled();
+            expect(mocks.generateText).not.toHaveBeenCalled();
+            expect(mocks.applyEditorialAction).not.toHaveBeenCalled();
+        }
+    });
+
+    it("rechecks host availability after source validation and before creating a model", async () => {
+        const prepared = await prepareOverlap(
+            session(),
+            [{ tabId: "tab-2", draftId: "draft-2" }],
+            "Example University",
+        );
+        let validationCalls = 0;
+        mocks.listTabDrafts.mockImplementation(async (tabId: string) => {
+            validationCalls += 1;
+            if (validationCalls === 2) mocks.collegeState.hostEnabled = false;
+            return mocks.drafts.get(tabId) ?? [];
+        });
+        await expect(runOverlap(session(), prepared, new AbortController().signal)).rejects.toThrow(
+            /disabled/i,
+        );
+        expect(mocks.generateText).not.toHaveBeenCalled();
+        expect(mocks.createModel).not.toHaveBeenCalled();
     });
 });

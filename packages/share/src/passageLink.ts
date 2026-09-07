@@ -1,4 +1,4 @@
-// passageLink.ts — Bounded, local links from AI comments to captured prose.
+// passageLink.ts — Bounded, app-neutral references from comments to captured prose.
 //
 // These links are intentionally fragments, not navigable URLs. The editor can
 // parse the exact suffix and decide whether the referenced draft is still
