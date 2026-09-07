@@ -3,10 +3,11 @@
 import { onDestroy, tick } from "svelte";
 import type { CollegeCapabilities, CollegeCapabilitiesSnapshot } from "./capabilities";
 import type { CollegeReference } from "./model";
-import { findingKey, type ResearchResult } from "./research";
-import { collegeResearchSetupKey, type ResearchTarget } from "./researchModel";
+import { type ResearchResult, findingKey } from "./research";
+import { type ResearchTarget, collegeResearchSetupKey } from "./researchModel";
 
-let { college, view }: { college: CollegeCapabilities; view: CollegeCapabilitiesSnapshot } = $props();
+let { college, view }: { college: CollegeCapabilities; view: CollegeCapabilitiesSnapshot } =
+    $props();
 let opened = $state(false);
 let running = $state(false);
 let saving = $state(false);
@@ -26,21 +27,37 @@ const groups = [
     { kind: "editorial-guidance", label: "Possible connections to explore" },
 ] as const;
 const setupKey = $derived(view.setup ? collegeResearchSetupKey(view.setup) : "");
-const saved = $derived(view.setup?.references.filter(reference => reference.research) ?? []);
-const missing = $derived(result ? saved.filter(reference => !result?.findings.some(finding => finding.url === reference.url && finding.kind === reference.kind)) : []);
+const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
+const missing = $derived(
+    result
+        ? saved.filter(
+              (reference) =>
+                  !result?.findings.some(
+                      (finding) => finding.url === reference.url && finding.kind === reference.kind,
+                  ),
+          )
+        : [],
+);
 onDestroy(() => controller?.abort());
 async function open(): Promise<void> {
     const setup = view.setup;
     if (!setup) return;
-    const previous = setup.references.some(reference => reference.research?.setupKey === collegeResearchSetupKey(setup)) ? setup.researchReview?.target : undefined;
+    const previous = setup.references.some(
+        (reference) => reference.research?.setupKey === collegeResearchSetupKey(setup),
+    )
+        ? setup.researchReview?.target
+        : undefined;
     target = {
         school: previous?.school ?? setup.school,
         cycle: previous?.cycle ?? setup.cycle,
         program: previous?.program ?? setup.program,
-        sourceUrl: previous?.sourceUrl ?? setup.prompts.find(prompt => prompt.sourceUrl)?.sourceUrl ?? "",
+        sourceUrl:
+            previous?.sourceUrl ??
+            setup.prompts.find((prompt) => prompt.sourceUrl)?.sourceUrl ??
+            "",
         prompts: setup.prompts.map(({ id, label, text }) => ({ id, label, text })),
     };
-    promptIds = target.prompts.map(prompt => prompt.id);
+    promptIds = target.prompts.map((prompt) => prompt.id);
     opened = true;
     confirmed = false;
     result = null;
@@ -66,26 +83,48 @@ async function research(): Promise<void> {
     error = "";
     notice = "";
     try {
-        const response = await college.research({ ...target, prompts: target.prompts.filter(prompt => promptIds.includes(prompt.id)) }, operation.signal);
+        const response = await college.research(
+            {
+                ...target,
+                prompts: target.prompts.filter((prompt) => promptIds.includes(prompt.id)),
+            },
+            operation.signal,
+        );
         if (operation.signal.aborted) return;
         result = response;
         await tick();
         heading?.focus();
     } catch (cause) {
         if (controller !== operation) return;
-        if (!operation.signal.aborted) error = cause instanceof Error ? cause.message : "Research failed. Try again.";
+        if (!operation.signal.aborted)
+            error = cause instanceof Error ? cause.message : "Research failed. Try again.";
         else notice = "Research stopped. Saved sources are unchanged.";
     } finally {
         if (controller === operation) running = false;
     }
 }
 function previousFor(finding: CollegeReference): CollegeReference | undefined {
-    return saved.find(reference => reference.url === finding.url && reference.kind === finding.kind && JSON.stringify(reference.research?.promptIds) === JSON.stringify(finding.research?.promptIds));
+    return saved.find(
+        (reference) =>
+            reference.url === finding.url &&
+            reference.kind === finding.kind &&
+            JSON.stringify(reference.research?.promptIds) ===
+                JSON.stringify(finding.research?.promptIds),
+    );
 }
 function statusFor(finding: CollegeReference): string {
-    if (saved.some(reference => findingKey(reference) === findingKey(finding) && view.setup && reference.research?.setupKey === setupKey)) return "Already saved";
+    if (
+        saved.some(
+            (reference) =>
+                findingKey(reference) === findingKey(finding) &&
+                view.setup &&
+                reference.research?.setupKey === setupKey,
+        )
+    )
+        return "Already saved";
     if (previousFor(finding)) return "Changed since your saved snapshot";
-    if (view.setup?.researchReview?.rejectedKeys.includes(findingKey(finding))) return "Previously left out";
+    if (view.setup?.researchReview?.rejectedKeys.includes(findingKey(finding)))
+        return "Previously left out";
     return "New finding";
 }
 async function accept(): Promise<void> {
@@ -98,7 +137,9 @@ async function accept(): Promise<void> {
         notice = "Source review saved. Your essay and notes are unchanged.";
     } catch (cause) {
         error = cause instanceof Error ? cause.message : "Could not save these sources. Try again.";
-    } finally { saving = false; }
+    } finally {
+        saving = false;
+    }
 }
 </script>
 
@@ -123,7 +164,7 @@ async function accept(): Promise<void> {
                         <label>Program (optional)<input maxlength="200" bind:value={target.program} /></label>
                     </div>
                     <label>Official admissions page<input type="url" required maxlength="2000" bind:value={target.sourceUrl} placeholder="https://admissions.school.edu/…" oninput={() => confirmed = false} /></label>
-                    <p class="text-xs text-black/60">Starts here and checks up to three related pages on this same site. Use a public page, without a login or search query.</p>
+                    <p class="text-xs text-black/60">Uses this as the confirmed official source and limits research to this hostname. Use a public page without a login.</p>
                     <label class="check"><input type="checkbox" bind:checked={confirmed} />I checked that this is the official site for this school and campus.</label>
                     <fieldset class="space-y-2">
                         <legend class="font-medium text-xs mb-2">Prompts to research</legend>
@@ -131,7 +172,7 @@ async function accept(): Promise<void> {
                             <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
                         {/each}
                     </fieldset>
-                    <p class="text-xs text-black/60">Edit setup to change a prompt. Only the school, cycle, program, selected public prompts, and fetched pages go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
+                    <p class="text-xs text-black/60">Edit setup to change a prompt. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
                     <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || !!view.researchUnavailable}>Start research</button>
                 </fieldset>
             </form>
@@ -184,7 +225,7 @@ async function accept(): Promise<void> {
                 <button class="research-link" disabled={saving} onclick={() => { result = null; confirmed = false; }}>Change target or retry</button>
             </div>
             <p class="text-xs text-black/60">Nothing is added automatically. Adding keeps your existing sources; only checked removals are deleted. Up to 12 sources fit in a setup, with 6,000 characters available to requests.</p>
-            <details><summary class="research-link">Pages checked ({result.pages.length})</summary>{#each result.pages as page}<a class="block research-link mt-2 break-all" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>{/each}</details>
+            <details><summary class="research-link">Sources returned ({result.pages.length})</summary>{#each result.pages as page}<a class="block research-link mt-2 break-all" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>{/each}</details>
         {/if}
     </section>
 {/if}

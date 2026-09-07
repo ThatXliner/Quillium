@@ -1,5 +1,6 @@
-// research.ts — Pure, bounded school-source crawling and finding validation.
+// research.ts — Normalize one provider result into bounded College sources.
 
+import { abortError, linkAbortSignals, raceWithAbort } from "$lib/abort";
 import { z } from "zod";
 import type { CollegeReference } from "./model";
 import {
@@ -9,13 +10,9 @@ import {
     researchTargetSchema,
 } from "./researchModel";
 
-const MAX_HTML_BYTES = 512 * 1024;
-const MAX_PAGE_TEXT = 12_000;
-const MAX_PAGES = 4;
-const MAX_RESPONSE_CHARS = 24_000;
 const RESEARCH_TIMEOUT_MS = 90_000;
 
-export { researchTargetSchema };
+export { collegeResearchSetupKey, researchTargetSchema };
 export type { ResearchTarget };
 
 const extractedFindingSchema = z
@@ -23,7 +20,7 @@ const extractedFindingSchema = z
         url: z.string().min(1).max(2_000),
         kind: z.enum(["requirement", "official-advice", "editorial-guidance"]),
         summary: z.string().min(1).max(1_200),
-        evidence: z.string().max(1_000),
+        evidence: z.string().min(1).max(1_000),
         cycle: z.string().max(100),
         promptIds: z
             .array(z.string().min(1).max(100))
@@ -36,7 +33,8 @@ const extractedFindingSchema = z
     })
     .strict();
 
-const extractionResponseSchema = z
+/** The structured extraction returned by a hosted or fallback provider. */
+export const researchExtractionSchema = z
     .object({
         findings: z.array(extractedFindingSchema).max(8),
         warnings: z.array(z.string().max(1_000)).max(8),
@@ -44,21 +42,24 @@ const extractionResponseSchema = z
     })
     .strict();
 
-export type ResearchExtractPage = {
+export type ResearchExtraction = z.infer<typeof researchExtractionSchema>;
+
+/** A public source returned by a school-research provider. */
+export type ResearchSource = {
     url: string;
     title: string;
-    text: string;
+    text?: string;
 };
 
-export type ResearchExtractPayload = {
-    target: ResearchTarget;
-    pages: ResearchExtractPage[];
+export type ResearchAdapterResult = {
+    extraction: ResearchExtraction;
+    sources: ResearchSource[];
 };
 
-export type SchoolResearchAdapters = {
-    fetchPage: (url: string, signal: AbortSignal) => Promise<string>;
-    extract: (payload: ResearchExtractPayload, signal: AbortSignal) => Promise<string>;
-};
+export type SchoolResearchAdapter = (
+    target: ResearchTarget,
+    signal: AbortSignal,
+) => Promise<ResearchAdapterResult>;
 
 export type ResearchResult = {
     id: string;
@@ -69,22 +70,13 @@ export type ResearchResult = {
     pages: Array<{ url: string; title: string }>;
 };
 
-type Anchor = {
-    url: string;
-    label: string;
-    path: string;
-    order: number;
-};
-
-type CrawledPage = ResearchExtractPage & {
-    anchors: Anchor[];
-};
-
-/**
- * The key deliberately lives beside the research model so context consumers
- * can compare scope without importing the crawling engine.
- */
-export { collegeResearchSetupKey };
+const sourceSchema = z
+    .object({
+        url: z.string().min(1).max(2_000),
+        title: z.string().max(500),
+        text: z.string().max(12_000).optional(),
+    })
+    .strict();
 
 /** Return a stable comparison key for a research finding's sourced content. */
 export function findingKey(reference: CollegeReference): string {
@@ -105,13 +97,12 @@ export function findingKey(reference: CollegeReference): string {
 }
 
 /**
- * Crawl the confirmed source and a few relevant same-origin pages, then validate
- * one extractor response against the fetched text. This function has no access
- * to application state, credentials, or model providers.
+ * Rebuild the public target, run one bounded adapter operation, and normalize
+ * only sources that can be tied back to the confirmed hostname.
  */
 export async function runSchoolResearch(
     inputTarget: ResearchTarget,
-    adapters: SchoolResearchAdapters,
+    adapter: SchoolResearchAdapter,
     callerSignal: AbortSignal,
 ): Promise<ResearchResult> {
     const target = _reconstructTarget(inputTarget);
@@ -120,96 +111,23 @@ export async function runSchoolResearch(
     const resultId = _uuid();
     const checkedDate = new Date().toISOString().slice(0, 10);
     const warnings: string[] = [];
-    const crawledPages: CrawledPage[] = [];
-    const visited = new Set<string>();
-    const controller = new AbortController();
+    const timeoutController = new AbortController();
     let timedOut = false;
-
-    const abortFromCaller = () => controller.abort();
-    if (callerSignal.aborted) controller.abort();
-    else callerSignal.addEventListener("abort", abortFromCaller, { once: true });
-
+    const linked = linkAbortSignals([callerSignal, timeoutController.signal]);
     const timeout = setTimeout(() => {
         timedOut = true;
-        controller.abort();
+        timeoutController.abort(_abortError());
     }, RESEARCH_TIMEOUT_MS);
 
     try {
-        const source = new URL(target.sourceUrl);
-        const pendingAnchors: Anchor[] = [];
-        let attempts = 0;
-
-        if (!_crawlableUrl(source, source.origin)) {
-            _pushWarning(
-                warnings,
-                "The confirmed source URL uses a blocked portal or non-HTML route.",
-            );
-            _addCompletionWarnings(target, [], warnings);
-            return _result(target, resultId, checkedDate, crawledPages, [], warnings);
-        }
-
-        while (attempts < MAX_PAGES && !timedOut) {
-            const nextUrl =
-                attempts === 0 ? target.sourceUrl : _nextAnchor(pendingAnchors, visited, target);
-            if (!nextUrl) break;
-            visited.add(nextUrl);
-            attempts += 1;
-
-            let html: string;
-            try {
-                const operation = Promise.resolve().then(() =>
-                    adapters.fetchPage(nextUrl, controller.signal),
-                );
-                html = await _raceWithAbort(operation, controller.signal);
-            } catch (error) {
-                if (callerSignal.aborted) throw _abortError();
-                if (timedOut) break;
-                _pushWarning(warnings, `Could not fetch ${nextUrl}: ${_errorMessage(error)}.`);
-                continue;
-            }
-
-            if (timedOut) break;
-            if (typeof html !== "string") {
-                _pushWarning(warnings, `Could not fetch ${nextUrl}: the response was not HTML.`);
-                continue;
-            }
-
-            const page = _parsePage(html, nextUrl, target, warnings);
-            if (!page) continue;
-            crawledPages.push(page);
-            pendingAnchors.push(...page.anchors);
-        }
-
-        if (callerSignal.aborted) throw _abortError();
-        if (timedOut) {
-            _pushWarning(
-                warnings,
-                "School research timed out; only completed pages are available.",
-            );
-            _addCompletionWarnings(target, [], warnings);
-            return _result(target, resultId, checkedDate, crawledPages, [], warnings);
-        }
-
-        if (crawledPages.length === 0) {
-            _pushWarning(warnings, "No pages were fetched, so no findings could be verified.");
-            _addCompletionWarnings(target, [], warnings);
-            return _result(target, resultId, checkedDate, crawledPages, [], warnings);
-        }
-
-        const pages = crawledPages.map(({ url, title, text }) => ({ url, title, text }));
-        let responseText: string;
+        let adapterResult: ResearchAdapterResult;
         try {
-            const operation = Promise.resolve().then(() =>
-                adapters.extract({ target, pages }, controller.signal),
-            );
-            responseText = await _raceWithAbort(operation, controller.signal);
+            const operation = Promise.resolve().then(() => adapter(target, linked.signal));
+            adapterResult = await raceWithAbort(operation, linked.signal, _abortError);
         } catch (error) {
             if (callerSignal.aborted) throw _abortError();
             if (timedOut) {
-                _pushWarning(
-                    warnings,
-                    "School research timed out before findings could be extracted.",
-                );
+                _pushWarning(warnings, "School research timed out before sources were returned.");
             } else {
                 _pushWarning(
                     warnings,
@@ -217,24 +135,46 @@ export async function runSchoolResearch(
                 );
             }
             _addCompletionWarnings(target, [], warnings);
-            return _result(target, resultId, checkedDate, crawledPages, [], warnings);
+            return _result(target, resultId, checkedDate, [], [], warnings);
         }
 
-        const findings = _validateExtraction(
-            responseText,
-            target,
-            resultId,
-            checkedDate,
-            source.hostname,
-            pages,
-            warnings,
-        );
+        _throwIfAborted(callerSignal);
+        if (timedOut) {
+            _pushWarning(warnings, "School research timed out before sources were returned.");
+            _addCompletionWarnings(target, [], warnings);
+            return _result(target, resultId, checkedDate, [], [], warnings);
+        }
+
+        const parsed = _parseAdapterResult(adapterResult, warnings);
+        if (!parsed) {
+            _addCompletionWarnings(target, [], warnings);
+            return _result(target, resultId, checkedDate, [], [], warnings);
+        }
+
+        for (const warning of parsed.extraction.warnings) _pushWarning(warnings, warning);
+        const sources = _validSources(parsed.sources, target, warnings);
+        const findings = parsed.extraction.institutionMatches
+            ? _normalizeFindings(
+                  parsed.extraction.findings,
+                  target,
+                  resultId,
+                  checkedDate,
+                  sources,
+                  warnings,
+              )
+            : [];
+        if (!parsed.extraction.institutionMatches) {
+            _pushWarning(
+                warnings,
+                "The returned sources did not clearly match the requested institution.",
+            );
+        }
         _warnAboutConflictingLimits(findings, warnings);
         _addCompletionWarnings(target, findings, warnings);
-        return _result(target, resultId, checkedDate, crawledPages, findings, warnings);
+        return _result(target, resultId, checkedDate, sources, findings, warnings);
     } finally {
         clearTimeout(timeout);
-        callerSignal.removeEventListener("abort", abortFromCaller);
+        linked.cleanup();
     }
 }
 
@@ -242,7 +182,7 @@ function _result(
     target: ResearchTarget,
     id: string,
     checkedDate: string,
-    pages: CrawledPage[],
+    sources: ResearchSource[],
     findings: CollegeReference[],
     warnings: string[],
 ): ResearchResult {
@@ -252,7 +192,7 @@ function _result(
         checkedDate,
         findings,
         warnings,
-        pages: pages.map(({ url, title }) => ({ url, title })),
+        pages: sources.map(({ url, title }) => ({ url, title })),
     };
 }
 
@@ -277,205 +217,158 @@ function _reconstructTarget(input: ResearchTarget): ResearchTarget {
     });
 }
 
-function _parsePage(
-    html: string,
-    url: string,
-    target: ResearchTarget,
+function _parseAdapterResult(
+    value: ResearchAdapterResult,
     warnings: string[],
-): CrawledPage | null {
-    const boundedHtml = _limitHtml(html, url, warnings);
-    let root: DocumentFragment;
-    try {
-        // A template fragment is inert: retrieved markup is never inserted into
-        // the live document, and images/frames cannot initiate page resources.
-        const template = document.createElement("template");
-        template.innerHTML = boundedHtml;
-        root = template.content;
-    } catch (error) {
-        _pushWarning(warnings, `Could not parse ${url}: ${_errorMessage(error)}.`);
+): ResearchAdapterResult | null {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        _pushWarning(warnings, "The research adapter response did not match the required schema.");
         return null;
     }
-
-    for (const element of root.querySelectorAll(
-        "script, style, nav, footer, form, iframe, noscript, template",
-    )) {
-        element.remove();
-    }
-    const title =
-        _normaliseWhitespace(root.querySelector("title")?.textContent ?? "").slice(0, 200) || url;
-    const textRoot = root.querySelector("main, article") ?? root;
-    const fullText = _normaliseWhitespace(textRoot.textContent ?? "");
-    if (fullText.length > MAX_PAGE_TEXT) {
+    const extraction = researchExtractionSchema.safeParse(value.extraction);
+    if (!extraction.success) {
         _pushWarning(
             warnings,
-            `The extracted text for ${url} exceeded ${MAX_PAGE_TEXT} characters and was truncated.`,
+            "The research extractor response did not match the required schema.",
         );
+        return null;
     }
-    const text = _boundedPageText(fullText, target);
-    const source = new URL(url);
-    const anchors: Anchor[] = [];
-    for (const [order, element] of [...root.querySelectorAll("a[href]")].entries()) {
-        const href = element.getAttribute("href");
-        if (!href) continue;
-        let candidate: URL;
-        try {
-            candidate = new URL(href, url);
-        } catch {
+    if (!Array.isArray(value.sources)) {
+        _pushWarning(warnings, "The research adapter did not return a source list.");
+        return null;
+    }
+    return { extraction: extraction.data, sources: value.sources };
+}
+
+function _validSources(
+    values: ResearchSource[],
+    target: ResearchTarget,
+    warnings: string[],
+): ResearchSource[] {
+    const targetHostname = _hostname(target.sourceUrl);
+    if (!targetHostname) {
+        _pushWarning(warnings, "The confirmed source URL has no usable hostname.");
+        return [];
+    }
+    const seen = new Set<string>();
+    const sources: ResearchSource[] = [];
+    for (const value of values) {
+        const parsed = sourceSchema.safeParse(value);
+        if (!parsed.success) {
+            _pushWarning(warnings, "Ignored a malformed research source.");
             continue;
         }
-        if (!_crawlableUrl(candidate, source.origin) || candidate.toString().length > 2_000)
+        const url = _sourceUrl(parsed.data.url, targetHostname);
+        if (!url) {
+            _pushWarning(warnings, `Ignored a research source outside ${targetHostname}.`);
             continue;
-        anchors.push({
-            url: candidate.toString(),
-            label: _normaliseWhitespace(element.textContent ?? "").slice(0, 200),
-            path: candidate.pathname,
-            order,
+        }
+        if (seen.has(parsed.data.url)) continue;
+        seen.add(parsed.data.url);
+        sources.push({
+            url: parsed.data.url,
+            title: parsed.data.title,
+            ...(parsed.data.text === undefined ? {} : { text: parsed.data.text }),
         });
     }
-    return { url, title, text, anchors };
+    return sources;
 }
 
-function _boundedPageText(fullText: string, target: ResearchTarget): string {
-    if (fullText.length <= MAX_PAGE_TEXT) return fullText;
-
-    const prefix = fullText.slice(0, 1_000);
-    const chunks: Array<{ start: number; text: string; score: number }> = [];
-    for (let start = 1_000; start < fullText.length; start += 1_800) {
-        const text = fullText.slice(start, start + 1_800);
-        chunks.push({ start, text, score: _textRelevance(text, target) });
+function _sourceUrl(value: string, targetHostname: string): URL | null {
+    let url: URL;
+    try {
+        url = new URL(value);
+    } catch {
+        return null;
     }
-    const selected = chunks
-        .sort((left, right) => right.score - left.score || left.start - right.start)
-        .slice(0, 6)
-        .sort((left, right) => left.start - right.start);
-    const excerpts = [prefix, ...selected.map((chunk) => chunk.text)];
-    let result = excerpts.join(" [excerpt break] ");
-    if (result.length <= MAX_PAGE_TEXT) return result;
-
-    // The marker makes omitted regions explicit and prevents evidence from
-    // accidentally matching across two unrelated excerpts.
-    while (result.length > MAX_PAGE_TEXT && selected.length > 0) {
-        selected.pop();
-        result = [prefix, ...selected.map((chunk) => chunk.text)].join(" [excerpt break] ");
-    }
-    return result.slice(0, MAX_PAGE_TEXT);
-}
-
-function _textRelevance(text: string, target: ResearchTarget): number {
-    const lower = text.toLowerCase();
-    const terms = [
-        "essay",
-        "essays",
-        "prompt",
-        "prompts",
-        "personal insight",
-        "supplement",
-        "supplemental",
-        "word limit",
-        "words",
-        "characters",
-    ];
-    let score = 0;
-    for (const term of terms) {
-        if (lower.includes(term)) score += 3;
-    }
-    const words = [
-        ...target.program.toLowerCase().split(/[^a-z0-9]+/),
-        ...target.prompts.flatMap((prompt) => prompt.text.toLowerCase().split(/[^a-z0-9]+/)),
-    ];
-    for (const word of new Set(words.filter((word) => word.length >= 5))) {
-        if (lower.includes(word)) score += 1;
-    }
-    return score;
-}
-
-function _limitHtml(html: string, url: string, warnings: string[]): string {
-    const bytes = new TextEncoder().encode(html);
-    if (bytes.length <= MAX_HTML_BYTES) return html;
-    _pushWarning(warnings, `The HTML response for ${url} exceeded 512 KiB and was truncated.`);
-    return new TextDecoder().decode(bytes.slice(0, MAX_HTML_BYTES));
-}
-
-function _crawlableUrl(url: URL, sourceOrigin: string): boolean {
+    const hostname = _normalizeHostname(url.hostname);
     if (
         url.protocol !== "https:" ||
-        url.origin !== sourceOrigin ||
+        !hostname ||
         url.username ||
         url.password ||
-        url.port ||
-        url.search ||
-        url.hash
+        (hostname !== targetHostname && !hostname.endsWith(`.${targetHostname}`))
     ) {
-        return false;
+        return null;
     }
-    let pathname: string;
-    try {
-        pathname = decodeURIComponent(url.pathname).toLowerCase();
-    } catch {
-        return false;
-    }
-    if (
-        /\.(?:pdf|docx?|xlsx?|pptx?|zip|jpe?g|png|gif|webp|svg|mp4|mp3|csv|json|xml|txt)(?:$|\/)/i.test(
-            pathname,
-        )
-    ) {
-        return false;
-    }
-    if (
-        /(^|[/_.-])(portal|login|account|apply-now|signin|sign-in|auth|sso)([/_.-]|$)/i.test(
-            pathname,
-        )
-    ) {
-        return false;
-    }
-    return true;
+    return url;
 }
 
-function _nextAnchor(
-    anchors: Anchor[],
-    visited: Set<string>,
+function _normalizeFindings(
+    extracted: ResearchExtraction["findings"],
     target: ResearchTarget,
-): string | null {
-    const candidates = anchors
-        .filter((anchor) => !visited.has(anchor.url))
-        .map((anchor) => ({ anchor, score: _anchorScore(anchor, target.program) }))
-        .filter(({ score }) => score > 0)
-        .sort((left, right) => right.score - left.score || left.anchor.order - right.anchor.order);
-    return candidates[0]?.anchor.url ?? null;
-}
+    snapshotId: string,
+    checkedDate: string,
+    sources: ResearchSource[],
+    warnings: string[],
+): CollegeReference[] {
+    const sourcesByUrl = new Map(sources.map((source) => [source.url, source]));
+    const targetPromptIds = new Set(target.prompts.map((prompt) => prompt.id));
+    const findings: CollegeReference[] = [];
+    for (const finding of extracted) {
+        const source = sourcesByUrl.get(finding.url);
+        if (!source) {
+            _pushWarning(
+                warnings,
+                `Ignored a finding for a URL that was not returned: ${finding.url}.`,
+            );
+            continue;
+        }
+        if (finding.promptIds.some((promptId) => !targetPromptIds.has(promptId))) {
+            _pushWarning(
+                warnings,
+                `Ignored a finding with an unknown prompt ID from ${finding.url}.`,
+            );
+            continue;
+        }
 
-function _anchorScore(anchor: Anchor, program: string): number {
-    const haystack = `${anchor.label} ${anchor.path}`.toLowerCase();
-    const terms = [
-        "admission",
-        "admissions",
-        "application",
-        "applications",
-        "apply",
-        "essay",
-        "essays",
-        "prompt",
-        "prompts",
-        "program",
-        "programs",
-        "supplement",
-        "supplemental",
-        "requirement",
-        "requirements",
-        "undergraduate",
-    ];
-    let score = 0;
-    for (const term of terms) {
-        if (haystack.includes(term)) score += 2;
+        const sourceText = source.text;
+        if (sourceText !== undefined && !sourceText.includes(finding.evidence)) {
+            _pushWarning(warnings, `Ignored unsupported evidence from ${finding.url}.`);
+            continue;
+        }
+        if (sourceText === undefined && !finding.evidence.trim()) {
+            _pushWarning(warnings, `Ignored an unverified hosted finding from ${finding.url}.`);
+            continue;
+        }
+
+        let cycle = finding.cycle;
+        if (sourceText !== undefined && cycle && !sourceText.includes(cycle)) {
+            _pushWarning(warnings, `Ignored the unverified cycle “${cycle}” from ${finding.url}.`);
+            cycle = "";
+        }
+        if (cycle && target.cycle && cycle !== target.cycle) {
+            _pushWarning(
+                warnings,
+                `The finding from ${finding.url} cites cycle “${cycle}”, which differs from requested cycle “${target.cycle}”; check whether the cycle labels refer to the same application year before using it.`,
+            );
+        } else if (!cycle && target.cycle) {
+            _pushWarning(
+                warnings,
+                `The finding from ${finding.url} has no verified cycle for requested cycle “${target.cycle}”.`,
+            );
+        }
+
+        findings.push({
+            id: _uuid(),
+            publisher: _hostname(source.url) ?? "",
+            url: source.url,
+            checkedDate,
+            cycle,
+            kind: finding.kind,
+            summary: _normaliseWhitespace(finding.summary),
+            research: {
+                setupKey: "",
+                snapshotId,
+                promptIds: [...finding.promptIds],
+                school: target.school,
+                program: target.program,
+                targetCycle: target.cycle,
+                evidence: finding.evidence,
+            },
+        });
     }
-    const programWords = program
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((word) => word.length >= 3);
-    for (const word of new Set(programWords)) {
-        if (haystack.includes(word)) score += 3;
-    }
-    return score;
+    return findings;
 }
 
 function _addCompletionWarnings(
@@ -497,116 +390,8 @@ function _addCompletionWarnings(
                 finding.cycle === target.cycle,
         )
     ) {
-        _pushWarning(warnings, "No verified requirement was found in the fetched sources.");
+        _pushWarning(warnings, "No verified requirement was found in the returned sources.");
     }
-}
-
-function _validateExtraction(
-    rawResponse: string,
-    target: ResearchTarget,
-    snapshotId: string,
-    checkedDate: string,
-    publisher: string,
-    pages: ResearchExtractPage[],
-    warnings: string[],
-): CollegeReference[] {
-    if (typeof rawResponse !== "string" || rawResponse.length > MAX_RESPONSE_CHARS) {
-        _pushWarning(warnings, "The research extractor response exceeded 24,000 characters.");
-        return [];
-    }
-    let parsedJson: unknown;
-    try {
-        parsedJson = JSON.parse(_unwrapJson(rawResponse)) as unknown;
-    } catch (error) {
-        _pushWarning(
-            warnings,
-            `The research extractor did not return valid JSON: ${_errorMessage(error)}.`,
-        );
-        return [];
-    }
-    const parsed = extractionResponseSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-        _pushWarning(
-            warnings,
-            "The research extractor response did not match the required schema.",
-        );
-        return [];
-    }
-    for (const warning of parsed.data.warnings) _pushWarning(warnings, warning);
-    if (!parsed.data.institutionMatches) {
-        _pushWarning(
-            warnings,
-            "The fetched sources did not clearly match the requested institution.",
-        );
-        return [];
-    }
-
-    const targetPromptIds = new Set(target.prompts.map((prompt) => prompt.id));
-    const pagesByUrl = new Map(pages.map((page) => [page.url, page]));
-    const findings: CollegeReference[] = [];
-    for (const finding of parsed.data.findings) {
-        const page = pagesByUrl.get(finding.url);
-        if (!page) {
-            _pushWarning(
-                warnings,
-                `Ignored a finding for a URL that was not fetched: ${finding.url}.`,
-            );
-            continue;
-        }
-        if (finding.promptIds.some((promptId) => !targetPromptIds.has(promptId))) {
-            _pushWarning(
-                warnings,
-                `Ignored a finding with an unknown prompt ID from ${finding.url}.`,
-            );
-            continue;
-        }
-        const evidence = _normaliseWhitespace(finding.evidence);
-        if (!evidence || !page.text.includes(evidence)) {
-            _pushWarning(warnings, `Ignored unsupported evidence from ${finding.url}.`);
-            continue;
-        }
-        let cycle = _normaliseWhitespace(finding.cycle);
-        if (cycle && !page.text.includes(cycle)) {
-            _pushWarning(warnings, `Ignored the unverified cycle “${cycle}” from ${finding.url}.`);
-            cycle = "";
-        }
-        if (cycle && target.cycle && cycle !== target.cycle) {
-            _pushWarning(
-                warnings,
-                `The finding from ${finding.url} cites cycle “${cycle}”, which differs from requested cycle “${target.cycle}”; check whether the cycle labels refer to the same application year before using it.`,
-            );
-        } else if (!cycle && target.cycle) {
-            _pushWarning(
-                warnings,
-                `The finding from ${finding.url} has no verified cycle for requested cycle “${target.cycle}”.`,
-            );
-        }
-        findings.push({
-            id: _uuid(),
-            publisher,
-            url: finding.url,
-            checkedDate,
-            cycle,
-            kind: finding.kind,
-            summary: _normaliseWhitespace(finding.summary),
-            research: {
-                setupKey: "",
-                snapshotId,
-                promptIds: [...finding.promptIds],
-                school: target.school,
-                program: target.program,
-                targetCycle: target.cycle,
-                evidence,
-            },
-        });
-    }
-    return findings;
-}
-
-function _unwrapJson(value: string): string {
-    const trimmed = value.trim();
-    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-    return match?.[1]?.trim() ?? trimmed;
 }
 
 function _warnAboutConflictingLimits(findings: CollegeReference[], warnings: string[]): void {
@@ -647,6 +432,20 @@ function _limitUnit(value: string): "words" | "characters" {
     return value.toLowerCase().startsWith("char") ? "characters" : "words";
 }
 
+function _hostname(value: string): string | null {
+    try {
+        const url = new URL(value);
+        const hostname = _normalizeHostname(url.hostname);
+        return hostname || null;
+    } catch {
+        return null;
+    }
+}
+
+function _normalizeHostname(value: string): string {
+    return value.toLowerCase().replace(/\.$/, "");
+}
+
 function _normaliseWhitespace(value: string): string {
     return value.replace(/\s+/g, " ").trim();
 }
@@ -659,6 +458,14 @@ function _pushWarning(warnings: string[], warning: string): void {
 
 function _errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function _throwIfAborted(signal: AbortSignal): void {
+    if (signal.aborted) throw _abortError();
+}
+
+function _abortError(): Error {
+    return abortError("School research was cancelled.", "AbortError");
 }
 
 function _uuid(): string {
@@ -676,38 +483,4 @@ function _uuid(): string {
                 : byte.toString(16).padStart(2, "0"),
         )
         .join("");
-}
-
-function _throwIfAborted(signal: AbortSignal): void {
-    if (signal.aborted) throw _abortError();
-}
-
-function _abortError(): Error {
-    const error = new Error("School research was cancelled.");
-    error.name = "AbortError";
-    return error;
-}
-
-function _raceWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-    if (signal.aborted) {
-        void operation.catch(() => undefined);
-        return Promise.reject(_abortError());
-    }
-    return new Promise<T>((resolve, reject) => {
-        const abort = () => {
-            signal.removeEventListener("abort", abort);
-            reject(_abortError());
-        };
-        signal.addEventListener("abort", abort, { once: true });
-        operation.then(
-            (value) => {
-                signal.removeEventListener("abort", abort);
-                resolve(value);
-            },
-            (error) => {
-                signal.removeEventListener("abort", abort);
-                reject(error);
-            },
-        );
-    });
 }

@@ -4,6 +4,7 @@
 // mutating operation checks that session before touching College state or
 // opening another panel, so a late click cannot act on a newly selected tab.
 
+import { abortError, linkAbortSignals } from "$lib/abort";
 import {
     researchProviderLabel,
     researchSchool,
@@ -148,43 +149,12 @@ function createTabPayload(setups: CollegeSetup[]): Array<{ label: string; setupJ
     });
 }
 
-type LinkedAbort = {
-    signal: AbortSignal;
-    cleanup: () => void;
-};
-
-function linkAbortSignals(signals: readonly AbortSignal[]): LinkedAbort {
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    const activeSignals: AbortSignal[] = [];
-
-    for (const signal of signals) {
-        if (signal.aborted) {
-            controller.abort(signal.reason);
-            break;
-        }
-        signal.addEventListener("abort", abort, { once: true });
-        activeSignals.push(signal);
-    }
-
-    return {
-        signal: controller.signal,
-        cleanup: () => {
-            for (const signal of activeSignals) signal.removeEventListener("abort", abort);
-        },
-    };
-}
-
 function cloneResearchResult(result: ResearchResult): ResearchResult {
     return JSON.parse(JSON.stringify(result)) as ResearchResult;
 }
 
 function cloneResearchTarget(target: ResearchTarget): ResearchTarget {
     return JSON.parse(JSON.stringify(target)) as ResearchTarget;
-}
-
-function abortError(): Error {
-    return new Error("School research was cancelled.");
 }
 
 /**
@@ -218,7 +188,7 @@ export function createCollegeCapabilities(
         if (!signal.aborted) return;
         const reason = signal.reason;
         if (reason instanceof Error) throw reason;
-        throw abortError();
+        throw abortError("School research was cancelled.");
     }
 
     function currentStateMatchesTarget(): boolean {

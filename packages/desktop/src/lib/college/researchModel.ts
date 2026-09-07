@@ -3,45 +3,14 @@
 import { z } from "zod";
 import type { CollegeSetup } from "./model";
 
-function _publicHttpsUrl(value: string): URL | null {
-    if (/\s/.test(value)) return null;
+function _httpsUrl(value: string): URL | null {
     let url: URL;
     try {
         url = new URL(value);
     } catch {
         return null;
     }
-    if (url.protocol !== "https:" || url.search || url.hash || url.username || url.password) {
-        return null;
-    }
-    const authority = value.slice("https://".length).split(/[/?#]/, 1)[0] ?? "";
-    if (authority.includes("@") || authority.includes(":")) return null;
-    if (url.port) return null;
-    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
-    if (
-        !hostname ||
-        hostname === "localhost" ||
-        hostname === "local" ||
-        hostname === "internal" ||
-        hostname.endsWith(".localhost") ||
-        hostname.endsWith(".local") ||
-        hostname.endsWith(".internal") ||
-        hostname.includes(":") ||
-        _looksLikeIpv4(hostname) ||
-        !hostname.includes(".") ||
-        hostname.length > 253 ||
-        !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(
-            hostname,
-        )
-    ) {
-        return null;
-    }
-    return url;
-}
-
-function _looksLikeIpv4(hostname: string): boolean {
-    const parts = hostname.split(".");
-    return parts.length === 4 && parts.every((part) => /^\d+$/.test(part));
+    return url.protocol === "https:" && url.hostname && !url.username && !url.password ? url : null;
 }
 
 const researchTargetPromptSchema = z
@@ -75,11 +44,11 @@ export const researchTargetSchema = z
             .min(1)
             .max(2_000)
             .superRefine((value, context) => {
-                if (!_publicHttpsUrl(value)) {
+                if (!_httpsUrl(value)) {
                     context.addIssue({
                         code: "custom",
                         message:
-                            "Research source URL must be an HTTPS URL with a public DNS hostname and no credentials, port, query, or fragment.",
+                            "Research source URL must be a parseable HTTPS URL without credentials.",
                     });
                 }
             }),

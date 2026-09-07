@@ -39,9 +39,8 @@ setup and expose an error.
 
 The main setup asks for one prompt, its length limit, and an optional idea to
 convey. Prompt metadata, readers, and editorial preferences sit behind disclosure
-controls. The saved panel shows one primary action: planning for an empty draft,
-or checking prompt fit once there is prose. Sources and setup management stay
-available under More options. Preview is informational and requires no
+controls. The saved panel shows the prompt and its current length. Sources and
+setup management stay available under Sources and settings. Preview is informational and requires no
 acknowledgment checkbox or separate context-confirmation screen; applying the
 prompt saves the reviewed setup.
 
@@ -67,7 +66,9 @@ The initial sources were checked on September 7, 2026:
 Supplemental setup supplies no invented school requirements. For each tab, the
 writer enters the school, optional program, one exact prompt, source links, cycle,
 and known constraints. A URL entered by the writer is not independently verified
-by the plugin. There is no background school research.
+by the plugin. Optional school research runs only after the writer confirms a
+source and starts it; provider-returned findings still require explicit review
+before they enter essay context.
 
 Accepted references include publisher, URL, check date, cycle or unknown, and a
 classification: official requirement, official advice, or Quillium editorial
