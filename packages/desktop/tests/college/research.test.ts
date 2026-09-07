@@ -629,6 +629,30 @@ describe("runSchoolResearch", () => {
         expect(result.warnings.join(" ")).toMatch(/conflicting numeric limits/i);
     });
 
+    it.each(["Words:", "Words =", "Characters:", "Chars ="])(
+        "detects conflicting limits labeled with %s",
+        async (label) => {
+            const evidence = [`${label} 250`, `${label} 500`];
+            const result = await runSchoolResearch(
+                target({ cycle: "" }),
+                async () =>
+                    adapterResult(
+                        [{ url: SOURCE, title: "Requirements", text: evidence.join(". ") }],
+                        evidence.map((passage) => ({
+                            url: SOURCE,
+                            summary: passage,
+                            evidence: passage,
+                            cycle: "",
+                        })),
+                    ),
+                new AbortController().signal,
+            );
+
+            expect(result.findings).toHaveLength(2);
+            expect(result.warnings.join(" ")).toMatch(/conflicting numeric limits/i);
+        },
+    );
+
     it("returns a warning for malformed adapter output", async () => {
         const result = await runSchoolResearch(
             target(),

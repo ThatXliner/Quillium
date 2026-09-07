@@ -466,7 +466,7 @@ function _numericLimits(value: string): string[] {
     const limits = new Set<string>();
     const direct = /\b(\d[\d,]*)\s*(words?|characters?|chars?)\b/gi;
     const reverse =
-        /\b(words?|characters?|chars?)\s+(?:limit|maximum|max(?:imum)?|count)\s*(?:(?::|=)\s*|(?:is|of|must\s+be|cannot\s+exceed|does\s+not\s+exceed|may\s+not\s+exceed|should\s+not\s+exceed|up\s+to)\s+)?(\d[\d,]*)\b/gi;
+        /\b(words?|characters?|chars?)(?:\s*[:=]\s*|\s+(?:limit|maximum|max(?:imum)?|count)\s*(?:(?::|=)\s*|(?:is|of|must\s+be|cannot\s+exceed|does\s+not\s+exceed|may\s+not\s+exceed|should\s+not\s+exceed|up\s+to)\s+)?)(\d[\d,]*)\b/gi;
     for (const match of value.matchAll(direct)) {
         limits.add(`${_limitUnit(match[2])}:${match[1].replaceAll(",", "")}`);
     }
