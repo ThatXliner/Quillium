@@ -39,6 +39,7 @@ import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { appSettings } from "$lib/settings.svelte";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
 /*
  * Revise.svelte
  *
@@ -77,6 +78,9 @@ import ContextLens from "./ContextLens.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import PersonaInfoModal from "./PersonaInfoModal.svelte";
 import type { ContextAction } from "./context";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
 let personaInFlight = $state(false);

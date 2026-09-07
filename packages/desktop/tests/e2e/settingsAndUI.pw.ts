@@ -236,9 +236,9 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Your custom chips");
         await expect(q.aiSidebar).toContainText("Make punchy");
 
-        await q.aiSidebar.getByRole("button", { name: /Name the center/ }).click();
+        await q.aiSidebar.getByRole("button", { name: /Reverse outline/ }).click();
 
-        await expect(q.aiSidebar).not.toContainText("Name the center");
+        await expect(q.aiSidebar).not.toContainText("Reverse outline");
         await expect(q.aiSidebar).not.toContainText("Find missing context");
         await expect(q.aiSidebar).not.toContainText("Make punchy");
         await expect(q.aiSidebar.getByRole("button", { name: "Actions" })).toBeVisible();

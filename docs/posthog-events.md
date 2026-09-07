@@ -37,7 +37,7 @@ remain unconfigured for unrelated development.
 
 | Event | When | File |
 |-------|------|------|
-| `ai_sidebar_opened` | User opens AI sidebar | `AISidebar.svelte` |
+| `ai_sidebar_opened` | User opens sidebar | `sidebar/Sidebar.svelte` |
 | `ai_message_sent` | Any AI request dispatched | `chatFactory.ts` |
 | `ai_chat_message_sent` | Chat message sent | `Chat.svelte` |
 | `ai_chat_quick_prompt_used` | Chat quick prompt used | `Chat.svelte` |

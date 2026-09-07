@@ -42,8 +42,8 @@
  * Interactions:
  *   - Editor.svelte imports annotations() to install the
  *     full extension bundle.
- *   - AISidebar.svelte calls createComment/createSuggestion/
- *     createRevision to add AI-generated annotations.
+ *   - The chatFactory.ts request adapter calls createComment,
+ *     createSuggestion, and createRevision for AI-generated annotations.
  *   - Svelte annotation components read annotationField
  *     (via stores) to render the annotation panel.
  */

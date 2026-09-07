@@ -155,4 +155,4 @@ Layout:
 - **context.ts / annotationContext.ts**: Build the same budgeted, annotation-aware
   context used by ordinary Feedback and Revise requests
 - **settings.svelte.ts**: Supplies the shared abort signal and global stop behavior
-- **AI sidebar**: Tab index 5 in `AISidebar.svelte`
+- **Sidebar**: Readers contribution in `sidebar/Sidebar.svelte`

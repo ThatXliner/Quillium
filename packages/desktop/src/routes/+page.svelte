@@ -3,7 +3,7 @@
 
     This is the sole route in the SvelteKit app (static SPA for Tauri).
     It assembles the three main panels:
-      1. <AiSidebar />    — left panel (AI writing assistant)
+      1. <Sidebar />      — left panel (writing tools)
       2. <Editor />        — center panel (CodeMirror document)
       3. Annotations panel — rendered inside Editor.svelte
 
@@ -20,7 +20,7 @@
 -->
 <script lang="ts">
 import { page } from "$app/state";
-import AiSidebar from "$lib/ai/AISidebar.svelte";
+import Sidebar from "$lib/sidebar/Sidebar.svelte";
 import { logAppEvent } from "$lib/appLog";
 import {
     getConnectionState,
@@ -631,11 +631,9 @@ if (import.meta.env.DEV) {
 
 <div class="app-shell">
 
-{#if appSettings.aiEnabled}
-    <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
-        <AiSidebar />
-    </div>
-{/if}
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <Sidebar />
+</div>
 <DictionaryPopover />
 <HarperTooltip />
 

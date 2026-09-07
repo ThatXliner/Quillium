@@ -16,7 +16,7 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
 
 <SettingToggle
     title="Enable AI features"
-    description="Show AI sidebar, auto-AI collaborator, and AI-powered tools"
+    description="Enable AI panels, auto-AI collaborator, and AI-powered tools"
     checked={draft.aiEnabled}
     ariaLabel="Toggle AI features"
     onchange={(checked) => {
