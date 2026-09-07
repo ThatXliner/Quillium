@@ -265,6 +265,12 @@ conversation JSON, brief length, and the saved-decision array before writing.
 
 ## College tab setups
 
+The `college_document_activation` table separately stores whether a document has
+opted into College from AI Settings. Missing rows mean disabled. Migration seeds
+existing College documents as enabled, and document duplication copies the flag.
+The flag survives tab changes and app restarts; disabling AI only hides the tools.
+
+
 The appended `college_tab_setups` migration stores a versioned JSON snapshot per
 tab, with a foreign key that cascades on permanent deletion. A newly configured
 tab contains one prompt. Selecting several prompts sends one named entry per

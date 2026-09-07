@@ -26,6 +26,7 @@ export {
     markdownTextContent,
 } from "./versionComparison";
 export * from "./diff";
+export * from "./passageLink";
 export * from "./rendering";
 export * from "./types";
 export * from "./versionPreview";

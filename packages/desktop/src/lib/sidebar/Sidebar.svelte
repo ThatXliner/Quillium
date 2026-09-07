@@ -1,5 +1,6 @@
 <!-- Sidebar.svelte — Built-in sidebar navigation, sizing, and panel lifecycle. -->
 <script lang="ts">
+import { collegeActivation, useCollegeActivationEffects } from "$lib/college/activation.svelte";
 import { collegeWorkspace, cancelCollegeTabPick } from "$lib/college/workspace.svelte";
 import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
 import { createCollegeCapabilities } from "$lib/college/capabilities";
@@ -46,6 +47,8 @@ import { PanelResizeController } from "$lib/ai/panelResize.svelte";
 
 useDocumentContextEffects();
 useCollegeEffects(stopAllAi);
+useCollegeActivationEffects();
+let collegePreset = $state<"uc-piq" | "common-app" | "supplemental" | undefined>(undefined);
 
 let {
     contributions = builtInPanels,
@@ -58,7 +61,8 @@ let action = $state<string | null>(null);
 const panels = $derived(
     createSidebarPanels(contributions).filter(
         (panel) =>
-            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresAi),
+            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresAi) &&
+            (panel.id !== "college" || (collegeActivation.documentId === $currentDocumentId && collegeActivation.enabled && !collegeActivation.loading)),
     ),
 );
 const actions = $derived(panels.filter((panel) => panel.placement === "main"));
@@ -291,6 +295,7 @@ function handleClickOutside(e: MouseEvent) {
 }
 
 function selectAction(id: string): void {
+    collegePreset = undefined;
     const def = panels.find((panel) => panel.id === id);
     if (!def) return;
     if (!expanded)
@@ -584,7 +589,7 @@ function handleKeydown(e: KeyboardEvent) {
                 stopAllAi();
                 console.error("[Sidebar] panel failed", panel.id, error);
               }}>
-              <panel.component active={action === panel.id} session={action === panel.id ? session : null} college={action === panel.id ? collegeCapabilities : null} />
+              <panel.component active={action === panel.id} session={action === panel.id ? session : null} college={action === panel.id ? collegeCapabilities : null} {collegePreset} onCollegeSetup={(kind) => { selectAction("college"); collegePreset = kind; }} />
               {#snippet failed(error, reset)}
                 <div role="alert" class="p-4 text-sm text-black/70">
                   <p>{panel.label} could not be displayed.</p>

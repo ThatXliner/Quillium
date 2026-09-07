@@ -1,8 +1,13 @@
 # College applications
 
-The bundled College applications plugin adds a local panel to the existing
-[sidebar host](ai-sidebar.md#built-in-panel-host). With AI enabled, it works without a model
-connection. Opening its panel, editing setup, and applying a preset make no model
+The bundled College applications feature is opt-in for each document. In AI
+Settings, the invitation beneath Voice latitude offers UC PIQ, Personal statement,
+and Supplemental. Choosing one saves the document opt-in and opens its prompt
+picker. The College icon stays hidden until then. Documents with existing College
+setups retain access when upgrading; new documents start without it.
+
+The panel uses the existing [sidebar host](ai-sidebar.md#built-in-panel-host).
+With AI enabled and the document opted in, it works without a model connection. Opening its panel, editing setup, and applying a preset make no model
 requests. Chat planning and Feedback reviews require an explicit action.
 
 Turning AI off hides Chat, Feedback, Revise, Document Context, Readers, AI
@@ -133,11 +138,34 @@ retrying loads, opening general panels, and requesting three fixed actions. It
 receives no editor handle, credentials, native command API, or arbitrary network
 capability. The built-in interface is not a sandbox for externally installed code.
 
-[Issue #424](https://github.com/ThatXliner/Quillium/issues/424) can later select one
-draft per tab and compare the responses a school reads together. Reuse across
-different schools is not inherently redundant. Application grouping, cross-essay
-review, external plugins, marketplace distribution,
-and paper/debate workflows are deferred. This consumer does not complete all of #84.
+## Overlap feedback
+
+College contributes **Check overlap with other essays** to the existing Feedback
+actions when the current tab has an active College setup. The compact picker
+suggests other College tabs in the current document and lets the writer change
+the selected drafts and application school before requesting feedback. Opening
+the picker makes no model request. The College panel itself is unchanged.
+
+The current draft receives ordinary comments about concrete repeated anecdotes
+or substantially overlapping points. Thematic continuity and intentional reuse
+across schools are not inherently problems. Each comment includes a supporting
+passage button. Exact captured quotes and source identities are validated before
+comments are created, and navigation checks the source fingerprint before
+selecting a passage. Changed or missing sources never select an unrelated range.
+Read-only previews show the source quote without exposing encoded link data; jumping
+to another draft is a desktop action.
+
+The target and up to three selected source drafts are captured with a maximum
+of 12,000 characters each. The picker discloses omitted characters. The request
+uses the configured model, global and session cancellation, Feedback's comment
+permission, provenance, and the existing annotation gateway and undo commands.
+Sources, setups, and the current target are rechecked before applying results.
+Notes, research, and other Library documents are not included in this comparison.
+
+Selections are transient. No application groups or new database tables are
+created. Multi-document discovery, persistent groups, external plugins,
+marketplace distribution, and paper/debate workflows remain deferred. This
+consumer does not complete all of #84.
 
 ## Optional school research
 

@@ -25,6 +25,7 @@ export type AppEvent =
           selectFirst: boolean;
       }
     | { type: "ai-open-settings" }
+    | { type: "open-passage"; passage: import("@quillium/share").PassageLink }
     | { type: "restore-backup"; backup: BackupEntry }
     | { type: "manual-review" }
     | { type: "name-version" }

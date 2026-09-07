@@ -100,6 +100,17 @@ export async function setCollegeTabSetup(
     return invoke<void>("cmd_set_college_tab_setup", { documentId, tabId, setupJson });
 }
 
+export async function getCollegeDocumentEnabled(documentId: string): Promise<boolean> {
+    return invoke<boolean>("cmd_get_college_document_enabled", { documentId });
+}
+
+export async function setCollegeDocumentEnabled(
+    documentId: string,
+    enabled: boolean,
+): Promise<void> {
+    return invoke<void>("cmd_set_college_document_enabled", { documentId, enabled });
+}
+
 export async function createCollegeTabs(
     documentId: string,
     entries: { label: string; setupJson: string }[],

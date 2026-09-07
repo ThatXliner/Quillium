@@ -76,12 +76,14 @@ import ContextLens from "./ContextLens.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import PersonaInfoModal from "./PersonaInfoModal.svelte";
 import type { ContextAction } from "./context";
+import { feedbackActions } from "./feedbackActions";
 
 // Built-in request adapters retain their existing lifecycle and validated operations.
 let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
 let personaInFlight = $state(false);
+let contributedBusy = $state(false);
 
 const { chat, clearChat, sendMessage } = createAiChat({ mode: "feedback" });
 let hasConversationActivity = $derived(
@@ -122,6 +124,7 @@ $effect(() => {
  * are actually enabled, uses the single-stream chat.
  */
 async function sendFeedback(text: string, trigger: string, turn?: ContextAction["turn"]) {
+    if (contributedBusy) return;
     const personas = personasEnabledFor("feedback") ? getEnabledPersonas() : [];
     if (personas.length === 0) {
         posthog.capture("ai_feedback_requested", {
@@ -225,10 +228,18 @@ function useContextAction(action: ContextAction) {
         </button>
     </div>
 
+    {#if _active && _session}
+        {#each feedbackActions as action (action.id)}
+            {#if action.applies(_session)}
+                <action.component session={_session} disabled={chat.status !== "ready" || personaInFlight || contributedBusy} onBusyChange={(busy) => (contributedBusy = busy)} />
+            {/if}
+        {/each}
+    {/if}
+
     {#if showStarterSuggestions}
         <ContextLens
             mode="feedback"
-            disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+            disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !$documentContent}
             onAction={useContextAction}
         />
     {/if}
@@ -237,7 +248,7 @@ function useContextAction(action: ContextAction) {
         <div class="px-3 pb-3 border-b border-black/10">
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
-                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !$documentContent}
                 panel="feedback"
                 theme="green"
                 onPrompt={useQuickPrompt}
@@ -313,7 +324,7 @@ function useContextAction(action: ContextAction) {
         {#if !showStarterSuggestions}
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
-                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !$documentContent}
                 compact
                 panel="feedback"
                 theme="green"
@@ -326,13 +337,13 @@ function useContextAction(action: ContextAction) {
                 bind:value={input}
                 name="message"
                 placeholder="Ask for specific feedback..."
-                disabled={chat.status !== "ready" || personaInFlight}
+                disabled={chat.status !== "ready" || personaInFlight || contributedBusy}
                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || personaInFlight || !input.trim()}
+                disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !input.trim()}
                 class="w-full py-2 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Send

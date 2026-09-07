@@ -1,4 +1,4 @@
-//! college.rs — Per-tab College plugin setup persistence.
+//! college.rs — College setup and document activation persistence.
 //!
 //! College setup JSON is scoped to a tab, while the document remains the
 //! ownership boundary used to validate command targets. The database stores
@@ -116,6 +116,40 @@ fn validate_live_document(conn: &Connection, document_id: &str) -> DbResult<()> 
             "College tabs require a live document".to_string(),
         ))
     }
+}
+
+/// Returns whether College applications are enabled for a document. Missing
+/// activation rows intentionally mean disabled so new documents remain
+/// opt-in until the writer explicitly enables College.
+pub fn get_college_document_enabled(conn: &Connection, document_id: &str) -> Result<bool> {
+    let result: rusqlite::Result<i64> = conn.query_row(
+        "SELECT enabled FROM college_document_activation WHERE document_id = ?1",
+        params![document_id],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(enabled) => Ok(enabled == 1),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+/// Persists the document's College opt-in after validating that the document
+/// still exists and is live. The row is document-scoped so tab setups remain
+/// intact when activation is toggled.
+pub fn set_college_document_enabled(
+    conn: &Connection,
+    document_id: &str,
+    enabled: bool,
+) -> DbResult<()> {
+    validate_live_document(conn, document_id)?;
+    conn.execute(
+        "INSERT INTO college_document_activation (document_id, enabled)
+         VALUES (?1, ?2)
+         ON CONFLICT(document_id) DO UPDATE SET enabled = excluded.enabled",
+        params![document_id, enabled],
+    )?;
+    Ok(())
 }
 
 fn validate_batch_inputs(
@@ -237,6 +271,43 @@ mod tests {
         let tab_a = create_tab(&conn, &document_a, "A tab").unwrap().id;
         let tab_b = create_tab(&conn, &document_b, "B tab").unwrap().id;
         (dir, conn, document_a, tab_a, tab_b)
+    }
+
+    #[test]
+    fn document_activation_defaults_to_false_and_is_isolated() {
+        let (_dir, conn, document_a, _tab_a, _tab_b) = seeded_db();
+        let document_b: String = conn
+            .query_row(
+                "SELECT id FROM documents WHERE id <> ?1",
+                params![document_a],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(!get_college_document_enabled(&conn, &document_a).unwrap());
+        assert!(!get_college_document_enabled(&conn, &document_b).unwrap());
+
+        set_college_document_enabled(&conn, &document_a, true).unwrap();
+        assert!(get_college_document_enabled(&conn, &document_a).unwrap());
+        assert!(!get_college_document_enabled(&conn, &document_b).unwrap());
+
+        set_college_document_enabled(&conn, &document_a, false).unwrap();
+        assert!(!get_college_document_enabled(&conn, &document_a).unwrap());
+    }
+
+    #[test]
+    fn document_activation_writes_require_a_live_document() {
+        let (_dir, conn, document_a, _tab_a, _tab_b) = seeded_db();
+
+        assert!(matches!(
+            set_college_document_enabled(&conn, "missing", true),
+            Err(DbError::Validation(_))
+        ));
+        trash_document(&conn, &document_a).unwrap();
+        assert!(matches!(
+            set_college_document_enabled(&conn, &document_a, true),
+            Err(DbError::Validation(_))
+        ));
     }
 
     #[test]
@@ -560,6 +631,7 @@ mod tests {
             let document_id = create_document(&conn, "Research", None).unwrap();
             let tab_id = create_tab(&conn, &document_id, "College").unwrap().id;
             set_college_tab_setup(&conn, &document_id, &tab_id, Some(setup)).unwrap();
+            set_college_document_enabled(&conn, &document_id, true).unwrap();
             (document_id, tab_id)
         };
 
@@ -568,5 +640,6 @@ mod tests {
             get_college_tab_setup(&reopened, &document_id, &tab_id).unwrap(),
             Some(setup.to_string())
         );
+        assert!(get_college_document_enabled(&reopened, &document_id).unwrap());
     }
 }
