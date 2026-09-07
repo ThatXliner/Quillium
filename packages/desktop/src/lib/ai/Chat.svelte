@@ -9,7 +9,7 @@
       ready     — user can type and submit.
       submitted — message sent, waiting for first token.
       streaming — tokens arriving, "Thinking..." indicator shown.
-      error     — request failed, error message displayed.
+      error     — request failed, recovery instructions displayed; sending remains available.
 
     The `$effect` block syncs `chat.status` to `aiProcessing.active`
     so the sidebar glow activates during requests.
@@ -19,12 +19,14 @@
 -->
 <script lang="ts">
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
+import { aiErrorMessage } from "$lib/ai/errorMessage";
+import { aiSettings } from "$lib/ai/settings.svelte";
 import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { currentDocumentId, currentTabId, currentDraftId } from "$lib/stores";
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
+import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
 /*
  * Chat.svelte
  *
@@ -67,6 +69,7 @@ let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
 const { chat, clearChat, sendMessage } = createAiChat({ mode: "chat" });
+let isBusy = $derived(chat.status === "submitted" || chat.status === "streaming");
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
 let hasConversationActivity = $derived(
@@ -102,11 +105,20 @@ $effect(() => {
     });
 });
 
-$effect(() => appEventBus.on("college-action", (event) => {
-    if (event.target.documentId !== $currentDocumentId || event.target.tabId !== $currentTabId || event.target.draftId !== $currentDraftId) return;
-    if (event.action !== "plan" || chat.status !== "ready") return;
-    void sendMessage("Help me plan an answer to this tab's writing brief. Consider each prompt and its constraints. Ask about my real experiences and intentions; do not invent experiences or write the essay for me.");
-}));
+$effect(() =>
+    appEventBus.on("college-action", (event) => {
+        if (
+            event.target.documentId !== $currentDocumentId ||
+            event.target.tabId !== $currentTabId ||
+            event.target.draftId !== $currentDraftId
+        )
+            return;
+        if (event.action !== "plan" || isBusy) return;
+        void sendMessage(
+            "Help me plan an answer to this tab's writing brief. Consider each prompt and its constraints. Ask about my real experiences and intentions; do not invent experiences or write the essay for me.",
+        );
+    }),
+);
 
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat, "chat");
@@ -118,9 +130,10 @@ useAiChatEffects(chat, "chat");
  */
 async function handleSubmit(event: Event) {
     event.preventDefault();
+    if (isBusy) return;
     const formData = new FormData(event.target as HTMLFormElement);
     const userMessage = formData.get("message") as string;
-    if (!userMessage.trim() || chat.status !== "ready") return;
+    if (!userMessage.trim()) return;
     posthog.capture("ai_chat_message_sent", {
         has_selection: !!$selectedText,
         message_length: userMessage.length,
@@ -145,7 +158,7 @@ async function handleSubmit(event: Event) {
     {#if showStarterSuggestions}
         <ContextLens
             mode="chat"
-            disabled={chat.status !== "ready" || !$documentContent}
+            disabled={isBusy || !$documentContent}
             onAction={useContextAction}
         />
     {/if}
@@ -207,7 +220,7 @@ async function handleSubmit(event: Event) {
             <div class="flex justify-start">
                 <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
                     <div class="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm border border-red-200">
-                        {chat.error.message ?? "An error occurred. Please try again."}
+                        {aiErrorMessage(chat.error, aiSettings.provider)}
                     </div>
                 </div>
             </div>
@@ -226,7 +239,7 @@ async function handleSubmit(event: Event) {
     <div class="border-t border-black/10 p-3 bg-white/30">
         <CustomQuickActions
             prompts={customChatPrompts}
-            disabled={chat.status !== "ready" || !$documentContent}
+            disabled={isBusy || !$documentContent}
             compact={!showStarterSuggestions}
             panel="chat"
             theme="blue"
@@ -240,13 +253,13 @@ async function handleSubmit(event: Event) {
                 placeholder={$selectedText
                     ? "Ask about selection..."
                     : "Ask about your document..."}
-                disabled={chat.status !== "ready"}
+                disabled={isBusy}
                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || !input.trim()}
+                disabled={isBusy || !input.trim()}
                 class="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Send

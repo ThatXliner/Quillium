@@ -193,6 +193,11 @@ intended prose-development scope.
 - Offers context-aware action cards based on selection, draft length, brief, and
   open annotations.
 - Does not expose annotation-creation tools; its response is conversational text.
+- Failed requests show recovery guidance, including signing in again when a
+  ChatGPT connection is expired or invalid. Chat permits another send after a
+  failure; only submitted and streaming requests disable the composer.
+- Streaming failures retain their original error and provider/model context in
+  Help → App Logs before being converted to a user-facing message.
 - The Reverse outline recipe lists each paragraph or section's current job and
   structural gaps in the conversation without creating annotations.
 - When an active revision is in context, Compare versions gives a read-only

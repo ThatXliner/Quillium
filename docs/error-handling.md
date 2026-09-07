@@ -97,3 +97,7 @@ Checks:
 | `crash_app_reloaded` | User clicks "Reload app" |
 | `editor_replay_event_failed` | Single event fails during replay |
 | `editor_replay_completed_with_failures` | Replay finishes with failures |
+
+## Handled AI failures
+
+AI stream and chat failures are handled by the AI client, so they do not reach the global error hooks. The AI paths explicitly write the original error and bounded provider context to the native app log while keeping prompts, credentials, and request bodies out of diagnostics.

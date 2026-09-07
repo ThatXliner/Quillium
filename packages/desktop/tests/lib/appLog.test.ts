@@ -107,4 +107,44 @@ describe("app log", () => {
             status: 401,
         });
     });
+
+    it("preserves allowlisted provider error metadata without serializing request bodies", async () => {
+        const calls: Array<{ args: Record<string, unknown> }> = [];
+        mockIPC((_cmd, args) => {
+            calls.push({ args: args as Record<string, unknown> });
+            return null;
+        });
+
+        const cause = new Error("refresh token rejected");
+        const error = new Error("OAuth request failed", { cause });
+        Object.assign(error, {
+            statusCode: 401,
+            isRetryable: false,
+            requestBodyValues: { prompt: "private draft text" },
+            responseBody: "provider response with private details",
+        });
+
+        await logAppEvent("error", "ai", "AI stream failed", { error });
+
+        expect(calls).toHaveLength(1);
+        const details = JSON.parse(String(calls[0].args.details));
+        expect(details.data.error).toMatchObject({
+            name: "Error",
+            message: "OAuth request failed",
+            statusCode: 401,
+            isRetryable: false,
+            cause: {
+                name: "Error",
+                message: "refresh token rejected",
+            },
+        });
+        expect(details.data.error.stack).toContain("OAuth request failed");
+        expect(details.data.error.cause.stack).toContain("refresh token rejected");
+        expect(details.data.error).not.toHaveProperty("requestBodyValues");
+        expect(details.data.error).not.toHaveProperty("responseBody");
+        expect(String(calls[0].args.details)).not.toContain("private draft text");
+        expect(String(calls[0].args.details)).not.toContain(
+            "provider response with private details",
+        );
+    });
 });

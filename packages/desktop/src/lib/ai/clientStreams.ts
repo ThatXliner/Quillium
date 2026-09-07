@@ -1,3 +1,4 @@
+import { logAppEvent } from "$lib/appLog";
 import posthog from "$lib/posthog";
 import type { ReaderPersona } from "$lib/readers/presets";
 import { buildPersonaPrompt } from "$lib/readers/prompt";
@@ -51,6 +52,7 @@ import {
     compileEditorialPolicy,
     resolveEditorialTask,
 } from "./editorialPolicy";
+import { aiErrorMessage } from "./errorMessage";
 import { type Provider, createModel } from "./provider";
 import { injectDocumentContext } from "./utils";
 
@@ -283,11 +285,22 @@ async function buildStream(
         system: policy.systemPrompt,
         tools: toolsForActions(policy.allowedActions, annotationOnly),
         abortSignal: opts.abortSignal,
+        onError: ({ error }) => {
+            void logAppEvent("error", "ai", "AI stream failed", {
+                mode,
+                task,
+                provider: opts.provider,
+                model: opts.model,
+                error,
+            });
+        },
         // Keep the SDK's one-step default so executing noAction never starts a
         // follow-up model step that could generate another discarded summary.
         ...(annotationOnly ? { toolChoice: "required" as const } : {}),
     });
-    return result.toUIMessageStream();
+    return result.toUIMessageStream({
+        onError: (error) => aiErrorMessage(error, opts.provider),
+    });
 }
 
 // ---------------------------------------------------------------------------

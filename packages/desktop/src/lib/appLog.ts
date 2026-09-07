@@ -78,7 +78,7 @@ function sanitizeLogValue(
     seen.add(value);
 
     if (value instanceof Error) {
-        return {
+        const result: Record<string, unknown> = {
             name: redactString(value.name),
             message: redactString(value.message),
             stack: value.stack ? redactString(value.stack) : undefined,
@@ -87,6 +87,17 @@ function sanitizeLogValue(
                     ? undefined
                     : sanitizeLogValue(value.cause, seen, depth + 1),
         };
+        const errorWithMetadata = value as Error & {
+            statusCode?: unknown;
+            isRetryable?: unknown;
+        };
+        if (errorWithMetadata.statusCode !== undefined) {
+            result.statusCode = sanitizeLogValue(errorWithMetadata.statusCode, seen, depth + 1);
+        }
+        if (errorWithMetadata.isRetryable !== undefined) {
+            result.isRetryable = sanitizeLogValue(errorWithMetadata.isRetryable, seen, depth + 1);
+        }
+        return result;
     }
     if (value instanceof Date) return value.toISOString();
     if (value instanceof URL) return redactString(value.toString());

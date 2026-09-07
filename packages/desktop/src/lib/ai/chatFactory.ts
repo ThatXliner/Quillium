@@ -1,3 +1,4 @@
+import { logAppEvent } from "$lib/appLog";
 import { assertCollegeContextReady } from "$lib/college/state.svelte";
 import { annotationField } from "$lib/editor/plugins/annotations";
 import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
@@ -605,7 +606,8 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
                 console.error("[chatFactory] failed to save AI conversation", error);
             });
         },
-        onError: () => {
+        onError: (error) => {
+            void logAppEvent("error", "ai", "AI chat failed", { mode, error });
             releaseTargetAtSend();
         },
     });
