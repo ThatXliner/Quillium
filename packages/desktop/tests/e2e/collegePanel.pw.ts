@@ -14,10 +14,7 @@ async function openCollege(page: Page): Promise<void> {
 }
 async function applyPreview(page: Page): Promise<void> {
     await panel(page).getByRole("button", { name: "Review setup", exact: true }).click();
-    await panel(page)
-        .getByRole("checkbox", { name: /I have reviewed/ })
-        .check();
-    await panel(page).getByRole("button", { name: "Apply to this tab", exact: true }).click();
+    await panel(page).getByRole("button", { name: "Use this prompt", exact: true }).click();
     await expect(
         panel(page).getByRole("button", { name: "Edit setup", exact: true }),
     ).toBeVisible();
@@ -44,10 +41,13 @@ test("credential-free setup, cancel, reload, independent tab briefs, and removal
     await q.goto();
     await openCollege(page);
     await panel(page).getByRole("button", { name: "UC PIQ", exact: true }).click();
+    await expect(panel(page).getByLabel("Application cycle")).toBeHidden();
+    await expect(panel(page).getByLabel("Voice latitude")).toBeHidden();
     await panel(page)
         .getByLabel("What I want to convey")
         .fill("My responsibility to my community.");
     await panel(page).getByRole("button", { name: "Review setup", exact: true }).click();
+    await expect(panel(page).getByRole("checkbox")).toHaveCount(0);
     await page.screenshot({ path: "../../docs/assets/issue-422/setup-preview.png" });
     await panel(page).getByRole("button", { name: "Cancel", exact: true }).click();
     expect(await page.evaluate((key) => localStorage.getItem(key), savedKey)).toBeNull();
@@ -62,6 +62,7 @@ test("credential-free setup, cancel, reload, independent tab briefs, and removal
     await page.reload();
     await expect(q.editor).toBeVisible();
     await openCollege(page);
+    await panel(page).getByText("More options", { exact: true }).click();
     await expect(
         panel(page).getByText("Keep my family context private.", { exact: true }),
     ).toBeVisible();
@@ -72,12 +73,13 @@ test("credential-free setup, cancel, reload, independent tab briefs, and removal
     await openCollege(page);
     await expect(panel(page).getByRole("button", { name: "UC PIQ", exact: true })).toBeVisible();
     await panel(page).getByRole("button", { name: "UC PIQ", exact: true }).click();
-    await panel(page).getByLabel("Start from a prompt summary").selectOption("1");
+    await panel(page).getByLabel("Choose a prompt").selectOption("1");
     await applyPreview(page);
     expect(await page.evaluate((key) => localStorage.getItem(key), savedKey)).toBe(first);
     await page.locator('[data-tab-id="tab-test-1"]').click();
     await openCollege(page);
     await expect(panel(page).getByText(/Explain how your leadership/)).toBeVisible();
+    await panel(page).getByText("More options", { exact: true }).click();
     await panel(page).getByRole("button", { name: "Remove setup…", exact: true }).click();
     await expect(panel(page).getByLabel("Remove setup preview")).toContainText("saved decisions");
     await panel(page).getByRole("button", { name: "Remove setup", exact: true }).click();
@@ -105,6 +107,7 @@ test("supplemental brief has multiple prompts and independent word and character
         .fill("What interests you about this program?");
     await panel(page).getByLabel("Constraint unit").first().selectOption("words");
     await panel(page).getByLabel("Maximum", { exact: true }).fill("200");
+    await panel(page).getByText("More options", { exact: true }).click();
     await panel(page).getByRole("button", { name: "Add another prompt", exact: true }).click();
     await panel(page)
         .getByLabel("Prompt", { exact: true })
@@ -136,10 +139,7 @@ test("failed save retains accepted setup and device reader defaults", async ({ p
     await panel(page).getByLabel("What I want to convey").fill("Changed but unsaved");
     await page.evaluate(() => localStorage.setItem("mock-college-save-error", "1"));
     await panel(page).getByRole("button", { name: "Review setup", exact: true }).click();
-    await panel(page)
-        .getByRole("checkbox", { name: /I have reviewed/ })
-        .check();
-    await panel(page).getByRole("button", { name: "Apply to this tab", exact: true }).click();
+    await panel(page).getByRole("button", { name: "Use this prompt", exact: true }).click();
     await expect(panel(page).getByRole("alert")).toBeVisible();
     expect(await page.evaluate((key) => localStorage.getItem(key), savedKey)).toBe(original);
     expect(await page.evaluate(() => localStorage.getItem("quillium-readers-settings"))).toBe(
@@ -158,16 +158,16 @@ test("setup scrolls within a narrow panel with keyboard access and reduced motio
     await openCollege(page);
     await panel(page).getByRole("button", { name: "UC PIQ", exact: true }).click();
     await panel(page).getByRole("button", { name: "Review setup", exact: true }).click();
-    await panel(page)
-        .getByRole("checkbox", { name: /I have reviewed/ })
-        .focus();
-    await page.keyboard.press("Space");
+    await panel(page).getByRole("button", { name: "Back", exact: true }).focus();
     await page.keyboard.press("Tab");
+    await expect(
+        panel(page).getByRole("button", { name: "Use this prompt", exact: true }),
+    ).toBeFocused();
     const box = await q.aiSidebar.boundingBox();
     expect(box!.width).toBeLessThanOrEqual(288);
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(320);
-    await panel(page).getByRole("button", { name: "Apply to this tab", exact: true }).click();
+    await panel(page).getByRole("button", { name: "Use this prompt", exact: true }).click();
     await expect(
         panel(page).getByRole("button", { name: "Edit setup", exact: true }),
     ).toBeVisible();

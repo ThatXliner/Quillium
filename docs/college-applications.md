@@ -33,6 +33,13 @@ setup and expose an error.
 
 ## Setup and guidance
 
+The main setup asks for a prompt, its length limit, and an optional idea to convey.
+Prompt metadata, additional prompts, readers, and editorial preferences sit behind
+disclosure controls. The saved panel shows one primary action: planning for an
+empty draft, or checking prompt fit once there is prose. Sources and setup
+management stay available under More options. Preview requires no acknowledgment
+checkbox; Use this prompt saves the reviewed setup.
+
 UC PIQ, personal statement, and supplemental presets support edit, preview,
 cancel, apply, pause/resume, and removal preview. Prompts and constraints are
 repeatable. Length constraints preserve words versus characters; blank bounds
