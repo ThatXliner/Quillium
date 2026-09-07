@@ -312,6 +312,7 @@ export class QuilliumPage {
                                     persistHistory: true,
                                 },
                             ];
+                        if (cmd === "cmd_list_trashed_documents") return [];
                         if (cmd === "cmd_create_document") return "doc-test-1";
                         if (cmd === "cmd_create_draft") return "draft-test-1";
                         if (cmd === "cmd_list_drafts") {
@@ -758,6 +759,50 @@ export class QuilliumPage {
                             const key = `mock-college-setup:${a.documentId}:${a.tabId}`;
                             if (a.setupJson === null) localStorage.removeItem(key);
                             else localStorage.setItem(key, a.setupJson);
+                            return null;
+                        }
+                        if (cmd === "cmd_list_college_review_groups") {
+                            const raw = localStorage.getItem("mock-college-review-groups");
+                            const groups = raw
+                                ? (JSON.parse(raw) as Record<
+                                      string,
+                                      { groupJson: string; updatedAt: number }
+                                  >)
+                                : {};
+                            return Object.entries(groups)
+                                .map(([id, value]) => ({ id, ...value }))
+                                .sort((left, right) => right.updatedAt - left.updatedAt);
+                        }
+                        if (cmd === "cmd_upsert_college_review_group") {
+                            const a = args as { id: string; groupJson: string };
+                            const raw = localStorage.getItem("mock-college-review-groups");
+                            const groups = raw
+                                ? (JSON.parse(raw) as Record<
+                                      string,
+                                      { groupJson: string; updatedAt: number }
+                                  >)
+                                : {};
+                            groups[a.id] = { groupJson: a.groupJson, updatedAt: Date.now() };
+                            localStorage.setItem(
+                                "mock-college-review-groups",
+                                JSON.stringify(groups),
+                            );
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_college_review_group") {
+                            const a = args as { id: string };
+                            const raw = localStorage.getItem("mock-college-review-groups");
+                            const groups = raw
+                                ? (JSON.parse(raw) as Record<
+                                      string,
+                                      { groupJson: string; updatedAt: number }
+                                  >)
+                                : {};
+                            delete groups[a.id];
+                            localStorage.setItem(
+                                "mock-college-review-groups",
+                                JSON.stringify(groups),
+                            );
                             return null;
                         }
                         if (cmd === "get_api_key") return payload.apiKey;

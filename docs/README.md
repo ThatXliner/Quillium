@@ -36,7 +36,7 @@ experience, and [BRANDING.md](../BRANDING.md) covers visual design and copy.
 | Accounts, sign-in, guest sessions | [Auth](auth.md) |
 | AI context, providers, streaming, tools, cancellation | [AI request pipeline](ai-sidebar.md) |
 | Background review scheduling and status | [AutoAI](autoai.md) |
-| College application prompts, presets, and tab briefs | [College applications](college-applications.md) |
+| College prompts, tab briefs, school research, and related-essay review | [College applications](college-applications.md), [Cross-essay review](cross-essay-review.md) |
 | Feedback from multiple reader perspectives | [Reader personas](reader-personas.md) |
 | Authorship classification, playback, report export | [Provenance](provenance.md) |
 | Preferences and fonts | [Settings](settings.md) |

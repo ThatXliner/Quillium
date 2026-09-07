@@ -1,6 +1,7 @@
 <script lang="ts">
-import { collegeWorkspace, cancelCollegeTabPick, applyCollegeToExistingTab } from "$lib/college/workspace.svelte";
 import { logAppEvent } from "$lib/appLog";
+import { fingerprintReviewContent } from "$lib/college/review";
+import { applyCollegeToExistingTab, cancelCollegeTabPick, collegeWorkspace } from "$lib/college/workspace.svelte";
 import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
@@ -40,7 +41,7 @@ import {
  *   - The Annotations panel and AI sidebar read from those stores;
  *     they never touch the EditorView directly.
  */
-import { currentTabLabel, currentDraftLabel } from "$lib/stores";
+import { currentDraftLabel, currentTabLabel } from "$lib/stores";
 import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { isTauri } from "@tauri-apps/api/core";
@@ -66,11 +67,11 @@ import {
     ScanTextIcon,
     ScissorsIcon,
 } from "lucide-svelte";
-import { DocumentLoader } from "./documentLoader";
 import DocumentTabs from "./DocumentTabs.svelte";
 import DocumentTitleBar from "./DocumentTitleBar.svelte";
 import DraftDeleteModal from "./DraftDeleteModal.svelte";
 import DraftTreePanel from "./DraftTreePanel.svelte";
+import { DocumentLoader } from "./documentLoader";
 import {
     DRAFT_PANEL_DEFAULT_WIDTH,
     DRAFT_PANEL_MIN_WIDTH,
@@ -439,6 +440,9 @@ const pickingCollegeTab = $derived(collegeWorkspace.setup !== null && collegeWor
 $effect(() => appEventBus.on("college-tabs-created", event => {
     void drafts.acceptCreatedCollegeTabs(event.documentId, event.tabs, event.selectFirst).catch(error => toast.error(String(error)));
 }));
+$effect(() => appEventBus.on("college-review-source", event => {
+    void openCollegeReviewSource(event).catch((error) => toast.error(String(error)));
+}));
 $effect(() => {
     if (!pickingCollegeTab) return;
     void tick().then(() => document.querySelector<HTMLElement>('[data-college-target="true"][aria-selected="true"]')?.focus());
@@ -453,6 +457,36 @@ async function selectWorkspaceTab(id: string): Promise<void> {
             toast.success("Prompt applied. Your writing is unchanged.");
         }
     } else await drafts.handleTabSelect(id);
+}
+
+async function openCollegeReviewSource(event: Extract<import("$lib/events/appEventBus").AppEvent, { type: "college-review-source" }>): Promise<void> {
+    const opened = await loader.navigateToDraft(
+        event.sourceRef.documentId,
+        event.sourceRef.tabId,
+        event.sourceRef.draftId,
+    );
+    if (!opened || !$editorView) {
+        toast.error("That related draft is no longer available.");
+        return;
+    }
+    const targetView = $editorView;
+    const text = targetView.state.doc.toString();
+    if (event.citation && event.fingerprint) {
+        const citationMatches =
+            fingerprintReviewContent(text) === event.fingerprint &&
+            event.citation.to <= text.length &&
+            text.slice(event.citation.from, event.citation.to) === event.citation.quote;
+        if (!citationMatches) {
+            targetView.focus();
+            toast.info("This draft changed after the review. The captured passage is no longer selected.");
+            return;
+        }
+        targetView.dispatch({
+            selection: { anchor: event.citation.from, head: event.citation.to },
+            effects: EditorView.scrollIntoView(event.citation.from, { y: "center" }),
+        });
+    }
+    targetView.focus();
 }
 
 

@@ -1,6 +1,6 @@
+import type { TabMeta } from "$lib/db/types";
 import type { BackupEntry } from "$lib/errorGuard";
 import type { SidebarPanelTarget } from "$lib/sidebar/panels";
-import type { TabMeta } from "$lib/db/types";
 import { TypedEventBus } from "./createEventBus";
 
 export type AppEvent =
@@ -23,6 +23,12 @@ export type AppEvent =
           documentId: string;
           tabs: TabMeta[];
           selectFirst: boolean;
+      }
+    | {
+          type: "college-review-source";
+          sourceRef: { documentId: string; tabId: string; draftId: string };
+          citation?: import("$lib/college/reviewModel").Citation;
+          fingerprint?: string;
       }
     | { type: "ai-open-settings" }
     | { type: "restore-backup"; backup: BackupEntry }

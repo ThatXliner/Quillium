@@ -145,9 +145,11 @@ acknowledgment or separate context-confirmation screen. Legacy saved setups that
 contain multiple prompts remain readable until explicit replacement; no automatic
 migration or deletion occurs. School-specific review must distinguish which
 responses are read together; reuse between schools is not inherently a problem.
-The College consumer now persists independent tab briefs. Research (#423) and
-cross-essay review (#424) remain deferred. LaTeX compilation and word-processor/debate formatting are outside the intended
-prose-development scope.
+The College consumer persists independent tab briefs. School research remains an
+explicit public-source request. [Cross-essay review](cross-essay-review.md) captures
+only explicitly grouped drafts, confirms the bounded payload, and returns a report
+whose passage citations are checked against that capture. LaTeX compilation and
+word-processor/debate formatting are outside the intended prose-development scope.
 
 ### Acceptance coverage for this slice
 

@@ -5,13 +5,19 @@
 // opening another panel, so a late click cannot act on a newly selected tab.
 
 import { abortError, linkAbortSignals } from "$lib/abort";
+import { runCrossEssayReview } from "$lib/ai/crossEssayReview";
 import {
     researchProviderLabel,
     researchSchool,
     researchUnavailableReason,
 } from "$lib/ai/schoolResearch";
 import { getAiAbortSignal, getEffectiveDocumentContext, hasApiKey } from "$lib/ai/settings.svelte";
-import { createCollegeTabs } from "$lib/db";
+import {
+    createCollegeTabs,
+    deleteCollegeReviewGroup,
+    listCollegeReviewGroups,
+    upsertCollegeReviewGroup,
+} from "$lib/db";
 import type { TabMeta } from "$lib/db/types";
 import { appEventBus } from "$lib/events/appEventBus";
 import { appSettings } from "$lib/settings.svelte";
@@ -40,6 +46,24 @@ import {
     researchTargetSchema,
 } from "./researchModel";
 import {
+    type ActiveReviewSourceOverride,
+    type CollegeReviewWorkspace,
+    type CrossEssayReviewPreview,
+    prepareCrossEssayReview,
+    resolveCollegeReviewWorkspace,
+    validateCrossEssayReviewPreview,
+} from "./review";
+import {
+    type Citation,
+    type CollegeReviewGroup,
+    type CollegeReviewSourceRef,
+    type Report,
+    cloneCollegeReviewGroup,
+    parseCollegeReviewGroup,
+    reviewGroupFingerprint,
+    serializeCollegeReviewGroup,
+} from "./reviewModel";
+import {
     collegeState,
     getActiveCollegeSetup,
     reloadCollegeSetup,
@@ -50,6 +74,11 @@ import { beginCollegeTabPick } from "./workspace.svelte";
 export type CollegeAction = "prompt-fit" | "specificity" | "plan";
 export type CollegeOpenPanel = "context" | "readers" | "settings";
 
+export type SaveCollegeReviewGroupInput = Omit<CollegeReviewGroup, "id" | "latestReport"> & {
+    id?: string;
+    latestReport?: Report;
+};
+
 export type CollegeCapabilitiesSnapshot = {
     setup: CollegeSetup | null;
     status: string;
@@ -59,6 +88,7 @@ export type CollegeCapabilitiesSnapshot = {
     aiEnabled: boolean;
     documentId: string | null;
     tabId: string | null;
+    draftId: string | null;
     documentLabel: string;
     tabLabel: string;
     draftLabel: string;
@@ -87,6 +117,21 @@ export interface CollegeCapabilities {
         selectedIds: string[],
         removeIds: string[],
     ) => Promise<void>;
+    readonly loadReviewWorkspace: () => Promise<CollegeReviewWorkspace>;
+    readonly saveReviewGroup: (
+        input: SaveCollegeReviewGroupInput | CollegeReviewGroup,
+    ) => Promise<CollegeReviewGroup>;
+    readonly deleteReviewGroup: (groupId: string) => Promise<void>;
+    readonly prepareReview: (
+        group: CollegeReviewGroup,
+        activeOverride?: ActiveReviewSourceOverride,
+    ) => Promise<CrossEssayReviewPreview>;
+    readonly runReview: (previewId: string, callerSignal: AbortSignal) => Promise<Report>;
+    readonly navigateToReviewSource: (
+        sourceRef: CollegeReviewSourceRef,
+        citation?: Citation,
+        fingerprint?: string,
+    ) => void;
 }
 
 const STALE_SESSION_MESSAGE =
@@ -318,6 +363,7 @@ export function createCollegeCapabilities(
             aiEnabled: false,
             documentId: target.documentId,
             tabId: target.tabId,
+            draftId: target.draftId,
             documentLabel: compactId(target.documentId, "Untitled"),
             tabLabel: compactId(target.tabId, "Untitled tab"),
             draftLabel: compactId(target.draftId, "Untitled draft"),
@@ -366,6 +412,7 @@ export function createCollegeCapabilities(
             aiEnabled: appSettings.aiEnabled,
             documentId: target.documentId,
             tabId: target.tabId,
+            draftId: target.draftId,
             documentLabel: labelFor(
                 targetIsCurrent ? get(currentDocumentTitle) : "",
                 target.documentId,
@@ -633,6 +680,215 @@ export function createCollegeCapabilities(
         if (latestResearch === captured) latestResearch = null;
     }
 
+    function reviewCurrentTargetMatches(): boolean {
+        return (
+            get(currentDocumentId) === target.documentId &&
+            get(currentTabId) === target.tabId &&
+            get(currentDraftId) === target.draftId
+        );
+    }
+
+    function activeReviewOverrideFor(
+        review: Pick<CrossEssayReviewPreview, "capturedSources"> | CollegeReviewGroup,
+    ): ActiveReviewSourceOverride | undefined {
+        if (
+            target.documentId === null ||
+            target.tabId === null ||
+            target.draftId === null ||
+            !reviewCurrentTargetMatches()
+        ) {
+            return undefined;
+        }
+        const includesCurrent =
+            "capturedSources" in review
+                ? review.capturedSources.some(
+                      (candidate) =>
+                          candidate.documentId === target.documentId &&
+                          candidate.tabId === target.tabId &&
+                          candidate.draftId === target.draftId,
+                  )
+                : review.sources.some(
+                      (candidate) =>
+                          candidate.documentId === target.documentId &&
+                          candidate.tabId === target.tabId &&
+                          candidate.draftId === target.draftId,
+                  );
+        if (!includesCurrent) return undefined;
+        return {
+            sourceRef: {
+                documentId: target.documentId,
+                tabId: target.tabId,
+                draftId: target.draftId,
+            },
+            documentContent: get(documentContent),
+        };
+    }
+
+    function assertReviewSessionCurrent(): void {
+        if (!session.isCurrent() || !reviewCurrentTargetMatches()) {
+            throw new Error(STALE_SESSION_MESSAGE);
+        }
+    }
+
+    function assertReviewNotAborted(signal: AbortSignal): void {
+        if (!signal.aborted) return;
+        throw abortError("Cross-essay review was cancelled.", "AbortError");
+    }
+
+    async function loadReviewWorkspace(): Promise<CollegeReviewWorkspace> {
+        assertCurrent();
+        const rows = await listCollegeReviewGroups();
+        const groups: CollegeReviewGroup[] = [];
+        const warnings: string[] = [];
+        for (const row of rows) {
+            try {
+                const group = parseCollegeReviewGroup(row.groupJson);
+                if (group.id !== row.id) {
+                    warnings.push(
+                        `Ignored review group ${row.id} because its identity did not match.`,
+                    );
+                    continue;
+                }
+                groups.push(group);
+            } catch (error) {
+                warnings.push(
+                    `Ignored review group ${row.id}: ${error instanceof Error ? error.message : "invalid saved data"}.`,
+                );
+            }
+        }
+        const workspace = await resolveCollegeReviewWorkspace(groups, target.draftId);
+        return {
+            ...workspace,
+            warnings: [...warnings, ...workspace.warnings],
+        };
+    }
+
+    function reviewUuid(): string {
+        if (typeof globalThis.crypto?.randomUUID === "function")
+            return globalThis.crypto.randomUUID();
+        return `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    async function saveReviewGroup(
+        input: SaveCollegeReviewGroupInput | CollegeReviewGroup,
+    ): Promise<CollegeReviewGroup> {
+        assertCurrent();
+        const value = input as Partial<CollegeReviewGroup>;
+        const id = typeof value.id === "string" && value.id.trim() ? value.id : reviewUuid();
+        const group = parseCollegeReviewGroup({ ...value, id });
+        await upsertCollegeReviewGroup(group.id, serializeCollegeReviewGroup(group));
+        return cloneCollegeReviewGroup(group);
+    }
+
+    async function removeReviewGroup(groupId: string): Promise<void> {
+        assertCurrent();
+        if (typeof groupId !== "string" || !groupId.trim()) {
+            throw new Error("Choose a review group to remove.");
+        }
+        await deleteCollegeReviewGroup(groupId);
+        if (latestReviewPreview?.group.id === groupId) latestReviewPreview = null;
+    }
+
+    let latestReviewPreview: CrossEssayReviewPreview | null = null;
+
+    async function prepareReview(
+        group: CollegeReviewGroup,
+        activeOverride?: ActiveReviewSourceOverride,
+    ): Promise<CrossEssayReviewPreview> {
+        assertReviewSessionCurrent();
+        const prepared = await prepareCrossEssayReview(
+            group,
+            activeOverride ?? activeReviewOverrideFor(group),
+        );
+        if (!session.isCurrent()) throw new Error(STALE_SESSION_MESSAGE);
+        latestReviewPreview = prepared;
+        return prepared;
+    }
+
+    async function storedReviewGroup(groupId: string): Promise<CollegeReviewGroup> {
+        const rows = await listCollegeReviewGroups();
+        const row = rows.find((entry) => entry.id === groupId);
+        if (!row)
+            throw new Error("This cross-essay review is stale because its group was removed.");
+        try {
+            return parseCollegeReviewGroup(row.groupJson);
+        } catch {
+            throw new Error("This cross-essay review is stale because its group is invalid.");
+        }
+    }
+
+    async function runReview(previewId: string, callerSignal: AbortSignal): Promise<Report> {
+        assertReviewSessionCurrent();
+        const prepared = latestReviewPreview;
+        if (!prepared || prepared.id !== previewId) {
+            throw new Error("This cross-essay review preview is stale. Prepare it again.");
+        }
+        const linked = linkAbortSignals([callerSignal, session.signal, getAiAbortSignal()]);
+        try {
+            assertReviewNotAborted(linked.signal);
+            if (!appSettings.aiEnabled || !collegeState.hostEnabled) {
+                throw new Error(STALE_SESSION_MESSAGE);
+            }
+            const savedGroup = await storedReviewGroup(prepared.group.id);
+            if (reviewGroupFingerprint(savedGroup) !== prepared.groupFingerprint) {
+                throw new Error("This cross-essay review is stale because its group changed.");
+            }
+            const currentOverride = activeReviewOverrideFor(prepared);
+            await validateCrossEssayReviewPreview(prepared, currentOverride);
+            const report = await runCrossEssayReview(prepared, linked.signal);
+
+            // The provider may have taken long enough for any target, setting,
+            // group, or current-draft prose to change. Validate immediately
+            // before the only durable write and before returning the report.
+            assertReviewNotAborted(linked.signal);
+            assertReviewSessionCurrent();
+            if (!appSettings.aiEnabled || !collegeState.hostEnabled) {
+                throw new Error(STALE_SESSION_MESSAGE);
+            }
+            const latestGroup = await storedReviewGroup(prepared.group.id);
+            if (reviewGroupFingerprint(latestGroup) !== prepared.groupFingerprint) {
+                throw new Error("This cross-essay review is stale because its group changed.");
+            }
+            await validateCrossEssayReviewPreview(prepared, activeReviewOverrideFor(prepared));
+            const nextGroup = cloneCollegeReviewGroup(latestGroup);
+            nextGroup.latestReport = report;
+            await upsertCollegeReviewGroup(nextGroup.id, serializeCollegeReviewGroup(nextGroup));
+            latestReviewPreview = null;
+            return report;
+        } catch (error) {
+            if (
+                linked.signal.aborted ||
+                (error instanceof Error &&
+                    /stale|current|changed|missing|empty/i.test(error.message))
+            ) {
+                latestReviewPreview = null;
+            }
+            throw error;
+        } finally {
+            linked.cleanup();
+        }
+    }
+
+    function navigateToReviewSource(
+        sourceRef: CollegeReviewSourceRef,
+        citation?: Citation,
+        fingerprint?: string,
+    ): void {
+        assertCurrent();
+        const ref = {
+            documentId: sourceRef.documentId,
+            tabId: sourceRef.tabId,
+            draftId: sourceRef.draftId,
+        };
+        const event = {
+            type: "college-review-source" as const,
+            sourceRef: ref,
+            ...(citation ? { citation } : {}),
+            ...(fingerprint ? { fingerprint } : {}),
+        };
+        appEventBus.emit(event);
+    }
+
     return Object.freeze({
         read,
         save,
@@ -643,5 +899,11 @@ export function createCollegeCapabilities(
         request,
         research,
         acceptResearch,
+        loadReviewWorkspace,
+        saveReviewGroup,
+        deleteReviewGroup: removeReviewGroup,
+        prepareReview,
+        runReview,
+        navigateToReviewSource,
     });
 }

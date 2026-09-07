@@ -9,16 +9,27 @@ use super::tabs::create_tab_in_connection;
 use super::{now_ms, DbError, DbResult, TabMeta};
 
 use rusqlite::{params, Connection, Error, OptionalExtension, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const MAX_SETUP_BYTES: usize = 128 * 1024;
 const CURRENT_SETUP_VERSION: i64 = 1;
+const MAX_REVIEW_GROUP_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollegeTabInput {
     pub label: String,
     pub setup_json: String,
+}
+
+/// Opaque global review-group row. The frontend owns the complete versioned
+/// group shape; Rust validates only the storage boundary invariants below.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollegeReviewGroupRow {
+    pub id: String,
+    pub group_json: String,
+    pub updated_at: i64,
 }
 
 fn validate_tab_target(conn: &Connection, document_id: &str, tab_id: &str) -> Result<()> {
@@ -211,6 +222,78 @@ pub fn create_college_tabs(
     }
     tx.commit()?;
     Ok(tabs)
+}
+
+fn validate_review_group_json(id: &str, group_json: &str) -> DbResult<()> {
+    if id.trim().is_empty() {
+        return Err(DbError::Validation(
+            "College review group ID must not be blank".to_string(),
+        ));
+    }
+    if group_json.len() > MAX_REVIEW_GROUP_BYTES {
+        return Err(DbError::Validation(
+            "College review group JSON must be at most 256 KiB".to_string(),
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(group_json).map_err(|error| {
+        DbError::Validation(format!("College review group JSON is invalid: {error}"))
+    })?;
+    if !value.is_object() {
+        return Err(DbError::Validation(
+            "College review group must be a JSON object".to_string(),
+        ));
+    }
+    if value.get("version").and_then(serde_json::Value::as_i64) != Some(CURRENT_SETUP_VERSION) {
+        return Err(DbError::Validation(
+            "College review group version must be numeric 1".to_string(),
+        ));
+    }
+    if value.get("id").and_then(serde_json::Value::as_str) != Some(id) {
+        return Err(DbError::Validation(
+            "College review group JSON id must match the command id".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Lists all saved review groups. Groups are global and intentionally have no
+/// document/tab/draft foreign keys, so rows survive source deletion.
+pub fn list_college_review_groups(conn: &Connection) -> Result<Vec<CollegeReviewGroupRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, group_json, updated_at
+         FROM college_review_groups ORDER BY updated_at DESC, id ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(CollegeReviewGroupRow {
+            id: row.get(0)?,
+            group_json: row.get(1)?,
+            updated_at: row.get(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Validates and replaces one global review-group row.
+pub fn upsert_college_review_group(conn: &Connection, id: &str, group_json: &str) -> DbResult<()> {
+    validate_review_group_json(id, group_json)?;
+    conn.execute(
+        "INSERT INTO college_review_groups (id, group_json, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET
+             group_json = excluded.group_json,
+             updated_at = excluded.updated_at",
+        params![id, group_json, now_ms()],
+    )?;
+    Ok(())
+}
+
+/// Deletes only the selected global group row. Source documents are unrelated.
+pub fn delete_college_review_group(conn: &Connection, id: &str) -> DbResult<()> {
+    conn.execute(
+        "DELETE FROM college_review_groups WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -568,5 +651,70 @@ mod tests {
             get_college_tab_setup(&reopened, &document_id, &tab_id).unwrap(),
             Some(setup.to_string())
         );
+    }
+
+    fn review_group_json(id: &str, name: &str) -> String {
+        format!(
+            r#"{{"version":1,"id":"{id}","name":"{name}","school":"Example University","cycle":"2026","sources":[{{"documentId":"d1","tabId":"t1","draftId":"r1"}},{{"documentId":"d2","tabId":"t2","draftId":"r2"}}]}}"#
+        )
+    }
+
+    #[test]
+    fn review_groups_round_trip_update_delete_and_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("review-groups.db");
+        let group_id = "group-1";
+        let first = review_group_json(group_id, "First");
+        let second = review_group_json(group_id, "Second");
+        {
+            let conn = open_db(&db_path).unwrap();
+            upsert_college_review_group(&conn, group_id, &first).unwrap();
+            assert_eq!(list_college_review_groups(&conn).unwrap().len(), 1);
+            upsert_college_review_group(&conn, group_id, &second).unwrap();
+        }
+        let reopened = open_db(&db_path).unwrap();
+        let rows = list_college_review_groups(&reopened).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, group_id);
+        assert_eq!(rows[0].group_json, second);
+        delete_college_review_group(&reopened, group_id).unwrap();
+        assert!(list_college_review_groups(&reopened).unwrap().is_empty());
+    }
+
+    #[test]
+    fn malformed_future_and_mismatched_review_groups_preserve_previous_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("review-groups.db")).unwrap();
+        let id = "group-1";
+        let previous = review_group_json(id, "Previous");
+        upsert_college_review_group(&conn, id, &previous).unwrap();
+        for invalid in [
+            "not json".to_string(),
+            r#"[]"#.to_string(),
+            r#"{"version":2,"id":"group-1"}"#.to_string(),
+            r#"{"version":1,"id":"other"}"#.to_string(),
+            "x".repeat(MAX_REVIEW_GROUP_BYTES + 1),
+        ] {
+            assert!(upsert_college_review_group(&conn, id, &invalid).is_err());
+        }
+        assert_eq!(
+            list_college_review_groups(&conn).unwrap()[0].group_json,
+            previous
+        );
+    }
+
+    #[test]
+    fn source_document_trash_and_delete_do_not_remove_global_review_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("review-groups.db")).unwrap();
+        let document_id = create_document(&conn, "Source", None).unwrap();
+        let id = "group-1";
+        let json = review_group_json(id, "Sources");
+        upsert_college_review_group(&conn, id, &json).unwrap();
+        trash_document(&conn, &document_id).unwrap();
+        assert_eq!(list_college_review_groups(&conn).unwrap().len(), 1);
+        restore_document(&conn, &document_id).unwrap();
+        delete_document(&conn, &document_id).unwrap();
+        assert_eq!(list_college_review_groups(&conn).unwrap().len(), 1);
     }
 }

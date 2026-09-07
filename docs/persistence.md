@@ -282,3 +282,12 @@ preserves the rows. Legacy saved setups containing multiple prompts remain
 readable until the writer explicitly replaces them; no automatic migration or
 deletion occurs. See [College applications](college-applications.md) for
 effective-state loading, failure handling, and separation from writer notes.
+
+The separate `college_review_groups` table stores versioned application membership
+and the latest cross-essay report by a global group ID. Source document, tab, and
+draft IDs are deliberately not foreign keys: trash and restore retain membership,
+while permanent deletion leaves an explicit missing link for the writer to repair.
+Document duplication does not copy or retarget groups. Removing a group deletes only
+that row. Reports persist source identities, content fingerprints, character counts,
+verified quotes, and findings, but never the full prose sent to the provider. See
+[Cross-essay review](cross-essay-review.md) for the request and stale-link rules.

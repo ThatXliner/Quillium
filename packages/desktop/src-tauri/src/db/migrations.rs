@@ -192,6 +192,19 @@ pub const MIGRATIONS: &[Migration] = &[
             ",
         ),
     },
+    Migration {
+        version: 14,
+        name: "college_review_groups",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS college_review_groups (
+                id         TEXT PRIMARY KEY,
+                group_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            ",
+        ),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.

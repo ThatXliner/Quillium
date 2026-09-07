@@ -235,6 +235,26 @@ export class DocumentLoader {
         if (documentId) await this.load({ documentId, target: { tabId, draftId } });
     }
 
+    /** Open an exact saved draft through the normal document, tab, and draft pipelines. */
+    async navigateToDraft(documentId: string, tabId: string, draftId: string): Promise<boolean> {
+        if (this.#disposed || !documentId || !tabId || !draftId) return false;
+        if (get(currentDocumentId) !== documentId) {
+            this.#selectDocument(documentId);
+            const loaded = await this.load({ documentId });
+            if (!loaded || get(currentDocumentId) !== documentId) return false;
+        }
+        if (!this.drafts.tabs.some((tab) => tab.id === tabId)) return false;
+        if (get(currentTabId) !== tabId) await this.drafts.handleTabSelect(tabId);
+        if (get(currentDocumentId) !== documentId || get(currentTabId) !== tabId) return false;
+        if (!this.drafts.tabDrafts.some((draft) => draft.id === draftId)) return false;
+        if (get(currentDraftId) !== draftId) await this.drafts.handleDraftSelect(draftId);
+        return (
+            get(currentDocumentId) === documentId &&
+            get(currentTabId) === tabId &&
+            get(currentDraftId) === draftId
+        );
+    }
+
     async #createInitialDocument(showSample: boolean): Promise<string> {
         const title = showSample ? SAMPLE_DOCUMENT_TITLE : "Untitled";
         const content = showSample ? SAMPLE_DOCUMENT_CONTENT : "";

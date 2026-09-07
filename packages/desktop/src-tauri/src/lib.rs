@@ -15,7 +15,11 @@ use db::{
         clear_conversation, get_editorial_decisions, get_writer_brief, load_conversation,
         save_conversation, set_editorial_decisions, set_writer_brief,
     },
-    college::{create_college_tabs, get_college_tab_setup, set_college_tab_setup, CollegeTabInput},
+    college::{
+        create_college_tabs, delete_college_review_group, get_college_tab_setup,
+        list_college_review_groups, set_college_tab_setup, upsert_college_review_group,
+        CollegeReviewGroupRow, CollegeTabInput,
+    },
     documents::{
         create_document_with_history, create_draft, delete_document, duplicate_document,
         get_document, get_semantic_search_enabled, get_trash_retention, list_documents,
@@ -155,6 +159,30 @@ fn cmd_create_college_tabs(
 ) -> Result<Vec<TabMeta>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     create_college_tabs(&conn, &document_id, &entries).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_college_review_groups(
+    state: tauri::State<DbState>,
+) -> Result<Vec<CollegeReviewGroupRow>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_college_review_groups(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_upsert_college_review_group(
+    state: tauri::State<DbState>,
+    id: String,
+    group_json: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    upsert_college_review_group(&conn, &id, &group_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_delete_college_review_group(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_college_review_group(&conn, &id).map_err(|e| e.to_string())
 }
 
 // ── Document commands ─────────────────────────────────────────────
@@ -1403,6 +1431,9 @@ pub fn run() {
             cmd_get_college_tab_setup,
             cmd_set_college_tab_setup,
             cmd_create_college_tabs,
+            cmd_list_college_review_groups,
+            cmd_upsert_college_review_group,
+            cmd_delete_college_review_group,
             cmd_get_trash_retention,
             cmd_export_pdf,
             cmd_export_text,

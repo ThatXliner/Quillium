@@ -133,11 +133,13 @@ retrying loads, opening general panels, and requesting three fixed actions. It
 receives no editor handle, credentials, native command API, or arbitrary network
 capability. The built-in interface is not a sandbox for externally installed code.
 
-[Issue #424](https://github.com/ThatXliner/Quillium/issues/424) can later select one
-draft per tab and compare the responses a school reads together. Reuse across
-different schools is not inherently redundant. Application grouping, cross-essay
-review, external plugins, marketplace distribution,
-and paper/debate workflows are deferred. This consumer does not complete all of #84.
+The [related-essay review](cross-essay-review.md) selects one exact draft per essay
+tab across one or more documents and compares the responses a school reads together.
+The same school-neutral essay can belong to several application groups without copying
+its prose. Group navigation is local and credential-free; review is one explicit model
+request with a send preview and verified passage citations. External plugins,
+marketplace distribution, and paper/debate workflows remain deferred. This consumer
+does not complete all of #84.
 
 ## Optional school research
 

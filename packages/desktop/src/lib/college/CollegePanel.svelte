@@ -2,6 +2,7 @@
 <script lang="ts">
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { tick } from "svelte";
+import RelatedEssays from "./RelatedEssays.svelte";
 import SchoolResearch from "./SchoolResearch.svelte";
 import { type CollegeSetup, collegeSetupSchema } from "./model";
 import { COMMON_APP_PROMPTS, UC_PROMPTS, newCollegeSetup } from "./presets";
@@ -182,6 +183,9 @@ async function update(setup: CollegeSetup | null): Promise<void> {
             <button class="secondary" onclick={() => start(true)}>Change prompt</button>
             <button class="secondary" onclick={() => start()}>Add essays</button>
         </div>
+        {#if college}
+            <RelatedEssays {college} {view} />
+        {/if}
         {#if view.aiEnabled && college}
             <SchoolResearch {college} {view} />
         {/if}

@@ -40,6 +40,13 @@ export type TabMeta = {
     createdAt: number;
 };
 
+/** One global College cross-essay review group row. */
+export type CollegeReviewGroupRecord = {
+    id: string;
+    groupJson: string;
+    updatedAt: number;
+};
+
 export type SearchMatchType = "keyword" | "semantic" | "both";
 
 export type SearchHit = DocumentMeta & {

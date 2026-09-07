@@ -9,6 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
     AppendEventResult,
+    CollegeReviewGroupRecord,
     DocEventRecord,
     DocumentMeta,
     DocumentSnapshotMeta,
@@ -105,6 +106,18 @@ export async function createCollegeTabs(
     entries: { label: string; setupJson: string }[],
 ): Promise<TabMeta[]> {
     return invoke<TabMeta[]>("cmd_create_college_tabs", { documentId, entries });
+}
+
+export async function listCollegeReviewGroups(): Promise<CollegeReviewGroupRecord[]> {
+    return invoke<CollegeReviewGroupRecord[]>("cmd_list_college_review_groups");
+}
+
+export async function upsertCollegeReviewGroup(id: string, groupJson: string): Promise<void> {
+    return invoke<void>("cmd_upsert_college_review_group", { id, groupJson });
+}
+
+export async function deleteCollegeReviewGroup(id: string): Promise<void> {
+    return invoke<void>("cmd_delete_college_review_group", { id });
 }
 
 // ── Documents ─────────────────────────────────────────────────────
