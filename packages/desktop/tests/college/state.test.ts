@@ -1,3 +1,7 @@
+import { buildAiContextPacket } from "$lib/ai/context";
+import { documentContext, getEffectiveDocumentContext } from "$lib/ai/settings.svelte";
+import type { CollegeReference, CollegeSetup } from "$lib/college/model";
+import { collegeResearchSetupKey } from "$lib/college/researchModel";
 import {
     collegeState,
     getActiveCollegeSetup,
@@ -16,7 +20,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("$lib/db", () => db);
 
-function setup() {
+function setup(): CollegeSetup {
     return {
         version: 1 as const,
         presetVersion: 1 as const,
@@ -48,6 +52,27 @@ function setup() {
     };
 }
 
+function researchReference(value: ReturnType<typeof setup>): CollegeReference {
+    return {
+        id: "research-reference",
+        publisher: "Example University",
+        url: "https://example.edu/admissions",
+        checkedDate: "2026-09-07",
+        cycle: "2026",
+        kind: "requirement",
+        summary: "The official page describes the response requirement.",
+        research: {
+            setupKey: collegeResearchSetupKey(value),
+            snapshotId: "research-1",
+            promptIds: ["prompt-1"],
+            school: value.school,
+            program: value.program,
+            targetCycle: value.cycle,
+            evidence: "The response requirement appears on the official page.",
+        },
+    };
+}
+
 describe("College setup state", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -60,14 +85,68 @@ describe("College setup state", () => {
         collegeState.error = "";
         collegeState.saving = false;
         collegeState.hostEnabled = true;
+        documentContext.freeform = "";
+        documentContext.decisions = [];
         db.getCollegeTabSetup.mockResolvedValue(JSON.stringify(setup()));
         db.setCollegeTabSetup.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
         cleanup();
+        documentContext.freeform = "";
+        documentContext.decisions = [];
         currentDocumentId.set(null);
         currentTabId.set(null);
+    });
+
+    it("layers current research into bounded AI context and filters it after a public brief change", () => {
+        const value = setup();
+        value.prompts[0].constraints = [
+            {
+                id: "length",
+                unit: "words",
+                min: null,
+                max: 650,
+                detail: "",
+            },
+        ];
+        const savedResearch = researchReference(value);
+        value.references = [savedResearch];
+        collegeState.setup = value;
+        const active = collegeState.setup;
+        if (!active) throw new Error("College setup fixture did not load.");
+        documentContext.freeform = "Shared notes";
+        documentContext.decisions = ["Keep the ending open."];
+        const originalKey = collegeResearchSetupKey(active);
+
+        const originalContext = getEffectiveDocumentContext();
+        const originalPacket = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "Draft",
+            documentContext: originalContext,
+        });
+        expect(savedResearch.research?.setupKey).toBe(originalKey);
+        expect(originalContext.collegeReferences).toEqual([savedResearch]);
+        expect(originalPacket.collegeReferences).toEqual([savedResearch]);
+        expect(originalPacket.collegeReferenceChars).toBeLessThanOrEqual(6000);
+        expect(JSON.stringify(originalPacket.collegeReferences)).toContain("research-1");
+
+        active.prompts[0].text = "A changed public prompt.";
+        active.prompts[0].constraints[0].max = 700;
+        const changedContext = getEffectiveDocumentContext();
+        const changedPacket = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "Draft",
+            documentContext: changedContext,
+        });
+
+        expect(collegeResearchSetupKey(active)).not.toBe(originalKey);
+        expect(changedContext.freeform).toBe("Shared notes");
+        expect(changedContext.decisions).toEqual(["Keep the ending open."]);
+        expect(changedContext.collegeReferences).toEqual([]);
+        expect(changedPacket.collegeReferences).toEqual([]);
+        expect(active.references).toEqual([savedResearch]);
+        expect(collegeState.setup?.references).toEqual([savedResearch]);
     });
 
     it("keeps the previous accepted setup when a write fails", async () => {

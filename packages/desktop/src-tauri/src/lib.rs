@@ -4,6 +4,7 @@ pub mod embeddings;
 mod keychain;
 mod oauth;
 mod pdf_export;
+mod school_research;
 
 use std::{fs, path::PathBuf, sync::Mutex};
 use tauri::Manager;
@@ -44,6 +45,7 @@ use db::{
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use oauth::await_openai_oauth_callback;
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
+use school_research::{school_research_cancel, school_research_fetch};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
@@ -1476,6 +1478,8 @@ pub fn run() {
             cmd_register_open_doc,
             cmd_deregister_open_doc,
             cmd_is_doc_open_elsewhere,
+            school_research_fetch,
+            school_research_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

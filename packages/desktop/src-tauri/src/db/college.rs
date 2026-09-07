@@ -549,4 +549,24 @@ mod tests {
             "tab_created"
         );
     }
+
+    #[test]
+    fn setup_json_round_trips_after_reopening_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("reopen.db");
+        let setup = r#"{"version":1,"research":{"url":"https://admissions.example.edu/apply/"}}"#;
+        let (document_id, tab_id) = {
+            let conn = open_db(&db_path).unwrap();
+            let document_id = create_document(&conn, "Research", None).unwrap();
+            let tab_id = create_tab(&conn, &document_id, "College").unwrap().id;
+            set_college_tab_setup(&conn, &document_id, &tab_id, Some(setup)).unwrap();
+            (document_id, tab_id)
+        };
+
+        let reopened = open_db(&db_path).unwrap();
+        assert_eq!(
+            get_college_tab_setup(&reopened, &document_id, &tab_id).unwrap(),
+            Some(setup.to_string())
+        );
+    }
 }

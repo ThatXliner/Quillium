@@ -7,6 +7,14 @@
 import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
 import type { ReaderPersona } from "$lib/readers/presets";
 import { z } from "zod";
+import {
+    type ResearchProvenance,
+    type ResearchReview,
+    type ResearchTarget,
+    collegeResearchSetupKey,
+    researchProvenanceSchema,
+    researchReviewSchema,
+} from "./researchModel";
 
 const HTTP_URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
@@ -94,6 +102,7 @@ const collegeReferenceSchema = z
         cycle: z.string().max(100),
         kind: z.enum(["requirement", "official-advice", "editorial-guidance"]),
         summary: z.string().max(2000),
+        research: researchProvenanceSchema.optional(),
     })
     .strict();
 
@@ -105,6 +114,8 @@ export type CollegeBrief = Pick<
 
 export type CollegePrompt = z.infer<typeof collegePromptSchema>;
 export type CollegeReference = z.infer<typeof collegeReferenceSchema>;
+export type { ResearchProvenance, ResearchReview, ResearchTarget };
+export { collegeResearchSetupKey };
 
 /** Versioned persisted setup. No target IDs belong in this value. */
 export type CollegeSetup = {
@@ -123,6 +134,7 @@ export type CollegeSetup = {
     reviseReaders: boolean;
     active: boolean;
     references: CollegeReference[];
+    researchReview?: ResearchReview;
 };
 
 /**
@@ -166,6 +178,7 @@ const collegeSetupSchema = z
                     new Set(references.map((reference) => reference.id)).size === references.length,
                 "Reference IDs must be unique",
             ),
+        researchReview: researchReviewSchema.optional(),
     })
     .strict();
 

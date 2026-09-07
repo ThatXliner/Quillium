@@ -17,8 +17,8 @@ College prompt and its constraints. A document can hold multiple College tabs:
 selecting several prompts creates one named tab per prompt, including its root
 draft and setup, in one atomic operation. A UC document might have a separate
 tab for each PIQ. A Common App document might have a personal statement tab and
-separate Duke and Stanford supplement tabs. All drafts and runs in a tab remain
-alternative attempts at that tab's writing task.
+separate school-supplement tabs. All drafts and runs in a tab remain alternative
+attempts at that tab's writing task.
 
 Shared writer notes and confirmed decisions stay in the existing document-owned
 Context state. The plugin never replaces them with prompt text. Setup answers
@@ -135,5 +135,12 @@ capability. The built-in interface is not a sandbox for externally installed cod
 [Issue #424](https://github.com/ThatXliner/Quillium/issues/424) can later select one
 draft per tab and compare the responses a school reads together. Reuse across
 different schools is not inherently redundant. Application grouping, cross-essay
-review, school-research agents (#423), external plugins, marketplace distribution,
+review, external plugins, marketplace distribution,
 and paper/debate workflows are deferred. This consumer does not complete all of #84.
+
+## Optional school research
+
+[School research](school-research.md) starts from an official page confirmed by
+the writer, checks a bounded set of related pages, and presents evidence for
+explicit selection. Accepted snapshots use the existing reference budget and
+persistence. Research never automatically edits the brief or essay.

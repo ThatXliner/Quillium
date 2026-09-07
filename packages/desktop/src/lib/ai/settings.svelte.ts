@@ -1,4 +1,5 @@
 import type { CollegeBrief, CollegeReference } from "$lib/college/model";
+import { collegeResearchSetupKey } from "$lib/college/researchModel";
 import {
     assertCollegeContextReady,
     collegeState,
@@ -161,7 +162,15 @@ export function getEffectiveDocumentContext(): DocumentContext {
             prompts: setup.prompts,
         }),
     ) as CollegeBrief;
-    base.collegeReferences = JSON.parse(JSON.stringify(setup.references)) as CollegeReference[];
+    const researchSetupKey = collegeResearchSetupKey(setup);
+    base.collegeReferences = JSON.parse(
+        JSON.stringify(
+            setup.references.filter(
+                (reference) =>
+                    !reference.research || reference.research.setupKey === researchSetupKey,
+            ),
+        ),
+    ) as CollegeReference[];
     return base;
 }
 

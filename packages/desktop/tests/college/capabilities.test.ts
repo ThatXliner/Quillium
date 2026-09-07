@@ -116,6 +116,12 @@ vi.mock("$lib/ai/settings.svelte", () => ({
     getEffectiveDocumentContext: vi.fn(() => mocks.state.context),
     hasApiKey: mocks.hasApiKey,
     ensureApiKeyLoaded: mocks.ensureApiKeyLoaded,
+    getAiAbortSignal: vi.fn(() => new AbortController().signal),
+}));
+vi.mock("$lib/ai/schoolResearch", () => ({
+    researchProviderLabel: vi.fn(() => "OpenAI"),
+    researchUnavailableReason: vi.fn(() => ""),
+    researchSchool: vi.fn(),
 }));
 vi.mock("$lib/db", () => ({ createCollegeTabs: mocks.createCollegeTabs }));
 vi.mock("$lib/settings.svelte", () => ({ appSettings: mocks.appSettings }));
