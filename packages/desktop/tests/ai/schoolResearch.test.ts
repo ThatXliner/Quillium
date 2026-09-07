@@ -138,7 +138,7 @@ function generatedResult(cycle = ""): {
                 {
                     url: SOURCE,
                     kind: "requirement",
-                    summary: "The response limit is 650 words.",
+                    summary: "650 words",
                     evidence: "650 words",
                     cycle,
                     promptIds: ["p1"],
@@ -174,6 +174,11 @@ function requestText(): string {
         | { system?: unknown; prompt?: unknown }
         | undefined;
     return `${request?.system ?? ""}\n${request?.prompt ?? ""}`;
+}
+
+function requestSystem(): string {
+    const request = mocks.generateText.mock.calls[0]?.[0] as { system?: unknown } | undefined;
+    return typeof request?.system === "string" ? request.system : "";
 }
 
 function nativeFetchCalls(): ReadonlyArray<ReadonlyArray<unknown>> {
@@ -238,6 +243,50 @@ describe("usesHostedSchoolResearch", () => {
 });
 
 describe("hosted school research", () => {
+    it("states the independent institution, atomic evidence, and classification contract", async () => {
+        await researchSchool(target(), new AbortController().signal);
+
+        const system = requestSystem();
+        expect(system).toContain(
+            "Decide institution identity independently from application cycle",
+        );
+        expect(system).toContain(
+            "Require a campus match only when the target explicitly names a campus",
+        );
+        expect(system).toContain(
+            "A missing, different, or stale cycle must never make institutionMatches false",
+        );
+        expect(system).toContain("Make every finding atomic");
+        expect(system).toContain(
+            "The summary must be a concise direct quotation or exact contiguous excerpt copied from that attached evidence",
+        );
+        expect(system).toContain(
+            "Classify a finding as requirement only when the source explicitly states an applicant obligation",
+        );
+        expect(system).toContain(
+            "source-authored recommendations, explanations, and how-to advice as official-advice",
+        );
+        expect(system).toContain(
+            "published descriptions of review treatment, including equal consideration",
+        );
+        expect(system).toContain("as official-advice, not requirement");
+        expect(system).toContain("editorial-guidance only for model-derived inferences");
+        expect(system).toContain("never as a claimed school preference or prediction");
+    });
+
+    it("retains wrong-school rejection from the provider result", async () => {
+        const generated = generatedResult();
+        generated.output.institutionMatches = false;
+        mocks.generateText.mockResolvedValue(generated);
+
+        const result = await researchSchool(target(), new AbortController().signal);
+
+        expect(result.findings).toEqual([]);
+        expect(result.warnings.join(" ")).toMatch(
+            /did not clearly match the requested institution/i,
+        );
+    });
+
     it("uses OpenAI web search with the confirmed hostname and keeps cited URL sources", async () => {
         mocks.aiSettings.provider = "openai";
         mocks.aiSettings.model = "gpt-5.6-sol";
