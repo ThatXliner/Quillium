@@ -79,7 +79,9 @@ event and `ai-sidebar` DOM IDs remain unchanged for compatibility.
 When AI is disabled, Chat, Feedback, Revise, Context, Readers, AI Settings, and
 College are hidden through their `requiresAi` metadata. Contributions without
 that dependency remain available. The host hides its chrome when no panels are
-eligible. When AI is enabled, College, Context, Readers, and Settings open without
+eligible. College additionally requires a saved opt-in for the active document,
+started from the invitation beneath Voice latitude in AI Settings. With that opt-in
+and AI enabled, College opens without credentials. Context, Readers, and Settings open without
 model credentials; generating a
 Context brief still requires an enabled model connection. Opening Context or
 Readers does not load credentials; Settings retains its explicit connection and

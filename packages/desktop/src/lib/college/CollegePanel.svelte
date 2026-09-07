@@ -1,16 +1,16 @@
 <!-- CollegePanel.svelte — Choose prompts, then create essay tabs or pick a workspace tab. -->
 <script lang="ts">
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
-import { tick } from "svelte";
+import { tick, untrack } from "svelte";
 import SchoolResearch from "./SchoolResearch.svelte";
 import { type CollegeSetup, collegeSetupSchema } from "./model";
 import { COMMON_APP_PROMPTS, UC_PROMPTS, newCollegeSetup } from "./presets";
 
-let { active, session, college }: SidebarPanelProps = $props();
+let { active, session, college, collegePreset }: SidebarPanelProps = $props();
 let view = $derived(college?.read());
 let choosing = $state(false);
 let replacing = $state(false);
-let kind = $state<CollegeSetup["kind"]>("uc-piq");
+let kind = $state<CollegeSetup["kind"]>(untrack(() => collegePreset ?? "uc-piq"));
 let selected = $state<number[]>([]);
 let school = $state("");
 let customPrompt = $state("");
@@ -27,7 +27,7 @@ const selectedCount = $derived(kind === "supplemental" ? (customPrompt.trim() ? 
 $effect(() => {
     if (!active || previousTarget !== targetKey) {
         previousTarget = targetKey;
-        choosing = false;
+        choosing = active && collegePreset !== undefined;
         replacing = false;
         removing = false;
         selected = [];

@@ -192,6 +192,24 @@ pub const MIGRATIONS: &[Migration] = &[
             ",
         ),
     },
+    Migration {
+        version: 14,
+        name: "college_document_activation",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS college_document_activation (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                enabled     INTEGER NOT NULL CHECK(enabled IN(0,1))
+            );
+
+            INSERT OR IGNORE INTO college_document_activation (document_id, enabled)
+            SELECT DISTINCT tabs.document_id, 1
+            FROM college_tab_setups
+            JOIN tabs ON tabs.id = college_tab_setups.tab_id
+            JOIN documents ON documents.id = tabs.document_id;
+            ",
+        ),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -544,6 +562,67 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn college_activation_migration_seeds_documents_with_existing_setups() {
+        let registration_dir = tempfile::tempdir().unwrap();
+        let registration_path = registration_dir.path().join("registration.db");
+        drop(open_db(&registration_path).unwrap());
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        for migration in &MIGRATIONS[..13] {
+            match &migration.kind {
+                MigrationKind::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                MigrationKind::Rust(f) => f(&conn).unwrap(),
+            }
+            conn.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('with-setup', 'With setup', 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('without-setup', 'Without setup', 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tabs (id, document_id, label, created_at)
+             VALUES ('college-tab', 'with-setup', 'College', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO college_tab_setups (tab_id, setup_json, updated_at)
+             VALUES ('college-tab', '{}', 1)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let seeded: i64 = conn
+            .query_row(
+                "SELECT enabled FROM college_document_activation WHERE document_id = 'with-setup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(seeded, 1);
+        let unseeded: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM college_document_activation
+                 WHERE document_id = 'without-setup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unseeded, 0);
     }
 
     #[test]

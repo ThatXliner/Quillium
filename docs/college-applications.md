@@ -1,8 +1,13 @@
 # College applications
 
-The bundled College applications plugin adds a local panel to the existing
-[sidebar host](ai-sidebar.md#built-in-panel-host). With AI enabled, it works without a model
-connection. Opening its panel, editing setup, and applying a preset make no model
+The bundled College applications feature is opt-in for each document. In AI
+Settings, the invitation beneath Voice latitude offers UC PIQ, Personal statement,
+and Supplemental. Choosing one saves the document opt-in and opens its prompt
+picker. The College icon stays hidden until then. Documents with existing College
+setups retain access when upgrading; new documents start without it.
+
+The panel uses the existing [sidebar host](ai-sidebar.md#built-in-panel-host).
+With AI enabled and the document opted in, it works without a model connection. Opening its panel, editing setup, and applying a preset make no model
 requests. Chat planning and Feedback reviews require an explicit action.
 
 Turning AI off hides Chat, Feedback, Revise, Document Context, Readers, AI

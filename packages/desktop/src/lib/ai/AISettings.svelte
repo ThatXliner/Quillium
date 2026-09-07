@@ -29,6 +29,7 @@ Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
 provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
+import CollegeInvitation from "$lib/college/CollegeInvitation.svelte";
 import { getActiveCollegeSetup, updateActiveCollegeSetup, collegeState } from "$lib/college/state.svelte";
 import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
 import CollegeContext from "$lib/college/CollegeContext.svelte";
@@ -63,7 +64,7 @@ import { CheckIcon, EyeIcon, EyeOffIcon, InfoIcon, KeyRoundIcon } from "lucide-s
 import { EDITORIAL_HELP_TABS } from "./helpContent";
 
 // Built-in request adapters retain their existing lifecycle and validated operations.
-let { active: _active, session: _session }: SidebarPanelProps = $props();
+let { active: _active, session: _session, onCollegeSetup }: SidebarPanelProps = $props();
 
 type TabProvider = "openai" | "anthropic" | "google" | "deepseek";
 
@@ -502,6 +503,7 @@ async function changeEditorialPreference(key: keyof EditorialPreferences, value:
                     <option value="transform">Transform</option>
                 </select>
             </div>
+            <CollegeInvitation {onCollegeSetup} />
         </div>
     </div>
 

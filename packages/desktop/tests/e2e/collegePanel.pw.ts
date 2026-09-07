@@ -5,7 +5,12 @@ const panel = (page: Page) => page.locator('[data-panel-id="college"]');
 const savedKey = "mock-college-setup:doc-test-1:tab-test-1";
 async function openCollege(page: Page): Promise<void> {
     if (await panel(page).isVisible()) return;
-    await page.locator('button[aria-label="College applications"]:visible').first().click();
+    if (!(await page.locator('#ai-tab-college').count())) {
+        await page.locator('button[aria-label="AI Settings"]:visible').first().click();
+        await page.getByRole("region", { name: "College applications setup" }).getByRole("button", { name: "UC PIQ", exact: true }).click();
+    } else {
+        await page.locator('button[aria-label="College applications"]:visible').first().click();
+    }
     await expect(panel(page)).toBeVisible();
 }
 async function selectPrompt(page: Page, name: string): Promise<void> {

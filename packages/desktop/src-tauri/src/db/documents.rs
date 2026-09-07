@@ -224,6 +224,13 @@ pub fn duplicate_document(
             source.6,
         ],
     )?;
+    tx.execute(
+        "INSERT INTO college_document_activation (document_id, enabled)
+         SELECT ?1, enabled
+         FROM college_document_activation
+         WHERE document_id = ?2",
+        params![document_id, source_document_id],
+    )?;
 
     let tab_ids: HashMap<String, String> = tabs
         .iter()
@@ -559,7 +566,10 @@ pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::college::{get_college_tab_setup, set_college_tab_setup};
+    use crate::db::college::{
+        get_college_document_enabled, get_college_tab_setup, set_college_document_enabled,
+        set_college_tab_setup,
+    };
     use crate::db::schema::open_db;
     use crate::db::tabs::{create_tab, set_active_draft, set_active_tab};
 
@@ -745,6 +755,7 @@ mod tests {
         let setup_b = r#"{"version":1,"prompts":["Notes prompt"]}"#;
         set_college_tab_setup(&conn, &source_id, &tab_a.id, Some(setup_a)).unwrap();
         set_college_tab_setup(&conn, &source_id, &tab_b.id, Some(setup_b)).unwrap();
+        set_college_document_enabled(&conn, &source_id, true).unwrap();
         let root_a: String = conn
             .query_row(
                 "SELECT id FROM drafts WHERE tab_id = ?1",
@@ -825,6 +836,7 @@ mod tests {
             source_version.map(str::to_string)
         );
         assert_ne!(copy.id, source_id);
+        assert!(get_college_document_enabled(&conn, &copy_id).unwrap());
 
         let copied_tabs: Vec<String> = conn
             .prepare("SELECT id FROM tabs WHERE document_id = ?1 ORDER BY position")

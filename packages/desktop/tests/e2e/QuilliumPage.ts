@@ -740,6 +740,17 @@ export class QuilliumPage {
                             else localStorage.setItem(key, a.decisionsJson);
                             return null;
                         }
+                        if (cmd === "cmd_get_college_document_enabled") {
+                            const a = args as { documentId: string };
+                            const saved = localStorage.getItem(`mock-college-enabled:${a.documentId}`);
+                            return saved !== null ? saved === "true" : Object.keys(localStorage).some(key => key.startsWith(`mock-college-setup:${a.documentId}:`));
+                        }
+                        if (cmd === "cmd_set_college_document_enabled") {
+                            const a = args as { documentId: string; enabled: boolean };
+                            if (localStorage.getItem("mock-college-activation-error")) throw new Error("Could not enable College applications.");
+                            localStorage.setItem(`mock-college-enabled:${a.documentId}`, String(a.enabled));
+                            return null;
+                        }
                         if (cmd === "cmd_get_college_tab_setup") {
                             const a = args as { documentId: string; tabId: string };
                             return localStorage.getItem(

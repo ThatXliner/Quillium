@@ -26,6 +26,8 @@ export interface SidebarPanelProps {
     readonly active: boolean;
     readonly session: SidebarPanelSession | null;
     readonly college?: CollegeCapabilities | null;
+    readonly onCollegeSetup?: (kind: "uc-piq" | "common-app" | "supplemental") => void;
+    readonly collegePreset?: "uc-piq" | "common-app" | "supplemental";
 }
 
 export interface SidebarPanelSessionSources {

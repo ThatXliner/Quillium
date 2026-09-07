@@ -127,7 +127,8 @@ async function prepare(page: Page): Promise<{ q: QuilliumPage; requests: string[
     });
 
     await q.goto();
-    await page.locator("#ai-tab-college").click();
+    await page.locator('button[aria-label="AI Settings"]:visible').first().click();
+    await page.getByRole("region", { name: "College applications setup" }).getByRole("button", { name: "Supplemental", exact: true }).click();
     await panel(page).getByRole("button", { name: "School supplement", exact: true }).click();
     await panel(page).getByLabel("School", { exact: true }).fill("Example University");
     await panel(page).getByLabel("Prompt", { exact: true }).fill("Why do you want to study here?");
