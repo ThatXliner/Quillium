@@ -420,14 +420,11 @@ function _addCompletionWarnings(
             warnings,
             "The application cycle is unverified because no cycle was provided.",
         );
-        if (requirementFindings.length === 0) {
-            _pushWarning(warnings, "No verified requirement was found in the returned sources.");
-        }
-        return;
     }
     if (requirementFindings.length === 0) {
         _pushWarning(warnings, "No verified requirement was found in the returned sources.");
     } else if (
+        target.cycle &&
         !requirementFindings.some((finding) => _sameApplicationCycle(finding.cycle, target.cycle))
     ) {
         _pushWarning(
@@ -438,22 +435,20 @@ function _addCompletionWarnings(
 }
 
 function _warnAboutConflictingLimits(findings: CollegeReference[], warnings: string[]): void {
-    const limitsByPrompt = new Map<string, string[][]>();
+    const limitsByPrompt = new Map<string, Set<string>>();
     for (const finding of findings) {
         if (finding.kind !== "requirement" || !finding.research) continue;
         const limits = _numericLimits(finding.research.evidence);
         if (limits.length === 0) continue;
+        const signature = limits.sort().join("\u0000");
         for (const promptId of finding.research.promptIds) {
-            const findingLimits = limitsByPrompt.get(promptId) ?? [];
-            findingLimits.push(limits);
+            const findingLimits = limitsByPrompt.get(promptId) ?? new Set<string>();
+            findingLimits.add(signature);
             limitsByPrompt.set(promptId, findingLimits);
         }
     }
     for (const [promptId, findingLimits] of limitsByPrompt) {
-        const distinctSets = new Set(
-            findingLimits.map((limits) => [...limits].sort().join("\u0000")),
-        );
-        if (findingLimits.length >= 2 && distinctSets.size > 1) {
+        if (findingLimits.size > 1) {
             _pushWarning(
                 warnings,
                 `The fetched sources give conflicting numeric limits for prompt ${promptId}; both findings were retained for review.`,
