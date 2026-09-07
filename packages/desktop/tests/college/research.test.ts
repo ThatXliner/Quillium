@@ -78,7 +78,7 @@ function reference(id = "r1"): CollegeReference {
         checkedDate: "2026-09-07",
         cycle: "2026–2027",
         kind: "requirement",
-        summary: "650 words.",
+        summary: "650 words",
         research: {
             setupKey: "",
             snapshotId: "snapshot-1",
@@ -175,7 +175,7 @@ describe("runSchoolResearch", () => {
                 [
                     {
                         url: SOURCE,
-                        summary: "The response limit is 650 words.",
+                        summary: "650 words",
                         evidence: "650 words",
                     },
                 ],
@@ -214,13 +214,13 @@ describe("runSchoolResearch", () => {
                 [
                     {
                         url: returnedUrl,
-                        summary: "The response limit is 650 words.",
+                        summary: "650 words",
                         evidence: "650 words",
                     },
                     {
                         url: subdomainUrl,
                         kind: "official-advice",
-                        summary: "Applicants should use their own voice.",
+                        summary: "Use your own voice",
                         evidence: "Use your own voice",
                     },
                     {
@@ -251,7 +251,7 @@ describe("runSchoolResearch", () => {
                     [
                         {
                             url: SOURCE,
-                            summary: "The response limit is 650 words.",
+                            summary: "650 words",
                             evidence: "650 words",
                             promptIds: ["unknown-prompt"],
                         },
@@ -280,7 +280,7 @@ describe("runSchoolResearch", () => {
                     [
                         {
                             url: SOURCE,
-                            summary: "The response limit is 650 characters.",
+                            summary: "650 characters",
                             evidence: "650 characters",
                         },
                     ],
@@ -293,6 +293,68 @@ describe("runSchoolResearch", () => {
         expect(result.warnings.join(" ")).toMatch(/unsupported evidence/i);
     });
 
+    it("rejects a broader summary even when its attached evidence is exact source text", async () => {
+        const result = await runSchoolResearch(
+            target(),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "Requirements",
+                            text: "Write no more than 250 words.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "The response has a 250-word maximum.",
+                            evidence: "Write no more than 250 words.",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        const warningText = result.warnings.join(" ");
+        expect(result.findings).toEqual([]);
+        expect(warningText).toMatch(
+            /summary is not a contiguous excerpt of its attached evidence/i,
+        );
+        expect(warningText).not.toMatch(/unsupported evidence/i);
+    });
+
+    it("accepts a direct extractive summary when its attached evidence is exact source text", async () => {
+        const result = await runSchoolResearch(
+            target({ cycle: "" }),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "Requirements",
+                            text: "Write no more than 250 words.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "Write no more than 250 words.",
+                            evidence: "Write no more than 250 words.",
+                            cycle: "",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.findings).toHaveLength(1);
+        expect(result.findings[0]?.summary).toBe("Write no more than 250 words.");
+        expect(result.warnings.join(" ")).not.toMatch(/summary is not a contiguous excerpt/i);
+    });
+
     it("accepts hosted sources without text and preserves empty-cycle uncertainty", async () => {
         const result = await runSchoolResearch(
             target(),
@@ -303,7 +365,7 @@ describe("runSchoolResearch", () => {
                         {
                             url: SOURCE,
                             kind: "official-advice",
-                            summary: "The source offers application guidance.",
+                            summary: "Application guidance",
                             evidence: "Application guidance",
                             cycle: "",
                         },
@@ -319,6 +381,193 @@ describe("runSchoolResearch", () => {
         expect(result.warnings.join(" ")).toMatch(/no verified cycle|no verified requirement/i);
     });
 
+    it("does not treat a cycle year after a word limit as another numeric limit", async () => {
+        const result = await runSchoolResearch(
+            target(),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "Duke-like admissions requirements",
+                            text: "The response is limited to 250 words for 2026-27.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "limited to 250 words for 2026-27",
+                            evidence: "limited to 250 words for 2026-27",
+                            cycle: "2026-27",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.findings).toHaveLength(1);
+        expect(result.warnings.join(" ")).not.toMatch(/conflicting numeric limits/i);
+    });
+
+    it("does not treat question counts after a word limit as another numeric limit", async () => {
+        const result = await runSchoolResearch(
+            target({ cycle: "" }),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "UC-like admissions requirements",
+                            text: "Each response is limited to 350 words. Choose 4 of 8 questions.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "limited to 350 words",
+                            evidence: "limited to 350 words. Choose 4 of 8 questions",
+                            cycle: "",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.findings).toHaveLength(1);
+        expect(result.warnings.join(" ")).not.toMatch(/conflicting numeric limits/i);
+        expect(result.warnings.join(" ")).not.toMatch(/No verified requirement was found/i);
+    });
+
+    it("compares equivalent cycle labels without rewriting the returned label", async () => {
+        for (const cycle of ["2026-27", "2026-2027", "2026–27", "2026–2027"]) {
+            const result = await runSchoolResearch(
+                target(),
+                vi.fn(async () =>
+                    adapterResult(
+                        [
+                            {
+                                url: SOURCE,
+                                title: "Admissions requirements",
+                                text: `The ${cycle} response limit is 250 words.`,
+                            },
+                        ],
+                        [
+                            {
+                                url: SOURCE,
+                                summary: "response limit is 250 words",
+                                evidence: `${cycle} response limit is 250 words`,
+                                cycle,
+                            },
+                        ],
+                    ),
+                ),
+                new AbortController().signal,
+            );
+
+            expect(result.findings[0]?.cycle).toBe(cycle);
+            expect(result.warnings.join(" ")).not.toMatch(
+                /differs from requested cycle|No requirement was verified for requested cycle/i,
+            );
+        }
+    });
+
+    it("keeps an undated requirement when the target cycle is unknown", async () => {
+        const result = await runSchoolResearch(
+            target({ cycle: "" }),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "Undated requirements",
+                            text: "The limit is 350 words.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "The limit is 350 words.",
+                            evidence: "The limit is 350 words.",
+                            cycle: "",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.findings).toHaveLength(1);
+        expect(result.warnings.join(" ")).toMatch(/application cycle is unverified/i);
+        expect(result.warnings.join(" ")).not.toMatch(/No verified requirement was found/i);
+    });
+
+    it("reports missing cycle verification without claiming an undated requirement is absent", async () => {
+        const result = await runSchoolResearch(
+            target(),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "Undated requirements",
+                            text: "The limit is 350 words.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "The limit is 350 words.",
+                            evidence: "The limit is 350 words.",
+                            cycle: "",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        const warningText = result.warnings.join(" ");
+        expect(result.findings).toHaveLength(1);
+        expect(warningText).toMatch(/has no verified cycle for requested cycle/i);
+        expect(warningText).toMatch(/No requirement was verified for requested cycle/i);
+        expect(warningText).not.toMatch(/No verified requirement was found/i);
+    });
+
+    it("keeps a stale requirement visible and identifies the requested cycle precisely", async () => {
+        const result = await runSchoolResearch(
+            target({ cycle: "2024–2025" }),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        {
+                            url: SOURCE,
+                            title: "Archived admissions requirements",
+                            text: "The 2026-27 response limit is 250 words.",
+                        },
+                    ],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "response limit is 250 words",
+                            evidence: "The 2026-27 response limit is 250 words",
+                            cycle: "2026-27",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        const warningText = result.warnings.join(" ");
+        expect(result.findings).toHaveLength(1);
+        expect(result.findings[0]?.cycle).toBe("2026-27");
+        expect(warningText).toMatch(/differs from requested cycle/i);
+        expect(warningText).toMatch(/No requirement was verified for requested cycle/i);
+        expect(warningText).not.toMatch(/No verified requirement was found/i);
+    });
+
     it("drops findings when the provider reports an institution mismatch", async () => {
         const result = await runSchoolResearch(
             target(),
@@ -328,7 +577,7 @@ describe("runSchoolResearch", () => {
                     [
                         {
                             url: SOURCE,
-                            summary: "A requirement from another school.",
+                            summary: "Another school's requirement",
                             evidence: "Another school's requirement",
                             cycle: "",
                         },
@@ -358,13 +607,13 @@ describe("runSchoolResearch", () => {
                     [
                         {
                             url: SOURCE,
-                            summary: "The archived response limit is 500 words.",
+                            summary: "500 words",
                             evidence: "500 words",
                             cycle: "2025–2026",
                         },
                         {
                             url: SOURCE,
-                            summary: "The current response limit is 650 words.",
+                            summary: "650 words",
                             evidence: "650 words",
                             cycle: "2026–2027",
                         },

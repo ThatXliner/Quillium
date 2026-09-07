@@ -17,11 +17,36 @@ export type { ResearchTarget };
 
 const extractedFindingSchema = z
     .object({
-        url: z.string().min(1).max(2_000),
-        kind: z.enum(["requirement", "official-advice", "editorial-guidance"]),
-        summary: z.string().min(1).max(1_200),
-        evidence: z.string().min(1).max(1_000),
-        cycle: z.string().max(100),
+        url: z
+            .string()
+            .min(1)
+            .max(2_000)
+            .describe("The exact URL of one returned public source supporting this finding."),
+        kind: z
+            .enum(["requirement", "official-advice", "editorial-guidance"])
+            .describe(
+                "Use requirement only for an applicant obligation, prohibited action, numeric constraint, or deadline explicitly stated by the source. Use official-advice for source-authored review descriptions such as equal consideration, recommendations, explanations, and how-to advice, and editorial-guidance only for model-derived interpretation.",
+            ),
+        summary: z
+            .string()
+            .min(1)
+            .max(1_200)
+            .describe(
+                "One atomic concise direct quotation or exact contiguous excerpt from the attached evidence passage, not a paraphrase.",
+            ),
+        evidence: z
+            .string()
+            .min(1)
+            .max(1_000)
+            .describe(
+                "One short contiguous passage from the cited source. The summary must be copied from this passage; do not combine separate passages or add claims.",
+            ),
+        cycle: z
+            .string()
+            .max(100)
+            .describe(
+                "The source-stated application cycle, preserving its original label, or an empty string when the source does not state one.",
+            ),
         promptIds: z
             .array(z.string().min(1).max(100))
             .min(1)
@@ -38,7 +63,11 @@ export const researchExtractionSchema = z
     .object({
         findings: z.array(extractedFindingSchema).max(8),
         warnings: z.array(z.string().max(1_000)).max(8),
-        institutionMatches: z.boolean(),
+        institutionMatches: z
+            .boolean()
+            .describe(
+                "Assess institution identity independently from cycle, program, and prompt fit. Require a campus match only when the target names a campus; a clearly official parent or system-wide page can match a broad target. Missing, stale, or different cycles do not make an otherwise matching institution false.",
+            ),
     })
     .strict();
 
@@ -332,12 +361,21 @@ function _normalizeFindings(
             continue;
         }
 
+        const summary = _normaliseWhitespace(finding.summary);
+        if (!_isExtractiveSummary(summary, finding.evidence)) {
+            _pushWarning(
+                warnings,
+                `Ignored a finding whose summary is not a contiguous excerpt of its attached evidence from ${finding.url}.`,
+            );
+            continue;
+        }
+
         let cycle = finding.cycle;
         if (sourceText !== undefined && cycle && !sourceText.includes(cycle)) {
             _pushWarning(warnings, `Ignored the unverified cycle “${cycle}” from ${finding.url}.`);
             cycle = "";
         }
-        if (cycle && target.cycle && cycle !== target.cycle) {
+        if (cycle && target.cycle && !_sameApplicationCycle(cycle, target.cycle)) {
             _pushWarning(
                 warnings,
                 `The finding from ${finding.url} cites cycle “${cycle}”, which differs from requested cycle “${target.cycle}”; check whether the cycle labels refer to the same application year before using it.`,
@@ -356,7 +394,7 @@ function _normalizeFindings(
             checkedDate,
             cycle,
             kind: finding.kind,
-            summary: _normaliseWhitespace(finding.summary),
+            summary,
             research: {
                 setupKey: "",
                 snapshotId,
@@ -376,37 +414,46 @@ function _addCompletionWarnings(
     findings: CollegeReference[],
     warnings: string[],
 ): void {
+    const requirementFindings = findings.filter((finding) => finding.kind === "requirement");
     if (!target.cycle) {
         _pushWarning(
             warnings,
             "The application cycle is unverified because no cycle was provided.",
         );
+        if (requirementFindings.length === 0) {
+            _pushWarning(warnings, "No verified requirement was found in the returned sources.");
+        }
+        return;
     }
-    if (
-        !findings.some(
-            (finding) =>
-                finding.kind === "requirement" &&
-                target.cycle.length > 0 &&
-                finding.cycle === target.cycle,
-        )
-    ) {
+    if (requirementFindings.length === 0) {
         _pushWarning(warnings, "No verified requirement was found in the returned sources.");
+    } else if (
+        !requirementFindings.some((finding) => _sameApplicationCycle(finding.cycle, target.cycle))
+    ) {
+        _pushWarning(
+            warnings,
+            `No requirement was verified for requested cycle “${target.cycle}”; returned requirement findings cite a different or missing cycle.`,
+        );
     }
 }
 
 function _warnAboutConflictingLimits(findings: CollegeReference[], warnings: string[]): void {
-    const limitsByPrompt = new Map<string, Set<string>>();
+    const limitsByPrompt = new Map<string, string[][]>();
     for (const finding of findings) {
         if (finding.kind !== "requirement" || !finding.research) continue;
-        const limits = _numericLimits(`${finding.summary} ${finding.research.evidence}`);
+        const limits = _numericLimits(finding.research.evidence);
+        if (limits.length === 0) continue;
         for (const promptId of finding.research.promptIds) {
-            const values = limitsByPrompt.get(promptId) ?? new Set<string>();
-            for (const limit of limits) values.add(limit);
-            limitsByPrompt.set(promptId, values);
+            const findingLimits = limitsByPrompt.get(promptId) ?? [];
+            findingLimits.push(limits);
+            limitsByPrompt.set(promptId, findingLimits);
         }
     }
-    for (const [promptId, limits] of limitsByPrompt) {
-        if (limits.size > 1) {
+    for (const [promptId, findingLimits] of limitsByPrompt) {
+        const distinctSets = new Set(
+            findingLimits.map((limits) => [...limits].sort().join("\u0000")),
+        );
+        if (findingLimits.length >= 2 && distinctSets.size > 1) {
             _pushWarning(
                 warnings,
                 `The fetched sources give conflicting numeric limits for prompt ${promptId}; both findings were retained for review.`,
@@ -418,7 +465,8 @@ function _warnAboutConflictingLimits(findings: CollegeReference[], warnings: str
 function _numericLimits(value: string): string[] {
     const limits = new Set<string>();
     const direct = /\b(\d[\d,]*)\s*(words?|characters?|chars?)\b/gi;
-    const reverse = /\b(words?|characters?|chars?)\b[^\d]{0,24}(\d[\d,]*)\b/gi;
+    const reverse =
+        /\b(words?|characters?|chars?)\s+(?:limit|maximum|max(?:imum)?|count)\s*(?:(?::|=)\s*|(?:is|of|must\s+be|cannot\s+exceed|does\s+not\s+exceed|may\s+not\s+exceed|should\s+not\s+exceed|up\s+to)\s+)?(\d[\d,]*)\b/gi;
     for (const match of value.matchAll(direct)) {
         limits.add(`${_limitUnit(match[2])}:${match[1].replaceAll(",", "")}`);
     }
@@ -430,6 +478,19 @@ function _numericLimits(value: string): string[] {
 
 function _limitUnit(value: string): "words" | "characters" {
     return value.toLowerCase().startsWith("char") ? "characters" : "words";
+}
+
+function _sameApplicationCycle(left: string, right: string): boolean {
+    return _applicationCycleKey(left) === _applicationCycleKey(right);
+}
+
+function _applicationCycleKey(value: string): string {
+    const normalized = value.trim().replace(/\s+/g, " ");
+    const match = /^(\d{4})\s*[-–—]\s*(\d{2}|\d{4})$/.exec(normalized);
+    if (!match) return normalized;
+    const [, start, end] = match;
+    const expandedEnd = end.length === 2 ? `${start.slice(0, 2)}${end}` : end;
+    return `${start}-${expandedEnd}`;
 }
 
 function _hostname(value: string): string | null {
@@ -448,6 +509,18 @@ function _normalizeHostname(value: string): string {
 
 function _normaliseWhitespace(value: string): string {
     return value.replace(/\s+/g, " ").trim();
+}
+
+function _isExtractiveSummary(summary: string, evidence: string): boolean {
+    const normalizedSummary = _normaliseExtractiveText(summary);
+    const normalizedEvidence = _normaliseExtractiveText(evidence);
+    return normalizedSummary.length > 0 && normalizedEvidence.includes(normalizedSummary);
+}
+
+function _normaliseExtractiveText(value: string): string {
+    return _normaliseWhitespace(value)
+        .replace(/^[\s"“”‘’([{]+/, "")
+        .replace(/[\s"“”‘’)\]}.,;:!?]+$/, "");
 }
 
 function _pushWarning(warnings: string[], warning: string): void {

@@ -26,12 +26,43 @@ native network command. No path discovers or ranks links in the browser.
 The model extracts candidate findings from the retrieved text. The review groups
 published requirements, official guidance, and editorial interpretations. Each
 finding includes a source passage, URL, publisher hostname, checked date, cycle
-or explicit unknown, and selected prompt identities. The publisher hostname is
-assigned by the host, not invented by the model. On the native fallback, a
-finding survives only when its evidence exactly matches the fetched text. Hosted
-tools return source URLs and quoted evidence, but Quillium cannot independently
-match that quote to provider-held page text. The writer should compare the
-evidence before accepting it.
+or explicit unknown, and selected prompt identities. Findings are constrained to
+one atomic summary copied as a concise direct quotation or exact contiguous
+excerpt from that one evidence passage, not a paraphrase, and remain reviewable
+before acceptance. The publisher hostname is assigned by the host, not invented
+by the model. On the native fallback, Quillium separately checks that the
+evidence exactly matches the fetched text and that the normalized summary is a
+literal extractive substring of the normalized evidence. The first check is
+provenance and the second is literal containment; neither is a general semantic
+entailment check. Hosted tools return source URLs and quoted evidence, but
+Quillium cannot independently match that quote to provider-held page text. The
+writer should compare the evidence before accepting it.
+
+Institution identity is assessed separately from cycle, program, and prompt fit.
+A campus match is required only when the target explicitly names a campus. A
+clearly official parent or system-wide page can match a broad target such as
+“University of California”. Missing, different, or stale cycles do not make an
+otherwise matching institution fail; an actually different school or genuinely
+unclear identity does.
+
+An applicant obligation, prohibited action, numeric constraint, or deadline is a
+requirement only when the source explicitly states it with language such as
+“must”, “required”, “limited”, or “due”. Published descriptions of review
+treatment, including equal consideration, are official advice rather than
+requirements. Source-authored recommendations, explanations, and how-to advice
+are also official advice, including directly published advice phrased informally.
+Only model-derived inferences are editorial guidance, which is labeled as
+interpretation rather than a claimed school preference or prediction. Equivalent
+year-pair labels such as 2026-27,
+2026-2027, 2026–27, and 2026–2027 compare equal while the original source label
+is retained. Stale or genuinely different cycles still produce warnings.
+
+Requirement existence is separate from cycle certainty. With an unknown target
+cycle, an undated supported requirement is retained without a no-requirement
+warning. With a specified target, an undated or different-cycle finding gets a
+precise no-verified-cycle warning, while the requirement finding remains visible.
+The existing no-requirement warning is reserved for results with no requirement
+findings.
 
 Findings start unchecked. **Add to essay context** saves only selected findings.
 Completion, cancellation, failure, and retry do not save context. Review choices
