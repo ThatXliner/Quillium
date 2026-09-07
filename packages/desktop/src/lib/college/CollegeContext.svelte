@@ -2,33 +2,68 @@
 <script lang="ts">
 import { collegeResearchSetupKey } from "./researchModel";
 import { collegeState, getActiveCollegeSetup } from "./state.svelte";
-let { detailed = false }: { detailed?: boolean } = $props();
+let {
+    detailed = false,
+    purpose = "context",
+}: {
+    detailed?: boolean;
+    purpose?: "context" | "readers";
+} = $props();
 const setup = $derived(collegeState.setup);
 const effective = $derived(getActiveCollegeSetup());
 </script>
 {#if setup || collegeState.error || collegeState.status === "loading"}
-    <section class="m-3 rounded-lg border border-amber-200/70 bg-white/60 p-3 space-y-2 text-xs" aria-label="Tab college context">
-        <h3 class="font-semibold text-black/80">College setup for this tab</h3>
+    <section class="m-3 space-y-2 rounded-lg border border-amber-200/70 bg-white/60 p-3 text-xs" aria-label="College context for this tab">
         {#if collegeState.status === "loading"}<p role="status">Loading this tab’s writing settings…</p>{/if}
         {#if collegeState.error}<p role="alert" class="text-red-800">{collegeState.error}</p>{/if}
         {#if setup}
-            <p class="text-black/60">{effective ? "Active for all drafts and runs in this tab. Changes here save to this tab." : "Paused or disabled. Device preferences apply; saved college guidance is excluded."}</p>
-            <p class="text-black/60">Shared notes and decisions belong to the document. Edit prompts and accepted sources in College applications.</p>
+            <div class="flex items-center justify-between gap-2">
+                <h3 class="truncate font-semibold text-black/80">
+                    {purpose === "readers"
+                        ? `${setup.school || "College"} readers`
+                        : setup.school || "College application"}
+                </h3>
+                <span
+                    class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium {effective
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-black/5 text-black/45'}"
+                >{purpose === "readers"
+                        ? effective
+                            ? "This tab"
+                            : "Defaults"
+                        : effective
+                          ? "Used by AI"
+                          : "Paused"}</span>
+            </div>
+            <p class="text-black/55">
+                {purpose === "readers"
+                    ? effective
+                        ? "Changes below apply only to this tab. Your default reader personas stay unchanged."
+                        : "This College setup is paused. Changes below update your default reader personas."
+                    : effective
+                      ? "AI requests for this tab include its college prompt and saved guidance."
+                      : "AI requests ignore this tab’s college prompt and saved guidance."}
+            </p>
             {#if detailed}
-                <p>Cycle: {setup.cycle || "Unknown"} · {setup.school || "School not specified"}</p>
-                {#each setup.prompts as prompt (prompt.id)}
-                    <details><summary class="cursor-pointer font-medium">{prompt.label || "Prompt"}</summary><p class="whitespace-pre-wrap py-2">{prompt.text}</p>
-                        {#each prompt.constraints as constraint (constraint.id)}<p>{constraint.min ?? "?"}–{constraint.max ?? "?"} {constraint.unit} · {constraint.detail}</p>{/each}
-                    </details>
-                {/each}
-                {#if setup.intent}<p>Intent: {setup.intent}</p>{/if}
-                {#if setup.feedbackFocus}<p>Feedback focus: {setup.feedbackFocus}</p>{/if}
-                <details><summary class="cursor-pointer font-medium">Accepted source snapshots</summary>
+                <details>
+                    <summary class="cursor-pointer font-medium">Prompt and guidance</summary>
+                    <div class="space-y-2 pt-2 text-black/60">
+                        {#each setup.prompts as prompt (prompt.id)}
+                            <div>
+                                <p class="font-medium text-black/70">{prompt.label || "Prompt"}</p>
+                                <p class="whitespace-pre-wrap">{prompt.text}</p>
+                                {#each prompt.constraints as constraint (constraint.id)}<p>{constraint.min ?? "?"}–{constraint.max ?? "?"} {constraint.unit} · {constraint.detail}</p>{/each}
+                            </div>
+                        {/each}
+                        {#if setup.intent}<p><span class="font-medium text-black/70">Main idea:</span> {setup.intent}</p>{/if}
+                        {#if setup.feedbackFocus}<p><span class="font-medium text-black/70">Feedback focus:</span> {setup.feedbackFocus}</p>{/if}
+                    </div>
+                </details>
+                <details><summary class="flex cursor-pointer items-center justify-between gap-2 font-medium"><span>Accepted source snapshots</span><span class="text-[10px] font-normal text-black/40">{setup.references.length}</span></summary>
                     {#each setup.references as reference (reference.id)}
                         <div class="py-2 space-y-1">{#if reference.research}{#if reference.research.setupKey !== collegeResearchSetupKey(setup)}<p class="text-amber-900">Saved for an earlier setup. Excluded from requests; research this prompt again to review.</p>{/if}<p>{reference.research.school} · {reference.research.targetCycle || "Target cycle unknown"} · {reference.research.promptIds.length} selected prompt(s)</p><blockquote class="border-l-2 border-black/20 pl-2">{reference.research.evidence}</blockquote>{/if}<p>{reference.kind}: {reference.summary}</p><p class="text-black/60">{reference.publisher} · {reference.cycle || "Cycle unknown"} · Checked {reference.checkedDate || "unknown"}</p>{#if reference.url}<a class="text-blue-700 underline" href={reference.url} target="_blank" rel="noreferrer">View source</a>{/if}</div>
                     {/each}
                 </details>
-                <p class="text-black/60">Requests include up to 8,000 characters of tab brief and 6,000 of reference guidance. Context Lens shows omissions.</p>
             {/if}
         {/if}
     </section>

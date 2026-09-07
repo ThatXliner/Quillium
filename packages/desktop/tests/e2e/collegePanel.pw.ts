@@ -5,9 +5,12 @@ const panel = (page: Page) => page.locator('[data-panel-id="college"]');
 const savedKey = "mock-college-setup:doc-test-1:tab-test-1";
 async function openCollege(page: Page): Promise<void> {
     if (await panel(page).isVisible()) return;
-    if (!(await page.locator('#ai-tab-college').count())) {
+    if (!(await page.locator("#ai-tab-college").count())) {
         await page.locator('button[aria-label="AI Settings"]:visible').first().click();
-        await page.getByRole("region", { name: "College applications setup" }).getByRole("button", { name: "UC PIQ", exact: true }).click();
+        await page
+            .getByRole("region", { name: "College applications setup" })
+            .getByRole("button", { name: "UC PIQ", exact: true })
+            .click();
     } else {
         await page.locator('button[aria-label="College applications"]:visible').first().click();
     }
@@ -67,6 +70,16 @@ test("selected prompts create independent named tabs and context without provide
     await expect
         .poll(async () => (await page.locator("#ai-sidebar").boundingBox())!.height)
         .toBeLessThan(450);
+    await page.locator('#ai-sidebar .overflow-x-auto button[aria-label^="Readers"]').click();
+    const readers = page.locator('#ai-sidebar [data-panel-id="readers"]');
+    await expect(readers.getByText("This tab", { exact: true })).toBeVisible();
+    await expect(readers).toContainText(
+        "Changes below apply only to this tab. Your default reader personas stay unchanged.",
+    );
+    await page
+        .locator('#ai-sidebar .overflow-x-auto button[aria-label^="College applications"]')
+        .click();
+    await expect(panel(page)).toBeVisible();
     await page.screenshot({
         animations: "disabled",
         path: "../../docs/assets/issue-422/college-panel.png",

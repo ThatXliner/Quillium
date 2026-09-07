@@ -10,7 +10,6 @@
     State persisted per document in SQLite via saveDocumentContext.
 -->
 <script lang="ts">
-import CollegeContext from "$lib/college/CollegeContext.svelte";
 import { generateContext } from "$lib/ai/clientStreams";
 import {
     aiSettings,
@@ -22,6 +21,7 @@ import {
     hasApiKey,
     saveDocumentContext,
 } from "$lib/ai/settings.svelte";
+import CollegeContext from "$lib/college/CollegeContext.svelte";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
@@ -108,7 +108,7 @@ function removeDecision(index: number) {
 
 <CollegeContext detailed />
 
-<div class="flex flex-col h-full overflow-y-auto">
+<div class="flex flex-col">
     <!-- Prompt input section -->
     <div class="p-3 border-b border-black/10 flex flex-col gap-2">
         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">

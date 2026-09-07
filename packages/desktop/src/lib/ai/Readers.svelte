@@ -10,15 +10,15 @@
     Dependencies: readers/settings.svelte.ts, readers/presets.ts, posthog.
 -->
 <script lang="ts">
-import { collegeState } from "$lib/college/state.svelte";
 import CollegeContext from "$lib/college/CollegeContext.svelte";
+import { collegeState } from "$lib/college/state.svelte";
 import posthog from "$lib/posthog";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 import {
     addCustomPersona,
     cycleChattiness,
-    readersSettings,
     getEffectivePersonas,
+    readersSettings,
     removeCustomPersona,
     togglePersona,
 } from "$lib/readers/settings.svelte";
@@ -89,7 +89,7 @@ function handleRemove(id: string) {
 const chattinessLevels = ["quiet", "normal", "verbose"] as const;
 </script>
 
-<CollegeContext />
+<CollegeContext purpose="readers" />
 
 {#snippet personaCard(persona: typeof readersSettings.personas[0], dimmed: boolean)}
     {@const filledDots = chattinessLevels.indexOf(persona.chattiness) + 1}

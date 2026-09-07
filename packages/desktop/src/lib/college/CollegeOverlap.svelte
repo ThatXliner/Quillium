@@ -147,7 +147,7 @@ async function review(): Promise<void> {
 </script>
 
 <svelte:window onkeydown={(event) => { if (open && event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); close(); } }} onclick={(event) => { if (open && event.target instanceof Node && !container.contains(event.target)) close(); }} />
-<div class="relative px-3 pb-2" bind:this={container}>
+<div class="relative border-b border-black/10 px-3 py-2" bind:this={container}>
     <button bind:this={trigger} class="action" aria-expanded={open} aria-haspopup="dialog" disabled={disabled || !$documentContent.trim()} onclick={() => open ? close() : show()}>Check overlap with other essays</button>
     {#if status}<p class="mt-1 text-xs text-black/60" role="status">{status}</p>{/if}
     {#if open}
