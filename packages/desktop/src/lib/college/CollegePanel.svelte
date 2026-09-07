@@ -165,30 +165,40 @@ async function update(setup: CollegeSetup | null): Promise<void> {
         {@const setup = view.setup}
         {#each setup.prompts as prompt (prompt.id)}
             <section class="space-y-2" aria-label={prompt.label || "Your prompt"}>
-                <div class="flex items-baseline justify-between gap-3">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <h2 class="font-semibold">{prompt.label || "Your prompt"}</h2>
                     {#each prompt.constraints.filter(c => c.unit !== "other") as constraint (constraint.id)}
-                        <span class="text-xs text-black/60 whitespace-nowrap" aria-label="Essay length">{constraint.unit === "characters" ? view.characterCount : view.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</span>
+                        <span class="text-xs text-black/60 whitespace-nowrap tabular-nums" aria-label="Essay length">{constraint.unit === "characters" ? view.characterCount : view.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</span>
                     {/each}
                 </div>
                 <p class="whitespace-pre-wrap leading-relaxed">{prompt.text}</p>
-                {#if prompt.sourceUrl}<a class="link" href={prompt.sourceUrl} target="_blank" rel="noreferrer">Original prompt</a>{/if}
+                {#if prompt.sourceUrl}<a class="source-link" href={prompt.sourceUrl} target="_blank" rel="noreferrer">{setup.kind === "supplemental" ? "Original prompt" : "Prompt summary · View original"}<span aria-hidden="true"> ↗</span></a>{/if}
             </section>
         {/each}
         {#if setup.prompts.length > 1}<p class="text-xs text-black/60">This earlier setup has multiple prompts. Change prompt to replace it with one; your writing stays.</p>{/if}
         {#if !setup.active}<p class="text-xs text-black/60">Paused. Feedback isn’t using this prompt.</p>{/if}
-        <div class="flex flex-wrap gap-3">
-            <button class="link" onclick={() => start(true)}>Change prompt</button>
-            <button class="link" onclick={() => start()}>Add essays</button>
+        <div class="flex flex-wrap gap-2">
+            <button class="secondary" onclick={() => start(true)}>Change prompt</button>
+            <button class="secondary" onclick={() => start()}>Add essays</button>
         </div>
         <details class="border-t border-black/10 pt-3">
             <summary class="text-xs cursor-pointer">Sources and settings</summary>
             <div class="space-y-3 pt-3 text-xs">
-                <p>{setup.school} {setup.cycle ? `· ${setup.cycle}` : ""}</p>
-                {#each setup.references as ref (ref.id)}<p>{ref.summary} {#if ref.url}<a class="link" href={ref.url} target="_blank" rel="noreferrer">{ref.publisher}</a>{/if} · Checked {ref.checkedDate} · {ref.cycle || "Cycle not specified"}</p>{/each}
-                {#if view.aiEnabled}<div class="flex gap-3"><button class="link" onclick={() => college?.openPanel("context")}>Context</button><button class="link" onclick={() => college?.openPanel("readers")}>Readers</button><button class="link" onclick={() => college?.openPanel("settings")}>Settings</button></div>{/if}
-                <button class="secondary" disabled={busy || view.saving} onclick={() => update({...setup, active: !setup.active})}>{setup.active ? "Pause setup" : "Resume setup"}</button>
-                <button class="link" onclick={() => removing = true}>Remove setup…</button>
+                {#if setup.school || setup.cycle}<p class="text-black/60">{[setup.school, setup.cycle].filter(Boolean).join(" · ")}</p>{/if}
+                <div class="space-y-3">
+                    {#each setup.references as ref (ref.id)}
+                        <div class="source-card">
+                            {#if ref.url}<a class="source-link font-medium" href={ref.url} target="_blank" rel="noreferrer">{ref.publisher}<span aria-hidden="true"> ↗</span></a>{:else}<p class="font-medium">{ref.publisher}</p>{/if}
+                            <p class="leading-relaxed mt-1">{ref.summary}</p>
+                            <p class="text-black/50 mt-2">Checked {ref.checkedDate}{ref.cycle ? ` · ${ref.cycle}` : ""}</p>
+                        </div>
+                    {/each}
+                </div>
+                {#if view.aiEnabled}<div class="flex flex-wrap gap-2" aria-label="AI preferences"><button class="secondary" onclick={() => college?.openPanel("context")}>Context</button><button class="secondary" onclick={() => college?.openPanel("readers")}>Readers</button><button class="secondary" onclick={() => college?.openPanel("settings")}>AI settings</button></div>{/if}
+                <div class="flex flex-wrap items-center justify-between gap-2 border-t border-black/10 pt-3">
+                    <button class="secondary" disabled={busy || view.saving} onclick={() => update({...setup, active: !setup.active})}>{setup.active ? "Pause setup" : "Resume setup"}</button>
+                    <button class="remove-action" disabled={busy || view.saving} onclick={() => removing = true}>Remove setup…</button>
+                </div>
             </div>
         </details>
     {/if}
@@ -207,6 +217,14 @@ async function update(setup: CollegeSetup | null): Promise<void> {
     .primary { padding:.7rem; border-radius:.5rem; background:#2563eb; color:white; }
     .secondary { padding:.45rem .65rem; border-radius:.4rem; background:rgb(255 255 255 / .7); font-size:.75rem; }
     .link { font-size:.75rem; color:#1d4ed8; text-decoration:underline; text-underline-offset:3px; }
+    .secondary:hover:not(:disabled) { background:rgb(255 255 255 / .95); }
+    .source-link { color:rgb(0 0 0 / .6); font-size:.75rem; text-underline-offset:3px; }
+    .source-link span { margin-left:.25rem; }
+    .source-link:hover { text-decoration:underline; color:rgb(0 0 0 / .85); }
+    .source-card { padding:.7rem; border-radius:.5rem; background:rgb(255 255 255 / .35); }
+    .remove-action { padding:.45rem .2rem; font-size:.75rem; color:#991b1b; }
+    .remove-action:hover:not(:disabled) { text-decoration:underline; text-underline-offset:3px; }
+    a:focus-visible { outline:2px solid #2563eb; outline-offset:3px; border-radius:2px; }
     summary { cursor:pointer; }
     button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
 </style>
