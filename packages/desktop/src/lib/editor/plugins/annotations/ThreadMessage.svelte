@@ -1,4 +1,6 @@
 <script lang="ts">
+import { parsePassageLink, serializePassageLink } from "$lib/editor/passageLink";
+import { appEventBus } from "$lib/events/appEventBus";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 import { readersSettings } from "$lib/readers/settings.svelte";
 import { ThreadMessage as ThreadMessageView } from "@quillium/share";
@@ -42,17 +44,21 @@ let {
 
 /** Look up persona metadata by author name for emoji-in-circle avatar. */
 const persona = $derived(readersSettings.personas.find((p) => p.name === message.author));
+const passage = $derived(parsePassageLink(message.message));
 
 /** Commit the in-place edit back to the parent via updateThread. */
 function saveEdit(editMessage: string) {
     const newThread = [...thread];
-    newThread[index] = { ...thread[index], message: editMessage };
+    newThread[index] = {
+        ...thread[index],
+        message: editMessage + (passage.link ? "\n" + serializePassageLink(passage.link) : ""),
+    };
     updateThread(newThread);
 }
 </script>
 
 <ThreadMessageView
-    {message}
+    message={{ ...message, message: passage.text }}
     {truncate}
     persona={persona
         ? {
@@ -63,3 +69,8 @@ function saveEdit(editMessage: string) {
         : undefined}
     onEdit={saveEdit}
 />
+{#if passage.link}
+    <button title={passage.link.quote} class="ml-9 mt-1 text-xs text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600" onclick={() => { if (passage.link) appEventBus.emit({ type: "open-passage", passage: passage.link }); }}>
+        Supporting passage ↗
+    </button>
+{/if}

@@ -147,9 +147,14 @@ acknowledgment or separate context-confirmation screen. Legacy saved setups that
 contain multiple prompts remain readable until explicit replacement; no automatic
 migration or deletion occurs. School-specific review must distinguish which
 responses are read together; reuse between schools is not inherently a problem.
-The College consumer now persists independent tab briefs. Research (#423) and
-cross-essay review (#424) remain deferred. LaTeX compilation and word-processor/debate formatting are outside the intended
-prose-development scope.
+The College consumer persists independent tab briefs and offers explicit school
+research. Its overlap action is registered through the small
+`ai/feedbackActions.ts` contribution interface. Feedback renders eligible
+contributions; the College plugin owns its essay picker, school scope, and
+comparison logic. Results use ordinary Feedback comments with validated supporting
+passage links. Persistent application grouping and multi-document discovery remain
+deferred. LaTeX compilation and word-processor/debate formatting are outside the
+intended prose-development scope.
 
 ### Acceptance coverage for this slice
 

@@ -138,11 +138,32 @@ retrying loads, opening general panels, and requesting three fixed actions. It
 receives no editor handle, credentials, native command API, or arbitrary network
 capability. The built-in interface is not a sandbox for externally installed code.
 
-[Issue #424](https://github.com/ThatXliner/Quillium/issues/424) can later select one
-draft per tab and compare the responses a school reads together. Reuse across
-different schools is not inherently redundant. Application grouping, cross-essay
-review, external plugins, marketplace distribution,
-and paper/debate workflows are deferred. This consumer does not complete all of #84.
+## Overlap feedback
+
+College contributes **Check overlap with other essays** to the existing Feedback
+actions when the current tab has an active College setup. The compact picker
+suggests other College tabs in the current document and lets the writer change
+the selected drafts and application school before requesting feedback. Opening
+the picker makes no model request. The College panel itself is unchanged.
+
+The current draft receives ordinary comments about concrete repeated anecdotes
+or substantially overlapping points. Thematic continuity and intentional reuse
+across schools are not inherently problems. Each comment includes a supporting
+passage button. Exact captured quotes and source identities are validated before
+comments are created, and navigation checks the source fingerprint before
+selecting a passage. Changed or missing sources never select an unrelated range.
+
+The target and up to three selected source drafts are captured with a maximum
+of 12,000 characters each. The picker discloses omitted characters. The request
+uses the configured model, global and session cancellation, Feedback's comment
+permission, provenance, and the existing annotation gateway and undo commands.
+Sources, setups, and the current target are rechecked before applying results.
+Notes, research, and other Library documents are not included in this comparison.
+
+Selections are transient. No application groups or new database tables are
+created. Multi-document discovery, persistent groups, external plugins,
+marketplace distribution, and paper/debate workflows remain deferred. This
+consumer does not complete all of #84.
 
 ## Optional school research
 

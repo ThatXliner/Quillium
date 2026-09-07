@@ -1,6 +1,8 @@
 <script lang="ts">
 import { collegeWorkspace, cancelCollegeTabPick, applyCollegeToExistingTab } from "$lib/college/workspace.svelte";
 import { logAppEvent } from "$lib/appLog";
+import { researchFingerprint } from "$lib/college/researchModel";
+import type { PassageLink } from "./passageLink";
 import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
@@ -11,6 +13,7 @@ import {
     currentDocumentId,
     currentDraftId,
     currentTabId,
+    modalStack,
     documentContent,
     editorView,
     selectedText,
@@ -435,6 +438,32 @@ $effect(() =>
 );
 
 const drafts = loader.drafts;
+$effect(() => appEventBus.on("open-passage", (event) => {
+    void openPassage(event.passage).catch((error) => toast.error(String(error)));
+}));
+async function openPassage(passage: PassageLink): Promise<void> {
+    if (passage.documentId !== $currentDocumentId || !drafts.tabs.some((tab) => tab.id === passage.tabId)) {
+        toast.info("This supporting essay is no longer available in this document.");
+        return;
+    }
+    if ($currentTabId !== passage.tabId) await drafts.handleTabSelect(passage.tabId);
+    if ($currentDocumentId !== passage.documentId || $currentTabId !== passage.tabId) return;
+    if (!drafts.tabDrafts.some((draft) => draft.id === passage.draftId)) {
+        toast.info("This supporting draft was removed.");
+        return;
+    }
+    if ($currentDraftId !== passage.draftId) await drafts.handleDraftSelect(passage.draftId);
+    if ($currentDocumentId !== passage.documentId || $currentTabId !== passage.tabId || $currentDraftId !== passage.draftId || !$editorView) return;
+    modalStack.clear();
+    const text = $editorView.state.doc.toString();
+    if (researchFingerprint(text) !== passage.fingerprint || text.slice(passage.from, passage.to) !== passage.quote) {
+        $editorView.dispatch({ selection: { anchor: 0 } });
+        toast.info("This draft changed since the comment. The old passage is no longer selected.");
+        return;
+    }
+    $editorView.dispatch({ selection: { anchor: passage.from, head: passage.to }, effects: EditorView.scrollIntoView(passage.from, { y: "center" }) });
+    $editorView.focus();
+}
 const pickingCollegeTab = $derived(collegeWorkspace.setup !== null && collegeWorkspace.documentId === $currentDocumentId);
 $effect(() => appEventBus.on("college-tabs-created", event => {
     void drafts.acceptCreatedCollegeTabs(event.documentId, event.tabs, event.selectFirst).catch(error => toast.error(String(error)));
