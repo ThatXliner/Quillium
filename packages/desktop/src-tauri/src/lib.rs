@@ -12,8 +12,10 @@ use tauri_plugin_dialog::DialogExt;
 
 use db::{
     ai::{
-        clear_conversation, get_editorial_decisions, get_writer_brief, load_conversation,
-        save_conversation, set_editorial_decisions, set_writer_brief,
+        archive_conversation, clear_conversation, create_conversation, delete_conversation,
+        get_conversation, get_editorial_decisions, get_writer_brief, list_conversations,
+        load_conversation, rename_conversation, save_conversation, save_conversation_messages,
+        set_editorial_decisions, set_writer_brief,
     },
     college::{
         create_college_tabs, get_college_document_enabled, get_college_tab_setup,
@@ -42,8 +44,8 @@ use db::{
         restore_coordinate_nondestructive, restore_draft, restore_tab, set_active_draft,
         set_active_tab, set_draft_locked, ReparentEntry,
     },
-    AppendEventResult, DocEventRecord, DocumentMeta, DocumentSnapshotMeta, DocumentStructure,
-    DraftMeta, EventRecord, LoadResult, SnapshotMeta, TabMeta,
+    AppendEventResult, Conversation, DocEventRecord, DocumentMeta, DocumentSnapshotMeta,
+    DocumentStructure, DraftMeta, EventRecord, LoadResult, SnapshotMeta, TabMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use oauth::await_openai_oauth_callback;
@@ -88,6 +90,87 @@ fn cmd_clear_ai_conversation(
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     clear_conversation(&conn, &draft_id, &mode).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_ai_conversations(
+    state: tauri::State<DbState>,
+    document_id: String,
+) -> Result<Vec<Conversation>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_conversations(&conn, &document_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_ai_conversation(
+    state: tauri::State<DbState>,
+    id: String,
+) -> Result<Option<Conversation>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_conversation(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_ai_conversation(
+    state: tauri::State<DbState>,
+    id: String,
+    document_id: String,
+    draft_id: String,
+    mode: String,
+    title: String,
+    messages_json: String,
+    source_conversation_id: Option<String>,
+    source_message_id: Option<String>,
+) -> Result<Conversation, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_conversation(
+        &conn,
+        &id,
+        &document_id,
+        &draft_id,
+        &mode,
+        &title,
+        &messages_json,
+        source_conversation_id.as_deref(),
+        source_message_id.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_save_ai_conversation_messages(
+    state: tauri::State<DbState>,
+    id: String,
+    messages_json: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    save_conversation_messages(&conn, &id, &messages_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_rename_ai_conversation(
+    state: tauri::State<DbState>,
+    id: String,
+    title: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    rename_conversation(&conn, &id, &title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_archive_ai_conversation(
+    state: tauri::State<DbState>,
+    id: String,
+    archived: bool,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    archive_conversation(&conn, &id, archived).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_delete_ai_conversation(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_conversation(&conn, &id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1008,6 +1091,7 @@ fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
         "DELETE FROM vec_chunks;
          DELETE FROM chunks;
          DELETE FROM ai_conversations;
+         DELETE FROM ai_conversation_history;
          DELETE FROM document_editorial_decisions;
          DELETE FROM document_ai_profiles;
          DELETE FROM snapshots;
@@ -1418,6 +1502,13 @@ pub fn run() {
             cmd_load_ai_conversation,
             cmd_save_ai_conversation,
             cmd_clear_ai_conversation,
+            cmd_list_ai_conversations,
+            cmd_get_ai_conversation,
+            cmd_create_ai_conversation,
+            cmd_save_ai_conversation_messages,
+            cmd_rename_ai_conversation,
+            cmd_archive_ai_conversation,
+            cmd_delete_ai_conversation,
             cmd_get_document_writer_brief,
             cmd_set_document_writer_brief,
             cmd_get_document_editorial_decisions,

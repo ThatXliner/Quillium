@@ -73,6 +73,8 @@ import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { documentContent, selectedText } from "$lib/stores";
 import { UsersIcon } from "lucide-svelte";
 import ContextLens from "./ContextLens.svelte";
+import ConversationHistory from "./ConversationHistory.svelte";
+import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import PersonaInfoModal from "./PersonaInfoModal.svelte";
 import type { ContextAction } from "./context";
@@ -85,17 +87,16 @@ let input = $state("");
 let personaInFlight = $state(false);
 let contributedBusy = $state(false);
 
-const { chat, clearChat, sendMessage } = createAiChat({ mode: "feedback" });
+const { chat, sendMessage, conversations } = createAiChat({ mode: "feedback" });
+let isBusy = $derived(
+    chat.status === "submitted" ||
+        chat.status === "streaming" ||
+        (conversations ? !conversations.canSend : false),
+);
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
 );
 let showStarterSuggestions = $derived(!hasConversationActivity);
-let showConversationControls = $derived(hasConversationActivity);
-
-function clearConversation() {
-    clearChat();
-    personaInFlight = false;
-}
 
 $effect(() => appEventBus.on("college-action", (event) => {
     if (event.target.documentId !== $currentDocumentId || event.target.tabId !== $currentTabId || event.target.draftId !== $currentDraftId) return;
@@ -124,7 +125,7 @@ $effect(() => {
  * are actually enabled, uses the single-stream chat.
  */
 async function sendFeedback(text: string, trigger: string, turn?: ContextAction["turn"]) {
-    if (contributedBusy) return;
+    if (contributedBusy || (conversations && !conversations.canSend)) return;
     const personas = personasEnabledFor("feedback") ? getEnabledPersonas() : [];
     if (personas.length === 0) {
         posthog.capture("ai_feedback_requested", {
@@ -159,7 +160,7 @@ async function sendFeedback(text: string, trigger: string, turn?: ContextAction[
 
 function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
-    if (!input.trim() || chat.status !== "ready") return;
+    if (!input.trim() || isBusy) return;
     const text = input;
     input = "";
     sendFeedback(text, "manual");
@@ -231,7 +232,7 @@ function useContextAction(action: ContextAction) {
     {#if _active && _session}
         {#each feedbackActions as action (action.id)}
             {#if action.applies(_session)}
-                <action.component session={_session} disabled={chat.status !== "ready" || personaInFlight || contributedBusy} onBusyChange={(busy) => (contributedBusy = busy)} />
+                <action.component session={_session} disabled={isBusy || personaInFlight || contributedBusy} onBusyChange={(busy) => (contributedBusy = busy)} />
             {/if}
         {/each}
     {/if}
@@ -239,7 +240,7 @@ function useContextAction(action: ContextAction) {
     {#if showStarterSuggestions}
         <ContextLens
             mode="feedback"
-            disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !$documentContent}
+            disabled={isBusy || personaInFlight || contributedBusy || !$documentContent}
             onAction={useContextAction}
         />
     {/if}
@@ -248,7 +249,7 @@ function useContextAction(action: ContextAction) {
         <div class="px-3 pb-3 border-b border-black/10">
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
-                disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !$documentContent}
+                disabled={isBusy || personaInFlight || contributedBusy || !$documentContent}
                 panel="feedback"
                 theme="green"
                 onPrompt={useQuickPrompt}
@@ -256,15 +257,8 @@ function useContextAction(action: ContextAction) {
         </div>
     {/if}
 
-    <!-- Clear chat row -->
-    {#if showConversationControls}
-        <div class="flex justify-end px-3 pt-2 shrink-0">
-            <button
-                onclick={clearConversation}
-                title="Start a fresh conversation (clears all messages)"
-                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
-            >New chat</button>
-        </div>
+    {#if conversations}
+        <ConversationHistory {conversations} mode="feedback" disabled={personaInFlight || contributedBusy} />
     {/if}
 
     <!-- Chat messages -->
@@ -295,6 +289,9 @@ function useContextAction(action: ContextAction) {
                     </div>
                 {/if}
             {/each}
+            {#if conversations}
+                <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading || personaInFlight} />
+            {/if}
         {/each}
 
         {#if chat.status === "streaming" || chat.status === "submitted" || personaInFlight}
@@ -324,7 +321,7 @@ function useContextAction(action: ContextAction) {
         {#if !showStarterSuggestions}
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
-                disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !$documentContent}
+                disabled={isBusy || personaInFlight || contributedBusy || !$documentContent}
                 compact
                 panel="feedback"
                 theme="green"
@@ -337,13 +334,13 @@ function useContextAction(action: ContextAction) {
                 bind:value={input}
                 name="message"
                 placeholder="Ask for specific feedback..."
-                disabled={chat.status !== "ready" || personaInFlight || contributedBusy}
+                disabled={isBusy || personaInFlight || contributedBusy}
                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || personaInFlight || contributedBusy || !input.trim()}
+                disabled={isBusy || personaInFlight || contributedBusy || !input.trim()}
                 class="w-full py-2 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Send

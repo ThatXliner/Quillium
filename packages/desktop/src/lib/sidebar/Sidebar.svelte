@@ -141,6 +141,7 @@ $effect(() => {
 });
 
 const expanded = $derived(action !== null);
+let largeChat = $state(false);
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 570;
 const MIN_WIDTH = 240;
@@ -161,8 +162,12 @@ const resize: PanelResizeController = new PanelResizeController({
 
 const defaultWidthForTab = $derived(activePanel?.preferredWidth ?? DEFAULT_WIDTH);
 const defaultHeightForTab = $derived(activePanel?.preferredHeight ?? DEFAULT_HEIGHT);
-const effectiveWidth = $derived(resize.customWidth ?? defaultWidthForTab);
-const effectiveHeight = $derived(resize.customHeight ?? defaultHeightForTab);
+const effectiveWidth = $derived(
+    action === "chat" && largeChat ? 960 : (resize.customWidth ?? defaultWidthForTab),
+);
+const effectiveHeight = $derived(
+    action === "chat" && largeChat ? 1000 : (resize.customHeight ?? defaultHeightForTab),
+);
 const isCustomSize = $derived(resize.customWidth !== null || resize.customHeight !== null);
 const contextPanelMode = $derived(activePanel?.contextMode ?? null);
 const headerAnnotationContext = $derived(
@@ -438,7 +443,7 @@ function handleKeydown(e: KeyboardEvent) {
   onclick={handleSidebarClick}
   style={containerSizeStyle}
   class="
-        fixed left-4 top-1/2 -translate-y-1/2 z-50 shadow-lg {transitionClass}
+        fixed left-4 top-1/2 -translate-y-1/2 {action === "chat" && largeChat ? "z-[60]" : "z-50"} shadow-lg {transitionClass}
         {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[280px] rounded-[100px]'}
         {aiProcessing.active ? 'ai-processing' : ''}
     "
@@ -542,6 +547,9 @@ function handleKeydown(e: KeyboardEvent) {
       <span class="flex-1 text-xs font-semibold text-black/50 truncate">
         {activePanel?.title ?? ""}
       </span>
+      {#if action === "chat"}
+        <button class="px-2 py-1 text-xs text-black/60 rounded hover:bg-white/40" aria-pressed={largeChat} onclick={() => largeChat = !largeChat}>{largeChat ? "Compact view" : "Expand chat"}</button>
+      {/if}
       {#if isCustomSize}
         <button
           onclick={() => resize.reset()}

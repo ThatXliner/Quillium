@@ -64,6 +64,10 @@ import {
     streamRevise,
 } from "./clientStreams";
 import {
+    createConversationController,
+    sanitizeOutboundMessages,
+} from "./conversationController.svelte";
+import {
     type EditorialActionPayload,
     applyEditorialAction,
     editorialActionFailureMessage,
@@ -83,11 +87,7 @@ import {
     getActiveEditorialView,
     releaseEditorialTarget,
 } from "./editorialTarget";
-import {
-    clearAiConversation,
-    isPersistentConversationMode,
-    saveAiConversation,
-} from "./persistence";
+import { isPersistentConversationMode } from "./persistence";
 import { createAiGenerationProvenance } from "./provenance";
 import {
     aiSettings,
@@ -95,7 +95,6 @@ import {
     getAiAbortSignal,
     getEffectiveDocumentContext,
     getEffectiveEditorialPreferences,
-    setAiProcessing,
 } from "./settings.svelte";
 import type { DocumentContext } from "./settings.svelte";
 
@@ -124,6 +123,17 @@ type ToolCallGuard = {
     allowedActions: readonly EditorialAction[];
     provenance: AiGenerationProvenance;
     exactWordCount?: number;
+};
+
+type RequestContextSnapshot = {
+    documentId: string | null;
+    tabId: string | null;
+    draftId: string | null;
+    capturedAt: number;
+    provider: string;
+    model: string;
+    draftText: string;
+    selectedText: string;
 };
 
 /**
@@ -425,7 +435,11 @@ function resolveTurnFromBody(mode: AiChatMode, body: object | undefined): Editor
 function makeTransport(
     mode: AiChatMode,
     streamFn: StreamFn,
-    captureTarget: (target: EditorialTargetSnapshot, turn: EditorialTurnAtSend) => void,
+    captureTarget: (
+        target: EditorialTargetSnapshot,
+        turn: EditorialTurnAtSend,
+        context: RequestContextSnapshot,
+    ) => void,
 ): ChatTransport<UIMessage> {
     return {
         async sendMessages({
@@ -498,9 +512,19 @@ function makeTransport(
                     selectedTextRange: selectedTextRangeAtSend,
                 }),
                 turn,
+                {
+                    documentId: requestTarget.documentId,
+                    tabId: get(currentTabId),
+                    draftId: requestTarget.draftId,
+                    capturedAt: Date.now(),
+                    provider: aiSettingsAtSend.provider,
+                    model: aiSettingsAtSend.model,
+                    draftText: documentContentAtSend.slice(0, 2_000),
+                    selectedText: selectedTextAtSend.slice(0, 500),
+                },
             );
             return streamFn({
-                messages: JSON.parse(JSON.stringify(messages)) as UIMessage[],
+                messages: sanitizeOutboundMessages(messages),
                 documentContent: documentContentAtSend,
                 selectedText: selectedTextAtSend,
                 selectedTextRange: selectedTextRangeAtSend,
@@ -570,11 +594,47 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         turnAtSend = undefined;
     }
 
+    function updateRequestContextMetadata(context: RequestContextSnapshot) {
+        const index = [...chat.messages]
+            .map((message, messageIndex) => ({ message, messageIndex }))
+            .reverse()
+            .find(({ message }) => message.role === "user")?.messageIndex;
+        if (index === undefined) return;
+        const message = chat.messages[index];
+        const metadata =
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata)
+                ? (message.metadata as Record<string, unknown>)
+                : {};
+        const oldContext =
+            metadata.writingContext &&
+            typeof metadata.writingContext === "object" &&
+            !Array.isArray(metadata.writingContext)
+                ? (metadata.writingContext as Record<string, unknown>)
+                : {};
+        chat.messages = chat.messages.map((candidate, candidateIndex) =>
+            candidateIndex === index
+                ? {
+                      ...candidate,
+                      metadata: {
+                          ...metadata,
+                          writingContext: {
+                              ...oldContext,
+                              ...context,
+                          },
+                      },
+                  }
+                : candidate,
+        );
+    }
+
     const chat = new Chat({
-        transport: makeTransport(mode, transportWithTracking, (target, turn) => {
+        transport: makeTransport(mode, transportWithTracking, (target, turn, context) => {
             releaseTargetAtSend();
             targetAtSend = target;
             turnAtSend = turn;
+            updateRequestContextMetadata(context);
             const provenanceTask = actionProvenanceTask(turn.task);
             provenanceAtSend = provenanceTask
                 ? createAiGenerationProvenance({
@@ -598,13 +658,8 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
                 exactWordCount: turnAtSend.exactWordCount,
             });
         },
-        onFinish: ({ messages }) => {
-            const draftId = targetAtSend?.draftId;
+        onFinish: () => {
             releaseTargetAtSend();
-            if (!draftId || !isPersistentConversationMode(mode)) return;
-            void saveAiConversation(draftId, mode, messages).catch((error) => {
-                console.error("[chatFactory] failed to save AI conversation", error);
-            });
         },
         onError: (error) => {
             void logAppEvent("error", "ai", "AI chat failed", { mode, error });
@@ -612,16 +667,48 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         },
     });
 
-    function clearChat() {
-        chat.messages = [];
-        const draftId = get(currentDraftId);
-        if (!draftId || !isPersistentConversationMode(mode)) return;
-        void clearAiConversation(draftId, mode).catch((error) => {
-            console.error("[chatFactory] failed to clear AI conversation", error);
+    const conversationController = isPersistentConversationMode(mode)
+        ? createConversationController({
+              chat,
+              mode,
+              beforeReplace: releaseTargetAtSend,
+              requestSettings: () => ({
+                  provider: aiSettings.provider,
+                  model: aiSettings.model,
+              }),
+          })
+        : undefined;
+
+    if (conversationController) {
+        Object.assign(chat, {
+            conversationManaged: true,
+            conversationController,
         });
     }
 
+    const originalStop = chat.stop.bind(chat);
+    chat.stop = async () => {
+        releaseTargetAtSend();
+        return originalStop();
+    };
+
+    function clearChat() {
+        if (conversationController) {
+            void conversationController.newConversation().catch((error) => {
+                conversationController.reportError(error);
+            });
+            return;
+        }
+        chat.messages = [];
+    }
+
     function sendMessage(text: string, turn?: EditorialTurn): Promise<void> {
+        if (conversationController) {
+            return conversationController.sendMessage(text, turn).catch((error) => {
+                conversationController.reportError(error);
+            });
+        }
+
         const task = resolveEditorialTask(mode, turn?.task);
         const exactWordCount = validExactWordCount(turn?.exactWordCount);
         if (task === "exact-compression" && exactWordCount === undefined) {
@@ -640,7 +727,12 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         );
     }
 
-    return { chat, clearChat, sendMessage };
+    return {
+        chat,
+        clearChat,
+        sendMessage,
+        conversations: conversationController?.conversations,
+    };
 }
 
 // Re-export so components only need one import for all chat concerns

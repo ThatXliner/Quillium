@@ -39,6 +39,9 @@ change the schema, **append a new numbered migration**; never edit shipped ones.
 | 10 | ai_conversations_and_profiles | adds draft-scoped AI conversations and document-scoped writer briefs |
 | 11 | document_editorial_decisions | adds explicit document-scoped editorial decisions |
 | 12 | document_creator_version | adds nullable `documents.created_with_version`; legacy rows remain unknown (`NULL`) |
+| 13 | college_tab_setups | stores College setup per tab |
+| 14 | college_document_activation | persists document opt-in for College |
+| 15 | ai_conversation_history | copies legacy AI arrays into distinct conversations with archive state and branch origins |
 
 Key files:
 

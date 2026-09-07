@@ -61,6 +61,8 @@ import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
  */
 import { documentContent, selectedText } from "$lib/stores";
 import ContextLens from "./ContextLens.svelte";
+import ConversationHistory from "./ConversationHistory.svelte";
+import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
 
@@ -68,19 +70,18 @@ import type { ContextAction } from "./context";
 let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
-const { chat, clearChat, sendMessage } = createAiChat({ mode: "chat" });
-let isBusy = $derived(chat.status === "submitted" || chat.status === "streaming");
+const { chat, sendMessage, conversations } = createAiChat({ mode: "chat" });
+let isBusy = $derived(
+    chat.status === "submitted" ||
+        chat.status === "streaming" ||
+        (conversations ? !conversations.canSend : false),
+);
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || !!chat.error,
 );
 let showStarterSuggestions = $derived(!hasConversationActivity);
-let showConversationControls = $derived(hasConversationActivity);
-
-function clearConversation() {
-    clearChat();
-}
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
@@ -144,15 +145,8 @@ async function handleSubmit(event: Event) {
 </script>
 
 <div class="flex flex-col h-full">
-    <!-- Clear chat row -->
-    {#if showConversationControls}
-        <div class="flex justify-end px-3 pt-2 shrink-0">
-            <button
-                onclick={clearConversation}
-                title="Start a fresh conversation (clears all messages)"
-                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
-            >New chat</button>
-        </div>
+    {#if conversations}
+        <ConversationHistory {conversations} mode="chat" />
     {/if}
 
     {#if showStarterSuggestions}
@@ -201,6 +195,9 @@ async function handleSubmit(event: Event) {
                     </div>
                 {/if}
             {/each}
+            {#if conversations}
+                <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading} />
+            {/if}
         {/each}
 
         {#if chat.status === "streaming"}

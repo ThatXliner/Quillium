@@ -168,3 +168,11 @@ _Avoid_: Plugin
 **Plugin**:
 An addition to Quillium's writing capabilities, which may also supply presets.
 _Avoid_: Preset, distribution package
+
+## AI discussions
+
+**Conversation**:
+A saved Chat, Feedback, or Revise discussion with its own identity and original
+draft association. A conversation branch copies a message prefix into another
+conversation and records its origin. It does not branch the draft or change prose.
+_Avoid_: Draft history, revision version
