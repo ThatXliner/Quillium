@@ -164,15 +164,10 @@ test("a school supplement keeps its character limit and applies to an inactive w
     q.expectNoPageErrors();
 });
 
-test("AI-off narrow layout supports keyboard selection of the active workspace tab", async ({
-    page,
-}) => {
+test("narrow layout supports keyboard selection of the active workspace tab", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 600 });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const q = new QuilliumPage(page, {
-        apiKey: null,
-        settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: false },
-    });
+    const q = new QuilliumPage(page, { apiKey: null });
     await q.init();
     await openCollege(page);
     await selectPrompt(page, "PIQ 1");
@@ -185,8 +180,44 @@ test("AI-off narrow layout supports keyboard selection of the active workspace t
         .not.toBeNull();
     await openCollege(page);
     await expect(panel(page).getByRole("button", { name: "Change prompt" })).toBeVisible();
-    await expect(page.locator("#ai-tab-context")).toHaveCount(0);
     const box = await q.aiSidebar.boundingBox();
     expect(box!.width).toBeLessThanOrEqual(288);
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+    q.expectNoPageErrors();
+});
+
+test("toggling AI hides College and preserves saved setup", async ({ page }) => {
+    const q = new QuilliumPage(page, { apiKey: null });
+    await q.init();
+    await openCollege(page);
+    await selectPrompt(page, "PIQ 1");
+    await panel(page).getByRole("button", { name: "Apply to existing tab" }).click();
+    await page.locator('[data-tab-id="tab-test-1"]').click();
+    await expect
+        .poll(() => page.evaluate((key) => localStorage.getItem(key), savedKey))
+        .not.toBeNull();
+    const saved = await page.evaluate((key) => localStorage.getItem(key), savedKey);
+
+    async function toggleAi(): Promise<void> {
+        const settings = await q.openSettings();
+        await settings.getByRole("button", { name: "Advanced", exact: true }).click();
+        await settings.getByLabel("Toggle AI features").click();
+        await settings.getByRole("button", { name: "Save", exact: true }).click();
+    }
+
+    await toggleAi();
+    await expect(page.locator("#ai-sidebar")).toHaveCount(0);
+    await expect(panel(page)).toHaveCount(0);
+    await page.keyboard.press("Control+Shift+4");
+    await expect(page.locator("#ai-sidebar")).toHaveCount(0);
+    expect(await page.evaluate((key) => localStorage.getItem(key), savedKey)).toBe(saved);
+
+    await toggleAi();
+    await expect(page.locator("#ai-tab-college")).toBeVisible();
+    await expect(panel(page)).toHaveCount(0);
+    await openCollege(page);
+    await expect(panel(page).getByRole("button", { name: "Change prompt" })).toBeVisible();
+    expect(await page.evaluate((key) => localStorage.getItem(key), savedKey)).toBe(saved);
     q.expectNoPageErrors();
 });

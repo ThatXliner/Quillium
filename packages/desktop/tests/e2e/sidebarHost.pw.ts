@@ -78,13 +78,13 @@ test.describe("sidebar host local panels", () => {
         await page.locator('#ai-sidebar button[aria-label="AI Settings"]:visible').last().click();
         await expect(page.locator('#ai-sidebar [data-panel-id="settings"]')).toBeVisible();
         await expect(q.aiSidebar).toContainText("AI Settings");
+        await expandedPanelButton(q, "Chat").click();
+        await expect(page.locator('#ai-sidebar [data-panel-id="settings"]')).toBeVisible();
         expect(providerRequests).toHaveLength(0);
         q.expectNoPageErrors();
     });
 
-    test("hides AI-dependent panels when AI is disabled while keeping College available", async ({
-        page,
-    }) => {
+    test("hides all current panels and sidebar chrome when AI is disabled", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: null,
             settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: false },
@@ -97,7 +97,10 @@ test.describe("sidebar host local panels", () => {
         await expect(page.locator("#ai-sidebar #ai-tab-context")).toHaveCount(0);
         await expect(page.locator("#ai-sidebar #ai-tab-readers")).toHaveCount(0);
         await expect(page.locator('#ai-sidebar button[aria-label="AI Settings"]')).toHaveCount(0);
-        await expect(page.locator("#ai-sidebar #ai-tab-college")).toHaveCount(1);
+        await expect(page.locator("#ai-sidebar #ai-tab-college")).toHaveCount(0);
+        await expect(page.locator("#ai-sidebar")).toHaveCount(0);
+        await page.keyboard.press("Control+Shift+4");
+        await expect(page.locator("#ai-sidebar")).toHaveCount(0);
         await expect(page.locator('#ai-sidebar button[aria-label^="Chat"]')).toHaveCount(0);
         q.expectNoPageErrors();
     });

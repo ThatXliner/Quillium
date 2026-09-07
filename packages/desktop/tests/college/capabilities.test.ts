@@ -359,6 +359,36 @@ describe("createCollegeCapabilities", () => {
         expect(mocks.ensureApiKeyLoaded).not.toHaveBeenCalled();
     });
 
+    it.each(["prompt-fit", "specificity", "plan"] as const)(
+        "rejects the %s request when AI is disabled",
+        (action) => {
+            activeSetup();
+            mocks.appSettings.aiEnabled = false;
+            const openPanel = vi.fn();
+            const { session } = sessionFor();
+            const capabilities = createCollegeCapabilities(session, openPanel);
+
+            expect(() => capabilities.request(action)).toThrow(/enable ai/i);
+            expect(openPanel).not.toHaveBeenCalled();
+            expect(mocks.appEventBus.emit).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(["prompt-fit", "specificity", "plan"] as const)(
+        "rejects the %s request when credentials are unavailable",
+        (action) => {
+            activeSetup();
+            mocks.state.credentials = false;
+            const openPanel = vi.fn();
+            const { session } = sessionFor();
+            const capabilities = createCollegeCapabilities(session, openPanel);
+
+            expect(() => capabilities.request(action)).toThrow(/enable ai/i);
+            expect(openPanel).not.toHaveBeenCalled();
+            expect(mocks.appEventBus.emit).not.toHaveBeenCalled();
+        },
+    );
+
     it("rejects stale open and action capabilities", () => {
         activeSetup();
         const first = sessionFor();

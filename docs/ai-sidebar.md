@@ -76,17 +76,20 @@ component through the same loops; it does not require another rendering branch i
 the host. Settings uses the utility placement. The `ai_sidebar_opened` analytics
 event and `ai-sidebar` DOM IDs remain unchanged for compatibility.
 
-When AI is disabled, the Chat, Feedback, Revise, Context, Readers, and AI Settings
-panels are hidden. The local College panel remains available. When AI is enabled,
-Context, Readers, and Settings open without model credentials; generating a
+When AI is disabled, Chat, Feedback, Revise, Context, Readers, AI Settings, and
+College are hidden through their `requiresAi` metadata. Contributions without
+that dependency remain available. The host hides its chrome when no panels are
+eligible. When AI is enabled, College, Context, Readers, and Settings open without
+model credentials; generating a
 Context brief still requires an enabled model connection. Opening Context or
 Readers does not load credentials; Settings retains its explicit connection and
 credential controls. Chat, Feedback, and Revise retain their credential-to-Settings
 navigation.
 
-The five eager AI writing panels retain their mounted state while hidden; College
+The five eager AI writing panels retain their mounted state while collapsed or
+another panel is selected; College
 and Settings mount only while active. Hiding a panel ends its host session but
-does not erase saved writing context. Removing its contribution or adding its ID to `disabledPanelIds`
+does not erase saved writing context. Disabling its AI prerequisite, removing its contribution, or adding its ID to `disabledPanelIds`
 unmounts it and stops outstanding built-in AI work; re-enabling creates one instance keyed by the stable ID. Duplicate
 IDs and shortcuts are rejected when the contribution list is assembled. The
 `ai_sidebar_opened` analytics event and `ai-sidebar` DOM IDs remain unchanged

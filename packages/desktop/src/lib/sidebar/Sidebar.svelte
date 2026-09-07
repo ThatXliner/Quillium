@@ -226,7 +226,7 @@ const transitionClass = $derived(
         : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
 );
 
-let container: HTMLDivElement;
+let container = $state<HTMLDivElement>();
 let iconStrip = $state<HTMLDivElement>();
 let iconEls = $state<HTMLButtonElement[]>([]);
 let stripOverflows = $state(false);
@@ -417,6 +417,7 @@ function handleKeydown(e: KeyboardEvent) {
   >
 {/snippet}
 
+{#if panels.length > 0}
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
@@ -646,6 +647,8 @@ function handleKeydown(e: KeyboardEvent) {
       Stop
     </button>
   </div>
+{/if}
+
 {/if}
 
 <style>

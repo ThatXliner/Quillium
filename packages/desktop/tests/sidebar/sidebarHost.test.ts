@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { type AppSettings, appSettings } from "$lib/settings.svelte";
 import Sidebar from "$lib/sidebar/Sidebar.svelte";
 import type { SidebarPanelContribution, SidebarPanelProps } from "$lib/sidebar/panels";
 import { currentDocumentId, currentDraftId, currentTabId, selectedText } from "$lib/stores";
@@ -11,12 +12,9 @@ import ThrowingPanel from "./fixtures/ThrowingPanel.svelte";
 import { panelProbe, resetPanelProbe, throwingPanelState } from "./fixtures/probe";
 
 vi.mock("$lib/sidebar/builtInPanels", () => ({ builtInPanels: [] }));
+vi.unmock("$lib/settings.svelte");
 
-const { appSettings, ensureApiKeyLoaded, hasApiKey, stopAllAi } = vi.hoisted(() => ({
-    appSettings: {
-        aiEnabled: true,
-        collapseContextSummary: false,
-    },
+const { ensureApiKeyLoaded, hasApiKey, stopAllAi } = vi.hoisted(() => ({
     ensureApiKeyLoaded: vi.fn(() => Promise.resolve()),
     hasApiKey: vi.fn(() => false),
     stopAllAi: vi.fn(),
@@ -30,7 +28,6 @@ vi.mock("$lib/ai/settings.svelte", () => ({
     stopAllAi,
     useDocumentContextEffects: vi.fn(),
 }));
-vi.mock("$lib/settings.svelte", () => ({ appSettings }));
 vi.mock("$lib/posthog", () => ({ default: { capture: vi.fn() } }));
 vi.mock("$lib/ai/context", () => ({
     buildAiContextPacket: vi.fn(() => null),
@@ -39,6 +36,10 @@ vi.mock("$lib/ai/context", () => ({
 vi.mock("$lib/ai/annotationContext", () => ({
     buildAnnotationContextInputs: vi.fn(() => []),
 }));
+
+const mutableAppSettings = appSettings as AppSettings;
+let previousAiEnabled: boolean;
+let previousCollapseContextSummary: boolean;
 
 function contribution(overrides: Partial<SidebarPanelContribution> = {}): SidebarPanelContribution {
     return {
@@ -100,8 +101,10 @@ beforeEach(() => {
     resetPanelProbe();
     throwingPanelState.shouldThrow = true;
     resetStores();
-    appSettings.aiEnabled = true;
-    appSettings.collapseContextSummary = false;
+    previousAiEnabled = mutableAppSettings.aiEnabled;
+    previousCollapseContextSummary = mutableAppSettings.collapseContextSummary;
+    mutableAppSettings.aiEnabled = true;
+    mutableAppSettings.collapseContextSummary = false;
     ensureApiKeyLoaded.mockClear();
     hasApiKey.mockClear();
     stopAllAi.mockClear();
@@ -123,10 +126,54 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     resetStores();
+    mutableAppSettings.aiEnabled = previousAiEnabled;
+    mutableAppSettings.collapseContextSummary = previousCollapseContextSummary;
 });
 
 describe("Sidebar panel host", () => {
-    it("opens a local contribution without loading credentials", async () => {
+    it("does not render sidebar chrome for empty contributions", () => {
+        const ui = render(Sidebar, { props: { contributions: [] } });
+
+        expect(ui.container.querySelector("#ai-sidebar")).not.toBeInTheDocument();
+    });
+
+    it("hides all AI-dependent contributions and ignores their shortcuts when AI is disabled", async () => {
+        mutableAppSettings.aiEnabled = false;
+        const ui = render(Sidebar, {
+            props: {
+                contributions: [
+                    contribution({
+                        id: "ai-context",
+                        label: "AI Context",
+                        requiresAi: true,
+                        shortcutKey: "1",
+                    }),
+                    contribution({
+                        id: "ai-settings",
+                        label: "AI Settings",
+                        requiresAi: true,
+                        shortcutKey: "2",
+                        placement: "utility",
+                        mount: "active",
+                    }),
+                ],
+            },
+        });
+
+        expect(ui.container.querySelector("#ai-sidebar")).not.toBeInTheDocument();
+        expect(ui.container.querySelector('[data-panel-id="ai-context"]')).not.toBeInTheDocument();
+        expect(ui.container.querySelector('[data-panel-id="ai-settings"]')).not.toBeInTheDocument();
+        expect(panelProbe.mountCount).toBe(0);
+
+        await fireEvent.keyDown(window, { key: "1", ctrlKey: true, shiftKey: true });
+        await fireEvent.keyDown(window, { key: "2", ctrlKey: true, shiftKey: true });
+
+        expect(ui.container.querySelector("#ai-sidebar")).not.toBeInTheDocument();
+        expect(panelProbe.mountCount).toBe(0);
+    });
+
+    it("opens a local contribution without credentials while AI is disabled", async () => {
+        mutableAppSettings.aiEnabled = false;
         const ui = render(Sidebar, {
             props: { contributions: [contribution()] },
         });
@@ -142,48 +189,61 @@ describe("Sidebar panel host", () => {
         expect(stopAllAi).not.toHaveBeenCalled();
     });
 
-    it("hides AI-dependent panels when AI is disabled while retaining the College-style local panel", async () => {
-        appSettings.aiEnabled = false;
+    it("aborts and unmounts active panels when AI is disabled, then restores collapsed state", async () => {
         const ui = render(Sidebar, {
             props: {
                 contributions: [
                     contribution({
-                        id: "ai-context",
-                        label: "AI Context",
+                        id: "eager-ai",
+                        label: "Eager AI",
                         requiresAi: true,
-                        shortcutKey: undefined,
                     }),
                     contribution({
-                        id: "college",
-                        label: "College",
-                        requiresAi: false,
+                        id: "active-ai",
+                        label: "Active AI",
+                        requiresAi: true,
                         shortcutKey: undefined,
+                        mount: "active",
                     }),
                 ],
             },
         });
 
-        expect(ui.container.querySelector("#ai-tab-ai-context")).not.toBeInTheDocument();
-        expect(ui.container.querySelector("#ai-tab-college")).toBeInTheDocument();
+        expect(panelProbe.mountCount).toBe(1);
+        await fireEvent.click(collapsedPanelButton(ui.container, /^Active AI/));
+        expect(panelProbe.mountCount).toBe(2);
+        const activeSession = panelProbe.updates.find((update) => update.session)?.session;
+        expect(activeSession).toBeDefined();
+        expect(activeSession?.signal.aborted).toBe(false);
 
-        appSettings.aiEnabled = true;
-        await ui.rerender({
-            contributions: [
-                contribution({
-                    id: "ai-context",
-                    label: "AI Context",
-                    requiresAi: true,
-                    shortcutKey: undefined,
-                }),
-                contribution({
-                    id: "college",
-                    label: "College",
-                    requiresAi: false,
-                    shortcutKey: undefined,
-                }),
-            ],
+        mutableAppSettings.aiEnabled = false;
+        await waitFor(() => {
+            expect(activeSession?.signal.aborted).toBe(true);
+            expect(stopAllAi).toHaveBeenCalled();
+            expect(panelProbe.unmountCount).toBe(2);
+            expect(ui.container.querySelector("#ai-sidebar")).not.toBeInTheDocument();
         });
-        expect(ui.container.querySelector("#ai-tab-ai-context")).toBeInTheDocument();
+
+        mutableAppSettings.aiEnabled = true;
+        await waitFor(() => {
+            const sidebar = ui.container.querySelector("#ai-sidebar");
+            expect(sidebar).toBeInTheDocument();
+            expect(sidebar).toHaveClass("rounded-[100px]");
+            expect(hasInertAncestor(expandedToolbar(ui.container))).toBe(true);
+        });
+        expect(panelProbe.mountCount).toBe(3);
+
+        await fireEvent.click(collapsedPanelButton(ui.container, /^Active AI/));
+        await waitFor(() => {
+            const newSession = panelProbe.updates.find(
+                (update) => update.session && update.session !== activeSession,
+            )?.session;
+            expect(newSession).toBeDefined();
+            expect(newSession).not.toBe(activeSession);
+            expect(newSession?.signal.aborted).toBe(false);
+            expect(newSession?.isCurrent()).toBe(true);
+            expect(ui.container.querySelector('[data-panel-id="active-ai"]')).toBeInTheDocument();
+        });
     });
 
     it("reads selection through the scoped session and aborts it when hidden while retaining eager content", async () => {

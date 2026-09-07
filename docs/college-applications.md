@@ -1,14 +1,14 @@
 # College applications
 
 The bundled College applications plugin adds a local panel to the existing
-[sidebar host](ai-sidebar.md#built-in-panel-host). It works without an AI
+[sidebar host](ai-sidebar.md#built-in-panel-host). With AI enabled, it works without a model
 connection. Opening its panel, editing setup, and applying a preset make no model
 requests. Chat planning and Feedback reviews require an explicit action.
 
-Turning AI off hides Chat, Feedback, Revise, Document Context, Readers, and AI
-Settings. College stays available for local prompts, constraints, and guidance,
-with its AI actions and links to AI panels hidden. With AI enabled but no model
-credentials, Context and Readers remain available for local configuration.
+Turning AI off hides Chat, Feedback, Revise, Document Context, Readers, AI
+Settings, and College without deleting saved College setup. With AI enabled but
+no model credentials, College, Context, Readers, and Settings remain available
+for local configuration. Only model requests require a connection.
 
 ## Document and tab ownership
 

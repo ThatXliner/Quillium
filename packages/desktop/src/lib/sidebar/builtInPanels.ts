@@ -1,4 +1,4 @@
-// builtInPanels.ts — The six built-in contributions used by the sidebar host.
+// builtInPanels.ts — The built-in contributions used by the sidebar host.
 
 import AISettings from "$lib/ai/AISettings.svelte";
 import Chat from "$lib/ai/Chat.svelte";
@@ -121,7 +121,7 @@ const builtInPanelContributions: SidebarPanelContribution[] = [
         activeClass: "text-amber-600 bg-white/60",
         hoverClass: "hover:text-amber-600",
         requiresModel: false,
-        requiresAi: false,
+        requiresAi: true,
         preferredWidth: 420,
         preferredHeight: 650,
         contentClass: "overflow-y-auto",
