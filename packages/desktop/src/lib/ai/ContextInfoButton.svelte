@@ -12,20 +12,22 @@
 <script lang="ts">
 import { InfoIcon } from "lucide-svelte";
 import type { AiContextPacket } from "./context";
-import { contextScopeDetail, contextScopeLabel } from "./context";
+import { contextScopeDetail } from "./context";
 
 let {
     packet,
+    targetLabel = "Current draft",
     ringClass,
     open = $bindable(),
 }: {
     packet: AiContextPacket;
+    targetLabel?: string;
     /** Focus ring class matching the active panel's accent color. */
     ringClass: string;
     open: boolean;
 } = $props();
 
-const label = $derived(`${contextScopeLabel(packet)}. ${contextScopeDetail(packet)}`);
+const label = $derived(`Next turn: ${targetLabel.toLowerCase()}. ${contextScopeDetail(packet)} Refreshed when you send.`);
 const sources = $derived(packet.sources ?? []);
 </script>
 
@@ -60,10 +62,10 @@ const sources = $derived(packet.sources ?? []);
                 p-3 text-left overflow-hidden"
             >
                 <p class="text-[11px] font-semibold text-black/70 leading-snug">
-                    {contextScopeLabel(packet)}
+                    Next turn: {targetLabel.toLowerCase()}
                 </p>
                 <p class="mt-0.5 text-[10px] text-black/45 leading-relaxed">
-                    {contextScopeDetail(packet)}
+                    {contextScopeDetail(packet)} Refreshed when you send. Draft passages and annotation discussions can be read on demand. Earlier responses describe the writing as it was then.
                 </p>
                 <div class="mt-2.5 flex flex-col gap-1.5">
                     {#each sources as source (source.id)}

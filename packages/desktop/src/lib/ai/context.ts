@@ -17,6 +17,7 @@ export type DocumentContextLike = {
 export type AnnotationContextMessage = {
     author?: string;
     message: string;
+    time?: number;
 };
 
 export type AnnotationContextReplacement = {
@@ -39,12 +40,30 @@ export type AnnotationContextInput = {
     versions?: AnnotationContextVersion[];
     distance?: number;
     active?: boolean;
+    /** Time of the newest message, used only to break automatic-context ties. */
+    updatedAt?: number;
+    /** Number of messages in the complete thread before automatic clipping. */
+    threadMessageCount?: number;
+    /** Number of complete-thread messages omitted from automatic context. */
+    omittedMessageCount?: number;
+    status?: string;
 };
 
 export type AnnotationContextItem = Required<
     Pick<AnnotationContextInput, "id" | "type" | "targetText" | "messages">
 > &
-    Pick<AnnotationContextInput, "context" | "replacements" | "versions" | "distance" | "active">;
+    Pick<
+        AnnotationContextInput,
+        | "context"
+        | "replacements"
+        | "versions"
+        | "distance"
+        | "active"
+        | "updatedAt"
+        | "threadMessageCount"
+        | "omittedMessageCount"
+        | "status"
+    >;
 
 export type AiContextSource = {
     id:
@@ -197,13 +216,21 @@ function clipEnd(text: string | undefined, maxChars: number): string {
 function normalizeAnnotation(input: AnnotationContextInput): AnnotationContextItem | null {
     const targetText = clipEnd(input.targetText, ANNOTATION_TARGET_CHARS);
     const context = clipEnd(input.context, ANNOTATION_CONTEXT_CHARS);
-    const messages = (input.messages ?? [])
+    const allMessages = (input.messages ?? [])
         .filter((message) => message.message.trim())
-        .slice(-MAX_ANNOTATION_MESSAGES)
         .map((message) => ({
             author: message.author?.trim() || undefined,
-            message: clipEnd(message.message, ANNOTATION_MESSAGE_CHARS),
+            message: message.message,
+            time: message.time,
         }));
+    const messages = allMessages.slice(-MAX_ANNOTATION_MESSAGES).map((message) => ({
+        author: message.author,
+        message: clipEnd(message.message, ANNOTATION_MESSAGE_CHARS),
+    }));
+    const omittedMessageCount = Math.max(
+        input.omittedMessageCount ?? 0,
+        Math.max(0, (input.threadMessageCount ?? allMessages.length) - messages.length),
+    );
     const replacements = (input.replacements ?? [])
         .filter((replacement) => replacement.text.trim())
         .slice(0, MAX_ANNOTATION_VARIANTS)
@@ -239,13 +266,20 @@ function normalizeAnnotation(input: AnnotationContextInput): AnnotationContextIt
         versions: versions.length > 0 ? versions : undefined,
         distance: input.distance,
         active: input.active,
+        ...(input.updatedAt === undefined ? {} : { updatedAt: input.updatedAt }),
+        ...(input.threadMessageCount === undefined && allMessages.length === 0
+            ? {}
+            : { threadMessageCount: input.threadMessageCount ?? allMessages.length }),
+        ...(omittedMessageCount > 0 ? { omittedMessageCount } : {}),
+        ...(input.status === undefined ? {} : { status: input.status }),
     };
 }
 
-function annotationRank(annotation: AnnotationContextItem): [number, number, number] {
+function annotationRank(annotation: AnnotationContextItem): [number, number, number, number] {
     return [
         annotation.active ? 0 : 1,
         annotation.distance ?? Number.MAX_SAFE_INTEGER,
+        -(annotation.updatedAt ?? Number.MIN_SAFE_INTEGER),
         -annotation.id,
     ];
 }
@@ -274,6 +308,11 @@ function formatAnnotationContextItem(annotation: AnnotationContextItem): string 
             )
             .join(" | ");
         parts.push(`  thread: ${thread}`);
+    }
+    if ((annotation.omittedMessageCount ?? 0) > 0) {
+        parts.push(
+            `  thread note: ${annotation.omittedMessageCount} earlier message${annotation.omittedMessageCount === 1 ? "" : "s"} omitted from automatic context; retrieve the full thread when needed`,
+        );
     }
     if (annotation.replacements?.length) {
         parts.push(

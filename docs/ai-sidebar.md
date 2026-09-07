@@ -64,7 +64,8 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `provider.ts` | Converts the selected provider and model ID into an AI SDK `LanguageModel` |
 | `openaiOAuth.ts` | Beta ChatGPT PKCE sign-in, token refresh, model discovery, and keychain session storage |
 | `context.ts` | Context budgeting, source metadata, selection focus, and context-aware actions |
-| `annotationContext.ts` | Converts open CodeMirror annotations into ranked AI context |
+| `annotationContext.ts` | Converts CodeMirror annotations into ranked AI context |
+| `contextRetrieval.ts` | Captures draft and nested-version discussions for bounded, read-only retrieval |
 | `editorialAction.ts` | Unique-range resolution, stale/read-only checks, duplicate-concern screening, and annotation dispatch |
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
 | `editorialTarget.ts` | Transient CodeMirror target bookmarks plus document, tab, draft, nested-branch, and selection validation |
@@ -315,8 +316,9 @@ a deterministic, mode-specific packet with these possible sources:
 Open annotations include their target, nearby context, recent thread messages,
 and a limited number of suggestion replacements or revision versions. They are
 ranked with the active annotation first, then by distance from the selection,
-then by recency. The prompt tells the model to treat them as existing editorial
-state and avoid duplicating the same concern.
+then by latest reply time (with annotation ID as a tie-breaker). Omitted messages
+and clipped text are marked. The prompt tells the model to treat discussion as
+existing editorial state and avoid duplicating the same concern.
 
 Document character budgets are currently:
 
@@ -332,11 +334,53 @@ When a selection is active, the draft portion is capped at 9,000 characters.
 Annotation context is separately capped at six items and approximately 4,800
 characters. These are character budgets, not provider token limits.
 
-The context message is inserted before the conversation messages, leaving the
-writer's latest prompt as the most recent instruction. Drafts, selections,
-annotations, and briefs are JSON-serialized and labeled as untrusted reference
-material. The context lens uses the same packet metadata, so its source list
-reflects what the request builder sees.
+The current context follows historical conversation and precedes the latest user
+message. Drafts, selections, annotations, and briefs are JSON-serialized and
+labeled as untrusted reference material. The context preview follows the focused
+editor, including nested revision versions, and labels the next turn as refreshed
+on send. Earlier responses describe the writing at the time of that response.
+
+### Continuity between Feedback and annotation discussions
+
+Each sidebar send captures draft text, selection, annotations, and a read-only
+retrieval snapshot synchronously before credential loading. Replies added after
+an earlier Feedback turn are included in the next snapshot. An older annotation
+with a new reply competes by reply time rather than its original creation ID.
+
+Automatic context remains small. Chat, Feedback, and Revise can search/list
+annotation discussions, retrieve their complete contents in pages, and read
+omitted draft passages. Retrieval covers the current draft and its nested
+revision versions, including versions outside the current selection. It does
+not search other drafts, documents, saved conversations, or deleted annotations.
+The parent state remains authoritative for nested versions. Scope metadata
+distinguishes the focused editor from versions included in the current draft,
+so a discussion on an inactive alternative is not attributed to current prose.
+
+Each reference includes a request snapshot identity, document, tab, draft, nested
+revision/version path, and annotation ID. A bare annotation ID cannot select a
+thread. Reads use the captured snapshot and reject a changed writing target;
+they never silently fall back to a different draft or version. An edit during
+streaming belongs to the next send. Malformed or unavailable nested context is
+reported separately from an empty discussion.
+
+When asked to reconsider, the assistant is instructed to compare the current
+writing with relevant discussion, distinguish withdrawn or qualified criticism
+from remaining concerns, and retrieve missing context before asking the writer
+to supply it. This instruction does not guarantee every model will follow it.
+Tools return explicit unavailable reasons and pagination metadata so an assistant
+can accurately describe incomplete coverage. Lists return at most 20 previews;
+text reads return at most 12,000 characters per page. Capture is bounded to 512
+scopes and 20 nested levels, with omitted scope counts reported. The focused
+version remains available within that limit.
+
+Retrieval tools execute locally through the AI SDK, with bounded continuation
+steps so the model can use their results in its answer. The eighth step disables
+further retrieval and leaves room to report what could and could not be reviewed.
+Reading discussion grants
+no editing permission. Only the existing annotation-creation tool names enter
+the editorial action gateway; historical tool records are never replayed as edits.
+Feedback still permits comments only, and all stale-target and selection checks
+remain in force.
 
 ## Providers, Connections, and Models
 
@@ -406,6 +450,9 @@ reload.
 | `createComment` | Feedback, local Revise | Comment thread anchored to exact text |
 | `createRevision` | Local Revise, exact compression | Two or more named passage versions plus a thread message |
 | `createSuggestion` | Revise | One or more replacement options for a short target |
+| `listAnnotationThreads` | Chat, Feedback, Revise | Searchable pages of scoped discussion references |
+| `readAnnotationThread` | Chat, Feedback, Revise | Complete discussion content in bounded pages |
+| `readDraftContext` | Chat, Feedback, Revise | Captured draft or revision-version passages in bounded pages |
 
 Tool schemas require exact `targetText` and accept surrounding `context` to
 disambiguate repeated phrases. `editorialAction.ts` requires one unique exact
