@@ -99,7 +99,7 @@ const DEFAULT_PANEL_TASKS: Record<EditorialPanelMode, EditorialTask> = {
 
 const STANCE_PROMPTS: Record<EditorialStance, string> = {
     "author-first":
-        "Editorial stance: Author-first. Diagnose or ask before proposing a broad rewrite. Keep the writer's wording in control.",
+        "Editorial stance: Author-first. Diagnose the concern or ask a focused question. Do not supply replacement wording unless the writer explicitly requests wording or invokes a rewrite task that permits it. Dissatisfaction with wording is not a request for replacement text. Giving a diagnosis first does not authorize a rewrite. Keep the writer's wording in control.",
     collaborative:
         "Editorial stance: Collaborative. Once the goal is clear, offer concrete alternatives readily, while leaving every choice to the writer.",
     exploratory:
@@ -138,7 +138,7 @@ function taskPrompt(
 ): string {
     switch (task) {
         case "conversation":
-            return "Task: discuss the writer's question about the current writing. Answer directly and concisely. Diagnose before prescribing, and offer wording only when the writer asks for wording.";
+            return 'Task: discuss the writer\'s question about the current writing. Answer directly and concisely. Offer wording only when the writer explicitly asks you to write alternatives. A statement such as "I do not like the wording" identifies a concern, not permission to rewrite: explain what is not working, discuss the intended effect, or ask a focused question. Do not append a smoother version or sample replacement to that feedback.';
         case "reverse-outline":
             return "Task: produce a reverse outline of the included draft. List each paragraph or coherent section in order, state its current job in one concise line, then identify structural gaps, repetition, or weak transitions. Keep the result in the conversation. Do not create annotations or rewrite prose.";
         case "branch-comparison":
@@ -146,7 +146,7 @@ function taskPrompt(
         case "global-review":
             return `Task: review structure, argument, scope, pacing, voice, and the reader's experience.
 
-${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passage-level concerns that meet the configured feedback density. Do not create rewrites during a broad review. A strong draft may need no comments.${
+${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passage-level concerns that meet the configured feedback density. Do not create rewrites during a broad review. This is feedback only, even when the writer focuses on one passage or asks for a rewrite. Do not supply replacement words, sentences, paragraphs, or sample rewrites in conversational text or comment fields. Quote existing wording only as evidence; describe the concern, its reader effect, and a direction or question for the writer. If replacement text is requested, direct the writer to Revise without providing it here. This boundary applies regardless of stance or voice preferences. A strong draft may need no comments.${
                 hasSelection
                     ? " The writer selected a passage, so make it the focus while considering its role in the larger draft."
                     : " Review the whole included draft."

@@ -40,6 +40,14 @@ preferences, and provider settings. `editorialPolicy.ts` compiles the shared aut
 policy, task recipe, and allowed action types. `clientStreams.ts` prepends the
 context packet as a user message and calls `streamText()`.
 
+Chat treats dissatisfaction with wording as a request for diagnosis, not permission
+to supply replacement prose. Under Author-first, a diagnosis does not authorize a
+rewrite; the writer must explicitly request wording or invoke a permitted rewrite
+task. Feedback remains diagnostic for every stance and voice setting, including
+selected passages: neither its chat text nor its comment fields should contain
+replacement prose. Requests for replacement text belong in Revise. These are model
+instructions; tool permissions separately enforce which annotations can be created.
+
 Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
 with Zod, checked against the turn's permissions and captured editor identity,
 mapped selection, and target text, then routed by `chatFactory.ts` to the

@@ -21,6 +21,36 @@ describe("compileEditorialPolicy", () => {
         expect(policy.systemPrompt).toContain("A strong draft may need no comments");
     });
 
+    it("distinguishes wording dissatisfaction from an explicit rewrite request", () => {
+        const { systemPrompt } = compileEditorialPolicy({ task: "conversation" });
+
+        expect(systemPrompt).toContain("Dissatisfaction with wording is not a request");
+        expect(systemPrompt).toContain("Giving a diagnosis first does not authorize a rewrite");
+        expect(systemPrompt).toContain('"I do not like the wording"');
+        expect(systemPrompt).toContain("Do not append a smoother version");
+    });
+
+    it.each([false, true])("keeps feedback diagnostic with annotationOnly=%s", (annotationOnly) => {
+        const policy = compileEditorialPolicy({
+            task: "global-review",
+            hasSelection: true,
+            annotationOnly,
+            preferences: {
+                stance: "collaborative",
+                feedbackDensity: "thorough",
+                voiceLatitude: "transform",
+            },
+        });
+
+        expect(policy.allowedActions).toEqual(["comment"]);
+        expect(policy.systemPrompt).toContain("even when the writer focuses on one passage");
+        expect(policy.systemPrompt).toContain("in conversational text or comment fields");
+        expect(policy.systemPrompt).toContain(
+            "direct the writer to Revise without providing it here",
+        );
+        expect(policy.systemPrompt).toContain("regardless of stance or voice preferences");
+    });
+
     it("allows local rewrite proposals without requiring tool use", () => {
         const policy = compileEditorialPolicy({
             task: "local-rewrite",
