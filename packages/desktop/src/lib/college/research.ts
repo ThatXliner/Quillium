@@ -573,7 +573,7 @@ function _validateExtraction(
         if (cycle && target.cycle && cycle !== target.cycle) {
             _pushWarning(
                 warnings,
-                `The finding from ${finding.url} cites cycle “${cycle}”, which differs from requested cycle “${target.cycle}”; it was retained as stale evidence.`,
+                `The finding from ${finding.url} cites cycle “${cycle}”, which differs from requested cycle “${target.cycle}”; check whether the cycle labels refer to the same application year before using it.`,
             );
         } else if (!cycle && target.cycle) {
             _pushWarning(
