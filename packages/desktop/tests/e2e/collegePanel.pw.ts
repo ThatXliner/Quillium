@@ -237,33 +237,48 @@ test("related essays save exact drafts, preview only that selection, and navigat
     await panel(page).getByRole("button", { name: "Create 2 essay tabs" }).click();
     await openCollege(page);
     await panel(page).getByText("Related essays", { exact: true }).click();
-    await panel(page).getByRole("button", { name: "Add application group" }).click();
+    await panel(page).getByRole("button", { name: "Choose essays" }).click();
 
+    await expect(panel(page).getByLabel("Application name")).not.toBeVisible();
+    await panel(page).getByText("Name and cycle", { exact: true }).click();
     await panel(page).getByLabel("Application name").fill("UC application");
+    await panel(page).getByText("Name and cycle", { exact: true }).click();
     await panel(page).getByLabel("School", { exact: true }).fill("University of California");
     await panel(page).getByRole("checkbox", { name: /PIQ 7/ }).check();
-    await expect(
-        panel(page).getByText(/Choose one draft from at least two essay tabs/),
-    ).toBeVisible();
-    await panel(page).getByRole("button", { name: "Save selection" }).click();
+    await panel(page).getByRole("button", { name: "Done", exact: true }).click();
 
     await expect(panel(page).getByRole("heading", { name: "UC application" })).toBeVisible();
     await expect(
         panel(page).getByRole("list", { name: "Selected essays" }).getByRole("button"),
     ).toHaveCount(2);
-    await panel(page).getByRole("button", { name: "Review selection" }).click();
-    await expect(panel(page).getByRole("heading", { name: "What will be sent" })).toBeVisible();
-    await expect(panel(page).getByText(/2 of 2 sources transmitted/)).toBeVisible();
+    await panel(page).getByRole("button", { name: "Review together" }).click();
     await expect(
-        panel(page).getByText(
-            /Other Library documents, shared notes, and school research are not sent/,
-        ),
+        panel(page).getByRole("heading", { name: "Review 2 essays together" }),
     ).toBeVisible();
-    await expect(panel(page).getByText(/Connect a model to review this selection/)).toBeVisible();
+    await expect(panel(page).getByRole("list", { name: "Selected essays" })).toHaveCount(0);
+    await expect(
+        panel(page).getByRole("list", { name: "Drafts to review" }).getByRole("listitem"),
+    ).toHaveCount(2);
+    await panel(page).getByText("What’s sent?", { exact: true }).click();
+    await expect(
+        panel(page).getByText(/Other documents, shared notes, and school research stay private/),
+    ).toBeVisible();
+    await panel(page).getByText("What’s sent?", { exact: true }).click();
+    await expect(
+        panel(page).getByRole("button", { name: "Connect a model to review" }),
+    ).toBeVisible();
     await page.screenshot({
         animations: "disabled",
         path: "../../docs/assets/issue-424/review-confirmation.png",
     });
+    await page.setViewportSize({ width: 320, height: 600 });
+    await expect(
+        panel(page).getByRole("button", { name: "Connect a model to review" }),
+    ).toBeVisible();
+    await expect
+        .poll(async () => (await q.aiSidebar.boundingBox())!.width)
+        .toBeLessThanOrEqual(288);
+    await page.setViewportSize({ width: 1280, height: 1000 });
 
     const saved = await page.evaluate(() => localStorage.getItem("mock-college-review-groups"));
     expect(saved).toContain("UC application");

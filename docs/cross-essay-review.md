@@ -23,8 +23,13 @@ does not change any document, College setup, prompt, research, shared note, deci
 
 ## Request boundary
 
-**Review selection** first captures only the chosen drafts. The confirmation lists every document,
-tab, and draft and shows how many characters will be sent or omitted. Each source is capped at
+**Choose essays** opens a compact selection with the current draft selected. School is prefilled
+when known; name and cycle are optional details. **Done** saves the selection for later navigation
+and review. Only one application is shown at a time, with a switcher for additional applications.
+
+**Review together** first captures only the chosen drafts. The confirmation replaces the selection
+and lists the essay and draft names. Shortened or omitted drafts are flagged immediately;
+**What's sent?** expands document labels, character counts, and the payload explanation. Each source is capped at
 12,000 characters and the full request at 36,000 characters. Truncation removes the suffix and is
 reported both before the request and in the result. A source that receives no remaining budget is
 identified as omitted; the report must not claim to have reviewed it.
@@ -41,10 +46,12 @@ the group's school. This prevents one school's supplement context from entering 
 review. A school-neutral personal statement can be selected in more than one group without
 duplicating its prose.
 
-The final **Review these essays** action is one explicit structured model request. It returns a
+The final **Review together** action is one explicit structured model request. It returns a
 report with repeated stories, what each essay adds, and contradictory claims phrased as questions
 for the writer. It cannot edit, annotate, rewrite, or redistribute essay text, and it must not
-predict admissions outcomes.
+predict admissions outcomes. Results replace the confirmation; quoted evidence is under each
+finding's **Passages** disclosure. **Back** returns to the saved selection. Opening Related essays
+temporarily collapses the current prompt text and other College tools to keep the panel focused.
 
 ## Evidence and stale results
 

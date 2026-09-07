@@ -20,6 +20,7 @@ let unit = $state<"words" | "characters">("words");
 let busy = $state(false);
 let error = $state("");
 let removing = $state(false);
+let relatedOpen = $state(false);
 let heading = $state<HTMLHeadingElement>();
 let previousTarget = $state("");
 const targetKey = $derived(session ? JSON.stringify(session.target) : "");
@@ -173,19 +174,24 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                         <span class="text-xs text-black/60 whitespace-nowrap tabular-nums" aria-label="Essay length">{constraint.unit === "characters" ? view.characterCount : view.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</span>
                     {/each}
                 </div>
+                {#if !relatedOpen}
                 <p class="whitespace-pre-wrap leading-relaxed">{prompt.text}</p>
                 {#if prompt.sourceUrl}<a class="source-link" href={prompt.sourceUrl} target="_blank" rel="noreferrer">{setup.kind === "supplemental" ? "Original prompt" : "Prompt summary · View original"}<span aria-hidden="true"> ↗</span></a>{/if}
+                {/if}
             </section>
         {/each}
         {#if setup.prompts.length > 1}<p class="text-xs text-black/60">This earlier setup has multiple prompts. Change prompt to replace it with one; your writing stays.</p>{/if}
         {#if !setup.active}<p class="text-xs text-black/60">Paused. Feedback isn’t using this prompt.</p>{/if}
+        {#if !relatedOpen}
         <div class="flex flex-wrap gap-2">
             <button class="secondary" onclick={() => start(true)}>Change prompt</button>
             <button class="secondary" onclick={() => start()}>Add essays</button>
         </div>
-        {#if college}
-            <RelatedEssays {college} {view} />
         {/if}
+        {#if college}
+            <RelatedEssays {college} {view} onExpandedChange={(expanded) => (relatedOpen = expanded)} />
+        {/if}
+        <div hidden={relatedOpen} class="space-y-3">
         {#if view.aiEnabled && college}
             <SchoolResearch {college} {view} />
         {/if}
@@ -209,6 +215,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 </div>
             </div>
         </details>
+        </div>
     {/if}
 </div>
 
