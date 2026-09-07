@@ -1,4 +1,6 @@
 <script lang="ts">
+import { dev } from "$app/environment";
+import { env } from "$env/dynamic/public";
 import Footer from "$lib/components/Footer.svelte";
 import Nav from "$lib/components/Nav.svelte";
 import CollaborationDemo from "$lib/components/omni/CollaborationDemo.svelte";
@@ -7,19 +9,101 @@ import { ArrowDown, ArrowRight, Check, Cloud, Laptop, Plus, WifiOff } from "@luc
 import posthog from "posthog-js";
 import { onMount } from "svelte";
 
+const heroFlag = "omni-hero";
+type HeroVariant = "original" | "manuscript";
+let heroVariant = $state<HeroVariant>("manuscript");
+let heroReady = $state(false);
+let heroAssignment = $state<"experiment" | "preview" | "fallback">("fallback");
+let heroExposed = $state(false);
+let heroSlot: HTMLDivElement;
+
+// Resolve once per visit: late flag responses must never replace a hero in use.
+onMount(() => {
+    const preview = new URLSearchParams(window.location.search).get("omni-hero");
+    if (preview === "original" || preview === "manuscript") {
+        heroVariant = preview;
+        heroAssignment = "preview";
+        heroReady = true;
+        return;
+    }
+    if (dev || !env.PUBLIC_POSTHOG_PROJECT_TOKEN || posthog.has_opted_out_capturing()) {
+        heroReady = true;
+        return;
+    }
+    const timeout = window.setTimeout(() => {
+        heroReady = true;
+    }, 1200);
+    const unsubscribe = posthog.onFeatureFlags((_flags, variants, { errorsLoading } = {}) => {
+        if (heroReady) return;
+        const variant = variants[heroFlag];
+        if (!errorsLoading && (variant === "control" || variant === "manuscript")) {
+            heroVariant = variant === "control" ? "original" : "manuscript";
+            heroAssignment = "experiment";
+        }
+        heroReady = true;
+        window.clearTimeout(timeout);
+    });
+    return () => {
+        window.clearTimeout(timeout);
+        unsubscribe();
+    };
+});
+
+$effect(() => {
+    if (!heroReady || heroAssignment !== "experiment") return;
+    const observer = new IntersectionObserver(
+        (entries) => {
+            if (!entries.some((entry) => entry.isIntersecting) || posthog.has_opted_out_capturing())
+                return;
+            heroExposed = true;
+            // Record the rendered assignment, even if flags refresh later. Preview links
+            // and visitors who land below the hero never enter the experiment denominator.
+            posthog.capture("$experiment_exposure", {
+                $feature_flag: heroFlag,
+                $feature_flag_response: heroVariant === "original" ? "control" : "manuscript",
+                ...heroProperties(),
+            });
+            observer.disconnect();
+        },
+        { threshold: 0.25 },
+    );
+    observer.observe(heroSlot);
+    return () => observer.disconnect();
+});
+
+function heroProperties(): Record<string, string | boolean | null> {
+    return {
+        hero_variant: heroVariant,
+        hero_assignment: heroAssignment,
+        hero_exposed: heroExposed,
+        // Override SDK flag enrichment with the version actually shown. Preview
+        // conversions cannot be mistaken for an assigned visitor's conversion.
+        [`$feature/${heroFlag}`]:
+            heroAssignment === "experiment"
+                ? heroVariant === "original"
+                    ? "control"
+                    : "manuscript"
+                : null,
+    };
+}
+
 let email = $state("");
 let submitting = $state(false);
 let submitted = $state(false);
 let error = $state("");
 
-async function handleSubmit(e: Event): Promise<void> {
+async function handleSubmit(e: Event, location: string): Promise<void> {
     e.preventDefault();
     if (!email || submitting) return;
 
     submitting = true;
     error = "";
 
-    posthog.capture("omni_waitlist_submitted", { email });
+    const properties = {
+        ...heroProperties(),
+        form_location: location === "hero" ? "hero" : "footer",
+    };
+    posthog.capture("omni_waitlist_submitted", { email, ...properties });
 
     try {
         const res = await fetch("/api/omni-waitlist", {
@@ -35,9 +119,9 @@ async function handleSubmit(e: Event): Promise<void> {
             } else {
                 error = "Something went wrong. Please try again.";
             }
-            posthog.capture("omni_waitlist_failed", { email, error: data.error });
+            posthog.capture("omni_waitlist_failed", { email, error: data.error, ...properties });
         } else {
-            posthog.capture("omni_waitlist_succeeded");
+            posthog.capture("omni_waitlist_succeeded", properties);
             submitted = true;
         }
     } catch (err) {
@@ -107,6 +191,7 @@ onMount(() => {
 </script>
 
 <svelte:head>
+  <noscript><style>.hero-slot[data-pending="true"] { visibility: visible !important; }</style></noscript>
   <title>Quillium Omni — Collaboration for writers, on your terms</title>
   <meta
     name="description"
@@ -163,7 +248,7 @@ onMount(() => {
 
 {#snippet waitlistForm(id: string, showNote: boolean)}
   {#if !submitted}
-    <form onsubmit={handleSubmit} class="waitlist-form">
+    <form onsubmit={(event) => handleSubmit(event, id)} class="waitlist-form">
       <label for={`${id}-email`}>Your email address</label>
       <div class="form-row">
         <input
@@ -212,6 +297,14 @@ onMount(() => {
 
 <Nav />
 <main bind:this={page} class="omni-page">
+  <div bind:this={heroSlot} class="hero-slot" data-pending={!heroReady} data-hero-variant={heroVariant} aria-busy={!heroReady}>
+  {#if heroVariant === "original"}
+    <section class="original-hero" aria-labelledby="omni-title">
+      <h1 id="omni-title">Write Anywhere.<br /><em>Think Together.</em></h1>
+      <p class="original-lead">Quillium Omni: cloud sync across all your devices.<br />Real-time collaboration that just works.</p>
+      <div class="original-signup">{@render waitlistForm("hero", false)}</div>
+    </section>
+  {:else}
   <section class="hero" aria-labelledby="omni-title">
     <div class="hero-copy">
       <p class="eyebrow">
@@ -229,8 +322,11 @@ onMount(() => {
         >
       </div>
     </div>
-    <div class="hero-art"><PaperSculpture /></div>
+    <div class="hero-art">{#if heroReady}<PaperSculpture />{/if}</div>
   </section>
+
+  {/if}
+  </div>
 
   <section
     class="collaboration section-shell"
@@ -337,6 +433,29 @@ onMount(() => {
 <Footer />
 
 <style>
+  .hero-slot[data-pending="true"] { visibility: hidden; }
+  .original-hero {
+    max-width: 816px;
+    margin: 0 auto;
+    padding: 128px 24px 100px;
+    text-align: center;
+  }
+  .original-hero h1 {
+    font-size: clamp(2.5rem, 7vw, 4.5rem);
+    line-height: 1.05;
+    margin: 0 0 28px;
+    color: var(--text-strong);
+  }
+  .original-hero h1 em { color: var(--text-soft); }
+  .original-lead {
+    font-size: 1.05rem;
+    line-height: 1.8;
+    color: var(--text-soft);
+    max-width: 38rem;
+    margin: 0 auto;
+  }
+  .original-signup { max-width: 32rem; margin: 40px auto 0; text-align: left; }
+
   .omni-page {
     overflow: clip;
   }

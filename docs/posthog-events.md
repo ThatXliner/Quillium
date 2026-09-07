@@ -224,3 +224,29 @@ temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_d
 | Event | When | File |
 |-------|------|------|
 | `changelog_viewed` | Changelog dismissed | `ChangelogModal.svelte` |
+
+## Omni landing hero experiment
+
+[Omni hero: original vs manuscript](https://us.posthog.com/project/334824/experiments/461612)
+uses flag `omni-hero`, split equally between `control` (original centered headline)
+and `manuscript` (3D hero). Both use the same signup form and page below the hero.
+PostHog assigns by distinct ID. The page freezes its assignment for the visit and
+falls back to the manuscript hero after 1.2 seconds if flags are unavailable.
+
+| Event | When | File |
+|-------|------|------|
+| `$experiment_exposure` | Assigned hero becomes visible; once per page mount | `packages/landing/src/routes/omni/+page.svelte` |
+| `omni_waitlist_submitted` | Waitlist form submitted | Same |
+| `omni_waitlist_succeeded` | Waitlist API returns success; experiment primary conversion | Same |
+| `omni_waitlist_failed` | Waitlist API rejects the request | Same |
+
+Signup events include `hero_variant`, `hero_assignment`, `hero_exposed`, and
+`form_location` (`hero` or `footer`). The metric excludes previews and fallbacks.
+The explicit `$feature/omni-hero` property preserves the rendered assignment even
+if the SDK refreshes its flags while the visitor is on the page. Tracking respects
+the existing PostHog opt-out. No experiment exposure is emitted in development.
+
+Preview either hero with `/omni?omni-hero=original` or
+`/omni?omni-hero=manuscript`. These links never enroll visitors in the experiment.
+Pausing the experiment returns visitors to the manuscript fallback on their next
+visit. Keep the split unchanged while collecting results.
