@@ -262,3 +262,12 @@ These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Ta
 Conversation rows cascade with their draft. Briefs and saved decisions cascade
 with their document and are copied when a document is duplicated. Rust validates
 conversation JSON, brief length, and the saved-decision array before writing.
+
+## College tab setups
+
+The appended `college_tab_setups` migration stores a versioned JSON snapshot per
+tab, with a foreign key that cascades on permanent deletion. Native get/set
+commands validate document/tab ownership; upsert/removal is atomic. Document
+duplication copies setup rows through its existing tab ID map and transaction.
+Soft deletion preserves the rows. See [College applications](college-applications.md)
+for effective-state loading, failure handling, and separation from writer notes.

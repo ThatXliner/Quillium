@@ -16,19 +16,24 @@ import {
     applyEditorialAction,
     editorialActionFailureMessage,
 } from "$lib/ai/editorialAction";
-import { type EditorialAction, compileEditorialPolicy } from "$lib/ai/editorialPolicy";
+import {
+    type EditorialAction,
+    type EditorialPreferences,
+    compileEditorialPolicy,
+} from "$lib/ai/editorialPolicy";
 import type { EditorialTargetSnapshot } from "$lib/ai/editorialTarget";
 import { createAiGenerationProvenance } from "$lib/ai/provenance";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
     beginAiTask,
-    documentContext,
-    editorialPreferences,
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
+    getEffectiveDocumentContext,
+    getEffectiveEditorialPreferences,
 } from "$lib/ai/settings.svelte";
+import { assertCollegeContextReady } from "$lib/college/state.svelte";
 import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/index";
 import { appEventBus } from "$lib/events/appEventBus";
 import { captureException } from "$lib/posthog";
@@ -65,12 +70,12 @@ const conservativenessPrompts: Record<AutoAIConservativeness, string> = {
         "Provide detailed feedback on structure, clarity, voice, pacing, word choice, and potential improvements. Be comprehensive but constructive.",
 };
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(preferences: EditorialPreferences): string {
     const { conservativeness, annotationTypes } = autoAISettings;
     const policy = compileEditorialPolicy({
         task: "background-review",
         requestedActions: annotationTypes,
-        preferences: editorialPreferences,
+        preferences,
     });
     const allowed = policy.allowedActions.join(", ") || "none";
     return `${policy.systemPrompt}
@@ -276,6 +281,15 @@ async function runReview(content: string, manual = false, generation = contentGe
         return;
     }
 
+    try {
+        assertCollegeContextReady();
+    } catch {
+        // Wait for the tab setup instead of sending device defaults or a
+        // partial College brief. A later content/manual trigger can retry.
+        autoAIPhase.set("idle");
+        return;
+    }
+
     reviewAbortController?.abort();
     const linkedAbort = linkedAbortController(getAiAbortSignal());
     const { controller } = linkedAbort;
@@ -288,17 +302,25 @@ async function runReview(content: string, manual = false, generation = contentGe
         selectedText: "",
         branchPath: [],
     };
-    const policy = compileEditorialPolicy({
-        task: "background-review",
-        requestedActions: autoAISettings.annotationTypes,
-        preferences: editorialPreferences,
-    });
     let task: symbol | null = null;
     try {
         await ensureApiKeyLoaded();
         // Guard: if the review was cancelled during ensureApiKeyLoaded, bail
         // before flipping UI state to "reviewing" (avoids a brief flicker).
         if (abortSignal.aborted) return;
+        try {
+            assertCollegeContextReady();
+        } catch {
+            autoAIPhase.set("idle");
+            return;
+        }
+        const editorialPreferencesAtStart = getEffectiveEditorialPreferences();
+        const documentContextAtStart = getEffectiveDocumentContext();
+        const policy = compileEditorialPolicy({
+            task: "background-review",
+            requestedActions: autoAISettings.annotationTypes,
+            preferences: editorialPreferencesAtStart,
+        });
         // Transition thinking → reviewing only after the async key load,
         // so the >_< face is visible during the ensureApiKeyLoaded wait.
         autoAIPhase.set("reviewing");
@@ -318,7 +340,7 @@ async function runReview(content: string, manual = false, generation = contentGe
         const contextPacket = buildAiContextPacket({
             mode: "autoai",
             documentContent: content,
-            documentContext,
+            documentContext: documentContextAtStart,
             annotationContext: buildAnnotationContextInputs({
                 annotations: get(annotations),
                 documentContent: content,
@@ -327,7 +349,7 @@ async function runReview(content: string, manual = false, generation = contentGe
         const { object } = await generateObject({
             model,
             schema: AutoAIReviewSchema,
-            system: buildSystemPrompt(),
+            system: buildSystemPrompt(editorialPreferencesAtStart),
             prompt: `Review this context packet. Only create annotations for exact targetText substrings that appear in the included document text.\n\n${contextPacketToPrompt(contextPacket)}`,
             abortSignal,
         });

@@ -1,9 +1,11 @@
 <!-- Sidebar.svelte — Built-in sidebar navigation, sizing, and panel lifecycle. -->
 <script lang="ts">
+import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
+import { createCollegeCapabilities } from "$lib/college/capabilities";
 import ContextInfoButton from "$lib/ai/ContextInfoButton.svelte";
 import {
     aiProcessing,
-    documentContext,
+    getEffectiveDocumentContext,
     ensureApiKeyLoaded,
     hasApiKey,
     stopAllAi,
@@ -25,6 +27,9 @@ import {
     currentDocumentId,
     currentDraftId,
     currentTabId,
+    currentTabLabel,
+    currentDraftLabel,
+    currentDocumentTitle,
     documentContent,
     selectedText,
     selectedTextRange,
@@ -39,6 +44,7 @@ import { buildAiContextPacket, shouldShowContextSummary } from "$lib/ai/context"
 import { PanelResizeController } from "$lib/ai/panelResize.svelte";
 
 useDocumentContextEffects();
+useCollegeEffects(stopAllAi);
 
 let {
     contributions = builtInPanels,
@@ -51,7 +57,7 @@ let action = $state<string | null>(null);
 const panels = $derived(
     createSidebarPanels(contributions).filter(
         (panel) =>
-            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresModel),
+            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresAi),
     ),
 );
 const actions = $derived(panels.filter((panel) => panel.placement === "main"));
@@ -112,6 +118,15 @@ onDestroy(() => {
     stopAllAi();
 });
 
+const collegeCapabilities = $derived.by(() => {
+    $documentContent;
+    $currentDocumentTitle;
+    $currentTabLabel;
+    $currentDraftLabel;
+    return session ? createCollegeCapabilities(session, selectAction) : null;
+});
+$effect(() => { collegeState.hostEnabled = panels.some((panel) => panel.id === "college"); });
+
 const expanded = $derived(action !== null);
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 570;
@@ -153,10 +168,7 @@ const headerContextPacket = $derived(
               documentContent: $documentContent,
               selectedText: $selectedText,
               selectedTextRange: $selectedTextRange,
-              documentContext: {
-                  freeform: documentContext.freeform,
-                  decisions: documentContext.decisions,
-              },
+              documentContext: getEffectiveDocumentContext(),
               annotationContext: headerAnnotationContext,
           })
         : null,
@@ -562,7 +574,7 @@ function handleKeydown(e: KeyboardEvent) {
                 stopAllAi();
                 console.error("[Sidebar] panel failed", panel.id, error);
               }}>
-              <panel.component active={action === panel.id} session={action === panel.id ? session : null} />
+              <panel.component active={action === panel.id} session={action === panel.id ? session : null} college={action === panel.id ? collegeCapabilities : null} />
               {#snippet failed(error, reset)}
                 <div role="alert" class="p-4 text-sm text-black/70">
                   <p>{panel.label} could not be displayed.</p>

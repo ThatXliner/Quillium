@@ -29,6 +29,9 @@ Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
 provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
+import { getActiveCollegeSetup, updateActiveCollegeSetup, collegeState } from "$lib/college/state.svelte";
+import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
+import CollegeContext from "$lib/college/CollegeContext.svelte";
 import ModelGuideModal from "$lib/ai/ModelGuideModal.svelte";
 import {
     disconnectOpenAI,
@@ -41,6 +44,7 @@ import {
     HAS_API_KEY_KEY,
     aiSettings,
     editorialPreferences,
+    getEffectiveEditorialPreferences,
     hasApiKey,
     loadApiKeyForProvider,
     persistBaseUrl,
@@ -410,7 +414,22 @@ async function saveApiKey() {
         saveStatus = "idle";
     }, 3000);
 }
+
+const effectivePreferences = $derived(getEffectiveEditorialPreferences());
+async function changeEditorialPreference(key: keyof EditorialPreferences, value: string): Promise<void> {
+    const preferences = { ...getEffectiveEditorialPreferences(), [key]: value } as EditorialPreferences;
+    if (getActiveCollegeSetup()) {
+        try { await updateActiveCollegeSetup({ preferences }); }
+        catch (error) { collegeState.error = error instanceof Error ? error.message : "Could not save editorial preferences."; }
+    } else {
+        Object.assign(editorialPreferences, preferences);
+        persistEditorialPreferences();
+    }
+}
+
 </script>
+
+<CollegeContext />
 
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">
     <!-- No API key banner -->
@@ -443,8 +462,9 @@ async function saveApiKey() {
                 <label for="editorial-stance" class="text-xs font-medium text-black/55">Stance</label>
                 <select
                     id="editorial-stance"
-                    bind:value={editorialPreferences.stance}
-                    onchange={persistEditorialPreferences}
+                    value={effectivePreferences.stance}
+                    disabled={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}
+                    onchange={(event) => changeEditorialPreference("stance", event.currentTarget.value)}
                     class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
                 >
                     <option value="author-first">Author-first</option>
@@ -457,8 +477,9 @@ async function saveApiKey() {
                 <label for="feedback-density" class="text-xs font-medium text-black/55">Feedback density</label>
                 <select
                     id="feedback-density"
-                    bind:value={editorialPreferences.feedbackDensity}
-                    onchange={persistEditorialPreferences}
+                    value={effectivePreferences.feedbackDensity}
+                    disabled={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}
+                    onchange={(event) => changeEditorialPreference("feedbackDensity", event.currentTarget.value)}
                     class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
                 >
                     <option value="quiet">Quiet</option>
@@ -471,8 +492,9 @@ async function saveApiKey() {
                 <label for="voice-latitude" class="text-xs font-medium text-black/55">Voice latitude</label>
                 <select
                     id="voice-latitude"
-                    bind:value={editorialPreferences.voiceLatitude}
-                    onchange={persistEditorialPreferences}
+                    value={effectivePreferences.voiceLatitude}
+                    disabled={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}
+                    onchange={(event) => changeEditorialPreference("voiceLatitude", event.currentTarget.value)}
                     class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
                 >
                     <option value="preserve">Preserve</option>

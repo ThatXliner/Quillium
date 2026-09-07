@@ -592,6 +592,26 @@ export class QuilliumPage {
                             else localStorage.setItem(key, a.decisionsJson);
                             return null;
                         }
+                        if (cmd === "cmd_get_college_tab_setup") {
+                            const a = args as { documentId: string; tabId: string };
+                            return localStorage.getItem(
+                                `mock-college-setup:${a.documentId}:${a.tabId}`,
+                            );
+                        }
+                        if (cmd === "cmd_set_college_tab_setup") {
+                            const a = args as {
+                                documentId: string;
+                                tabId: string;
+                                setupJson: string | null;
+                            };
+                            if (localStorage.getItem("mock-college-save-error")) {
+                                throw new Error("Mock College setup save failed");
+                            }
+                            const key = `mock-college-setup:${a.documentId}:${a.tabId}`;
+                            if (a.setupJson === null) localStorage.removeItem(key);
+                            else localStorage.setItem(key, a.setupJson);
+                            return null;
+                        }
                         if (cmd === "get_api_key") return payload.apiKey;
 
                         // Version history

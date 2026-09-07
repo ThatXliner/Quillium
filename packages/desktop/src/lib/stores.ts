@@ -161,6 +161,22 @@ export const currentDraftId = writable<string | null>(null);
 export const currentTabId = writable<string | null>(null);
 
 /**
+ * Display label for the active document tab.
+ * Written by the editor's tab/draft controller alongside currentTabId.
+ * Read by target-scoped panels for context labels; it is presentation metadata,
+ * separate from the stable tab ID used for persistence and request guards.
+ */
+export const currentTabLabel = writable<string>("");
+
+/**
+ * Display label for the active draft.
+ * Written by the editor's tab/draft controller alongside currentDraftId.
+ * Read by target-scoped panels for context labels; it is presentation metadata,
+ * separate from the stable draft ID used for persistence and request guards.
+ */
+export const currentDraftLabel = writable<string>("");
+
+/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).

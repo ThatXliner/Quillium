@@ -61,6 +61,13 @@ Each persona has a 3-level chattiness setting:
 The directive is sent as a writer-selected reader lens in a user-role message via
 `buildPersonaPrompt()`. The shared system policy keeps the task's action permissions fixed.
 
+## College tab overrides
+
+An active [College setup](college-applications.md) supplies the effective reader
+list and per-mode opt-ins for its tab. General Readers edits update that saved
+setup; device defaults remain untouched. Pausing or removing setup returns to
+device defaults. Feedback still displays and requires explicit fan-out opt-in.
+
 ## Settings Persistence
 
 Stored in localStorage under `"quillium-readers-settings"`. On load, saved state merges with `DEFAULT_PERSONAS`:

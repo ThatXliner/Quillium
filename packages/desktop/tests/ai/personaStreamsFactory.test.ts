@@ -16,6 +16,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     applyEditorialAction: vi.fn(),
+    aiSettings: {
+        provider: "openai",
+        model: "test-model",
+        apiKey: "test-key",
+        baseURL: "",
+    },
     ensureApiKeyLoaded: vi.fn(),
     getAiAbortSignal: vi.fn(),
     posthogCapture: vi.fn(),
@@ -29,22 +35,17 @@ vi.mock("$lib/ai/editorialAction", () => ({
 }));
 
 vi.mock("$lib/ai/settings.svelte", () => ({
-    aiSettings: {
-        provider: "openai",
-        model: "test-model",
-        apiKey: "test-key",
-        baseURL: "",
-    },
-    documentContext: { freeform: "", decisions: [] },
-    editorialPreferences: {
-        stance: "author-first",
-        feedbackDensity: "focused",
-        voiceLatitude: "preserve",
-    },
+    aiSettings: mocks.aiSettings,
     beginAiTask: vi.fn(),
     endAiTask: vi.fn(),
     ensureApiKeyLoaded: mocks.ensureApiKeyLoaded,
     getAiAbortSignal: mocks.getAiAbortSignal,
+    getEffectiveDocumentContext: vi.fn(() => ({ freeform: "", decisions: [] })),
+    getEffectiveEditorialPreferences: vi.fn(() => ({
+        stance: "author-first",
+        feedbackDensity: "focused",
+        voiceLatitude: "preserve",
+    })),
     setAiProcessing: vi.fn(),
     useAiChatEffects: vi.fn(),
 }));
@@ -113,6 +114,10 @@ describe("runMultiPersonaStreams", () => {
         currentTabId.set("tab-1");
         currentDraftId.set("draft-1");
         documentContent.set("The draft contains a deliberate fragment.");
+        mocks.aiSettings.provider = "openai";
+        mocks.aiSettings.model = "test-model";
+        mocks.aiSettings.apiKey = "test-key";
+        mocks.aiSettings.baseURL = "";
     });
 
     afterEach(() => {
@@ -236,5 +241,46 @@ describe("runMultiPersonaStreams", () => {
                 ([event]) => event === "reader_persona_review_completed",
             ),
         ).toHaveLength(0);
+    });
+
+    it("uses the API key loaded during the request capture window", async () => {
+        mocks.ensureApiKeyLoaded.mockImplementationOnce(async () => {
+            mocks.aiSettings.apiKey = "loaded-from-keychain";
+        });
+        const streamFn = vi.fn(async (_options: StreamOpts) => streamWithChunk({ type: "finish" }));
+
+        await runMultiPersonaStreams({
+            personas: [personas[0]],
+            streamFn,
+            messages: [],
+            mode: "feedback",
+        });
+
+        expect(streamFn).toHaveBeenCalledOnce();
+        expect(streamFn.mock.calls[0]?.[0].apiKey).toBe("loaded-from-keychain");
+    });
+
+    it("does not dispatch after the tab changes while credentials load", async () => {
+        let resolveCredentials!: () => void;
+        mocks.ensureApiKeyLoaded.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveCredentials = resolve;
+                }),
+        );
+        const streamFn = vi.fn(async (_options: StreamOpts) => streamWithChunk({ type: "finish" }));
+        const request = runMultiPersonaStreams({
+            personas: [personas[0]],
+            streamFn,
+            messages: [],
+            mode: "feedback",
+        });
+
+        await Promise.resolve();
+        currentTabId.set("tab-2");
+        resolveCredentials();
+
+        await expect(request).rejects.toThrow(/target.*changed/i);
+        expect(streamFn).not.toHaveBeenCalled();
     });
 });

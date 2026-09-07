@@ -248,6 +248,15 @@ pub fn duplicate_document(
             ],
         )?;
     }
+    for (source_tab_id, new_tab_id) in &tab_ids {
+        tx.execute(
+            "INSERT INTO college_tab_setups (tab_id, setup_json, updated_at)
+             SELECT ?1, setup_json, ?2
+             FROM college_tab_setups
+             WHERE tab_id = ?3",
+            params![new_tab_id, now, source_tab_id],
+        )?;
+    }
     for (source_id, tab_id, label, is_active, parent_id, branched_from, locked) in &drafts {
         let mapped_tab_id = tab_id
             .as_ref()
@@ -550,6 +559,7 @@ pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::college::{get_college_tab_setup, set_college_tab_setup};
     use crate::db::schema::open_db;
     use crate::db::tabs::{create_tab, set_active_draft, set_active_tab};
 
@@ -731,6 +741,10 @@ mod tests {
         .unwrap();
         let tab_a = create_tab(&conn, &source_id, "Draft").unwrap();
         let tab_b = create_tab(&conn, &source_id, "Notes").unwrap();
+        let setup_a = r#"{"version":1,"prompts":["Draft prompt"]}"#;
+        let setup_b = r#"{"version":1,"prompts":["Notes prompt"]}"#;
+        set_college_tab_setup(&conn, &source_id, &tab_a.id, Some(setup_a)).unwrap();
+        set_college_tab_setup(&conn, &source_id, &tab_b.id, Some(setup_b)).unwrap();
         let root_a: String = conn
             .query_row(
                 "SELECT id FROM drafts WHERE tab_id = ?1",
@@ -833,6 +847,26 @@ mod tests {
         assert!(copied_tabs
             .iter()
             .all(|id| id != &tab_a.id && id != &tab_b.id));
+        assert_eq!(copied_tabs.len(), 2);
+        assert_eq!(
+            get_college_tab_setup(&conn, &copy_id, &copied_tabs[0]).unwrap(),
+            Some(setup_a.to_string())
+        );
+        assert_eq!(
+            get_college_tab_setup(&conn, &copy_id, &copied_tabs[1]).unwrap(),
+            Some(setup_b.to_string())
+        );
+        set_college_tab_setup(
+            &conn,
+            &copy_id,
+            &copied_tabs[0],
+            Some(r#"{"version":1,"prompts":["Copied only"]}"#),
+        )
+        .unwrap();
+        assert_eq!(
+            get_college_tab_setup(&conn, &source_id, &tab_a.id).unwrap(),
+            Some(setup_a.to_string())
+        );
         assert_eq!(copied_drafts.len(), 3);
         assert!(copied_drafts
             .iter()

@@ -5,6 +5,7 @@
 // accessors; editor stores, views, provider settings, and credentials remain
 // outside this contract.
 
+import type { CollegeCapabilities } from "$lib/college/capabilities";
 import type { MessageCircleIcon } from "lucide-svelte";
 import type { Component } from "svelte";
 
@@ -24,6 +25,7 @@ export interface SidebarPanelSession {
 export interface SidebarPanelProps {
     readonly active: boolean;
     readonly session: SidebarPanelSession | null;
+    readonly college?: CollegeCapabilities | null;
 }
 
 export interface SidebarPanelSessionSources {
@@ -54,6 +56,8 @@ export interface SidebarPanelContribution {
     readonly preferredHeight?: number;
     readonly contentClass: string;
     readonly mount: "eager" | "active";
+    /** Whether this panel is hidden while the global AI feature switch is off. */
+    readonly requiresAi: boolean;
     readonly contextMode?: "chat" | "feedback" | "revise";
     readonly contextRingClass?: string;
 }

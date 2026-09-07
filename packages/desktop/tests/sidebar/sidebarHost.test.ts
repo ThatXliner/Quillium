@@ -53,6 +53,7 @@ function contribution(overrides: Partial<SidebarPanelContribution> = {}): Sideba
         activeClass: "text-blue-600 bg-white/60",
         hoverClass: "hover:text-blue-600",
         requiresModel: false,
+        requiresAi: false,
         contentClass: "flex flex-col",
         mount: "eager",
         ...overrides,
@@ -139,6 +140,50 @@ describe("Sidebar panel host", () => {
         expect(ui.getByTestId("panel-session")).toHaveTextContent("none/none/none");
         expect(ensureApiKeyLoaded).not.toHaveBeenCalled();
         expect(stopAllAi).not.toHaveBeenCalled();
+    });
+
+    it("hides AI-dependent panels when AI is disabled while retaining the College-style local panel", async () => {
+        appSettings.aiEnabled = false;
+        const ui = render(Sidebar, {
+            props: {
+                contributions: [
+                    contribution({
+                        id: "ai-context",
+                        label: "AI Context",
+                        requiresAi: true,
+                        shortcutKey: undefined,
+                    }),
+                    contribution({
+                        id: "college",
+                        label: "College",
+                        requiresAi: false,
+                        shortcutKey: undefined,
+                    }),
+                ],
+            },
+        });
+
+        expect(ui.container.querySelector("#ai-tab-ai-context")).not.toBeInTheDocument();
+        expect(ui.container.querySelector("#ai-tab-college")).toBeInTheDocument();
+
+        appSettings.aiEnabled = true;
+        await ui.rerender({
+            contributions: [
+                contribution({
+                    id: "ai-context",
+                    label: "AI Context",
+                    requiresAi: true,
+                    shortcutKey: undefined,
+                }),
+                contribution({
+                    id: "college",
+                    label: "College",
+                    requiresAi: false,
+                    shortcutKey: undefined,
+                }),
+            ],
+        });
+        expect(ui.container.querySelector("#ai-tab-ai-context")).toBeInTheDocument();
     });
 
     it("reads selection through the scoped session and aborts it when hidden while retaining eager content", async () => {

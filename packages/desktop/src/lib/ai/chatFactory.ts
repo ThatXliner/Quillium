@@ -1,3 +1,4 @@
+import { assertCollegeContextReady } from "$lib/college/state.svelte";
 import { annotationField } from "$lib/editor/plugins/annotations";
 import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
@@ -69,6 +70,7 @@ import {
 import {
     type EditorialAction,
     type EditorialPanelMode,
+    type EditorialPreferences,
     type EditorialTask,
     type EditorialTurn,
     compileEditorialPolicy,
@@ -88,12 +90,21 @@ import {
 import { createAiGenerationProvenance } from "./provenance";
 import {
     aiSettings,
-    documentContext,
-    editorialPreferences,
     ensureApiKeyLoaded,
     getAiAbortSignal,
+    getEffectiveDocumentContext,
+    getEffectiveEditorialPreferences,
     setAiProcessing,
 } from "./settings.svelte";
+import type { DocumentContext } from "./settings.svelte";
+
+function effectiveDocumentContextSnapshot(): DocumentContext {
+    return getEffectiveDocumentContext();
+}
+
+function effectiveEditorialPreferencesSnapshot(): EditorialPreferences {
+    return getEffectiveEditorialPreferences();
+}
 
 type ToolCall =
     | { toolName: "createComment"; input: CommentInput }
@@ -207,9 +218,22 @@ export async function runMultiPersonaStreams({
     mode: "feedback" | "revise";
     turn?: EditorialTurn;
 }): Promise<void> {
-    await ensureApiKeyLoaded();
-
+    assertCollegeContextReady();
+    const requestTarget = {
+        documentId: get(currentDocumentId),
+        tabId: get(currentTabId),
+        draftId: get(currentDraftId),
+    };
     const abortSignal = getAiAbortSignal();
+    const documentContextAtStart = effectiveDocumentContextSnapshot();
+    const editorialPreferencesAtStart = effectiveEditorialPreferencesSnapshot();
+    const personasAtStart = JSON.parse(JSON.stringify(personas)) as ReaderPersona[];
+    const aiSettingsAtStart = {
+        provider: aiSettings.provider,
+        model: aiSettings.model,
+        baseURL: aiSettings.baseURL,
+    };
+
     // Annotations from these streams must land in the document the review
     // was started on — if the user switches documents mid-stream, tool
     // calls would otherwise be applied to the wrong document.
@@ -259,27 +283,52 @@ export async function runMultiPersonaStreams({
             : get(activeAnnotation),
     });
 
-    const tasks = personas.map(async (persona) => {
+    try {
+        await ensureApiKeyLoaded();
+        assertCollegeContextReady();
+        if (
+            abortSignal.aborted ||
+            requestTarget.documentId !== get(currentDocumentId) ||
+            requestTarget.tabId !== get(currentTabId) ||
+            requestTarget.draftId !== get(currentDraftId) ||
+            aiSettings.provider !== aiSettingsAtStart.provider ||
+            aiSettings.model !== aiSettingsAtStart.model ||
+            aiSettings.baseURL !== aiSettingsAtStart.baseURL
+        ) {
+            throw new Error(
+                "The writing target or AI settings changed before the request started.",
+            );
+        }
+    } catch (error) {
+        releaseEditorialTarget(targetView, targetAtStart);
+        throw error;
+    }
+
+    const apiKeyAtStart = aiSettings.apiKey;
+
+    const tasks = personasAtStart.map(async (persona) => {
         const provenanceTask = actionProvenanceTask(task);
         const provenance = provenanceTask
             ? createAiGenerationProvenance({
                   task: provenanceTask,
-                  provider: aiSettings.provider,
-                  model: aiSettings.model,
+                  provider: aiSettingsAtStart.provider,
+                  model: aiSettingsAtStart.model,
                   persona: persona.name,
               })
             : undefined;
         const stream = await streamFn({
-            messages,
+            messages: JSON.parse(JSON.stringify(messages)) as UIMessage[],
             documentContent: documentContentAtStart,
             selectedText: selectedTextAtStart,
             selectedTextRange: selectedTextRangeAtStart,
-            provider: aiSettings.provider,
-            model: aiSettings.model,
-            apiKey: aiSettings.apiKey,
-            baseURL: aiSettings.baseURL,
-            documentContext: { ...documentContext },
-            editorialPreferences: { ...editorialPreferences },
+            provider: aiSettingsAtStart.provider,
+            model: aiSettingsAtStart.model,
+            apiKey: apiKeyAtStart,
+            baseURL: aiSettingsAtStart.baseURL,
+            documentContext: JSON.parse(
+                JSON.stringify(documentContextAtStart),
+            ) as typeof documentContextAtStart,
+            editorialPreferences: { ...editorialPreferencesAtStart },
             editorialTask: task,
             exactWordCount,
             annotationContext: annotationContextAtStart,
@@ -387,8 +436,20 @@ function makeTransport(
             abortSignal?: AbortSignal;
             body?: object;
         } & Record<string, unknown>) {
-            await ensureApiKeyLoaded();
-            const turn = resolveTurnFromBody(mode, body);
+            assertCollegeContextReady();
+            const requestTarget = {
+                documentId: get(currentDocumentId),
+                tabId: get(currentTabId),
+                draftId: get(currentDraftId),
+            };
+            const globalAbortSignal = getAiAbortSignal();
+            const documentContextAtSend = effectiveDocumentContextSnapshot();
+            const editorialPreferencesAtSend = effectiveEditorialPreferencesSnapshot();
+            const aiSettingsAtSend = {
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                baseURL: aiSettings.baseURL,
+            };
             const rootView = get(editorView);
             const targetView = rootView ? getActiveEditorialView(rootView) : undefined;
             const selection = targetView?.state.selection.main;
@@ -405,31 +466,51 @@ function makeTransport(
                         ? undefined
                         : { from: selection.from, to: selection.to }
                     : get(selectedTextRange);
+            await ensureApiKeyLoaded();
+            assertCollegeContextReady();
+            if (
+                globalAbortSignal.aborted ||
+                abortSignal?.aborted ||
+                requestTarget.documentId !== get(currentDocumentId) ||
+                requestTarget.tabId !== get(currentTabId) ||
+                requestTarget.draftId !== get(currentDraftId) ||
+                aiSettings.provider !== aiSettingsAtSend.provider ||
+                aiSettings.model !== aiSettingsAtSend.model ||
+                aiSettings.baseURL !== aiSettingsAtSend.baseURL
+            ) {
+                throw new Error(
+                    "The writing target or AI settings changed before the request started.",
+                );
+            }
+            const apiKeyAtSend = aiSettings.apiKey;
+            const turn = resolveTurnFromBody(mode, body);
             if (turn.task === "exact-compression" && !selectedTextAtSend) {
                 throw new Error("Select a passage before requesting exact compression.");
             }
             captureTarget(
                 captureEditorialTarget({
                     view: targetView ?? null,
-                    documentId: get(currentDocumentId),
-                    tabId: get(currentTabId),
-                    draftId: get(currentDraftId),
+                    documentId: requestTarget.documentId,
+                    tabId: requestTarget.tabId,
+                    draftId: requestTarget.draftId,
                     selectedText: selectedTextAtSend,
                     selectedTextRange: selectedTextRangeAtSend,
                 }),
                 turn,
             );
             return streamFn({
-                messages,
+                messages: JSON.parse(JSON.stringify(messages)) as UIMessage[],
                 documentContent: documentContentAtSend,
                 selectedText: selectedTextAtSend,
                 selectedTextRange: selectedTextRangeAtSend,
-                provider: aiSettings.provider,
-                model: aiSettings.model,
-                apiKey: aiSettings.apiKey,
-                baseURL: aiSettings.baseURL,
-                documentContext: { ...documentContext },
-                editorialPreferences: { ...editorialPreferences },
+                provider: aiSettingsAtSend.provider,
+                model: aiSettingsAtSend.model,
+                apiKey: apiKeyAtSend,
+                baseURL: aiSettingsAtSend.baseURL,
+                documentContext: JSON.parse(
+                    JSON.stringify(documentContextAtSend),
+                ) as typeof documentContextAtSend,
+                editorialPreferences: { ...editorialPreferencesAtSend },
                 editorialTask: turn.task,
                 exactWordCount: turn.exactWordCount,
                 annotationContext: buildAnnotationContextInputs({

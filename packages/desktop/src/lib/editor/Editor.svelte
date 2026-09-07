@@ -39,6 +39,7 @@ import {
  *   - The Annotations panel and AI sidebar read from those stores;
  *     they never touch the EditorView directly.
  */
+import { currentTabLabel, currentDraftLabel } from "$lib/stores";
 import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { isTauri } from "@tauri-apps/api/core";
@@ -435,6 +436,10 @@ $effect(() =>
 const drafts = loader.drafts;
 
 const currentDraft = $derived(drafts.tabDrafts.find((d) => d.id === $currentDraftId));
+$effect(() => {
+    currentTabLabel.set(drafts.tabs.find((tab) => tab.id === $currentTabId)?.label ?? "");
+    currentDraftLabel.set(currentDraft?.label ?? "");
+});
 const isLocked = $derived(currentDraft?.locked ?? false);
 // A draft locks automatically when a newer iteration supersedes it (it has a
 // live iteration after it in its run); otherwise the lock was manual.

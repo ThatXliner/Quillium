@@ -25,6 +25,7 @@ function contribution(overrides: Partial<SidebarPanelContribution> = {}): Sideba
         requiresModel: false,
         contentClass: "flex flex-col",
         mount: "active",
+        requiresAi: false,
         ...overrides,
     };
 }
@@ -80,7 +81,17 @@ describe("createSidebarPanels", () => {
         ])[0];
 
         expect(panel.requiresModel).toBe(false);
+        expect(panel.requiresAi).toBe(false);
         expect(panel.mount).toBe("active");
+    });
+
+    it("keeps the AI feature gate separate from the model credential gate", () => {
+        const panel = createSidebarPanels([
+            contribution({ id: "local-ai-context", requiresAi: true, requiresModel: false }),
+        ])[0];
+
+        expect(panel.requiresAi).toBe(true);
+        expect(panel.requiresModel).toBe(false);
     });
 });
 
