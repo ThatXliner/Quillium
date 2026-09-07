@@ -70,21 +70,26 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 `Sidebar.svelte` consumes the typed contributions in
 [`sidebar/builtInPanels.ts`](../packages/desktop/src/lib/sidebar/builtInPanels.ts).
 Each contribution declares its stable ID, accessible label, title, icon, order,
-optional shortcut, dimensions, model prerequisite, content layout, and mount
-policy. Adding a contribution adds its navigation and component through the same
-loops; it does not require another rendering branch in the host. Settings uses
-the utility placement. The `ai_sidebar_opened` analytics event and `ai-sidebar`
-DOM IDs remain unchanged for compatibility.
+optional shortcut, dimensions, AI-feature prerequisite, model prerequisite,
+content layout, and mount policy. Adding a contribution adds its navigation and
+component through the same loops; it does not require another rendering branch in
+the host. Settings uses the utility placement. The `ai_sidebar_opened` analytics
+event and `ai-sidebar` DOM IDs remain unchanged for compatibility.
 
-Context, Readers, and Settings open without model credentials, including when AI
-is disabled. Generating a Context brief still requires an enabled model connection.
-Opening Context or Readers does not load credentials; Settings retains its explicit
-connection and credential controls. Chat, Feedback,
-and Revise retain their credential-to-Settings navigation.
+When AI is disabled, Chat, Feedback, Revise, Context, Readers, AI Settings, and
+College are hidden through their `requiresAi` metadata. Contributions without
+that dependency remain available. The host hides its chrome when no panels are
+eligible. When AI is enabled, College, Context, Readers, and Settings open without
+model credentials; generating a
+Context brief still requires an enabled model connection. Opening Context or
+Readers does not load credentials; Settings retains its explicit connection and
+credential controls. Chat, Feedback, and Revise retain their credential-to-Settings
+navigation.
 
-The five writing panels retain their mounted state while hidden; Settings mounts
-only while active. Hiding a panel ends its host session but does not erase saved
-writing context. Removing its contribution or adding its ID to `disabledPanelIds`
+The five eager AI writing panels retain their mounted state while collapsed or
+another panel is selected; College
+and Settings mount only while active. Hiding a panel ends its host session but
+does not erase saved writing context. Disabling its AI prerequisite, removing its contribution, or adding its ID to `disabledPanelIds`
 unmounts it and stops outstanding built-in AI work; re-enabling creates one instance keyed by the stable ID. Duplicate
 IDs and shortcuts are rejected when the contribution list is assembled. The
 `ai_sidebar_opened` analytics event and `ai-sidebar` DOM IDs remain unchanged
@@ -123,19 +128,25 @@ Bundled contributions do not imply external installation or distribution.
 
 The foundation supplies declarative built-in rendering, local panels, navigation,
 mount/disposal rules, target-scoped read sessions, and per-panel render failure
-containment. Existing AI actions retain their validated gateways. The college
-consumer in #422 still needs deliberate preset and review operations; namespaced
-storage, bounded context/provenance reads, navigation, and action capabilities
-should be added with that consumer. Registration is not a security sandbox for
+containment. Existing AI actions retain their validated gateways. The [College applications consumer](college-applications.md) adds a narrow
+host adapter for tab setup persistence, snapshot reads, panel navigation, and
+three fixed Chat/Feedback actions. Other namespaced capabilities should be added
+only with concrete consumers. Registration is not a security sandbox for
 untrusted executable code. External loading, compatibility, isolation, consent,
 updates, removal, and a marketplace remain deferred.
 
-The college design must allow each tab's writing brief to cover one or multiple
-prompts, with drafts representing alternate attempts at that writing task. A
-plugin can work across a document. School-specific review must distinguish which
+Each configured College workspace tab owns one prompt, with drafts representing
+alternate attempts at that writing task. A plugin can work across a document:
+selecting multiple prompts creates one named tab per prompt, with one root draft
+and setup per tab, in a prevalidated atomic batch. Applying one prompt to an
+existing workspace tab changes only its College setup and preserves the tab label,
+existing prose, and document-owned notes and decisions. There is no preview
+acknowledgment or separate context-confirmation screen. Legacy saved setups that
+contain multiple prompts remain readable until explicit replacement; no automatic
+migration or deletion occurs. School-specific review must distinguish which
 responses are read together; reuse between schools is not inherently a problem.
-No essay schema, research workflow (#423), or cross-essay review (#424) is introduced
-here. LaTeX compilation and word-processor/debate formatting are outside the intended
+The College consumer now persists independent tab briefs. Research (#423) and
+cross-essay review (#424) remain deferred. LaTeX compilation and word-processor/debate formatting are outside the intended
 prose-development scope.
 
 ### Acceptance coverage for this slice
@@ -144,11 +155,11 @@ prose-development scope.
 |---|---|
 | Preserve six built-in panels | Implemented; existing sidebar browser regressions pass. |
 | Add an icon and panel without rendering branches | Implemented; test-only contributions exercise the real host. |
-| Local operations without credentials | Implemented; browser tests edit Context and Readers without credential loading or provider traffic. |
+| Local operations without credentials | Implemented while AI is enabled; browser tests edit Context and Readers without credential loading or provider traffic. |
 | Activation, hiding, disable/re-enable, focus, errors, cancellation | Implemented for built-in contributions and host sessions; async handlers own their error reporting. |
 | Stable document/tab/draft targets | Implemented for host sessions; existing request guards retained and late Context generation rejected. |
-| Plugin action permission, annotation, and undo guarantees | Existing built-in gateways retained and regression-tested. New contribution action capabilities are deferred. |
-| College panel, setup presets, and review without globals | Panel mounting and target reads are available. Preset/review adapters and the #422 consumer are deferred. |
+| Plugin action permission, annotation, and undo guarantees | Existing built-in gateways retained and regression-tested. College delegates three fixed actions to Chat and Feedback; arbitrary plugin actions remain deferred. |
+| College panel, setup presets, and review without globals | Implemented by the College consumer; see its [ownership and capability guide](college-applications.md). |
 | Keyboard names/navigation, narrow layout, icon overflow | Automated keyboard/layout checks plus a browser check with 14 contributions at 320×600. |
 | Lifecycle, target, capability tests and real sidebar exercise | Covered by `tests/sidebar`, `tests/e2e/sidebarHost.pw.ts`, existing sidebar E2E, and editorial-target tests. |
 | Owning documentation distinguishes sidebar/presets/plugins/distribution | Documented here and in the glossary. |
@@ -278,6 +289,8 @@ a deterministic, mode-specific packet with these possible sources:
 | Annotations | Up to six relevant open comments, suggestions, or revisions within a separate character budget |
 | Brief | Writer-provided context, kept logically separate from draft text |
 | Decisions | Explicit document-scoped choices, labeled as writer-confirmed |
+| Tab writing brief | Active College prompt, constraints, intent, and feedback focus, capped at 8,000 characters |
+| College guidance | Accepted reference snapshots with provenance, capped at 6,000 characters with omissions |
 
 Open annotations include their target, nearby context, recent thread messages,
 and a limited number of suggestion replacements or revision versions. They are

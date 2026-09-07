@@ -1,3 +1,11 @@
+import type { CollegeBrief, CollegeReference } from "$lib/college/model";
+import { collegeResearchSetupKey } from "$lib/college/researchModel";
+import {
+    assertCollegeContextReady,
+    collegeState,
+    getActiveCollegeSetup,
+    updateActiveCollegeSetup,
+} from "$lib/college/state.svelte";
 import {
     getDocumentEditorialDecisions,
     getDocumentWriterBrief,
@@ -51,6 +59,8 @@ import {
 } from "./persistence";
 import type { Provider } from "./provider";
 
+export { assertCollegeContextReady };
+
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
 const BASE_URL_KEY = "quillium-ai-base-url";
@@ -63,6 +73,8 @@ export const HAS_OPENAI_OAUTH_KEY = "quillium-has-openai-oauth";
 export type DocumentContext = {
     freeform: string;
     decisions: string[];
+    collegeBrief?: CollegeBrief;
+    collegeReferences?: CollegeReference[];
 };
 
 function loadLegacyDocumentContext(): Pick<DocumentContext, "freeform"> {
@@ -117,7 +129,49 @@ export function saveDocumentContext() {
 export const documentContext = $state<DocumentContext>({ freeform: "", decisions: [] });
 
 export function hasDocumentContext(): boolean {
-    return documentContext.freeform.trim().length > 0 || documentContext.decisions.length > 0;
+    const effective = getEffectiveDocumentContext();
+    return (
+        effective.freeform.trim().length > 0 ||
+        effective.decisions.length > 0 ||
+        effective.collegeBrief !== undefined ||
+        (effective.collegeReferences?.length ?? 0) > 0
+    );
+}
+
+/**
+ * Return document context with active tab-owned College guidance layered on
+ * top of the shared document brief and decisions. The returned object is a
+ * deep snapshot so a request cannot observe later UI edits.
+ */
+export function getEffectiveDocumentContext(): DocumentContext {
+    const base = JSON.parse(
+        JSON.stringify({
+            freeform: documentContext.freeform,
+            decisions: [...documentContext.decisions],
+        }),
+    ) as DocumentContext;
+    const setup = getActiveCollegeSetup();
+    if (!setup) return base;
+    base.collegeBrief = JSON.parse(
+        JSON.stringify({
+            school: setup.school,
+            program: setup.program,
+            cycle: setup.cycle,
+            intent: setup.intent,
+            feedbackFocus: setup.feedbackFocus,
+            prompts: setup.prompts,
+        }),
+    ) as CollegeBrief;
+    const researchSetupKey = collegeResearchSetupKey(setup);
+    base.collegeReferences = JSON.parse(
+        JSON.stringify(
+            setup.references.filter(
+                (reference) =>
+                    !reference.research || reference.research.setupKey === researchSetupKey,
+            ),
+        ),
+    ) as CollegeReference[];
+    return base;
 }
 
 /** Loads the writer brief for each active document and flushes the old one before switching. */
@@ -248,10 +302,30 @@ function loadPersonaModes(): PersonaModes {
 export const personaModes = $state<PersonaModes>(loadPersonaModes());
 
 export function personasEnabledFor(mode: PersonaMode): boolean {
+    const setup = getActiveCollegeSetup();
+    if (setup) return mode === "feedback" ? setup.feedbackReaders : setup.reviseReaders;
     return personaModes[mode];
 }
 
-export function setPersonasForMode(mode: PersonaMode, enabled: boolean) {
+export async function setPersonasForMode(mode: PersonaMode, enabled: boolean): Promise<void> {
+    try {
+        assertCollegeContextReady();
+    } catch (error) {
+        collegeState.error =
+            error instanceof Error ? error.message : "College setup is unavailable.";
+        return;
+    }
+    if (getActiveCollegeSetup()) {
+        try {
+            await updateActiveCollegeSetup(
+                mode === "feedback" ? { feedbackReaders: enabled } : { reviseReaders: enabled },
+            );
+        } catch (error) {
+            collegeState.error =
+                error instanceof Error ? error.message : "Could not save reader preferences.";
+        }
+        return;
+    }
     personaModes[mode] = enabled;
     if (typeof localStorage !== "undefined") {
         localStorage.setItem(PERSONA_MODES_KEY, JSON.stringify(personaModes));
@@ -289,6 +363,18 @@ function loadEditorialPreferences(): EditorialPreferences {
 }
 
 export const editorialPreferences = $state<EditorialPreferences>(loadEditorialPreferences());
+
+/** Resolve the tab-owned editorial policy before device defaults. */
+export function getEffectiveEditorialPreferences(): EditorialPreferences {
+    const setup = getActiveCollegeSetup();
+    return setup
+        ? { ...setup.preferences }
+        : {
+              stance: editorialPreferences.stance,
+              feedbackDensity: editorialPreferences.feedbackDensity,
+              voiceLatitude: editorialPreferences.voiceLatitude,
+          };
+}
 
 export function persistEditorialPreferences() {
     if (typeof localStorage === "undefined") return;

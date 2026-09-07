@@ -85,6 +85,28 @@ export async function setDocumentEditorialDecisions(
     });
 }
 
+export async function getCollegeTabSetup(
+    documentId: string,
+    tabId: string,
+): Promise<string | null> {
+    return invoke<string | null>("cmd_get_college_tab_setup", { documentId, tabId });
+}
+
+export async function setCollegeTabSetup(
+    documentId: string,
+    tabId: string,
+    setupJson: string | null,
+): Promise<void> {
+    return invoke<void>("cmd_set_college_tab_setup", { documentId, tabId, setupJson });
+}
+
+export async function createCollegeTabs(
+    documentId: string,
+    entries: { label: string; setupJson: string }[],
+): Promise<TabMeta[]> {
+    return invoke<TabMeta[]>("cmd_create_college_tabs", { documentId, entries });
+}
+
 // ── Documents ─────────────────────────────────────────────────────
 
 export async function listDocuments(): Promise<DocumentMeta[]> {

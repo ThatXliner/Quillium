@@ -23,6 +23,7 @@ import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
+import { currentDocumentId, currentTabId, currentDraftId } from "$lib/stores";
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
 /*
  * Chat.svelte
@@ -100,6 +101,12 @@ $effect(() => {
         input = event.message;
     });
 });
+
+$effect(() => appEventBus.on("college-action", (event) => {
+    if (event.target.documentId !== $currentDocumentId || event.target.tabId !== $currentTabId || event.target.draftId !== $currentDraftId) return;
+    if (event.action !== "plan" || chat.status !== "ready") return;
+    void sendMessage("Help me plan an answer to this tab's writing brief. Consider each prompt and its constraints. Ask about my real experiences and intentions; do not invent experiences or write the essay for me.");
+}));
 
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat, "chat");

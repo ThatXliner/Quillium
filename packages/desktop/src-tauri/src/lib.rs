@@ -4,6 +4,7 @@ pub mod embeddings;
 mod keychain;
 mod oauth;
 mod pdf_export;
+mod school_research;
 
 use std::{fs, path::PathBuf, sync::Mutex};
 use tauri::Manager;
@@ -14,6 +15,7 @@ use db::{
         clear_conversation, get_editorial_decisions, get_writer_brief, load_conversation,
         save_conversation, set_editorial_decisions, set_writer_brief,
     },
+    college::{create_college_tabs, get_college_tab_setup, set_college_tab_setup, CollegeTabInput},
     documents::{
         create_document_with_history, create_draft, delete_document, duplicate_document,
         get_document, get_semantic_search_enabled, get_trash_retention, list_documents,
@@ -43,6 +45,7 @@ use db::{
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use oauth::await_openai_oauth_callback;
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
+use school_research::{school_research_cancel, school_research_fetch};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
@@ -120,6 +123,38 @@ fn cmd_set_document_editorial_decisions(
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     set_editorial_decisions(&conn, &document_id, &decisions_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_college_tab_setup(
+    state: tauri::State<DbState>,
+    document_id: String,
+    tab_id: String,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_college_tab_setup(&conn, &document_id, &tab_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_college_tab_setup(
+    state: tauri::State<DbState>,
+    document_id: String,
+    tab_id: String,
+    setup_json: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_college_tab_setup(&conn, &document_id, &tab_id, setup_json.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_college_tabs(
+    state: tauri::State<DbState>,
+    document_id: String,
+    entries: Vec<CollegeTabInput>,
+) -> Result<Vec<TabMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_college_tabs(&conn, &document_id, &entries).map_err(|e| e.to_string())
 }
 
 // ── Document commands ─────────────────────────────────────────────
@@ -1365,6 +1400,9 @@ pub fn run() {
             cmd_set_document_writer_brief,
             cmd_get_document_editorial_decisions,
             cmd_set_document_editorial_decisions,
+            cmd_get_college_tab_setup,
+            cmd_set_college_tab_setup,
+            cmd_create_college_tabs,
             cmd_get_trash_retention,
             cmd_export_pdf,
             cmd_export_text,
@@ -1440,6 +1478,8 @@ pub fn run() {
             cmd_register_open_doc,
             cmd_deregister_open_doc,
             cmd_is_doc_open_elsewhere,
+            school_research_fetch,
+            school_research_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

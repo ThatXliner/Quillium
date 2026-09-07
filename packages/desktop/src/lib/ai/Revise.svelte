@@ -33,7 +33,7 @@ import {
     useAiChatEffects,
 } from "$lib/ai/chatFactory";
 import { streamRevise } from "$lib/ai/clientStreams";
-import { personaModes, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { personasEnabledFor, setPersonasForMode } from "$lib/ai/settings.svelte";
 import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
@@ -115,7 +115,7 @@ $effect(() => {
  * are actually enabled, uses the single-stream chat.
  */
 async function sendRevise(text: string, trigger: string, turn?: ContextAction["turn"]) {
-    const personas = personaModes.revise ? getEnabledPersonas() : [];
+    const personas = personasEnabledFor("revise") ? getEnabledPersonas() : [];
     if (personas.length === 0 || turn?.task === "exact-compression") {
         posthog.capture("ai_revise_requested", {
             has_selection: !!$selectedText,
@@ -156,7 +156,7 @@ function handleSubmit(event: SubmitEvent) {
 }
 
 function togglePersonaMode() {
-    const next = !personaModes.revise;
+    const next = !personasEnabledFor("revise");
     setPersonasForMode("revise", next);
     posthog.capture("persona_mode_toggled", { mode: "revise", enabled: next });
 }
@@ -205,17 +205,17 @@ function useContextAction(action: ContextAction) {
         <button
             type="button"
             role="switch"
-            aria-checked={personaModes.revise}
+            aria-checked={personasEnabledFor("revise")}
             onclick={togglePersonaMode}
-            title={personaModes.revise
+            title={personasEnabledFor("revise")
                 ? "Personas on — each enabled reader responds in parallel (uses more tokens)"
                 : "Personas off — a single plain revision response"}
-            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personaModes.revise
+            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personasEnabledFor("revise")
                 ? 'bg-purple-500'
                 : 'bg-black/15'}"
         >
             <span
-                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personaModes.revise
+                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personasEnabledFor("revise")
                     ? 'translate-x-3.5'
                     : 'translate-x-0.5'}"
             ></span>

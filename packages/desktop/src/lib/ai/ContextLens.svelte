@@ -1,5 +1,5 @@
 <script lang="ts">
-import { documentContext } from "$lib/ai/settings.svelte";
+import { getEffectiveDocumentContext } from "$lib/ai/settings.svelte";
 import { appSettings, updateSettings } from "$lib/settings.svelte";
 import HelpModal from "$lib/ui/HelpModal.svelte";
 import InfoButton from "$lib/ui/InfoButton.svelte";
@@ -57,10 +57,7 @@ const packet = $derived(
         documentContent: $documentContent,
         selectedText: $selectedText,
         selectedTextRange: $selectedTextRange,
-        documentContext: {
-            freeform: documentContext.freeform,
-            decisions: documentContext.decisions,
-        },
+        documentContext: getEffectiveDocumentContext(),
         annotationContext,
     }),
 );

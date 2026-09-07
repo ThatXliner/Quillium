@@ -10,6 +10,7 @@
     State persisted per document in SQLite via saveDocumentContext.
 -->
 <script lang="ts">
+import CollegeContext from "$lib/college/CollegeContext.svelte";
 import { generateContext } from "$lib/ai/clientStreams";
 import {
     aiSettings,
@@ -104,6 +105,8 @@ function removeDecision(index: number) {
     posthog.capture("editorial_decision_removed");
 }
 </script>
+
+<CollegeContext detailed />
 
 <div class="flex flex-col h-full overflow-y-auto">
     <!-- Prompt input section -->

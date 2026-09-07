@@ -179,6 +179,19 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "document_creator_version",
         kind: MigrationKind::Sql("ALTER TABLE documents ADD COLUMN created_with_version TEXT;"),
     },
+    Migration {
+        version: 13,
+        name: "college_tab_setups",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS college_tab_setups (
+                tab_id     TEXT PRIMARY KEY REFERENCES tabs(id) ON DELETE CASCADE,
+                setup_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            ",
+        ),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -571,7 +584,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 12);
+        assert_eq!(version, MIGRATIONS.last().unwrap().version);
         let metadata: Vec<(
             String,
             String,

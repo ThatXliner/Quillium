@@ -60,6 +60,7 @@ textwrap = "0.16.2"
 fontdb = "0.23"
 tauri-plugin-http = "2.5.9"
 tauri-plugin-notification = "2"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
 # fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt

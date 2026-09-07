@@ -10,12 +10,15 @@
     Dependencies: readers/settings.svelte.ts, readers/presets.ts, posthog.
 -->
 <script lang="ts">
+import { collegeState } from "$lib/college/state.svelte";
+import CollegeContext from "$lib/college/CollegeContext.svelte";
 import posthog from "$lib/posthog";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 import {
     addCustomPersona,
     cycleChattiness,
     readersSettings,
+    getEffectivePersonas,
     removeCustomPersona,
     togglePersona,
 } from "$lib/readers/settings.svelte";
@@ -33,8 +36,8 @@ let newEmoji = $state("📝");
 let newColor = $state("#6b7280");
 let newInstruction = $state("");
 
-const enabledPersonas = $derived(readersSettings.personas.filter((p) => p.enabled));
-const disabledPersonas = $derived(readersSettings.personas.filter((p) => !p.enabled));
+const enabledPersonas = $derived(getEffectivePersonas().filter((p) => p.enabled));
+const disabledPersonas = $derived(getEffectivePersonas().filter((p) => !p.enabled));
 
 const colorSwatches = [
     "#ef4444",
@@ -85,6 +88,8 @@ function handleRemove(id: string) {
 
 const chattinessLevels = ["quiet", "normal", "verbose"] as const;
 </script>
+
+<CollegeContext />
 
 {#snippet personaCard(persona: typeof readersSettings.personas[0], dimmed: boolean)}
     {@const filledDots = chattinessLevels.indexOf(persona.chattiness) + 1}
@@ -203,7 +208,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
     </div>
 {/snippet}
 
-<div class="flex-1 flex flex-col min-h-0">
+<div class="flex-1 flex flex-col min-h-0" inert={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}>
     <div class="px-3 pt-1.5 pb-1 text-[10px] text-gray-400">
         Dots control how much detail each reader gives in their feedback.
         Turn personas on per mode (the toggle in Feedback / Revise) to use them —

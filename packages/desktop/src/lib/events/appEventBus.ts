@@ -1,4 +1,6 @@
 import type { BackupEntry } from "$lib/errorGuard";
+import type { SidebarPanelTarget } from "$lib/sidebar/panels";
+import type { TabMeta } from "$lib/db/types";
 import { TypedEventBus } from "./createEventBus";
 
 export type AppEvent =
@@ -11,6 +13,17 @@ export type AppEvent =
           y: number;
       }
     | { type: "ai-open-chat"; message: string }
+    | {
+          type: "college-action";
+          action: "prompt-fit" | "specificity" | "plan";
+          target: SidebarPanelTarget;
+      }
+    | {
+          type: "college-tabs-created";
+          documentId: string;
+          tabs: TabMeta[];
+          selectFirst: boolean;
+      }
     | { type: "ai-open-settings" }
     | { type: "restore-backup"; backup: BackupEntry }
     | { type: "manual-review" }

@@ -29,12 +29,13 @@ import {
     useAiChatEffects,
 } from "$lib/ai/chatFactory";
 import { streamFeedback } from "$lib/ai/clientStreams";
-import { personaModes, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { personasEnabledFor, setPersonasForMode } from "$lib/ai/settings.svelte";
 import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { appSettings } from "$lib/settings.svelte";
+import { currentDocumentId, currentTabId, currentDraftId } from "$lib/stores";
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
 /*
  * Feedback.svelte
@@ -94,6 +95,15 @@ function clearConversation() {
     personaInFlight = false;
 }
 
+$effect(() => appEventBus.on("college-action", (event) => {
+    if (event.target.documentId !== $currentDocumentId || event.target.tabId !== $currentTabId || event.target.draftId !== $currentDraftId) return;
+    if (event.action === "plan" || chat.status !== "ready" || personaInFlight || !$documentContent.trim()) return;
+    const prompt = event.action === "prompt-fit"
+        ? "Check this draft against each prompt and constraint in this tab's writing brief. Distinguish official requirements from advice and unknown details. Create comments only where useful; do not rewrite."
+        : "Find claims in this draft that need concrete examples or reflection in light of this tab's writing brief. Ask about the writer's real contribution and meaning; never invent experiences. Create comments only where useful.";
+    void sendFeedback(prompt, "college");
+}));
+
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat, "feedback");
 
@@ -112,7 +122,7 @@ $effect(() => {
  * are actually enabled, uses the single-stream chat.
  */
 async function sendFeedback(text: string, trigger: string, turn?: ContextAction["turn"]) {
-    const personas = personaModes.feedback ? getEnabledPersonas() : [];
+    const personas = personasEnabledFor("feedback") ? getEnabledPersonas() : [];
     if (personas.length === 0) {
         posthog.capture("ai_feedback_requested", {
             has_selection: !!$selectedText,
@@ -153,7 +163,7 @@ function handleSubmit(event: SubmitEvent) {
 }
 
 function togglePersonaMode() {
-    const next = !personaModes.feedback;
+    const next = !personasEnabledFor("feedback");
     setPersonasForMode("feedback", next);
     posthog.capture("persona_mode_toggled", { mode: "feedback", enabled: next });
 }
@@ -198,17 +208,17 @@ function useContextAction(action: ContextAction) {
         <button
             type="button"
             role="switch"
-            aria-checked={personaModes.feedback}
+            aria-checked={personasEnabledFor("feedback")}
             onclick={togglePersonaMode}
-            title={personaModes.feedback
+            title={personasEnabledFor("feedback")
                 ? "Personas on — each enabled reader responds in parallel (uses more tokens)"
                 : "Personas off — a single plain feedback response"}
-            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personaModes.feedback
+            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personasEnabledFor("feedback")
                 ? 'bg-green-500'
                 : 'bg-black/15'}"
         >
             <span
-                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personaModes.feedback
+                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personasEnabledFor("feedback")
                     ? 'translate-x-3.5'
                     : 'translate-x-0.5'}"
             ></span>

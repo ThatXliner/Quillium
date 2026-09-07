@@ -1,9 +1,12 @@
 <!-- Sidebar.svelte — Built-in sidebar navigation, sizing, and panel lifecycle. -->
 <script lang="ts">
+import { collegeWorkspace, cancelCollegeTabPick } from "$lib/college/workspace.svelte";
+import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
+import { createCollegeCapabilities } from "$lib/college/capabilities";
 import ContextInfoButton from "$lib/ai/ContextInfoButton.svelte";
 import {
     aiProcessing,
-    documentContext,
+    getEffectiveDocumentContext,
     ensureApiKeyLoaded,
     hasApiKey,
     stopAllAi,
@@ -25,6 +28,9 @@ import {
     currentDocumentId,
     currentDraftId,
     currentTabId,
+    currentTabLabel,
+    currentDraftLabel,
+    currentDocumentTitle,
     documentContent,
     selectedText,
     selectedTextRange,
@@ -39,6 +45,7 @@ import { buildAiContextPacket, shouldShowContextSummary } from "$lib/ai/context"
 import { PanelResizeController } from "$lib/ai/panelResize.svelte";
 
 useDocumentContextEffects();
+useCollegeEffects(stopAllAi);
 
 let {
     contributions = builtInPanels,
@@ -51,7 +58,7 @@ let action = $state<string | null>(null);
 const panels = $derived(
     createSidebarPanels(contributions).filter(
         (panel) =>
-            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresModel),
+            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresAi),
     ),
 );
 const actions = $derived(panels.filter((panel) => panel.placement === "main"));
@@ -112,6 +119,23 @@ onDestroy(() => {
     stopAllAi();
 });
 
+const collegeCapabilities = $derived.by(() => {
+    $documentContent;
+    $currentDocumentTitle;
+    $currentTabLabel;
+    $currentDraftLabel;
+    return session ? createCollegeCapabilities(session, selectAction) : null;
+});
+$effect(() => { collegeState.hostEnabled = panels.some((panel) => panel.id === "college"); });
+$effect(() => {
+    if (!collegeWorkspace.setup) return;
+    if (collegeWorkspace.documentId !== $currentDocumentId || !collegeState.hostEnabled) {
+        untrack(cancelCollegeTabPick);
+        return;
+    }
+    if (action === "college") untrack(() => closePanel());
+});
+
 const expanded = $derived(action !== null);
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 570;
@@ -153,10 +177,7 @@ const headerContextPacket = $derived(
               documentContent: $documentContent,
               selectedText: $selectedText,
               selectedTextRange: $selectedTextRange,
-              documentContext: {
-                  freeform: documentContext.freeform,
-                  decisions: documentContext.decisions,
-              },
+              documentContext: getEffectiveDocumentContext(),
               annotationContext: headerAnnotationContext,
           })
         : null,
@@ -205,7 +226,7 @@ const transitionClass = $derived(
         : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
 );
 
-let container: HTMLDivElement;
+let container = $state<HTMLDivElement>();
 let iconStrip = $state<HTMLDivElement>();
 let iconEls = $state<HTMLButtonElement[]>([]);
 let stripOverflows = $state(false);
@@ -396,6 +417,7 @@ function handleKeydown(e: KeyboardEvent) {
   >
 {/snippet}
 
+{#if panels.length > 0}
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
@@ -562,7 +584,7 @@ function handleKeydown(e: KeyboardEvent) {
                 stopAllAi();
                 console.error("[Sidebar] panel failed", panel.id, error);
               }}>
-              <panel.component active={action === panel.id} session={action === panel.id ? session : null} />
+              <panel.component active={action === panel.id} session={action === panel.id ? session : null} college={action === panel.id ? collegeCapabilities : null} />
               {#snippet failed(error, reset)}
                 <div role="alert" class="p-4 text-sm text-black/70">
                   <p>{panel.label} could not be displayed.</p>
@@ -627,7 +649,20 @@ function handleKeydown(e: KeyboardEvent) {
   </div>
 {/if}
 
+{/if}
+
 <style>
+  /* Compact contributions grow with their content; the picker keeps its saved size. */
+  #ai-sidebar:has(:global([data-sidebar-size="compact"])) {
+    height: auto !important;
+    max-height: calc(100dvh - 64px);
+  }
+  #ai-sidebar:has(:global([data-sidebar-size="compact"])) :global([data-panel-id]:has([data-sidebar-size="compact"])) {
+    position: relative;
+    max-height: calc(100dvh - 170px);
+    overflow-y: auto;
+  }
+
   @keyframes fade-in {
     from {
       opacity: 0;

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { collegeWorkspace, cancelCollegeTabPick, applyCollegeToExistingTab } from "$lib/college/workspace.svelte";
 import { logAppEvent } from "$lib/appLog";
 import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
@@ -39,6 +40,7 @@ import {
  *   - The Annotations panel and AI sidebar read from those stores;
  *     they never touch the EditorView directly.
  */
+import { currentTabLabel, currentDraftLabel } from "$lib/stores";
 import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { isTauri } from "@tauri-apps/api/core";
@@ -433,8 +435,32 @@ $effect(() =>
 );
 
 const drafts = loader.drafts;
+const pickingCollegeTab = $derived(collegeWorkspace.setup !== null && collegeWorkspace.documentId === $currentDocumentId);
+$effect(() => appEventBus.on("college-tabs-created", event => {
+    void drafts.acceptCreatedCollegeTabs(event.documentId, event.tabs, event.selectFirst).catch(error => toast.error(String(error)));
+}));
+$effect(() => {
+    if (!pickingCollegeTab) return;
+    void tick().then(() => document.querySelector<HTMLElement>('[data-college-target="true"][aria-selected="true"]')?.focus());
+});
+async function selectWorkspaceTab(id: string): Promise<void> {
+    if (pickingCollegeTab) {
+        if (collegeWorkspace.saving) return;
+        const documentId = $currentDocumentId;
+        if (await applyCollegeToExistingTab(id)) {
+            if (documentId !== $currentDocumentId) return;
+            await drafts.handleTabSelect(id);
+            toast.success("Prompt applied. Your writing is unchanged.");
+        }
+    } else await drafts.handleTabSelect(id);
+}
+
 
 const currentDraft = $derived(drafts.tabDrafts.find((d) => d.id === $currentDraftId));
+$effect(() => {
+    currentTabLabel.set(drafts.tabs.find((tab) => tab.id === $currentTabId)?.label ?? "");
+    currentDraftLabel.set(currentDraft?.label ?? "");
+});
 const isLocked = $derived(currentDraft?.locked ?? false);
 // A draft locks automatically when a newer iteration supersedes it (it has a
 // live iteration after it in its run); otherwise the lock was manual.
@@ -474,7 +500,7 @@ onMount(() => {
 </script>
 
 <svelte:window
-    onkeydown={handleContextMenuKeydown}
+    onkeydown={(event) => { if (event.key === "Escape" && pickingCollegeTab) { event.preventDefault(); cancelCollegeTabPick(); } else handleContextMenuKeydown(event); }}
     onresize={closeContextMenu}
     onscroll={closeContextMenu}
 />
@@ -482,18 +508,30 @@ onMount(() => {
 <div class="editor-shell w-full h-full overflow-y-auto relative" class:focus-mode={focusMode}>
     <div
         class="focus-chrome sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none"
-        class:focus-chrome-visible={focusControlsVisible}
+        class:focus-chrome-visible={focusControlsVisible || pickingCollegeTab}
     >
         <div class="pointer-events-auto">
             <DocumentTitleBar bind:this={titleBar} />
         </div>
     </div>
 
-    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
+    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible || pickingCollegeTab}>
+        {#if pickingCollegeTab}
+            <div class="mx-auto mb-3 max-w-2xl rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950" aria-label="Choose a tab for this prompt">
+                <div class="flex items-center justify-between gap-3">
+                    <p role="status">{collegeWorkspace.saving ? "Applying prompt…" : `Click a tab below for ${collegeWorkspace.setup?.prompts[0].label || "this prompt"}.`}</p>
+                    <button class="underline disabled:opacity-40" disabled={collegeWorkspace.saving} onclick={cancelCollegeTabPick}>Cancel</button>
+                </div>
+                <p class="mt-1 text-xs">Your writing stays. This replaces any College prompt on the tab you choose.</p>
+                {#if collegeWorkspace.error}<p role="alert" class="mt-2 text-red-700">{collegeWorkspace.error}</p>{/if}
+            </div>
+        {/if}
         <DocumentTabs
             tabs={drafts.tabs}
+            readOnly={pickingCollegeTab}
+            selectingTarget={pickingCollegeTab}
             activeTabId={$currentTabId}
-            ontabselect={(id) => drafts.handleTabSelect(id)}
+            ontabselect={(id) => { void selectWorkspaceTab(id).catch(error => toast.error(String(error))); }}
             ontabcreate={() => drafts.handleTabCreate()}
             ontabrename={(id, label) => drafts.handleTabRename(id, label)}
             ontabdelete={(id) => drafts.handleTabDelete(id)}
@@ -506,7 +544,7 @@ onMount(() => {
     {#if drafts.tabDrafts.length > 0}
         <div
             class="focus-chrome sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden"
-            class:focus-chrome-visible={focusControlsVisible}
+            class:focus-chrome-visible={focusControlsVisible || pickingCollegeTab}
         >
             <div
                 data-annotation-occluder
@@ -697,7 +735,7 @@ onMount(() => {
     {/if}
 
 
-    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
+    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible || pickingCollegeTab}>
         <Annotations />
     </div>
 </div>

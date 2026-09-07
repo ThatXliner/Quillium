@@ -227,12 +227,40 @@ export class QuilliumPage {
                         deletedAt: null,
                     },
                 ];
+                const persistedTabsKey = "mock-workspace-tabs";
+                const persistedDraftsKey = "mock-workspace-drafts";
+                function readPersistedRows<T>(key: string, fallback: T[]): T[] {
+                    const raw = localStorage.getItem(key);
+                    if (!raw) return fallback;
+                    try {
+                        const parsed: unknown = JSON.parse(raw);
+                        return Array.isArray(parsed) ? (parsed as T[]) : fallback;
+                    } catch {
+                        return fallback;
+                    }
+                }
+                function readPersistedPointers(key: string): Record<string, string> {
+                    const raw = localStorage.getItem(key);
+                    if (!raw) return {};
+                    try {
+                        const parsed: unknown = JSON.parse(raw);
+                        return parsed !== null &&
+                            typeof parsed === "object" &&
+                            !Array.isArray(parsed)
+                            ? (parsed as Record<string, string>)
+                            : {};
+                    } catch {
+                        return {};
+                    }
+                }
                 const tabs: MockTab[] =
-                    payload.tabs.length > 0 ? payload.tabs.map((tab) => ({ ...tab })) : defaultTabs;
+                    payload.tabs.length > 0
+                        ? payload.tabs.map((tab) => ({ ...tab }))
+                        : readPersistedRows(persistedTabsKey, defaultTabs);
                 const drafts: MockDraft[] =
                     payload.drafts.length > 0
                         ? payload.drafts.map((draft) => ({ ...draft }))
-                        : defaultDrafts;
+                        : readPersistedRows(persistedDraftsKey, defaultDrafts);
                 const nextIndex = (ids: string[], prefix: string) =>
                     Math.max(
                         1,
@@ -248,8 +276,10 @@ export class QuilliumPage {
                     drafts.map((draft) => draft.id),
                     "draft-test-",
                 );
-                const activeTabByDoc: Record<string, string> = {};
-                const activeDraftByTab: Record<string, string> = {};
+                const activeTabsKey = "mock-active-tabs";
+                const activeDraftsKey = "mock-active-drafts";
+                const activeTabByDoc = readPersistedPointers(activeTabsKey);
+                const activeDraftByTab = readPersistedPointers(activeDraftsKey);
 
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
                     invokeCalls,
@@ -320,6 +350,122 @@ export class QuilliumPage {
                             });
                             return tab;
                         }
+                        if (cmd === "cmd_create_college_tabs") {
+                            const a = args as {
+                                documentId: string;
+                                entries: Array<{ label: string; setupJson: string }>;
+                            };
+                            const entries = Array.isArray(a.entries) ? a.entries : [];
+                            if (entries.length < 1 || entries.length > 12) {
+                                throw new Error(
+                                    "College tab creation requires between 1 and 12 entries",
+                                );
+                            }
+
+                            // Match the native batch boundary: every entry is
+                            // validated before any tab, draft, or setup row is
+                            // staged. A setup created from several prompts is
+                            // split by the caller into one prompt per tab.
+                            const validatedEntries = entries.map((entry) => {
+                                const label = typeof entry?.label === "string" ? entry.label : "";
+                                if (!label.trim()) {
+                                    throw new Error("College tab labels must not be blank");
+                                }
+                                if ([...label].length > 200) {
+                                    throw new Error(
+                                        "College tab labels must be at most 200 characters",
+                                    );
+                                }
+
+                                const setupJson =
+                                    typeof entry?.setupJson === "string" ? entry.setupJson : "";
+                                if (setupJson.length > 128 * 1024) {
+                                    throw new Error(
+                                        "College tab setup JSON must be at most 128 KiB",
+                                    );
+                                }
+
+                                let setup: unknown;
+                                try {
+                                    setup = JSON.parse(setupJson);
+                                } catch {
+                                    throw new Error("Invalid College tab setup JSON");
+                                }
+                                if (
+                                    setup === null ||
+                                    typeof setup !== "object" ||
+                                    Array.isArray(setup)
+                                ) {
+                                    throw new Error("College tab setup must be a JSON object");
+                                }
+                                const setupRecord = setup as {
+                                    version?: unknown;
+                                    prompts?: unknown;
+                                };
+                                if (setupRecord.version !== 1) {
+                                    throw new Error("College tab setup version must be numeric 1");
+                                }
+                                if (
+                                    !Array.isArray(setupRecord.prompts) ||
+                                    setupRecord.prompts.length !== 1
+                                ) {
+                                    throw new Error(
+                                        "College tab setup must contain exactly one prompt when creating tabs",
+                                    );
+                                }
+                                return { label, setupJson };
+                            });
+
+                            // The existing single-setup mock uses this switch
+                            // to simulate a persistence failure. Check it
+                            // before staging anything so the batch stays all or
+                            // none, just like the native transaction.
+                            if (localStorage.getItem("mock-college-save-error")) {
+                                throw new Error("Mock College setup save failed");
+                            }
+
+                            const firstTabIndex = nextTabIndex;
+                            const firstDraftIndex = nextDraftIndex;
+                            const firstPosition = tabs.length;
+                            const now = Date.now();
+                            const stagedTabs: MockTab[] = validatedEntries.map((entry, index) => ({
+                                id: `tab-test-${firstTabIndex + index}`,
+                                documentId: a.documentId,
+                                tabType: "draft",
+                                label: entry.label,
+                                position: firstPosition + index,
+                                createdAt: now,
+                                deletedAt: null,
+                            }));
+                            const stagedDrafts: MockDraft[] = stagedTabs.map((tab, index) => ({
+                                id: `draft-test-${firstDraftIndex + index}`,
+                                documentId: a.documentId,
+                                label: "main",
+                                createdAt: now,
+                                isActive: true,
+                                tabId: tab.id,
+                                parentDraftId: null,
+                                branchedFrom: null,
+                                locked: false,
+                                deletedAt: null,
+                            }));
+
+                            tabs.push(...stagedTabs);
+                            drafts.push(...stagedDrafts);
+                            for (const [entry, tab] of validatedEntries.map(
+                                (entry, index) => [entry, stagedTabs[index]] as const,
+                            )) {
+                                localStorage.setItem(
+                                    `mock-college-setup:${a.documentId}:${tab.id}`,
+                                    entry.setupJson,
+                                );
+                            }
+                            localStorage.setItem(persistedTabsKey, JSON.stringify(tabs));
+                            localStorage.setItem(persistedDraftsKey, JSON.stringify(drafts));
+                            nextTabIndex = firstTabIndex + stagedTabs.length;
+                            nextDraftIndex = firstDraftIndex + stagedDrafts.length;
+                            return stagedTabs.map(({ deletedAt: _deletedAt, ...tab }) => tab);
+                        }
                         if (cmd === "cmd_rename_tab") {
                             const a = args as { tabId: string; label: string };
                             const tab = tabs.find((t) => t.id === a.tabId);
@@ -346,6 +492,7 @@ export class QuilliumPage {
                         if (cmd === "cmd_set_active_tab") {
                             const a = args as { docId: string; tabId: string };
                             activeTabByDoc[a.docId] = a.tabId;
+                            localStorage.setItem(activeTabsKey, JSON.stringify(activeTabByDoc));
                             return null;
                         }
                         if (cmd === "cmd_list_tab_drafts") {
@@ -359,6 +506,7 @@ export class QuilliumPage {
                         if (cmd === "cmd_set_active_draft") {
                             const a = args as { tabId: string; draftId: string };
                             activeDraftByTab[a.tabId] = a.draftId;
+                            localStorage.setItem(activeDraftsKey, JSON.stringify(activeDraftByTab));
                             return null;
                         }
                         if (cmd === "cmd_iterate_draft") {
@@ -590,6 +738,26 @@ export class QuilliumPage {
                             const key = `mock-editorial-decisions:${a.documentId}`;
                             if (a.decisionsJson === "[]") localStorage.removeItem(key);
                             else localStorage.setItem(key, a.decisionsJson);
+                            return null;
+                        }
+                        if (cmd === "cmd_get_college_tab_setup") {
+                            const a = args as { documentId: string; tabId: string };
+                            return localStorage.getItem(
+                                `mock-college-setup:${a.documentId}:${a.tabId}`,
+                            );
+                        }
+                        if (cmd === "cmd_set_college_tab_setup") {
+                            const a = args as {
+                                documentId: string;
+                                tabId: string;
+                                setupJson: string | null;
+                            };
+                            if (localStorage.getItem("mock-college-save-error")) {
+                                throw new Error("Mock College setup save failed");
+                            }
+                            const key = `mock-college-setup:${a.documentId}:${a.tabId}`;
+                            if (a.setupJson === null) localStorage.removeItem(key);
+                            else localStorage.setItem(key, a.setupJson);
                             return null;
                         }
                         if (cmd === "get_api_key") return payload.apiKey;
