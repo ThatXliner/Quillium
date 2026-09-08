@@ -24,7 +24,7 @@ let heading = $state<HTMLHeadingElement>();
 const groups = [
     { kind: "requirement", label: "Published requirements" },
     { kind: "official-advice", label: "Official guidance" },
-    { kind: "editorial-guidance", label: "Possible connections to explore" },
+    { kind: "editorial-guidance", label: "Editorial guidance" },
 ] as const;
 const setupKey = $derived(view.setup ? collegeResearchSetupKey(view.setup) : "");
 const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
@@ -164,7 +164,7 @@ async function accept(): Promise<void> {
                         <label>Program (optional)<input maxlength="200" bind:value={target.program} /></label>
                     </div>
                     <label>Official admissions page<input type="url" required maxlength="2000" bind:value={target.sourceUrl} placeholder="https://admissions.school.edu/…" oninput={() => confirmed = false} /></label>
-                    <p class="text-xs text-black/60">Uses this as the confirmed official source and limits research to this hostname. Use a public page without a login.</p>
+                    <p class="text-xs text-black/60">Uses this as the official source. Models with web search also look for relevant College Essay Guy guides. Use a public page without a login.</p>
                     <label class="check"><input type="checkbox" bind:checked={confirmed} />I checked that this is the official site for this school and campus.</label>
                     <fieldset class="space-y-2">
                         <legend class="font-medium text-xs mb-2">Prompts to research</legend>
@@ -191,7 +191,7 @@ async function accept(): Promise<void> {
                 {#if findings.length}
                     <fieldset class="space-y-3" disabled={saving}>
                         <legend class="font-semibold text-xs mb-2">{group.label}</legend>
-                        {#if group.kind === "editorial-guidance"}<p class="text-xs">Interpretation, not an admission preference or prediction.</p>{/if}
+                        {#if group.kind === "editorial-guidance"}<p class="text-xs">Third-party advice and interpretations to explore. The publisher is shown with each finding.</p>{/if}
                         {#each findings as finding (finding.id)}
                             {@const previous = previousFor(finding)}
                             <div class="rounded-lg bg-white/60 p-3 space-y-2">

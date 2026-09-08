@@ -6,6 +6,7 @@ import {
 } from "$lib/college/model";
 import { newCollegeSetup } from "$lib/college/presets";
 import {
+    COLLEGE_ESSAY_GUY_HOSTNAME,
     type ResearchAdapterResult,
     type ResearchExtraction,
     type ResearchSource,
@@ -152,6 +153,92 @@ describe("school research target and persistence models", () => {
 });
 
 describe("runSchoolResearch", () => {
+    it("accepts College Essay Guy root and subdomain sources and forces editorial guidance", async () => {
+        const rootUrl = `https://${COLLEGE_ESSAY_GUY_HOSTNAME}/school/example-university`;
+        const subdomainUrl = `https://guides.${COLLEGE_ESSAY_GUY_HOSTNAME}/example-university`;
+        const result = await runSchoolResearch(
+            target(),
+            vi.fn(async () =>
+                adapterResult(
+                    [
+                        { url: rootUrl, title: "Example University guide", text: "Be specific." },
+                        {
+                            url: subdomainUrl,
+                            title: "Example University essay guide",
+                            text: "Show your voice.",
+                        },
+                        {
+                            url: `https://${COLLEGE_ESSAY_GUY_HOSTNAME}.evil.example/guide`,
+                            title: "Spoof",
+                            text: "Be specific.",
+                        },
+                        {
+                            url: `https://evil${COLLEGE_ESSAY_GUY_HOSTNAME}/guide`,
+                            title: "Suffix spoof",
+                            text: "Show your voice.",
+                        },
+                        {
+                            url: `https://user:password@${COLLEGE_ESSAY_GUY_HOSTNAME}/private`,
+                            title: "Credentials",
+                            text: "Be specific.",
+                        },
+                    ],
+                    [
+                        {
+                            url: rootUrl,
+                            kind: "requirement",
+                            summary: "Be specific.",
+                            evidence: "Be specific.",
+                            cycle: "",
+                        },
+                        {
+                            url: subdomainUrl,
+                            kind: "official-advice",
+                            summary: "Show your voice.",
+                            evidence: "Show your voice.",
+                            cycle: "",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.pages).toEqual([
+            { url: rootUrl, title: "Example University guide" },
+            { url: subdomainUrl, title: "Example University essay guide" },
+        ]);
+        expect(result.findings.map((finding) => finding.kind)).toEqual([
+            "editorial-guidance",
+            "editorial-guidance",
+        ]);
+        expect(result.warnings.join(" ")).toMatch(/outside example\.edu or College Essay Guy/i);
+    });
+
+    it("forces a College Essay Guy confirmed source to editorial guidance", async () => {
+        const sourceUrl = `https://${COLLEGE_ESSAY_GUY_HOSTNAME}/guide`;
+        const result = await runSchoolResearch(
+            target({ sourceUrl }),
+            vi.fn(async () =>
+                adapterResult(
+                    [{ url: sourceUrl, title: "Guide", text: "Be specific." }],
+                    [
+                        {
+                            url: sourceUrl,
+                            kind: "requirement",
+                            summary: "Be specific.",
+                            evidence: "Be specific.",
+                            cycle: "",
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.findings[0]?.kind).toBe("editorial-guidance");
+    });
+
     it("calls one adapter with a reconstructed public target", async () => {
         const adapter = vi.fn(async (receivedTarget: ResearchTarget) => {
             expect(receivedTarget).toEqual(target());

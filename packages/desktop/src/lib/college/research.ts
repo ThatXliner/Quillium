@@ -12,6 +12,8 @@ import {
 
 const RESEARCH_TIMEOUT_MS = 90_000;
 
+export const COLLEGE_ESSAY_GUY_HOSTNAME = "collegeessayguy.com";
+
 export { collegeResearchSetupKey, researchTargetSchema };
 export type { ResearchTarget };
 
@@ -25,7 +27,7 @@ const extractedFindingSchema = z
         kind: z
             .enum(["requirement", "official-advice", "editorial-guidance"])
             .describe(
-                "Use requirement only for an applicant obligation, prohibited action, numeric constraint, or deadline explicitly stated by the source. Use official-advice for source-authored review descriptions such as equal consideration, recommendations, explanations, and how-to advice, and editorial-guidance only for model-derived interpretation.",
+                "Use requirement only for an applicant obligation, prohibited action, numeric constraint, or deadline explicitly stated by the source. Use official-advice for source-authored review descriptions such as equal consideration, recommendations, explanations, and how-to advice. Use editorial-guidance for model-derived interpretation and for every College Essay Guy source, whose third-party advice is never an official requirement, official advice, or school preference.",
             ),
         summary: z
             .string()
@@ -127,7 +129,8 @@ export function findingKey(reference: CollegeReference): string {
 
 /**
  * Rebuild the public target, run one bounded adapter operation, and normalize
- * only sources that can be tied back to the confirmed hostname.
+ * only sources that can be tied back to the confirmed hostname or College
+ * Essay Guy.
  */
 export async function runSchoolResearch(
     inputTarget: ResearchTarget,
@@ -289,7 +292,10 @@ function _validSources(
         }
         const url = _sourceUrl(parsed.data.url, targetHostname);
         if (!url) {
-            _pushWarning(warnings, `Ignored a research source outside ${targetHostname}.`);
+            _pushWarning(
+                warnings,
+                `Ignored a research source outside ${targetHostname} or College Essay Guy.`,
+            );
             continue;
         }
         if (seen.has(parsed.data.url)) continue;
@@ -316,7 +322,7 @@ function _sourceUrl(value: string, targetHostname: string): URL | null {
         !hostname ||
         url.username ||
         url.password ||
-        (hostname !== targetHostname && !hostname.endsWith(`.${targetHostname}`))
+        !_isAllowedSourceHostname(hostname, targetHostname)
     ) {
         return null;
     }
@@ -393,7 +399,7 @@ function _normalizeFindings(
             url: source.url,
             checkedDate,
             cycle,
-            kind: finding.kind,
+            kind: _isCollegeEssayGuyUrl(source.url) ? "editorial-guidance" : finding.kind,
             summary,
             research: {
                 setupKey: "",
@@ -496,6 +502,23 @@ function _hostname(value: string): string | null {
     } catch {
         return null;
     }
+}
+
+function _isAllowedSourceHostname(hostname: string, targetHostname: string): boolean {
+    return (
+        hostname === targetHostname ||
+        hostname.endsWith(`.${targetHostname}`) ||
+        hostname === COLLEGE_ESSAY_GUY_HOSTNAME ||
+        hostname.endsWith(`.${COLLEGE_ESSAY_GUY_HOSTNAME}`)
+    );
+}
+
+function _isCollegeEssayGuyUrl(value: string): boolean {
+    const hostname = _hostname(value);
+    return (
+        hostname === COLLEGE_ESSAY_GUY_HOSTNAME ||
+        hostname?.endsWith(`.${COLLEGE_ESSAY_GUY_HOSTNAME}`) === true
+    );
 }
 
 function _normalizeHostname(value: string): string {

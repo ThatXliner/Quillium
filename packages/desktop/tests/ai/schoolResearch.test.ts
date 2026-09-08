@@ -101,7 +101,7 @@ vi.mock("ai", () => ({
 }));
 
 import { researchSchool, usesHostedSchoolResearch } from "$lib/ai/schoolResearch";
-import type { ResearchTarget } from "$lib/college/research";
+import { COLLEGE_ESSAY_GUY_HOSTNAME, type ResearchTarget } from "$lib/college/research";
 
 const SOURCE = "https://admissions.example.edu/essays";
 
@@ -261,16 +261,18 @@ describe("hosted school research", () => {
             "The summary must be a concise direct quotation or exact contiguous excerpt copied from that attached evidence",
         );
         expect(system).toContain(
-            "Classify a finding as requirement only when the source explicitly states an applicant obligation",
+            "Classify a finding from an official source as requirement only when it explicitly states an applicant obligation",
         );
         expect(system).toContain(
-            "source-authored recommendations, explanations, and how-to advice as official-advice",
+            "source-authored recommendations, explanations, and how-to advice from official sources as official-advice",
         );
         expect(system).toContain(
             "published descriptions of review treatment, including equal consideration",
         );
         expect(system).toContain("as official-advice, not requirement");
-        expect(system).toContain("editorial-guidance only for model-derived inferences");
+        expect(system).toContain(
+            "editorial-guidance for model-derived inferences and for all College Essay Guy content",
+        );
         expect(system).toContain("never as a claimed school preference or prediction");
     });
 
@@ -297,7 +299,9 @@ describe("hosted school research", () => {
         expect(mocks.createOpenAI).toHaveBeenCalledWith({ apiKey: "SECRET_API_KEY" });
         expect(mocks.openaiResponses).toHaveBeenCalledWith("gpt-5.6-sol");
         expect(mocks.openaiWebSearch).toHaveBeenCalledWith({
-            filters: { allowedDomains: ["admissions.example.edu"] },
+            filters: {
+                allowedDomains: ["admissions.example.edu", "collegeessayguy.com"],
+            },
         });
         expect(result.pages).toEqual([{ url: SOURCE, title: "Example University admissions" }]);
         expect(result.findings[0]?.url).toBe(SOURCE);
@@ -317,14 +321,75 @@ describe("hosted school research", () => {
         expect(mocks.createAnthropic).toHaveBeenCalledWith({ apiKey: "SECRET_API_KEY" });
         expect(mocks.anthropicModel).toHaveBeenCalledWith("claude-opus-4-6");
         expect(mocks.anthropicWebSearch).toHaveBeenCalledWith({
-            maxUses: 1,
-            allowedDomains: ["admissions.example.edu"],
+            maxUses: 2,
+            allowedDomains: ["admissions.example.edu", "collegeessayguy.com"],
         });
         expect(result.pages).toEqual([{ url: SOURCE, title: "Example University admissions" }]);
         expect(result.findings[0]?.url).toBe(SOURCE);
         expect(nativeFetchCalls()).toHaveLength(0);
         expect(requestText()).not.toMatch(
             /PRIVATE_NOTES|PRIVATE_CREDENTIALS|PRIVATE_ESSAY|SECRET_API_KEY/,
+        );
+    });
+
+    it("keeps hosted tools for the first two steps and requests a final extraction step", async () => {
+        await researchSchool(target(), new AbortController().signal);
+
+        const request = mocks.generateText.mock.calls[0]?.[0] as {
+            prepareStep?: (input: { stepNumber: number }) => unknown;
+        };
+        expect(mocks.stepCountIs).toHaveBeenCalledWith(3);
+        expect(request.prepareStep?.({ stepNumber: 0 })).toBeUndefined();
+        expect(request.prepareStep?.({ stepNumber: 1 })).toBeUndefined();
+        expect(request.prepareStep?.({ stepNumber: 2 })).toEqual({ activeTools: [] });
+    });
+
+    it("asks hosted providers to search official and College Essay Guy sources", async () => {
+        const result = await researchSchool(target(), new AbortController().signal);
+
+        const prompt = requestText();
+        expect(prompt).toContain("Search BOTH");
+        expect(prompt).toContain("College Essay Guy guides");
+        expect(prompt).toContain("selected essay prompts");
+        expect(prompt).toContain("Prefer sources matching the requested application cycle");
+        expect(prompt).toContain("Do not invent College Essay Guy guide URLs");
+        expect(prompt).toContain("If no relevant College Essay Guy guide was found");
+        expect(result.warnings).toContain(
+            "No relevant College Essay Guy guide was found for the school and selected essay prompts.",
+        );
+    });
+
+    it("normalizes hosted official and College Essay Guy citations together", async () => {
+        const guideUrl = `https://${COLLEGE_ESSAY_GUY_HOSTNAME}/example-university-guide`;
+        const generated = generatedResult();
+        generated.output.findings.push({
+            url: guideUrl,
+            kind: "requirement",
+            summary: "Guide advice",
+            evidence: "Guide advice",
+            cycle: "",
+            promptIds: ["p1"],
+        });
+        generated.steps[0]?.sources.push({
+            type: "source",
+            sourceType: "url",
+            url: guideUrl,
+            title: "College Essay Guy guide",
+        });
+        mocks.generateText.mockResolvedValue(generated);
+
+        const result = await researchSchool(target(), new AbortController().signal);
+
+        expect(result.pages).toEqual([
+            { url: SOURCE, title: "Example University admissions" },
+            { url: guideUrl, title: "College Essay Guy guide" },
+        ]);
+        expect(result.findings.map((finding) => finding.kind)).toEqual([
+            "requirement",
+            "editorial-guidance",
+        ]);
+        expect(result.warnings).not.toContain(
+            "No relevant College Essay Guy guide was found for the school and selected essay prompts.",
         );
     });
 
@@ -404,6 +469,9 @@ describe("fallback school research", () => {
             );
             expect(mocks.generateText).toHaveBeenCalledTimes(1);
             expect(result.findings[0]?.url).toBe(SOURCE);
+            expect(result.warnings.join(" ")).toContain(
+                "College Essay Guy guides were not searched because this provider/model uses single-page fallback.",
+            );
             expect(requestText()).not.toMatch(
                 /PRIVATE_NOTES|PRIVATE_CREDENTIALS|PRIVATE_ESSAY|SECRET_API_KEY/,
             );
