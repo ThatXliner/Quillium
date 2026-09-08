@@ -253,6 +253,7 @@ function useContextAction(action: ContextAction) {
     <!-- Chat messages -->
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
+            <div class="space-y-0.5" data-conversation-message={message.id}>
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
                     {@const renderPromise = renderMarkdown(part.text)}
@@ -283,6 +284,7 @@ function useContextAction(action: ContextAction) {
             {#if conversations}
                 <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading || personaInFlight} />
             {/if}
+            </div>
         {/each}
 
         {#if chat.status === "streaming" || chat.status === "submitted" || personaInFlight}

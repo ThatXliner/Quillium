@@ -188,6 +188,7 @@ async function handleSubmit(event: Event) {
     <!-- Chat messages -->
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message (message.id)}
+            <div class="space-y-0.5" data-conversation-message={message.id}>
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
                     {@const renderPromise = renderMarkdown(part.text)}
@@ -228,6 +229,7 @@ async function handleSubmit(event: Event) {
             {#if conversations}
                 <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading} />
             {/if}
+            </div>
         {/each}
 
         {#if chat.status === "streaming"}
