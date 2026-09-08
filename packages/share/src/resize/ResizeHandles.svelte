@@ -4,6 +4,7 @@ export type ResizeHandle = "right" | "bottom" | "corner";
 
 <script lang="ts">
 /** ResizeHandles.svelte — Shared edge/corner controls; hosts own sizing and anchoring. */
+import { Minimize2 } from "lucide-svelte";
 import { type PointerDragOptions, pointerDrag } from "./pointerDrag";
 
 let {
@@ -13,6 +14,7 @@ let {
     onResizeBy,
     onReset,
     resizing = false,
+    showReset = false,
 }: {
     element?: HTMLDivElement;
     label: string;
@@ -20,6 +22,7 @@ let {
     onResizeBy: (handle: ResizeHandle, dx: number, dy: number) => void;
     onReset: () => void;
     resizing?: boolean;
+    showReset?: boolean;
 } = $props();
 
 const handles = ["right", "bottom", "corner"] as const;
@@ -52,6 +55,15 @@ function onKeydown(event: KeyboardEvent, handle: ResizeHandle): void {
             ondblclick={onReset}
         ></button>
     {/each}
+    {#if showReset}
+        <button
+            type="button"
+            class="restore-size"
+            aria-label="Restore original size"
+            title="Restore original size"
+            onclick={onReset}
+        ><Minimize2 size={12} /><span>Restore original size</span></button>
+    {/if}
 </div>
 
 <style>
@@ -91,10 +103,29 @@ function onKeydown(event: KeyboardEvent, handle: ResizeHandle): void {
         border-right: 2px solid var(--text, #000);
         border-bottom: 2px solid var(--text, #000);
         background: transparent;
-        opacity: 0.2;
     }
     .handle:hover::after, .handle:focus-visible::after, .resizing .handle::after { opacity: 0.4; }
-    .handle:focus-visible { outline: 2px solid var(--primary, #3b82f6); outline-offset: -2px; }
+    .restore-size {
+        position: absolute;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 8px;
+        font-size: 11px;
+        white-space: nowrap;
+        border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+        border-radius: 999px;
+        background: var(--surface, white);
+        color: var(--text-soft, rgba(0, 0, 0, 0.5));
+        pointer-events: auto;
+        cursor: pointer;
+    }
+    .restore-size:hover { color: var(--text, rgba(0, 0, 0, 0.8)); }
+    .handle:focus-visible, .restore-size:focus-visible { outline: 2px solid var(--primary, #3b82f6); outline-offset: -2px; }
     @media (prefers-reduced-motion: reduce) {
         .handle::after { transition: none; }
     }

@@ -62,6 +62,6 @@ function accept() {
                 </button>
             </div>
         </div>
-        <ModalResizeHandles minHeight={160} />
+        <ModalResizeHandles minHeight={160} contentSelector=":scope > div" />
     </div>
 </div>

@@ -610,7 +610,7 @@ onDestroy(() => {
                     </button>
                 </div>
               </div>
-                <ModalResizeHandles />
+                <ModalResizeHandles contentSelector=":scope > div" />
             </div>
         {:else if step && !useInlineModalGuide}
             <!--

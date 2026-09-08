@@ -84,7 +84,24 @@ test("settings resize keeps its content scrollable and footer accessible", async
     await q.setup();
     await q.goto();
     const modal = await q.openSettings();
-    await drag(page, modal.getByRole("button", { name: "Resize modal", exact: true }), 100, -70);
+    const initial = (await modal.boundingBox())!;
+    const corner = modal.getByRole("button", { name: "Resize modal", exact: true });
+    const restore = modal.getByRole("button", { name: "Restore original size" });
+    await expect(restore).toHaveCount(0);
+    await page.mouse.move(0, 0);
+    await expect
+        .poll(() => corner.evaluate((el) => getComputedStyle(el, "::after").opacity))
+        .toBe("0");
+    await corner.hover();
+    await expect
+        .poll(() => corner.evaluate((el) => getComputedStyle(el, "::after").opacity))
+        .toBe("0.4");
+    await drag(page, corner, 100, -70);
+    await page.mouse.move(0, 0);
+    await expect
+        .poll(() => corner.evaluate((el) => getComputedStyle(el, "::after").opacity))
+        .toBe("0");
+    await expect(restore).toBeVisible();
     await expect(modal).toBeVisible();
     const body = modal.locator(".settings-shake-wrapper > .overflow-y-auto");
     await body.evaluate((element) => {
@@ -93,6 +110,10 @@ test("settings resize keeps its content scrollable and footer accessible", async
     expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     await page.screenshot({ path: "/tmp/quillium-settings-resized.png" });
     await expect(modal.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+    await restore.click();
+    await expect(modal).toHaveCSS("width", `${initial.width}px`);
+    expect((await modal.boundingBox())!.height).toBeCloseTo(initial.height, 0);
+    await expect(restore).toHaveCount(0);
 });
 
 test("sidebar shares resize controls without changing its drag distance or outside dismissal", async ({
