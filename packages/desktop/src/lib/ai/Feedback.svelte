@@ -21,6 +21,7 @@
     Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
 -->
 <script lang="ts">
+import { readable } from "svelte/store";
 import ToolActivity from "./ToolActivity.svelte";
 import { isToolUIPart } from "ai";
 import {
@@ -75,6 +76,7 @@ import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { documentContent, selectedText } from "$lib/stores";
 import { UsersIcon } from "lucide-svelte";
 import ContextLens from "./ContextLens.svelte";
+import DiscussionModal from "./DiscussionModal.svelte";
 import ConversationHistory from "./ConversationHistory.svelte";
 import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
@@ -89,7 +91,9 @@ let input = $state("");
 let personaInFlight = $state(false);
 let contributedBusy = $state(false);
 
-const { chat, sendMessage, conversations } = createAiChat({ mode: "feedback" });
+let reviewing = $state(false);
+let reviewOpener = $state<HTMLElement>();
+const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "feedback" });
 let isBusy = $derived(
     chat.status === "submitted" ||
         chat.status === "streaming" ||
@@ -260,10 +264,25 @@ function useContextAction(action: ContextAction) {
     {/if}
 
     {#if conversations}
-        <ConversationHistory {conversations} mode="feedback" disabled={personaInFlight || contributedBusy} />
+        <ConversationHistory {conversations} mode="feedback" onopen={(opener) => { reviewOpener = opener; reviewing = true; }} disabled={personaInFlight || contributedBusy} />
     {/if}
 
     <!-- Chat messages -->
+    {#if reviewing}
+        <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            {@render transcript()}
+        </DiscussionModal>
+    {:else}{@render transcript()}{/if}
+</div>
+{#snippet transcript()}
+    {#if conversations?.current?.archived}
+        <p class="px-4 py-2 text-xs text-black/60">Archived. Restore this discussion from History to continue.</p>
+    {:else if conversations?.current && conversations.current.draftId !== $currentDraftId}
+        <p class="px-4 py-2 text-xs text-black/60">Open the source draft to continue this discussion.</p>
+    {/if}
+    {#if conversations?.current?.sourceConversationId}
+        <button class="px-4 py-2 text-left text-xs text-black/60 underline" disabled={isBusy} onclick={() => conversations?.open(conversations.current!.sourceConversationId!)}>Open origin conversation</button>
+    {/if}
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
             <div class="space-y-0.5" data-conversation-message={message.id}>
@@ -291,7 +310,7 @@ function useContextAction(action: ContextAction) {
                         </div>
                     </div>
                 {:else if isToolUIPart(part)}
-                    <ToolActivity {part} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
+                    <ToolActivity {part} outcomes={$toolApplications} metadata={message.metadata} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
             {#if conversations}
@@ -353,4 +372,4 @@ function useContextAction(action: ContextAction) {
             </button>
         </form>
     </div>
-</div>
+{/snippet}

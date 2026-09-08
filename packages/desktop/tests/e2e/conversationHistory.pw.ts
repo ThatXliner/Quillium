@@ -15,7 +15,7 @@ function messageSet(prefix: "a" | "b") {
                   "The stakes need a sharper turn before the midpoint.",
               ]
             : [
-                  "Searchable amber question",
+                  "Could the amber light return in the ending?",
                   "The amber detail gives the scene a useful anchor.",
                   "Should the ending echo it?",
                   "A quiet echo would make the ending feel earned.",
@@ -50,7 +50,7 @@ const conversationFixtures: MockConversation[] = [
         draftId,
         draftLabel: "Main",
         mode: "chat",
-        title: "First discussion",
+        title: "Opening scene",
         createdAt: fixtureDate,
         updatedAt: fixtureDate + 1_000,
         archived: false,
@@ -64,7 +64,7 @@ const conversationFixtures: MockConversation[] = [
         draftId,
         draftLabel: "Main",
         mode: "chat",
-        title: "Second discussion",
+        title: "Ending image",
         createdAt: fixtureDate + 2_000,
         updatedAt: fixtureDate + 3_000,
         archived: false,
@@ -77,7 +77,8 @@ const conversationFixtures: MockConversation[] = [
 function newPageObject(page: Page): QuilliumPage {
     return new QuilliumPage(page, {
         apiKey: "fake-api-key",
-        initialDoc: "The prose stays put while conversations branch.",
+        initialDoc:
+            "Morning light pooled on the kitchen tiles. Mara left her father's letter unopened beside the kettle.",
         conversations: conversationFixtures,
     });
 }
@@ -91,29 +92,33 @@ test.describe("conversation history", () => {
         await q.openConversationHistory();
 
         await expect(q.conversationRows).toHaveCount(2);
-        await expect(q.conversationRow("First discussion")).toBeVisible();
-        await expect(q.conversationRow("Second discussion")).toBeVisible();
+        await expect(q.conversationRow("Opening scene")).toBeVisible();
+        await expect(q.conversationRow("Ending image")).toBeVisible();
 
-        await q.openConversation("Second discussion");
-        await expect(q.conversationMessage("Searchable amber question")).toBeVisible();
+        await q.openConversation("Ending image");
+        await expect(
+            q.conversationMessage("Could the amber light return in the ending?"),
+        ).toBeVisible();
 
         await page.reload();
         await expect(q.editor).toBeVisible({ timeout: 20_000 });
         await q.openConversationHistory();
         await expect(q.conversationRows).toHaveCount(2);
 
-        await q.openConversation("First discussion");
+        await q.openConversation("Opening scene");
         await expect(q.conversationMessage("How does the opening land?")).toBeVisible();
         await q.openConversationHistory();
-        await q.openConversation("Second discussion");
-        await expect(q.conversationMessage("Searchable amber question")).toBeVisible();
+        await q.openConversation("Ending image");
+        await expect(
+            q.conversationMessage("Could the amber light return in the ending?"),
+        ).toBeVisible();
 
         await q.searchConversations("amber");
         await expect(q.conversationRows).toHaveCount(1);
-        await expect(q.conversationRow("Second discussion")).toBeVisible();
+        await expect(q.conversationRow("Ending image")).toBeVisible();
         await q.searchConversations("");
 
-        const firstRow = q.conversationRow("First discussion");
+        const firstRow = q.conversationRow("Opening scene");
         await firstRow.getByRole("button", { name: "Rename", exact: true }).click();
         const title = firstRow.getByRole("textbox", { name: "Conversation title" });
         await title.fill("Renamed opening discussion");
@@ -123,7 +128,7 @@ test.describe("conversation history", () => {
         const renamedRow = q.conversationRow("Renamed opening discussion");
         await renamedRow.getByRole("button", { name: "Archive", exact: true }).click();
         await expect(q.conversationRows).toHaveCount(1);
-        await expect(q.conversationRow("Second discussion")).toBeVisible();
+        await expect(q.conversationRow("Ending image")).toBeVisible();
 
         await q.showArchivedConversations();
         await expect(q.conversationRow("Renamed opening discussion")).toBeVisible();
@@ -140,7 +145,7 @@ test.describe("conversation history", () => {
         await restoredRow.getByRole("button", { name: "Delete", exact: true }).click();
         await restoredRow.getByRole("button", { name: "Delete permanently", exact: true }).click();
         await expect(q.conversationRow("Renamed opening discussion")).toBeHidden();
-        await expect(q.conversationRow("Second discussion")).toBeVisible();
+        await expect(q.conversationRow("Ending image")).toBeVisible();
 
         const remaining = await q.mockConversations();
         expect(remaining.map((conversation) => conversation.id)).toEqual(["conversation-b"]);
@@ -156,8 +161,8 @@ test.describe("conversation history", () => {
         await q.chatPanel.getByRole("button", { name: "New chat", exact: true }).click();
         await q.openConversationHistory();
         await expect(q.conversationRows).toHaveCount(3);
-        await expect(q.conversationRow("First discussion")).toBeVisible();
-        await expect(q.conversationRow("Second discussion")).toBeVisible();
+        await expect(q.conversationRow("Opening scene")).toBeVisible();
+        await expect(q.conversationRow("Ending image")).toBeVisible();
 
         const rows = await q.mockConversations();
         expect(rows.map((conversation) => conversation.id)).toEqual(
@@ -195,7 +200,7 @@ for (const branchCase of branchCases) {
         const q = newPageObject(page);
         await q.init();
         await q.openConversationHistory();
-        await q.openConversation("First discussion");
+        await q.openConversation("Opening scene");
         await expect(q.conversationMessageActions(branchCase.messageId)).toBeVisible();
 
         const proseBefore = await q.cmText();
@@ -233,12 +238,12 @@ test("keeps discussions in the sidebar and opens a focused modal", async ({ page
     await q.init();
     await q.openChat();
     const recent = page.getByRole("list", { name: "Recent conversations" });
-    await expect(recent.getByRole("button", { name: "First discussion" })).toBeVisible();
+    await expect(recent.getByRole("button", { name: "Opening scene" })).toBeVisible();
     await expect
         .poll(async () => Math.round((await q.aiSidebar.boundingBox())?.width ?? 0))
         .toBe(320);
     await q.captureScreenshot("/tmp/quillium-discussions-sidebar.png");
-    await recent.getByRole("button", { name: "First discussion" }).click();
+    await recent.getByRole("button", { name: "Opening scene" }).click();
     const modal = page.locator("dialog.discussion-modal");
     await expect(modal).toBeVisible();
     await expect(q.chatInput).toBeEnabled();
@@ -258,7 +263,7 @@ test("edits a user message into a provider-backed new path", async ({ page }) =>
     await q.mockDeepSeekProvider();
     await q.init();
     await q.openConversationHistory();
-    await q.openConversation("First discussion");
+    await q.openConversation("Opening scene");
 
     const proseBefore = await q.cmText();
     await q
@@ -271,16 +276,14 @@ test("edits a user message into a provider-backed new path", async ({ page }) =>
     await q.chatPanel.getByRole("button", { name: "Send as new path", exact: true }).click();
 
     await expect(q.conversationMessage("Alternative answer")).toBeVisible({ timeout: 15_000 });
-    expect((await q.mockConversations()).map((row) => row.title)).toContain(
-        "First discussion (edit)",
-    );
+    expect((await q.mockConversations()).map((row) => row.title)).toContain("Opening scene (edit)");
     await expect(q.conversationMessage("What changes after the midpoint?")).toBeVisible();
     await expect(
         q.conversationMessage("The stakes need a sharper turn before the midpoint."),
     ).toBeHidden();
     await q.expectEditorText(proseBefore);
 
-    await q.openConversation("First discussion");
+    await q.openConversation("Opening scene");
     await expect(
         q.conversationMessage("The stakes need a sharper turn before the midpoint."),
     ).toBeVisible();
@@ -294,7 +297,7 @@ test("retries an assistant message into a provider-backed new path", async ({ pa
     await q.mockDeepSeekProvider();
     await q.init();
     await q.openConversationHistory();
-    await q.openConversation("First discussion");
+    await q.openConversation("Opening scene");
 
     const proseBefore = await q.cmText();
     await q
@@ -304,7 +307,7 @@ test("retries an assistant message into a provider-backed new path", async ({ pa
 
     await expect(q.conversationMessage("Alternative answer")).toBeVisible({ timeout: 15_000 });
     expect((await q.mockConversations()).map((row) => row.title)).toContain(
-        "First discussion (retry)",
+        "Opening scene (retry)",
     );
     await expect(q.conversationMessage("How does the opening land?")).toBeVisible();
     await expect(
@@ -312,7 +315,7 @@ test("retries an assistant message into a provider-backed new path", async ({ pa
     ).toBeHidden();
     await q.expectEditorText(proseBefore);
 
-    await q.openConversation("First discussion");
+    await q.openConversation("Opening scene");
     await expect(
         q.conversationMessage("It creates momentum, but the image is familiar."),
     ).toBeVisible();
@@ -379,17 +382,19 @@ test("shows recorded tool activity with expandable inputs and results without re
     const prose = await q.cmText();
     await q.openConversation("Sharpening the opening");
     const tool = page.locator('[data-tool-call="suggestion-1"]');
-    await expect(tool.getByText("Result received", { exact: true })).toBeVisible();
+    await expect(tool.getByText("Suggestion requested", { exact: true })).toBeVisible();
     await expect(tool.locator("pre").first()).toBeHidden();
-    await expect(page.locator('[data-tool-call="lookup-1"]')).toContainText("Failed");
-    await expect(page.locator('[data-tool-call="comment-1"]')).toContainText("No result recorded");
-    await q.captureScreenshot("/tmp/quillium-tool-activity.png");
+    await expect(page.locator('[data-tool-call="lookup-1"]')).toContainText(
+        "Couldn't complete assistant action",
+    );
+    await expect(page.locator('[data-tool-call="comment-1"]')).toContainText("Comment interrupted");
+
     await tool.locator("summary").click();
     await expect(tool.locator("pre")).toHaveCount(0);
     await page.keyboard.down("Meta");
     await tool.locator("summary").click();
     await expect(tool.locator("pre").first()).toContainText("Morning light pooled");
-    await q.captureScreenshot("/tmp/quillium-tool-details.png");
+
     await page.keyboard.up("Meta");
     await expect(tool.locator("pre")).toHaveCount(0);
     await page.keyboard.down("Meta");
@@ -406,58 +411,141 @@ test("shows recorded tool activity with expandable inputs and results without re
     await q.expectEditorText(prose);
 });
 
-test("renders and persists a streamed feedback tool result", async ({ page }) => {
-    const q = new QuilliumPage(page, {
-        apiKey: "fake-api-key",
-        initialDoc: "The morning was beautiful.",
-    });
-    await q.mockDeepSeekProvider();
-    await page.unroute("https://api.deepseek.com/chat/completions");
-    await page.route("https://api.deepseek.com/chat/completions", async (route) => {
-        const chunk = (delta: unknown, finish_reason: string | null = null) =>
-            `data: ${JSON.stringify({ id: "tool-stream", object: "chat.completion.chunk", created: 1700000000, model: "deepseek-chat", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
-        const body =
-            chunk({ role: "assistant" }) +
-            chunk({
-                tool_calls: [
-                    {
-                        index: 0,
-                        id: "stream-comment",
-                        type: "function",
-                        function: {
-                            name: "createComment",
-                            arguments: JSON.stringify({
-                                targetText: "The morning was beautiful.",
-                                comment: "Try a specific sensory image.",
-                            }),
+for (const outcome of ["applied", "skipped"] as const) {
+    test(`renders and persists a streamed feedback tool result: ${outcome}`, async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "fake-api-key",
+            initialDoc: "The morning was beautiful.",
+        });
+        await q.mockDeepSeekProvider();
+        await page.unroute("https://api.deepseek.com/chat/completions");
+        let requests = 0;
+        await page.route("https://api.deepseek.com/chat/completions", async (route) => {
+            requests += 1;
+            const chunk = (delta: unknown, finish_reason: string | null = null) =>
+                `data: ${JSON.stringify({ id: "tool-stream", object: "chat.completion.chunk", created: 1700000000, model: "deepseek-chat", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
+            const body =
+                chunk({ role: "assistant" }) +
+                chunk({
+                    content: "A concrete image would help readers picture the opening scene.",
+                }) +
+                chunk({
+                    tool_calls: [
+                        {
+                            index: 0,
+                            id: "stream-comment",
+                            type: "function",
+                            function: {
+                                name: "createComment",
+                                arguments: JSON.stringify({
+                                    targetText:
+                                        outcome === "applied" && requests === 1
+                                            ? "The morning was beautiful."
+                                            : "This passage is not in the draft.",
+                                    comment: "Try a specific sensory image.",
+                                }),
+                            },
                         },
-                    },
-                ],
-            }) +
-            chunk({}, "tool_calls") +
-            "data: [DONE]\n\n";
-        await route.fulfill({ status: 200, contentType: "text/event-stream", body });
+                    ],
+                }) +
+                chunk({}, "tool_calls") +
+                "data: [DONE]\n\n";
+            await route.fulfill({ status: 200, contentType: "text/event-stream", body });
+        });
+        await q.init();
+        await page.locator("#ai-tab-feedback").click();
+        const panel = page.locator('[data-panel-id="feedback"]');
+        const input = panel.locator('input[name="message"]');
+        await input.fill("Help me make the opening more specific.");
+        await input.press("Enter");
+        const tool = panel.locator('[data-tool-call="stream-comment"]');
+        const expectedLabel = outcome === "applied" ? "Comment added" : "Couldn't add comment";
+        await expect(tool).toContainText(expectedLabel, { timeout: 15000 });
+        const annotation = q.annotationCards.filter({ hasText: "Try a specific sensory image." });
+        if (outcome === "applied") await expect(annotation).toBeVisible();
+        else await expect(annotation).toHaveCount(0);
+        await tool.locator("summary").click();
+        await expect(tool.locator("pre")).toHaveCount(0);
+        await page.keyboard.down("Meta");
+        await tool.locator("summary").click();
+        await expect(tool).toContainText("Try a specific sensory image.");
+        await page.keyboard.up("Meta");
+        await expect(tool.locator("pre")).toHaveCount(0);
+        await expect
+            .poll(async () =>
+                (await q.mockConversations()).some((row) =>
+                    row.messagesJson.includes("stream-comment"),
+                ),
+            )
+            .toBe(true);
+        const saved = (await q.mockConversations()).find((row) => row.mode === "feedback")!;
+        const savedMessages = JSON.parse(saved.messagesJson);
+        expect(
+            savedMessages.find((message: { role: string }) => message.role === "assistant").metadata
+                .toolApplications["stream-comment"].status,
+        ).toBe(outcome);
+        await panel
+            .getByRole("list", { name: "Recent conversations" })
+            .getByRole("button", { name: saved.title, exact: true })
+            .click();
+        await expect(page.getByRole("dialog", { name: saved.title })).toBeVisible();
+        await expect(tool).toContainText(expectedLabel);
+        if (outcome === "applied") await q.captureScreenshot("/tmp/quillium-tool-activity.png");
+        await page.keyboard.down("Meta");
+        await tool.locator("summary").click();
+        if (outcome === "applied") await q.captureScreenshot("/tmp/quillium-tool-details.png");
+        await page.keyboard.up("Meta");
+        await page.reload();
+        await expect(q.editor).toBeVisible({ timeout: 20000 });
+        await page.locator("#ai-tab-feedback").click();
+        await panel
+            .getByRole("list", { name: "Recent conversations" })
+            .getByRole("button", { name: saved.title, exact: true })
+            .click();
+        await expect(tool).toContainText(expectedLabel);
+        if (outcome === "applied") {
+            await input.fill("Look for another place to improve.");
+            await input.press("Enter");
+            await expect(tool).toHaveCount(2);
+            await expect(tool.last()).toContainText("Couldn't add comment");
+            await expect(tool.first()).toContainText("Comment added");
+            await expect
+                .poll(async () => {
+                    const row = (await q.mockConversations()).find((row) => row.id === saved.id)!;
+                    return JSON.parse(row.messagesJson)
+                        .filter((message: { role: string }) => message.role === "assistant")
+                        .map(
+                            (message: {
+                                metadata: { toolApplications: Record<string, { status: string }> };
+                            }) => message.metadata.toolApplications["stream-comment"].status,
+                        );
+                })
+                .toEqual(["applied", "skipped"]);
+        }
     });
+}
+
+test("discussion modal fits a small window and restores keyboard focus", async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 480 });
+    const q = newPageObject(page);
     await q.init();
-    await page.locator("#ai-tab-feedback").click();
-    const panel = page.locator('[data-panel-id="feedback"]');
-    const input = panel.locator('input[name="message"]');
-    await input.fill("Give me feedback on the opening.");
-    await input.press("Enter");
-    const tool = panel.locator('[data-tool-call="stream-comment"]');
-    await expect(tool).toContainText("Result received", { timeout: 15000 });
-    await tool.locator("summary").click();
-    await expect(tool.locator("pre")).toHaveCount(0);
-    await page.keyboard.down("Meta");
-    await tool.locator("summary").click();
-    await expect(tool).toContainText("Try a specific sensory image.");
-    await page.keyboard.up("Meta");
-    await expect(tool.locator("pre")).toHaveCount(0);
-    await expect
-        .poll(async () =>
-            (await q.mockConversations()).some((row) =>
-                row.messagesJson.includes("stream-comment"),
-            ),
-        )
-        .toBe(true);
+    await q.openChat();
+    const opener = page
+        .getByRole("list", { name: "Recent conversations" })
+        .getByRole("button", { name: "Opening scene", exact: true });
+    await opener.click();
+    const dialog = page.getByRole("dialog", { name: "Opening scene", exact: true });
+    await expect(dialog).toBeVisible();
+    const box = (await dialog.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(16);
+    expect(box.y).toBeGreaterThanOrEqual(16);
+    expect(box.x + box.width).toBeLessThanOrEqual(624);
+    expect(box.y + box.height).toBeLessThanOrEqual(464);
+    await expect(q.chatInput).toBeVisible();
+    await page.keyboard.press("Meta+Shift+2");
+    await expect(dialog).toBeVisible();
+    await expect(q.chatPanel).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeFocused();
 });

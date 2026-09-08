@@ -12,12 +12,15 @@ let {
     conversations: NonNullable<ReturnType<typeof createAiChat>["conversations"]>;
     mode: AiConversationMode;
     disabled?: boolean;
-    onopen?: () => void;
+    onopen?: (opener: HTMLElement) => void;
 } = $props();
 function showModal(node: HTMLDialogElement) {
+    const previous = document.activeElement;
     node.showModal();
+    return { destroy() { node.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); } };
 }
 let browsing = $state(false);
+let historyButton: HTMLButtonElement;
 let search = $state("");
 let archived = $state(false);
 let renameId = $state<string | null>(null);
@@ -67,12 +70,12 @@ async function act(action: () => Promise<unknown>) {
     {#if !browsing}
         <ul class="space-y-1" aria-label="Recent conversations">
             {#each conversations.items.filter(item => item.mode === mode && !item.archived).slice(0, 3) as item (item.id)}
-                <li><button class="w-full truncate rounded px-2 py-1.5 text-left hover:bg-white/50" disabled={disabled || conversations.loading}
-                    onclick={() => act(async () => { await conversations.open(item.id); onopen?.(); })}>{item.title}</button></li>
+                <li><button aria-current={item.id === conversations.current?.id ? "true" : undefined} title={item.title} class="w-full truncate rounded px-2 py-1.5 text-left hover:bg-white/50 aria-[current=true]:bg-white/30" disabled={disabled || conversations.loading}
+                    onclick={(event) => { const opener = event.currentTarget; void act(async () => { await conversations.open(item.id); onopen?.(opener); }); }}>{item.title}</button></li>
             {/each}
         </ul>
     {/if}
-    <button class="rounded px-2 py-1 text-black/60 hover:bg-white/50" aria-expanded={browsing}
+    <button bind:this={historyButton} data-history-trigger class="rounded px-2 py-1 text-black/60 hover:bg-white/50" aria-expanded={browsing}
         onclick={() => { browsing = !browsing; if (browsing) void act(() => conversations.refresh()); }}>History</button>
     {#if !onopen && conversations.current}
         {#if conversations.current.archived}
@@ -94,11 +97,11 @@ async function act(action: () => Promise<unknown>) {
             class="w-full rounded border border-black/20 bg-white/70 px-2 py-1.5" />
         <label class="flex items-center gap-2"><input type="checkbox" bind:checked={archived} />Archived conversations</label>
         <p class="text-black/60">{mode === "chat" ? "Chat" : mode === "feedback" ? "Feedback" : "Revise"} conversations in this document</p>
-        <ul class="max-h-52 overflow-y-auto space-y-2" aria-label="Conversation history">
+        <ul class="max-h-[55dvh] overflow-y-auto space-y-2 mt-3" aria-label="Conversation history">
             {#each matches as item (item.id)}
                 <li class="rounded bg-white/50 p-2 space-y-1" aria-current={item.id === conversations.current?.id ? "true" : undefined}>
                     <button class="text-left font-medium w-full break-words hover:underline" disabled={disabled || conversations.loading}
-                        onclick={() => act(async () => { await conversations.open(item.id); browsing = false; onopen?.(); })}>{item.title}</button>
+                        onclick={() => act(async () => { await conversations.open(item.id); browsing = false; onopen?.(historyButton); })}>{item.title}</button>
                     <p class="text-black/60">{item.draftLabel} · {new Date(item.updatedAt).toLocaleDateString()}</p>
                     <div class="flex gap-3">
                         <button disabled={disabled || conversations.loading} onclick={() => { renameId = item.id; title = item.title; }}>Rename</button>

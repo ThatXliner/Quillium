@@ -423,7 +423,9 @@ function handleSidebarClick(e: MouseEvent) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && document.querySelector("dialog[open]")) return;
+    // A modal owns keyboard interaction until it closes. Switching the sidebar
+    // beneath it can leave a hidden dialog holding focus.
+    if (document.querySelector("dialog[open]")) return;
     // Escape closes the context popover first, before the sidebar itself.
     if (e.key === "Escape" && showContextPopover) {
         showContextPopover = false;

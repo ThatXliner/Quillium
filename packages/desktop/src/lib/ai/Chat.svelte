@@ -18,6 +18,7 @@
     stores (selectedText, documentContent), posthog.
 -->
 <script lang="ts">
+import { readable } from "svelte/store";
 import ToolActivity from "./ToolActivity.svelte";
 import { isToolUIPart } from "ai";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
@@ -63,6 +64,7 @@ import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
  */
 import { documentContent, selectedText } from "$lib/stores";
 import ContextLens from "./ContextLens.svelte";
+import DiscussionModal from "./DiscussionModal.svelte";
 import ConversationHistory from "./ConversationHistory.svelte";
 import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
@@ -73,10 +75,9 @@ let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
 let reviewing = $state(false);
-function showDiscussion(node: HTMLDialogElement) {
-    node.showModal();
-}
-const { chat, sendMessage, conversations } = createAiChat({ mode: "chat" });
+let reviewOpener = $state<HTMLElement>();
+
+const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "chat" });
 let isBusy = $derived(
     chat.status === "submitted" ||
         chat.status === "streaming" ||
@@ -152,17 +153,13 @@ async function handleSubmit(event: Event) {
 
 <div class="flex flex-col h-full">
     {#if conversations}
-        <ConversationHistory {conversations} mode="chat" onopen={() => reviewing = true} />
+        <ConversationHistory {conversations} mode="chat" onopen={(opener) => { reviewOpener = opener; reviewing = true; }} />
     {/if}
 
     {#if reviewing}
-        <dialog aria-label={conversations?.current?.title || "Discussion"} use:showDiscussion onclose={() => reviewing = false} class="discussion-modal rounded-2xl bg-gray-100 shadow-xl">
-            <div class="flex items-center justify-between border-b border-black/10 px-6 py-4">
-                <div><h2 class="text-sm font-semibold">{conversations?.current?.title || "Discussion"}</h2><p class="mt-1 text-xs text-black/60">{conversations?.current?.draftLabel || "Current draft"}</p></div>
-                <button class="rounded-full px-3 py-1 text-sm hover:bg-black/5" onclick={() => reviewing = false}>Close discussion</button>
-            </div>
-            <div class="flex min-h-0 flex-1 flex-col">{@render transcript()}</div>
-        </dialog>
+        <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            {@render transcript()}
+        </DiscussionModal>
     {:else}
         {@render transcript()}
     {/if}
@@ -223,7 +220,7 @@ async function handleSubmit(event: Event) {
                         </div>
                     </div>
                 {:else if isToolUIPart(part)}
-                    <ToolActivity {part} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
+                    <ToolActivity {part} outcomes={$toolApplications} metadata={message.metadata} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
             {#if conversations}
@@ -296,8 +293,3 @@ async function handleSubmit(event: Event) {
         </form>
     </div>
 {/snippet}
-<style>
-.discussion-modal { margin: auto; position: fixed; inset: 0; width: min(760px, calc(100vw - 48px)); height: min(760px, calc(100dvh - 64px)); max-height: calc(100dvh - 64px); padding: 0; color: #27272a; }
-.discussion-modal[open] { display: flex; flex-direction: column; }
-.discussion-modal::backdrop { background: rgb(0 0 0 / 25%); backdrop-filter: blur(3px); }
-</style>

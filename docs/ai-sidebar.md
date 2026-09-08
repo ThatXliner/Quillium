@@ -202,10 +202,14 @@ intended prose-development scope.
 - The sidebar shows three recent discussions. Selecting one opens a centered
   modal for reading and continuing it. History opens a separate modal with
   search and lifecycle controls. Escape closes the modal and keeps the sidebar open.
-- Tool names and statuses stay visible in transcript order. Hold Command and
-  click a tool row to inspect raw input, result, and error details. Releasing
-  Command or leaving the window hides those details. A tool response is not confirmation that an editor mutation was applied;
-  editor guards run separately. Incomplete saved calls show “No result recorded.”
+- Tool activity uses plain language in transcript order. “Comment added” requires
+  a successful editor action, not merely a provider response. Rejected actions
+  show “Couldn't add comment”; interrupted actions are labeled as interrupted.
+  Editor outcomes persist in message metadata and survive reopening. Older
+  activity without an editor outcome says “Comment requested,” never “added.”
+- Hold Command and click an activity row to inspect raw names, inputs, results,
+  errors, and editor outcomes. Releasing Command or leaving the window hides them.
+  Unknown tool names appear as “Assistant action” outside inspection.
 - Uses the shared context packet before the writer's latest prompt.
 - Shows a context lens for selection, nearby text, draft, annotations, brief, and
   saved decisions.
@@ -229,7 +233,14 @@ and accessible names. The context icon toggles the saved turn context.
 
 ![Discussions in the sidebar](assets/issue-436/discussions-sidebar.png)
 
-![Discussion modal with expandable tool activity](assets/issue-436/tool-details.png)
+![Successful feedback activity](assets/issue-436/tool-activity.png)
+
+These browser captures use isolated test storage and a deterministic provider
+response. The successful feedback capture requires an actual CodeMirror annotation
+and verifies the saved editor outcome after reopening. Failure and interrupted
+fixtures are tested separately and are not used as showcase screenshots.
+
+[Command inspection of that same successful action](assets/issue-436/tool-details.png)
 
 Each conversation has a stable ID, a mode, a title, creation/update timestamps,
 and its original document and draft association. The draft label is captured

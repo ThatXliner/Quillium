@@ -1,6 +1,37 @@
 <script lang="ts">
+import { Check, CircleAlert, LoaderCircle, Circle } from "lucide-svelte";
 import { getToolName, isToolUIPart, type UIMessage } from "ai";
-let { part, active = false }: { part: UIMessage["parts"][number]; active?: boolean } = $props();
+let {
+    part,
+    active = false,
+    outcomes = {},
+    metadata,
+}: {
+    part: UIMessage["parts"][number];
+    active?: boolean;
+    outcomes?: Record<string, unknown>;
+    metadata?: unknown;
+} = $props();
+function application(id: string): { status: "applied" | "skipped"; reason?: string } | undefined {
+    const saved =
+        metadata && typeof metadata === "object" && "toolApplications" in metadata
+            ? metadata.toolApplications
+            : undefined;
+    const value =
+        outcomes[id] ??
+        (saved && typeof saved === "object" ? (saved as Record<string, unknown>)[id] : undefined);
+    if (
+        !value ||
+        typeof value !== "object" ||
+        !("status" in value) ||
+        (value.status !== "applied" && value.status !== "skipped")
+    )
+        return;
+    return {
+        status: value.status,
+        reason: "reason" in value && typeof value.reason === "string" ? value.reason : undefined,
+    };
+}
 let commandHeld = $state(false);
 let expanded = $state(false);
 function updateModifier(event: KeyboardEvent) {
@@ -13,10 +44,10 @@ function hideDetails() {
 }
 const tool = $derived(isToolUIPart(part) ? part : null);
 const names: Record<string, string> = {
-    createComment: "Create comment",
-    createSuggestion: "Create suggestion",
-    createRevision: "Create revision",
-    noAction: "No editorial change",
+    createComment: "Comment",
+    createSuggestion: "Suggestion",
+    createRevision: "Revision",
+    noAction: "Review",
 };
 function format(value: unknown): string {
     return typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "None");
@@ -28,16 +59,27 @@ function format(value: unknown): string {
 
 {#if tool}
     {@const name = getToolName(tool)}
-    {@const status = tool.state === "output-available" ? "Result received" : tool.state === "output-error" ? "Failed" : tool.state === "output-denied" ? "Denied" : active ? "Running…" : "No result recorded"}
-    <details bind:open={expanded} class="my-2 rounded-lg border border-black/10 bg-white/30 text-xs text-black/70" data-tool-call={tool.toolCallId}>
-        <summary title="Hold Command and click to inspect tool details" class="px-3 py-2 {commandHeld ? 'cursor-pointer' : 'list-none'}"
-            onclick={(event) => { commandHeld = event.metaKey; if (!commandHeld) { event.preventDefault(); expanded = false; } }}><span class="font-medium">{names[name] || name}</span><span class="ml-2 text-black/60">{status}</span></summary>
+    {@const outcome = application(tool.toolCallId)}
+    {@const label = names[name] || "Assistant action"}
+    {@const failed = outcome?.status === "skipped" || (!outcome && (tool.state === "output-error" || tool.state === "output-denied"))}
+    {@const running = !outcome && active && tool.state !== "output-available" && !failed}
+    {@const summary = outcome?.status === "applied" ? `${label} added` : failed ? `Couldn't ${names[name] ? "add" : "complete"} ${label.toLowerCase()}` : name === "noAction" && tool.state === "output-available" ? "Review complete · no changes suggested" : running ? `Preparing ${label.toLowerCase()}…` : tool.state === "output-available" ? `${label} requested` : `${label} interrupted`}
+    <details bind:open={expanded} class="my-1 text-xs text-black/60" data-tool-call={tool.toolCallId}>
+        <summary title="Hold Command and click to inspect tool details" class="flex items-center gap-2 rounded-md py-1.5 list-none {commandHeld ? 'cursor-pointer hover:bg-black/5' : ''}"
+            onclick={(event) => { commandHeld = event.metaKey; if (!commandHeld) { event.preventDefault(); expanded = false; } }}>
+            {#if outcome?.status === "applied" || name === "noAction" && tool.state === "output-available"}<Check size={14} aria-hidden="true" />
+            {:else if failed}<CircleAlert size={14} aria-hidden="true" />
+            {:else if running}<LoaderCircle size={14} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            {:else}<Circle size={12} aria-hidden="true" />{/if}
+            <span>{summary}</span>
+        </summary>
         {#if commandHeld}
-        <div class="space-y-3 border-t border-black/5 px-3 py-3">
+        <div class="space-y-3 rounded-lg border border-black/10 bg-white/30 px-3 py-3">
+            {#if outcome}<p>Editor outcome: {outcome.status}{outcome.reason ? ` · ${outcome.reason}` : ""}</p>{/if}
             <div><p class="mb-1 font-medium">Input</p><pre class="max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono">{format(tool.input)}</pre></div>
             {#if tool.state === "output-available"}
                 <div><p class="mb-1 font-medium">Result</p><pre class="max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono">{format(tool.output)}</pre></div>
-                <p class="text-black/60">This is the tool response. Editor changes are checked separately before being applied.</p>
+                {#if !outcome}<p class="text-black/60">This older activity has no saved editor outcome.</p>{/if}
             {:else if tool.state === "output-error"}
                 <p class="text-red-700">{tool.errorText}</p>
             {/if}

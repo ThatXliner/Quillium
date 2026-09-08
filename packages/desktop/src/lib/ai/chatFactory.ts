@@ -51,7 +51,7 @@ import { toast } from "svelte-sonner";
  * Dependencies: @ai-sdk/svelte (Chat), ai SDK types, Svelte stores,
  *   settings.svelte.ts, clientStreams.ts, annotation system.
  */
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     type CommentInput,
@@ -110,9 +110,14 @@ function effectiveEditorialPreferencesSnapshot(): EditorialPreferences {
 }
 
 type ToolCall =
-    | { toolName: "createComment"; input: CommentInput }
-    | { toolName: "createSuggestion"; input: SuggestionInput }
-    | { toolName: "createRevision"; input: RevisionInput };
+    | { toolCallId?: string; toolName: "createComment"; input: CommentInput }
+    | { toolCallId?: string; toolName: "createSuggestion"; input: SuggestionInput }
+    | { toolCallId?: string; toolName: "createRevision"; input: RevisionInput };
+
+export type ToolApplicationResult = {
+    status: "applied" | "skipped";
+    reason?: string;
+};
 
 type AiChatMode = EditorialPanelMode;
 
@@ -169,10 +174,21 @@ function branchPathsEqual(
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: string) {
-    if (!isEditorialToolCall(toolCall)) return;
+function handleToolCall(
+    toolCall: ToolCall,
+    guard: ToolCallGuard,
+    author?: string,
+): ToolApplicationResult {
+    if (!isEditorialToolCall(toolCall)) {
+        return { status: "skipped", reason: "Quillium skipped an unsupported AI action." };
+    }
     const rootView = get(editorView);
-    if (!rootView) return;
+    if (!rootView) {
+        return {
+            status: "skipped",
+            reason: "The editor was unavailable, so Quillium skipped the AI annotation.",
+        };
+    }
 
     const result = applyEditorialAction({
         rootView,
@@ -194,10 +210,14 @@ function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: strin
     if (!result.ok) {
         console.warn("[chatFactory] rejected AI annotation:", result.reason);
         toast.warning(editorialActionFailureMessage(result.reason));
-        return;
+        return {
+            status: "skipped",
+            reason: editorialActionFailureMessage(result.reason),
+        };
     }
 
     captureToolCallAnalytics(toolCall, author);
+    return { status: "applied" };
 }
 
 function toolCallPayload(toolCall: ToolCall): EditorialActionPayload {
@@ -678,12 +698,89 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
     let targetAtSend: EditorialTargetSnapshot | undefined;
     let provenanceAtSend: AiGenerationProvenance | undefined;
     let turnAtSend: EditorialTurnAtSend | undefined;
+    const toolApplications = writable<Record<string, ToolApplicationResult>>({});
 
     function releaseTargetAtSend() {
         releaseEditorialTarget(targetAtSend?.ownerView, targetAtSend);
         targetAtSend = undefined;
         provenanceAtSend = undefined;
         turnAtSend = undefined;
+    }
+
+    function recordToolApplication(toolCallId: string, result: ToolApplicationResult): void {
+        toolApplications.update((current) => ({ ...current, [toolCallId]: result }));
+        updateMessageToolApplication(toolCallId, result);
+    }
+
+    function updateMessageToolApplication(toolCallId: string, result: ToolApplicationResult): void {
+        const messages = chat.messages;
+        const message = messages
+            .slice(-1)
+            .find(
+                (candidate) =>
+                    candidate.role === "assistant" &&
+                    candidate.parts.some(
+                        (part) => "toolCallId" in part && part.toolCallId === toolCallId,
+                    ),
+            );
+        if (!message) return;
+        const metadata =
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata)
+                ? (message.metadata as Record<string, unknown>)
+                : {};
+        const applications =
+            metadata.toolApplications &&
+            typeof metadata.toolApplications === "object" &&
+            !Array.isArray(metadata.toolApplications)
+                ? (metadata.toolApplications as Record<string, ToolApplicationResult>)
+                : {};
+        // Keep metadata on the SDK's active message object so later stream chunks preserve it.
+        message.metadata = {
+            ...metadata,
+            toolApplications: { ...applications, [toolCallId]: result },
+        };
+        chat.messages = [...messages];
+    }
+
+    function persistToolApplications(messages: UIMessage[]): void {
+        const applications = get(toolApplications);
+        if (Object.keys(applications).length === 0) return;
+        const nextMessages = messages.map((message, index) => {
+            if (index !== messages.length - 1 || message.role !== "assistant") return message;
+            const matchingApplications = Object.fromEntries(
+                Object.entries(applications).filter(([toolCallId]) =>
+                    message.parts.some(
+                        (part) => "toolCallId" in part && part.toolCallId === toolCallId,
+                    ),
+                ),
+            );
+            if (Object.keys(matchingApplications).length === 0) return message;
+            const metadata =
+                message.metadata &&
+                typeof message.metadata === "object" &&
+                !Array.isArray(message.metadata)
+                    ? (message.metadata as Record<string, unknown>)
+                    : {};
+            return {
+                ...message,
+                metadata: {
+                    ...metadata,
+                    toolApplications: {
+                        ...(metadata.toolApplications &&
+                        typeof metadata.toolApplications === "object" &&
+                        !Array.isArray(metadata.toolApplications)
+                            ? metadata.toolApplications
+                            : {}),
+                        ...matchingApplications,
+                    },
+                },
+            };
+        });
+        if (nextMessages.some((message, index) => message !== messages[index])) {
+            chat.messages = nextMessages;
+        }
     }
 
     function updateRequestContextMetadata(context: RequestContextSnapshot) {
@@ -724,6 +821,7 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
     const chat = new Chat({
         transport: makeTransport(mode, transportWithTracking, (target, turn, context) => {
             releaseTargetAtSend();
+            toolApplications.set({});
             targetAtSend = target;
             turnAtSend = turn;
             updateRequestContextMetadata(context);
@@ -738,23 +836,31 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         }),
         onToolCall: ({ toolCall }) => {
             if (!isEditorialToolCall(toolCall)) return;
-            if (!targetAtSend || !provenanceAtSend || !turnAtSend) return;
-            const policy = compileEditorialPolicy({
-                task: turnAtSend.task,
-                hasSelection: !!targetAtSend.selectedText,
-                exactWordCount: turnAtSend.exactWordCount,
-            });
-            handleToolCall(toolCall, {
-                target: targetAtSend,
-                allowedActions: policy.allowedActions,
-                provenance: provenanceAtSend,
-                exactWordCount: turnAtSend.exactWordCount,
-            });
+            const result =
+                !targetAtSend || !provenanceAtSend || !turnAtSend
+                    ? {
+                          status: "skipped" as const,
+                          reason: "The AI request target was unavailable, so Quillium skipped the annotation.",
+                      }
+                    : handleToolCall(toolCall, {
+                          target: targetAtSend,
+                          allowedActions: compileEditorialPolicy({
+                              task: turnAtSend.task,
+                              hasSelection: !!targetAtSend.selectedText,
+                              exactWordCount: turnAtSend.exactWordCount,
+                          }).allowedActions,
+                          provenance: provenanceAtSend,
+                          exactWordCount: turnAtSend.exactWordCount,
+                      });
+            if (toolCall.toolCallId) recordToolApplication(toolCall.toolCallId, result);
         },
-        onFinish: () => {
+        onFinish: ({ messages }) => {
+            persistToolApplications(messages);
+            toolApplications.set({});
             releaseTargetAtSend();
         },
         onError: (error) => {
+            persistToolApplications(chat.messages);
             void logAppEvent("error", "ai", "AI chat failed", { mode, error });
             releaseTargetAtSend();
         },
@@ -822,6 +928,7 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
 
     return {
         chat,
+        toolApplications,
         clearChat,
         sendMessage,
         conversations: conversationController?.conversations,
