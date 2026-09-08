@@ -15,8 +15,8 @@ import remarkRehype from "remark-rehype";
  *
  * 2. **Document injection** (`injectDocumentContext`) — wraps the
  *    current editor content and any selected text into a
- *    `UserModelMessage` that is appended to every LLM call so the
- *    model has access to the writer's document.
+ *    `UserModelMessage`. Sidebar chat retains one initial summary and
+ *    uses change notices plus read tools for later turns.
  *
  * Dependencies: unified ecosystem, dompurify, ai SDK types.
  */

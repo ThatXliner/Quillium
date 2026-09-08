@@ -33,6 +33,7 @@ import {
     currentDraftLabel,
     currentDocumentTitle,
     documentContent,
+    editorView,
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
@@ -41,8 +42,11 @@ import { Minimize2Icon, SquareIcon, XIcon } from "lucide-svelte";
 import { onDestroy, tick, untrack } from "svelte";
 import { derived, get } from "svelte/store";
 
+import { editorialContextView } from "$lib/ai/editorialTarget";
+import { annotationField } from "$lib/editor/plugins/annotations";
+import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
-import { buildAiContextPacket, shouldShowContextSummary } from "$lib/ai/context";
+import { buildAiContextPacket } from "$lib/ai/context";
 import { PanelResizeController } from "$lib/ai/panelResize.svelte";
 
 useDocumentContextEffects();
@@ -171,36 +175,61 @@ const effectiveWidth = $derived(resize.customWidth ?? defaultWidthForTab);
 const effectiveHeight = $derived(resize.customHeight ?? defaultHeightForTab);
 const isCustomSize = $derived(resize.customWidth !== null || resize.customHeight !== null);
 const contextPanelMode = $derived(activePanel?.contextMode ?? null);
+// Follow the same focused editor as send-time capture, including nested versions.
+const contextView = $derived.by(() => {
+    // setState on draft load replaces root state without an update-listener event.
+    // Root mirrors also trigger this check when a nested view was invalidated.
+    void $documentContent;
+    void $annotations;
+    const snapshot = $editorialContextView;
+    return snapshot &&
+        snapshot.rootView === $editorView &&
+        snapshot.view.state === snapshot.state &&
+        snapshot.isCurrent()
+        ? snapshot
+        : null;
+});
+const contextState = $derived(contextView?.branchPath.length ? contextView.state : undefined);
+const contextText = $derived(contextState?.doc.toString() ?? $documentContent);
+const contextSelection = $derived(contextState?.selection.main);
+const contextSelectedText = $derived(
+    contextState && contextSelection
+        ? contextState.sliceDoc(contextSelection.from, contextSelection.to)
+        : $selectedText,
+);
+const contextRange = $derived(
+    contextSelection
+        ? contextSelection.empty
+            ? undefined
+            : { from: contextSelection.from, to: contextSelection.to }
+        : $selectedTextRange,
+);
+const contextTargetLabel = $derived(
+    contextView?.branchPath.length ? "Focused revision version" : "Current draft",
+);
 const headerAnnotationContext = $derived(
     buildAnnotationContextInputs({
-        annotations: $annotations,
-        documentContent: $documentContent,
-        selectedText: $selectedText,
-        selectedTextRange: $selectedTextRange,
-        activeAnnotation: $activeAnnotation,
+        annotations: contextState ? contextState.field(annotationField, false) : $annotations,
+        documentContent: contextText,
+        selectedText: contextSelectedText,
+        selectedTextRange: contextRange,
+        activeAnnotation: contextState ? getActiveAnnotation(contextState) : $activeAnnotation,
     }),
 );
 const headerContextPacket = $derived(
     contextPanelMode
         ? buildAiContextPacket({
               mode: contextPanelMode,
-              documentContent: $documentContent,
-              selectedText: $selectedText,
-              selectedTextRange: $selectedTextRange,
+              documentContent: contextText,
+              selectedText: contextSelectedText,
+              selectedTextRange: contextRange,
               documentContext: getEffectiveDocumentContext(),
               annotationContext: headerAnnotationContext,
           })
         : null,
 );
-// The header info (i) icon stands in for the in-panel context summary card
-// whenever that card isn't shown — either because the packet doesn't warrant a
-// full summary, or because the writer collapsed it via "Hide" / Settings
-// (appSettings.collapseContextSummary). ContextLens hides its card under the
-// same conditions, so exactly one of the two is visible at a time.
-const showHeaderContextInfo = $derived(
-    headerContextPacket !== null &&
-        (appSettings.collapseContextSummary || !shouldShowContextSummary(headerContextPacket)),
-);
+// Keep the next-turn preview available after starter cards disappear.
+const showHeaderContextInfo = $derived(headerContextPacket !== null);
 const headerContextRing = $derived(activePanel?.contextRingClass ?? "focus:ring-blue-500");
 
 // Context detail popover (opened by the header info button, rendered by
@@ -562,6 +591,7 @@ function handleKeydown(e: KeyboardEvent) {
       {#if showHeaderContextInfo && headerContextPacket}
         <ContextInfoButton
           packet={headerContextPacket}
+          targetLabel={contextTargetLabel}
           ringClass={headerContextRing}
           bind:open={showContextPopover}
         />

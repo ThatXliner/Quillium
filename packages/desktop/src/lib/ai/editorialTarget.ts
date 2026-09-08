@@ -7,8 +7,15 @@
  * passage still fail the source-text check below.
  */
 
-import { StateEffect, StateField, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import {
+    type EditorState,
+    type Extension,
+    StateEffect,
+    StateField,
+    Transaction,
+} from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { writable } from "svelte/store";
 import type { AiTextRange } from "./context";
 import type { EditorialAction } from "./editorialPolicy";
 
@@ -31,6 +38,17 @@ type EditorialViewIdentity = {
 
 const editorialViewIdentities = new WeakMap<EditorView, EditorialViewIdentity>();
 let lastActiveEditorialView: EditorView | undefined;
+
+export type EditorialContextView = {
+    rootView: EditorView;
+    view: EditorView;
+    state: EditorState;
+    branchPath: readonly EditorialBranchSegment[];
+    isCurrent: () => boolean;
+};
+
+/** The active editor snapshot used by context summaries while a tab is open. */
+export const editorialContextView = writable<EditorialContextView | null>(null);
 
 function rootIdentity(view: EditorView): EditorialViewIdentity {
     const existing = editorialViewIdentities.get(view);
@@ -66,7 +84,13 @@ export function unregisterEditorialView(view: EditorView) {
     const identity = editorialViewIdentities.get(view);
     editorialViewIdentities.delete(view);
     if (lastActiveEditorialView === view) {
-        lastActiveEditorialView = identity?.parentView ?? identity?.rootView;
+        const fallback = identity?.parentView;
+        lastActiveEditorialView = fallback;
+        if (fallback) {
+            activateEditorialView(fallback);
+        } else {
+            editorialContextView.set(null);
+        }
     }
 }
 
@@ -79,20 +103,53 @@ export function getActiveEditorialView(rootView: EditorView): EditorView {
     ) {
         return lastActiveEditorialView;
     }
+    activateEditorialView(rootView);
     return rootView;
 }
 
 export function activateEditorialView(view: EditorView) {
-    rootIdentity(view);
+    const identity = rootIdentity(view);
     lastActiveEditorialView = view;
+    editorialContextView.set({
+        rootView: identity.rootView,
+        view,
+        state: view.state,
+        branchPath: identity.branchPath,
+        isCurrent: identity.isCurrent,
+    });
 }
 
-export const editorialTargetViewTracker = EditorView.domEventHandlers({
-    focus(_event, view) {
-        activateEditorialView(view);
-        return false;
-    },
-});
+function updateEditorialContextView(update: ViewUpdate) {
+    const identity = editorialViewIdentities.get(update.view);
+    if (!identity) return;
+    if (lastActiveEditorialView === update.view && identity.isCurrent()) {
+        editorialContextView.set({
+            rootView: identity.rootView,
+            view: update.view,
+            state: update.state,
+            branchPath: identity.branchPath,
+            isCurrent: identity.isCurrent,
+        });
+        return;
+    }
+
+    const active = lastActiveEditorialView;
+    const activeIdentity = active ? editorialViewIdentities.get(active) : undefined;
+    if (!active || !activeIdentity || activeIdentity.isCurrent()) return;
+    const fallback = activeIdentity.parentView ?? activeIdentity.rootView;
+    const fallbackIdentity = editorialViewIdentities.get(fallback);
+    if (fallbackIdentity?.isCurrent()) activateEditorialView(fallback);
+}
+
+export const editorialTargetViewTracker: Extension = [
+    EditorView.domEventHandlers({
+        focus(_event, view) {
+            activateEditorialView(view);
+            return false;
+        },
+    }),
+    EditorView.updateListener.of(updateEditorialContextView),
+];
 
 const addEditorialTargetBookmark = StateEffect.define<EditorialTargetBookmark>({
     map: (value, changes) => ({

@@ -59,7 +59,7 @@ async function prepare(page: Page): Promise<{ q: QuilliumPage; requests: string[
                 {
                     url: source,
                     kind: "requirement",
-                    summary: "The response has a 250-word maximum.",
+                    summary: "Write no more than 250 words.",
                     evidence: "Write no more than 250 words.",
                     cycle: "2026-2027",
                     promptIds: [promptId],
@@ -67,7 +67,7 @@ async function prepare(page: Page): Promise<{ q: QuilliumPage; requests: string[
                 {
                     url: source,
                     kind: "official-advice",
-                    summary: "Keep your own voice.",
+                    summary: "Use your own voice.",
                     evidence: "Use your own voice.",
                     cycle: "2026-2027",
                     promptIds: [promptId],
@@ -128,7 +128,10 @@ async function prepare(page: Page): Promise<{ q: QuilliumPage; requests: string[
 
     await q.goto();
     await page.locator('button[aria-label="AI Settings"]:visible').first().click();
-    await page.getByRole("region", { name: "College applications setup" }).getByRole("button", { name: "Supplemental", exact: true }).click();
+    await page
+        .getByRole("region", { name: "College applications setup" })
+        .getByRole("button", { name: "Supplemental", exact: true })
+        .click();
     await panel(page).getByRole("button", { name: "School supplement", exact: true }).click();
     await panel(page).getByLabel("School", { exact: true }).fill("Example University");
     await panel(page).getByLabel("Prompt", { exact: true }).fill("Why do you want to study here?");
@@ -171,9 +174,7 @@ test("hosted research is reviewed, saved offline, and excluded after changing th
     await expect(
         research(page).getByRole("link", { name: source, exact: true }).last(),
     ).toBeVisible();
-    await research(page)
-        .getByLabel("The response has a 250-word maximum.", { exact: true })
-        .check();
+    await research(page).getByLabel("Write no more than 250 words.", { exact: true }).check();
     await research(page).getByRole("button", { name: "Add to essay context", exact: true }).click();
     await expect(research(page).getByRole("status")).toContainText("Source review saved");
 

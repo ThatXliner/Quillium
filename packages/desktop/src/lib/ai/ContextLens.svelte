@@ -8,6 +8,7 @@ import {
     activeAnnotation,
     annotations,
     documentContent,
+    editorView,
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
@@ -21,6 +22,9 @@ import {
     NotebookTabsIcon,
     ScanTextIcon,
 } from "lucide-svelte";
+import { editorialContextView } from "$lib/ai/editorialTarget";
+import { annotationField } from "$lib/editor/plugins/annotations";
+import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     type ContextAction,
@@ -41,22 +45,54 @@ const {
     onAction: (action: ContextAction) => void | Promise<void>;
 } = $props();
 
+// Follow the same focused editor as send-time capture, including nested versions.
+const contextView = $derived.by(() => {
+    // setState on draft load replaces root state without an update-listener event.
+    // Root mirrors also trigger this check when a nested view was invalidated.
+    void $documentContent;
+    void $annotations;
+    const snapshot = $editorialContextView;
+    return snapshot &&
+        snapshot.rootView === $editorView &&
+        snapshot.view.state === snapshot.state &&
+        snapshot.isCurrent()
+        ? snapshot
+        : null;
+});
+const contextState = $derived(contextView?.branchPath.length ? contextView.state : undefined);
+const contextText = $derived(contextState?.doc.toString() ?? $documentContent);
+const contextSelection = $derived(contextState?.selection.main);
+const contextSelectedText = $derived(
+    contextState && contextSelection
+        ? contextState.sliceDoc(contextSelection.from, contextSelection.to)
+        : $selectedText,
+);
+const contextRange = $derived(
+    contextSelection
+        ? contextSelection.empty
+            ? undefined
+            : { from: contextSelection.from, to: contextSelection.to }
+        : $selectedTextRange,
+);
+const contextTargetLabel = $derived(
+    contextView?.branchPath.length ? "Focused revision version" : "Current draft",
+);
 const annotationContext = $derived(
     buildAnnotationContextInputs({
-        annotations: $annotations,
-        documentContent: $documentContent,
-        selectedText: $selectedText,
-        selectedTextRange: $selectedTextRange,
-        activeAnnotation: $activeAnnotation,
+        annotations: contextState ? contextState.field(annotationField, false) : $annotations,
+        documentContent: contextText,
+        selectedText: contextSelectedText,
+        selectedTextRange: contextRange,
+        activeAnnotation: contextState ? getActiveAnnotation(contextState) : $activeAnnotation,
     }),
 );
 
 const packet = $derived(
     buildAiContextPacket({
         mode,
-        documentContent: $documentContent,
-        selectedText: $selectedText,
-        selectedTextRange: $selectedTextRange,
+        documentContent: contextText,
+        selectedText: contextSelectedText,
+        selectedTextRange: contextRange,
         documentContext: getEffectiveDocumentContext(),
         annotationContext,
     }),
@@ -120,6 +156,11 @@ function sourceIcon(id: string) {
 </script>
 
 <div class="p-3 border-b border-black/10 space-y-2.5">
+    <p class="text-[10px] leading-snug text-black/50" data-next-turn-context>
+        Next turn: {contextTargetLabel.toLowerCase()}. Changes are noted when you send.
+        Draft passages and annotation discussions can be read on demand.
+        Earlier responses describe the writing as it was then.
+    </p>
     {#if showContextSummary}
         <div class="rounded-lg border {theme.border} {theme.bg} p-2.5">
             <div class="flex items-start gap-2">
