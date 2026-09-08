@@ -385,8 +385,19 @@ test("shows recorded tool activity with expandable inputs and results without re
     await expect(page.locator('[data-tool-call="comment-1"]')).toContainText("No result recorded");
     await q.captureScreenshot("/tmp/quillium-tool-activity.png");
     await tool.locator("summary").click();
+    await expect(tool.locator("pre")).toHaveCount(0);
+    await page.keyboard.down("Meta");
+    await tool.locator("summary").click();
     await expect(tool.locator("pre").first()).toContainText("Morning light pooled");
     await q.captureScreenshot("/tmp/quillium-tool-details.png");
+    await page.keyboard.up("Meta");
+    await expect(tool.locator("pre")).toHaveCount(0);
+    await page.keyboard.down("Meta");
+    await tool.locator("summary").click();
+    await expect(tool.locator("pre").first()).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await expect(tool.locator("pre")).toHaveCount(0);
+    await page.keyboard.up("Meta");
     await q.expectEditorText(prose);
     await page.reload();
     await expect(q.editor).toBeVisible({ timeout: 20_000 });
@@ -436,7 +447,12 @@ test("renders and persists a streamed feedback tool result", async ({ page }) =>
     const tool = panel.locator('[data-tool-call="stream-comment"]');
     await expect(tool).toContainText("Result received", { timeout: 15000 });
     await tool.locator("summary").click();
+    await expect(tool.locator("pre")).toHaveCount(0);
+    await page.keyboard.down("Meta");
+    await tool.locator("summary").click();
     await expect(tool).toContainText("Try a specific sensory image.");
+    await page.keyboard.up("Meta");
+    await expect(tool.locator("pre")).toHaveCount(0);
     await expect
         .poll(async () =>
             (await q.mockConversations()).some((row) =>

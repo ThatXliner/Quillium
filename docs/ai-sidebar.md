@@ -201,8 +201,9 @@ intended prose-development scope.
 - The sidebar shows three recent discussions. Selecting one opens a centered
   modal for reading and continuing it. History opens a separate modal with
   search and lifecycle controls. Escape closes the modal and keeps the sidebar open.
-- Tool activity stays in transcript order with expandable input, result, and error
-  details. A tool response is not confirmation that an editor mutation was applied;
+- Tool names and statuses stay visible in transcript order. Hold Command and
+  click a tool row to inspect raw input, result, and error details. Releasing
+  Command or leaving the window hides those details. A tool response is not confirmation that an editor mutation was applied;
   editor guards run separately. Incomplete saved calls show “No result recorded.”
 - Uses the shared context packet before the writer's latest prompt.
 - Shows a context lens for selection, nearby text, draft, annotations, brief, and
