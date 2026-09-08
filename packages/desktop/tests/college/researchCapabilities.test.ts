@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => {
     const currentTabId = store<string | null>(state.target.tabId);
     const currentTabLabel = store("Personal statement");
     const documentContent = store("A real draft with evidence.");
+    const editorView = store<unknown>(undefined);
     const appSettings = { aiEnabled: true };
     const getActiveCollegeSetup = vi.fn(() => state.activeSetup);
     const saveCollegeSetup = vi.fn(async (...args: unknown[]) => {
@@ -116,6 +117,7 @@ const mocks = vi.hoisted(() => {
             currentTabId,
             currentTabLabel,
             documentContent,
+            editorView,
         },
         appSettings,
         getActiveCollegeSetup,
@@ -198,6 +200,7 @@ function activeSetup(): CollegeSetup {
     setup.school = "Example University";
     setup.program = "History";
     setup.cycle = "2026";
+    setup.prompts[0].id = "prompt-1";
     setup.prompts[0].label = "Supplement prompt";
     setup.prompts[0].text = "Describe a meaningful experience.";
     mocks.state.collegeState.setup = setup;

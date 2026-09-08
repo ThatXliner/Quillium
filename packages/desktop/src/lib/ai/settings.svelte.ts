@@ -1,5 +1,6 @@
 import type { CollegeBrief, CollegeReference } from "$lib/college/model";
-import { collegeResearchSetupKey } from "$lib/college/researchModel";
+import { isCollegeReferenceCurrent } from "$lib/college/researchModel";
+import { resolveCollegeSections, resolveCollegeSetup } from "$lib/college/sections";
 import {
     assertCollegeContextReady,
     collegeState,
@@ -13,7 +14,7 @@ import {
     setDocumentWriterBrief,
 } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
-import { currentDocumentId, currentDraftId } from "$lib/stores";
+import { currentDocumentId, currentDraftId, documentContent } from "$lib/stores";
 /**
  * Reactive AI settings store (Svelte 5 runes).
  *
@@ -152,22 +153,34 @@ export function getEffectiveDocumentContext(): DocumentContext {
     ) as DocumentContext;
     const setup = getActiveCollegeSetup();
     if (!setup) return base;
+    const prose = get(documentContent);
+    const effectiveSetup = resolveCollegeSetup(setup, prose);
+    const sections = resolveCollegeSections(setup, prose);
     base.collegeBrief = JSON.parse(
         JSON.stringify({
-            school: setup.school,
-            program: setup.program,
-            cycle: setup.cycle,
-            intent: setup.intent,
-            feedbackFocus: setup.feedbackFocus,
-            prompts: setup.prompts,
+            school: effectiveSetup.school,
+            program: effectiveSetup.program,
+            cycle: effectiveSetup.cycle,
+            intent: effectiveSetup.intent,
+            feedbackFocus: effectiveSetup.feedbackFocus,
+            prompts: effectiveSetup.prompts,
+            sections: sections.map((section) => ({
+                promptId: section.prompt.id,
+                heading:
+                    section.headingFrom === null || section.headingTo === null
+                        ? ""
+                        : prose.slice(section.headingFrom, section.headingTo),
+                from: section.from,
+                to: section.to,
+                wordCount: section.wordCount,
+                characterCount: section.characterCount,
+            })),
         }),
     ) as CollegeBrief;
-    const researchSetupKey = collegeResearchSetupKey(setup);
     base.collegeReferences = JSON.parse(
         JSON.stringify(
-            setup.references.filter(
-                (reference) =>
-                    !reference.research || reference.research.setupKey === researchSetupKey,
+            setup.references.filter((reference) =>
+                isCollegeReferenceCurrent(reference, effectiveSetup),
             ),
         ),
     ) as CollegeReference[];

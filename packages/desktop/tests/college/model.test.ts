@@ -4,6 +4,11 @@ import {
     collegeSetupSchema,
     parseCollegeSetup,
 } from "$lib/college/model";
+import {
+    collegeResearchPromptKey,
+    collegeResearchSetupKey,
+    isCollegeReferenceCurrent,
+} from "$lib/college/researchModel";
 import { describe, expect, it } from "vitest";
 
 function setup(overrides: Partial<CollegeSetup> = {}): CollegeSetup {
@@ -92,5 +97,107 @@ describe("college setup model", () => {
         const cloned = cloneCollegeSetup(original);
         cloned.prompts[0].constraints[0].min = 250;
         expect(original.prompts[0].constraints[0].min).toBe(100);
+    });
+
+    it("round-trips optional section mode, prompt archive, and prompt-scoped research keys", () => {
+        const original = setup();
+        original.sectionMode = true;
+        original.promptArchive = [
+            {
+                ...original.prompts[0],
+                id: "archived-prompt",
+                text: "An archived prompt",
+            },
+        ];
+        original.references = [
+            {
+                id: "reference-1",
+                publisher: "Example University",
+                url: "https://example.edu/requirements",
+                checkedDate: "2026-09-07",
+                cycle: "2026",
+                kind: "requirement",
+                summary: "A requirement",
+                research: {
+                    setupKey: "legacy-key",
+                    snapshotId: "snapshot-1",
+                    promptIds: ["prompt-1"],
+                    promptKeys: { "prompt-1": "prompt-key" },
+                    school: "Example University",
+                    program: "History",
+                    targetCycle: "2026",
+                    evidence: "A requirement",
+                },
+            },
+        ];
+
+        const parsed = parseCollegeSetup(JSON.stringify(original));
+
+        expect(parsed.sectionMode).toBe(true);
+        expect(parsed.promptArchive?.[0]?.id).toBe("archived-prompt");
+        expect(parsed.references[0]?.research?.promptKeys).toEqual({ "prompt-1": "prompt-key" });
+    });
+
+    it("allows an empty active prompt list only for section mode", () => {
+        const original = setup();
+        expect(() => parseCollegeSetup({ ...original, prompts: [] })).toThrow();
+        expect(parseCollegeSetup({ ...original, sectionMode: true, prompts: [] }).prompts).toEqual(
+            [],
+        );
+    });
+
+    it("matches prompt-scoped research independently of unrelated prompt changes", () => {
+        const original = setup();
+        const other = { ...original.prompts[0], id: "prompt-2", text: "Another prompt" };
+        original.prompts.push(other);
+        const promptKey = collegeResearchPromptKey(original, original.prompts[0]);
+        const reference = {
+            research: {
+                setupKey: collegeResearchSetupKey(original),
+                snapshotId: "snapshot-1",
+                promptIds: ["prompt-1"],
+                promptKeys: { "prompt-1": promptKey },
+                school: original.school,
+                program: original.program,
+                targetCycle: original.cycle,
+                evidence: "Evidence",
+            },
+        };
+
+        const unrelatedChange = {
+            ...original,
+            prompts: [original.prompts[0], { ...other, text: "Changed" }],
+        };
+        expect(isCollegeReferenceCurrent(reference, unrelatedChange)).toBe(true);
+        expect(
+            isCollegeReferenceCurrent(reference, {
+                ...original,
+                prompts: [{ ...original.prompts[0], text: "Changed" }, other],
+            }),
+        ).toBe(false);
+        expect(isCollegeReferenceCurrent(reference, { ...original, prompts: [other] })).toBe(false);
+    });
+
+    it("keeps legacy research on the full setup key", () => {
+        const original = setup();
+        const reference = {
+            research: {
+                setupKey: collegeResearchSetupKey(original),
+                snapshotId: "snapshot-1",
+                promptIds: ["prompt-1"],
+                school: original.school,
+                program: original.program,
+                targetCycle: original.cycle,
+                evidence: "Evidence",
+            },
+        };
+
+        expect(isCollegeReferenceCurrent(reference, original)).toBe(true);
+        expect(
+            isCollegeReferenceCurrent(reference, {
+                ...original,
+                prompts: [{ ...original.prompts[0], text: "Changed" }],
+            }),
+        ).toBe(false);
     });
 });

@@ -127,9 +127,14 @@ existing atomic save, duplicate-tab remapping, trash/restore, and deletion
 behavior applies. Research contains no document or tab IDs inside copied JSON.
 Snapshots include evidence and remain usable offline after restart.
 
-The source scope key covers school, program, cycle, and prompts with constraints.
-Editing these fields retains saved research but excludes it from requests until
-a new review accepts sources for the changed setup. Shared notes and editorial
+New research stores a scope key for each prompt named by the finding, covering
+school, program, cycle, prompt wording, and constraints. Adding or removing an
+unrelated prompt leaves the finding usable. Removing a referenced H1 or changing
+its wording or constraints excludes that finding from requests. Restoring the
+matching heading reconnects it. Older references retain their full-setup scope
+key until converted while adding a prompt or replaced by a new accepted review.
+Detached prompt metadata is retained in the tab setup for recovery. Accepting
+research for an automatically detected H1 saves that prompt's metadata too. Shared notes and editorial
 preferences do not change this key. General Context shows retained stale
 snapshots explicitly. Requests and Context Lens share the existing 6,000-character
 reference budget and omission count; adding sources cannot expand permissions.

@@ -4,7 +4,7 @@ import { onDestroy, tick } from "svelte";
 import type { CollegeCapabilities, CollegeCapabilitiesSnapshot } from "./capabilities";
 import type { CollegeReference } from "./model";
 import { type ResearchResult, findingKey } from "./research";
-import { type ResearchTarget, collegeResearchSetupKey } from "./researchModel";
+import { type ResearchTarget, isCollegeReferenceCurrent } from "./researchModel";
 
 let { college, view }: { college: CollegeCapabilities; view: CollegeCapabilitiesSnapshot } =
     $props();
@@ -26,7 +26,6 @@ const groups = [
     { kind: "official-advice", label: "Official guidance" },
     { kind: "editorial-guidance", label: "Possible connections to explore" },
 ] as const;
-const setupKey = $derived(view.setup ? collegeResearchSetupKey(view.setup) : "");
 const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
 const missing = $derived(
     result
@@ -43,7 +42,7 @@ async function open(): Promise<void> {
     const setup = view.setup;
     if (!setup) return;
     const previous = setup.references.some(
-        (reference) => reference.research?.setupKey === collegeResearchSetupKey(setup),
+        (reference) => isCollegeReferenceCurrent(reference, setup),
     )
         ? setup.researchReview?.target
         : undefined;
@@ -118,7 +117,7 @@ function statusFor(finding: CollegeReference): string {
             (reference) =>
                 findingKey(reference) === findingKey(finding) &&
                 view.setup &&
-                reference.research?.setupKey === setupKey,
+                isCollegeReferenceCurrent(reference, view.setup),
         )
     )
         return "Already saved";
@@ -144,7 +143,7 @@ async function accept(): Promise<void> {
 </script>
 
 {#if !opened}
-    <button class="research-link" disabled={!view.setup?.active || view.saving} onclick={open}>Research this school's prompt</button>
+    <button class="research-link" disabled={!view.setup?.active || !view.setup.prompts.length || view.saving} onclick={open}>Research this school's prompt</button>
 {:else}
     <section class="space-y-3 border-t border-black/10 pt-3" aria-label="School research">
         <div class="flex items-center justify-between gap-2">
@@ -172,7 +171,7 @@ async function accept(): Promise<void> {
                             <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
                         {/each}
                     </fieldset>
-                    <p class="text-xs text-black/60">Edit setup to change a prompt. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
+                    <p class="text-xs text-black/60">Edit the prompt heading to change its wording. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
                     <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || !!view.researchUnavailable}>Start research</button>
                 </fieldset>
             </form>

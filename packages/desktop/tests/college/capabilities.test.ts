@@ -1,7 +1,11 @@
 import { createCollegeCapabilities } from "$lib/college/capabilities";
 import { newCollegeSetup } from "$lib/college/presets";
+import { formatCollegePromptHeading } from "$lib/college/sections";
 import type { TabMeta } from "$lib/db/types";
 import type { SidebarPanelSession, SidebarPanelTarget } from "$lib/sidebar/panels";
+import { history, redo, undo } from "@codemirror/commands";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -45,6 +49,7 @@ const mocks = vi.hoisted(() => {
     const currentTabId = store<string | null>(state.target.tabId);
     const currentTabLabel = store("Personal statement");
     const documentContent = store("A real draft with evidence.");
+    const editorView = store<EditorView | undefined>(undefined);
     const appSettings = { aiEnabled: true };
     const hasApiKey = vi.fn(() => state.credentials);
     const ensureApiKeyLoaded = vi.fn();
@@ -54,7 +59,6 @@ const mocks = vi.hoisted(() => {
     });
     const reloadCollegeSetup = vi.fn(async () => undefined);
     const createCollegeTabs = vi.fn(async (): Promise<TabMeta[]> => []);
-    const beginCollegeTabPick = vi.fn();
     const appEventBus = { emit: vi.fn() };
 
     function reset(): void {
@@ -77,14 +81,17 @@ const mocks = vi.hoisted(() => {
         currentTabId.set(state.target.tabId);
         currentTabLabel.set("Personal statement");
         documentContent.set("A real draft with evidence.");
+        editorView.set(undefined);
         appSettings.aiEnabled = true;
         hasApiKey.mockClear();
         ensureApiKeyLoaded.mockClear();
         getActiveCollegeSetup.mockClear();
-        saveCollegeSetup.mockClear();
+        saveCollegeSetup.mockReset();
+        saveCollegeSetup.mockImplementation(async (...args: unknown[]) => {
+            state.saveArgs = args;
+        });
         reloadCollegeSetup.mockClear();
         createCollegeTabs.mockClear();
-        beginCollegeTabPick.mockClear();
         appEventBus.emit.mockClear();
     }
 
@@ -98,6 +105,7 @@ const mocks = vi.hoisted(() => {
             currentTabId,
             currentTabLabel,
             documentContent,
+            editorView,
         },
         appSettings,
         hasApiKey,
@@ -106,7 +114,6 @@ const mocks = vi.hoisted(() => {
         saveCollegeSetup,
         reloadCollegeSetup,
         createCollegeTabs,
-        beginCollegeTabPick,
         appEventBus,
         reset,
     };
@@ -131,9 +138,6 @@ vi.mock("$lib/college/state.svelte", () => ({
     getActiveCollegeSetup: mocks.getActiveCollegeSetup,
     reloadCollegeSetup: mocks.reloadCollegeSetup,
     saveCollegeSetup: mocks.saveCollegeSetup,
-}));
-vi.mock("$lib/college/workspace.svelte", () => ({
-    beginCollegeTabPick: mocks.beginCollegeTabPick,
 }));
 vi.mock("$lib/events/appEventBus", () => ({ appEventBus: mocks.appEventBus }));
 
@@ -180,8 +184,62 @@ function createdTab(id = "tab-created"): TabMeta {
     };
 }
 
-beforeEach(() => mocks.reset());
-afterEach(() => vi.restoreAllMocks());
+function addedPrompt(text = "Describe another important experience.") {
+    return {
+        id: "provided-id-is-replaced",
+        label: "Another prompt",
+        text,
+        sourceUrl: "",
+        constraints: [],
+    };
+}
+
+function deferred<T>(): {
+    promise: Promise<T>;
+    resolve: (value: T) => void;
+} {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+        resolve = done;
+    });
+    return { promise, resolve };
+}
+
+let generatedPromptId = 0;
+beforeEach(() => {
+    mocks.reset();
+    vi.stubGlobal("crypto", {
+        ...globalThis.crypto,
+        randomUUID: () =>
+            `00000000-0000-4000-8000-${(++generatedPromptId).toString(16).padStart(12, "0")}`,
+    });
+});
+const liveViews: EditorView[] = [];
+afterEach(() => {
+    for (const view of liveViews) {
+        view.destroy();
+        view.dom.parentElement?.remove();
+    }
+    liveViews.length = 0;
+    mocks.stores.editorView.set(undefined);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+});
+
+function createEditorView(doc: string, readOnly = false): EditorView {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+        state: EditorState.create({
+            doc,
+            extensions: [history(), ...(readOnly ? [EditorState.readOnly.of(true)] : [])],
+        }),
+        parent,
+    });
+    liveViews.push(view);
+    mocks.stores.editorView.set(view);
+    return view;
+}
 
 describe("createCollegeCapabilities", () => {
     it("reads target labels/context and returns a cloned setup without loading credentials", () => {
@@ -222,11 +280,17 @@ describe("createCollegeCapabilities", () => {
         await capabilities.createTabs([setup]);
 
         expect(mocks.createCollegeTabs).toHaveBeenCalledWith("document-1", [
-            {
+            expect.objectContaining({
                 label: "PIQ 1 · Leadership",
-                setupJson: JSON.stringify(setup),
-            },
+                initialContent: `${formatCollegePromptHeading(setup.prompts[0])}\n\n`,
+            }),
         ]);
+        const calls = mocks.createCollegeTabs.mock.calls as unknown as Array<
+            [string, Array<{ setupJson: string }>]
+        >;
+        const payload = calls[0]?.[1]?.[0];
+        if (!payload) throw new Error("createCollegeTabs did not receive a payload");
+        expect(JSON.parse(payload.setupJson)).toEqual({ ...setup, sectionMode: true });
         expect(mocks.appEventBus.emit).toHaveBeenCalledWith({
             type: "college-tabs-created",
             documentId: "document-1",
@@ -279,7 +343,7 @@ describe("createCollegeCapabilities", () => {
         expect(mocks.createCollegeTabs).not.toHaveBeenCalled();
     });
 
-    it("guards repeated create requests and applies only single-prompt setups", async () => {
+    it("guards repeated create requests", async () => {
         const setup = activeSetup();
         let resolve!: (tabs: TabMeta[]) => void;
         mocks.createCollegeTabs.mockReturnValue(
@@ -295,18 +359,125 @@ describe("createCollegeCapabilities", () => {
         await expect(capabilities.createTabs([setup])).rejects.toThrow(/already being created/i);
         resolve([createdTab()]);
         await first;
+    });
 
-        capabilities.applyToExistingTab(setup);
-        expect(mocks.beginCollegeTabPick).toHaveBeenCalledWith("document-1", setup);
-        expect(() =>
-            capabilities.applyToExistingTab({
-                ...setup,
-                prompts: [
-                    setup.prompts[0],
-                    { ...setup.prompts[0], id: "second-prompt", label: "Second" },
-                ],
-            }),
-        ).toThrow(/exactly one prompt/i);
+    it("adds a legacy prompt and answer heading in one undoable CodeMirror transaction", async () => {
+        const setup = activeSetup();
+        const prose = "Existing answer.";
+        const view = createEditorView(prose);
+        mocks.stores.documentContent.set(prose);
+        mocks.saveCollegeSetup.mockImplementation(async (...args: unknown[]) => {
+            const saved = args[1] as ReturnType<typeof newCollegeSetup>;
+            mocks.state.saveArgs = args;
+            mocks.state.collegeState.setup = saved;
+            mocks.state.activeSetup = saved;
+        });
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await capabilities.addPrompt(addedPrompt());
+
+        const addedHeading = "# Describe another important experience.";
+        const originalHeading = `${formatCollegePromptHeading(setup.prompts[0])}`;
+        const expected = `${originalHeading}\n\n${prose}\n\n${addedHeading}\n\n`;
+        expect(view.state.doc.toString()).toBe(expected);
+        expect(view.state.selection.main.from).toBe(expected.length);
+        expect(mocks.saveCollegeSetup).toHaveBeenCalledOnce();
+        expect((mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>).sectionMode).toBe(
+            true,
+        );
+        expect(
+            (mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>).prompts,
+        ).toHaveLength(2);
+
+        expect(undo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe(prose);
+        expect(redo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe(expected);
+    });
+
+    it("appends only the requested heading when section mode has no headings left", async () => {
+        const setup = activeSetup();
+        setup.sectionMode = true;
+        const prose = "Answer after the original heading was removed.";
+        const view = createEditorView(prose);
+        mocks.stores.documentContent.set(prose);
+        mocks.saveCollegeSetup.mockImplementation(async (...args: unknown[]) => {
+            const saved = args[1] as ReturnType<typeof newCollegeSetup>;
+            mocks.state.saveArgs = args;
+            mocks.state.collegeState.setup = saved;
+            mocks.state.activeSetup = saved;
+        });
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await capabilities.addPrompt(addedPrompt());
+
+        const addedHeading = "# Describe another important experience.";
+        const expected = `${prose}\n\n${addedHeading}\n\n`;
+        expect(view.state.doc.toString()).toBe(expected);
+        expect(view.state.doc.toString()).not.toContain(
+            formatCollegePromptHeading(setup.prompts[0]),
+        );
+        expect(
+            (mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>).prompts,
+        ).toHaveLength(1);
+    });
+
+    it("rejects adding to a read-only draft before saving metadata", async () => {
+        activeSetup();
+        createEditorView("Existing answer.", true);
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await expect(capabilities.addPrompt(addedPrompt())).rejects.toThrow(/read-only/i);
+        expect(mocks.saveCollegeSetup).not.toHaveBeenCalled();
+    });
+
+    it("does not edit a draft that changes while prompt metadata is saving", async () => {
+        activeSetup();
+        const prose = "Existing answer.";
+        const view = createEditorView(prose);
+        mocks.stores.documentContent.set(prose);
+        const pending = deferred<void>();
+        mocks.saveCollegeSetup.mockImplementation(async (...args: unknown[]) => {
+            mocks.state.saveArgs = args;
+            await pending.promise;
+            const saved = args[1] as ReturnType<typeof newCollegeSetup>;
+            mocks.state.collegeState.setup = saved;
+            mocks.state.activeSetup = saved;
+        });
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+        const request = capabilities.addPrompt(addedPrompt());
+
+        await vi.waitFor(() => expect(mocks.saveCollegeSetup).toHaveBeenCalledOnce());
+        view.dispatch({ changes: { from: prose.length, insert: " changed" } });
+        pending.resolve();
+
+        await expect(request).rejects.toThrow(/changed while adding|try again/i);
+        expect(view.state.doc.toString()).toBe("Existing answer. changed");
+        expect(view.state.doc.toString()).not.toContain("Describe another important experience.");
+        expect(mocks.saveCollegeSetup).toHaveBeenCalledTimes(2);
+        expect(
+            (mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>).prompts,
+        ).toHaveLength(1);
+    });
+
+    it("rejects a prompt whose normalized text already has a heading", async () => {
+        const setup = activeSetup();
+        setup.sectionMode = true;
+        const heading = formatCollegePromptHeading(setup.prompts[0]);
+        const prose = `${heading}\n\nExisting answer.`;
+        createEditorView(prose);
+        mocks.stores.documentContent.set(prose);
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await expect(
+            capabilities.addPrompt(addedPrompt(`  ${setup.prompts[0].text}\n`)),
+        ).rejects.toThrow(/already in this tab/i);
+        expect(mocks.saveCollegeSetup).not.toHaveBeenCalled();
     });
 
     it("keeps request availability false while loading or saving", () => {

@@ -71,6 +71,13 @@ export const researchProvenanceSchema = z
         setupKey: z.string().max(100),
         snapshotId: z.string().min(1).max(100),
         promptIds: z.array(z.string().min(1).max(100)).min(1).max(12),
+        promptKeys: z
+            .record(z.string().min(1).max(100), z.string().min(1).max(100))
+            .refine(
+                (promptKeys) => Object.keys(promptKeys).length <= 12,
+                "Research prompt keys cannot contain more than 12 prompts",
+            )
+            .optional(),
         school: z.string().max(200),
         program: z.string().max(200),
         targetCycle: z.string().max(100),
@@ -118,6 +125,42 @@ export function collegeResearchSetupKey(
     });
 
     return researchFingerprint(value);
+}
+
+/** Return the scoped identity of one prompt within a College setup. */
+export function collegeResearchPromptKey(
+    setup: Pick<CollegeSetup, "school" | "program" | "cycle" | "prompts">,
+    prompt: CollegeSetup["prompts"][number],
+): string {
+    return collegeResearchSetupKey({ ...setup, prompts: [prompt] });
+}
+
+/**
+ * Return whether a saved reference still belongs to the current College setup.
+ * Prompt-scoped provenance can survive unrelated prompt changes; older
+ * provenance continues to use its original whole-setup comparison.
+ */
+export function isCollegeReferenceCurrent(
+    reference: { research?: ResearchProvenance },
+    setup: Pick<CollegeSetup, "school" | "program" | "cycle" | "prompts">,
+): boolean {
+    const research = reference.research;
+    if (!research) return true;
+
+    if (research.promptKeys) {
+        const promptsById = new Map(setup.prompts.map((prompt) => [prompt.id, prompt]));
+        return research.promptIds.every((promptId) => {
+            const prompt = promptsById.get(promptId);
+            const promptKey = research.promptKeys?.[promptId];
+            return (
+                prompt !== undefined &&
+                promptKey !== undefined &&
+                promptKey === collegeResearchPromptKey(setup, prompt)
+            );
+        });
+    }
+
+    return research.setupKey === collegeResearchSetupKey(setup);
 }
 
 /** Compact deterministic identity for persisted research comparisons. */

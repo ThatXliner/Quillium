@@ -229,6 +229,7 @@ export class QuilliumPage {
                 ];
                 const persistedTabsKey = "mock-workspace-tabs";
                 const persistedDraftsKey = "mock-workspace-drafts";
+                const persistedSnapshotsKey = "mock-workspace-snapshots";
                 function readPersistedRows<T>(key: string, fallback: T[]): T[] {
                     const raw = localStorage.getItem(key);
                     if (!raw) return fallback;
@@ -261,6 +262,9 @@ export class QuilliumPage {
                     payload.drafts.length > 0
                         ? payload.drafts.map((draft) => ({ ...draft }))
                         : readPersistedRows(persistedDraftsKey, defaultDrafts);
+                if (payload.snapshots.length === 0) {
+                    payload.snapshots = readPersistedRows(persistedSnapshotsKey, []);
+                }
                 const nextIndex = (ids: string[], prefix: string) =>
                     Math.max(
                         1,
@@ -353,7 +357,11 @@ export class QuilliumPage {
                         if (cmd === "cmd_create_college_tabs") {
                             const a = args as {
                                 documentId: string;
-                                entries: Array<{ label: string; setupJson: string }>;
+                                entries: Array<{
+                                    label: string;
+                                    setupJson: string;
+                                    initialContent?: string;
+                                }>;
                             };
                             const entries = Array.isArray(a.entries) ? a.entries : [];
                             if (entries.length < 1 || entries.length > 12) {
@@ -413,7 +421,19 @@ export class QuilliumPage {
                                         "College tab setup must contain exactly one prompt when creating tabs",
                                     );
                                 }
-                                return { label, setupJson };
+                                const initialContent =
+                                    typeof entry?.initialContent === "string"
+                                        ? entry.initialContent
+                                        : undefined;
+                                if (
+                                    initialContent !== undefined &&
+                                    new TextEncoder().encode(initialContent).length > 12_000
+                                ) {
+                                    throw new Error(
+                                        "College tab initial content must be at most 12000 bytes",
+                                    );
+                                }
+                                return { label, setupJson, initialContent };
                             });
 
                             // The existing single-setup mock uses this switch
@@ -428,6 +448,9 @@ export class QuilliumPage {
                             const firstDraftIndex = nextDraftIndex;
                             const firstPosition = tabs.length;
                             const now = Date.now();
+                            let nextSnapshotId =
+                                Math.max(0, ...payload.snapshots.map((snapshot) => snapshot.id)) +
+                                1;
                             const stagedTabs: MockTab[] = validatedEntries.map((entry, index) => ({
                                 id: `tab-test-${firstTabIndex + index}`,
                                 documentId: a.documentId,
@@ -452,16 +475,40 @@ export class QuilliumPage {
 
                             tabs.push(...stagedTabs);
                             drafts.push(...stagedDrafts);
-                            for (const [entry, tab] of validatedEntries.map(
-                                (entry, index) => [entry, stagedTabs[index]] as const,
-                            )) {
+                            for (const [index, entry] of validatedEntries.entries()) {
+                                const tab = stagedTabs[index];
+                                const draft = stagedDrafts[index];
                                 localStorage.setItem(
                                     `mock-college-setup:${a.documentId}:${tab.id}`,
                                     entry.setupJson,
                                 );
+                                if (entry.initialContent !== undefined) {
+                                    const cursor = entry.initialContent.length;
+                                    const stateJson = JSON.stringify({
+                                        doc: entry.initialContent,
+                                        selection: {
+                                            ranges: [{ anchor: cursor, head: cursor }],
+                                            main: 0,
+                                        },
+                                    });
+                                    payload.snapshots.push({
+                                        id: nextSnapshotId++,
+                                        draftId: draft.id,
+                                        tabId: tab.id,
+                                        upToEventId: 0,
+                                        createdAt: now,
+                                        label: "College prompt",
+                                        doc: entry.initialContent,
+                                        stateJson,
+                                    });
+                                }
                             }
                             localStorage.setItem(persistedTabsKey, JSON.stringify(tabs));
                             localStorage.setItem(persistedDraftsKey, JSON.stringify(drafts));
+                            localStorage.setItem(
+                                persistedSnapshotsKey,
+                                JSON.stringify(payload.snapshots),
+                            );
                             nextTabIndex = firstTabIndex + stagedTabs.length;
                             nextDraftIndex = firstDraftIndex + stagedDrafts.length;
                             return stagedTabs.map(({ deletedAt: _deletedAt, ...tab }) => tab);
@@ -690,6 +737,31 @@ export class QuilliumPage {
                         }
 
                         if (cmd === "cmd_load_document_state") {
+                            const draftId = (args as { draftId?: string | null } | null | undefined)
+                                ?.draftId;
+                            const draftSnapshot =
+                                typeof draftId === "string"
+                                    ? payload.snapshots
+                                          .filter((snapshot) => snapshot.draftId === draftId)
+                                          .sort(
+                                              (left, right) => right.upToEventId - left.upToEventId,
+                                          )[0]
+                                    : undefined;
+                            if (draftSnapshot) {
+                                return {
+                                    snapshotStateJson:
+                                        draftSnapshot.stateJson ??
+                                        JSON.stringify({
+                                            doc: draftSnapshot.doc,
+                                            selection: {
+                                                ranges: [{ anchor: 0, head: 0 }],
+                                                main: 0,
+                                            },
+                                        }),
+                                    snapshotEventId: draftSnapshot.upToEventId,
+                                    eventsSince: [],
+                                };
+                            }
                             if (payload.initialStateJson) {
                                 return {
                                     snapshotStateJson: payload.initialStateJson,
@@ -742,13 +814,23 @@ export class QuilliumPage {
                         }
                         if (cmd === "cmd_get_college_document_enabled") {
                             const a = args as { documentId: string };
-                            const saved = localStorage.getItem(`mock-college-enabled:${a.documentId}`);
-                            return saved !== null ? saved === "true" : Object.keys(localStorage).some(key => key.startsWith(`mock-college-setup:${a.documentId}:`));
+                            const saved = localStorage.getItem(
+                                `mock-college-enabled:${a.documentId}`,
+                            );
+                            return saved !== null
+                                ? saved === "true"
+                                : Object.keys(localStorage).some((key) =>
+                                      key.startsWith(`mock-college-setup:${a.documentId}:`),
+                                  );
                         }
                         if (cmd === "cmd_set_college_document_enabled") {
                             const a = args as { documentId: string; enabled: boolean };
-                            if (localStorage.getItem("mock-college-activation-error")) throw new Error("Could not enable College applications.");
-                            localStorage.setItem(`mock-college-enabled:${a.documentId}`, String(a.enabled));
+                            if (localStorage.getItem("mock-college-activation-error"))
+                                throw new Error("Could not enable College applications.");
+                            localStorage.setItem(
+                                `mock-college-enabled:${a.documentId}`,
+                                String(a.enabled),
+                            );
                             return null;
                         }
                         if (cmd === "cmd_get_college_tab_setup") {

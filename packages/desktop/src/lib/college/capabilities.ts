@@ -24,9 +24,12 @@ import {
     currentTabId,
     currentTabLabel,
     documentContent,
+    editorView,
 } from "$lib/stores";
+import { isolateHistory } from "@codemirror/commands";
 import { get } from "svelte/store";
 import {
+    type CollegePrompt,
     type CollegeReference,
     type CollegeSetup,
     cloneCollegeSetup,
@@ -36,22 +39,34 @@ import { UC_PROMPTS } from "./presets";
 import { type ResearchResult, findingKey } from "./research";
 import {
     type ResearchTarget,
+    collegeResearchPromptKey,
     collegeResearchSetupKey,
+    isCollegeReferenceCurrent,
     researchTargetSchema,
 } from "./researchModel";
+import {
+    type CollegeSection,
+    archiveCollegePrompts,
+    formatCollegePromptHeading,
+    resolveCollegeSections,
+    resolveCollegeSetup,
+} from "./sections";
 import {
     collegeState,
     getActiveCollegeSetup,
     reloadCollegeSetup,
     saveCollegeSetup,
 } from "./state.svelte";
-import { beginCollegeTabPick } from "./workspace.svelte";
 
 export type CollegeAction = "prompt-fit" | "specificity" | "plan";
 export type CollegeOpenPanel = "context" | "readers" | "settings";
 
 export type CollegeCapabilitiesSnapshot = {
     setup: CollegeSetup | null;
+    effectiveSetup: CollegeSetup | null;
+    sections: CollegeSection[];
+    sectionMode: boolean;
+    canEdit: boolean;
     status: string;
     error: string;
     saving: boolean;
@@ -78,7 +93,7 @@ export interface CollegeCapabilities {
     readonly save: (setup: CollegeSetup | null) => Promise<void>;
     readonly retry: () => Promise<void>;
     readonly createTabs: (setups: CollegeSetup[]) => Promise<void>;
-    readonly applyToExistingTab: (setup: CollegeSetup) => void;
+    readonly addPrompt: (prompt: CollegePrompt) => Promise<void>;
     readonly openPanel: (id: CollegeOpenPanel) => void;
     readonly request: (action: CollegeAction) => void;
     readonly research: (target: ResearchTarget, signal: AbortSignal) => Promise<ResearchResult>;
@@ -133,7 +148,9 @@ function tabLabelForSetup(setup: CollegeSetup): string {
     return presetIndex < 0 ? label : `PIQ ${presetIndex + 1} · ${label}`;
 }
 
-function createTabPayload(setups: CollegeSetup[]): Array<{ label: string; setupJson: string }> {
+function createTabPayload(
+    setups: CollegeSetup[],
+): Array<{ label: string; setupJson: string; initialContent: string }> {
     if (setups.length < 1 || setups.length > 12) {
         throw new Error("Choose between 1 and 12 College prompts.");
     }
@@ -142,11 +159,49 @@ function createTabPayload(setups: CollegeSetup[]): Array<{ label: string; setupJ
         if (validated.prompts.length !== 1) {
             throw new Error("Each College tab must contain exactly one prompt.");
         }
+        validated.sectionMode = true;
         return {
             label: tabLabelForSetup(validated),
             setupJson: serializeCollegeSetup(validated),
+            initialContent: `${formatCollegePromptHeading(validated.prompts[0])}\n\n`,
         };
     });
+}
+
+function cloneLoose<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function normalizedPromptText(value: string): string {
+    return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function freshPromptId(): string {
+    return globalThis.crypto.randomUUID();
+}
+
+function sectionAppendPrefix(prose: string): string {
+    if (!prose) return "";
+    if (prose.endsWith("\n\n")) return "";
+    if (prose.endsWith("\n")) return "\n";
+    return "\n\n";
+}
+
+function promptResearchKeys(
+    setup: CollegeSetup,
+    promptIds: readonly string[],
+): { promptIds: string[]; promptKeys: Record<string, string> } {
+    const promptsById = new Map(setup.prompts.map((prompt) => [prompt.id, prompt]));
+    const ids = [...new Set(promptIds)].filter((id) => promptsById.has(id));
+    return {
+        promptIds: ids,
+        promptKeys: Object.fromEntries(
+            ids.flatMap((id) => {
+                const prompt = promptsById.get(id);
+                return prompt ? [[id, collegeResearchPromptKey(setup, prompt)]] : [];
+            }),
+        ),
+    };
 }
 
 function cloneResearchResult(result: ResearchResult): ResearchResult {
@@ -196,8 +251,17 @@ export function createCollegeCapabilities(
             collegeState.documentId === target.documentId &&
             collegeState.tabId === target.tabId &&
             get(currentDocumentId) === target.documentId &&
-            get(currentTabId) === target.tabId
+            get(currentTabId) === target.tabId &&
+            get(currentDraftId) === target.draftId
         );
+    }
+
+    function currentEditorView() {
+        return get(editorView);
+    }
+
+    function effectiveCurrentSetup(rawSetup: CollegeSetup): CollegeSetup {
+        return resolveCollegeSetup(rawSetup, get(documentContent));
     }
 
     function researchUnavailable(): string {
@@ -206,6 +270,7 @@ export function createCollegeCapabilities(
 
     function assertResearchReady(): CollegeSetup {
         assertCurrent();
+        if (!currentStateMatchesTarget()) throw new Error(STALE_SESSION_MESSAGE);
         if (!appSettings.aiEnabled) {
             throw new Error("Enable AI before researching a school prompt.");
         }
@@ -222,11 +287,18 @@ export function createCollegeCapabilities(
         }
         const unavailable = researchUnavailable();
         if (unavailable) throw new Error(unavailable);
-        const setup = getActiveCollegeSetup();
-        if (!setup || !setup.active) {
+        const storedSetup = getActiveCollegeSetup();
+        if (!storedSetup || !storedSetup.active) {
             throw new Error(
                 "Apply and activate a College setup before researching a school prompt.",
             );
+        }
+        const setup = effectiveCurrentSetup(storedSetup);
+        if (setup.prompts.length < 1) {
+            throw new Error("Restore at least one College prompt heading before researching.");
+        }
+        if (setup.prompts.length > 12) {
+            throw new Error("Choose between 1 and 12 College prompts before researching.");
         }
         return setup;
     }
@@ -245,8 +317,16 @@ export function createCollegeCapabilities(
         if (collegeState.status !== "ready" || collegeState.saving) {
             throw new Error(STALE_SESSION_MESSAGE);
         }
-        const setup = getActiveCollegeSetup();
-        if (!setup || !setup.active || serializeCollegeSetup(setup) !== setupSerialized) {
+        if (!currentStateMatchesTarget()) throw new Error(STALE_SESSION_MESSAGE);
+        const storedSetup = getActiveCollegeSetup();
+        const setup = storedSetup ? effectiveCurrentSetup(storedSetup) : null;
+        if (
+            !setup ||
+            !setup.active ||
+            setup.prompts.length < 1 ||
+            setup.prompts.length > 12 ||
+            serializeCollegeSetup(setup) !== setupSerialized
+        ) {
             throw new Error(STALE_SESSION_MESSAGE);
         }
         return setup;
@@ -267,8 +347,16 @@ export function createCollegeCapabilities(
         ) {
             throw new Error(STALE_SESSION_MESSAGE);
         }
-        const setup = getActiveCollegeSetup();
-        if (!setup || !setup.active || serializeCollegeSetup(setup) !== captured.setupSerialized) {
+        if (!currentStateMatchesTarget()) throw new Error(STALE_SESSION_MESSAGE);
+        const storedSetup = getActiveCollegeSetup();
+        const setup = storedSetup ? effectiveCurrentSetup(storedSetup) : null;
+        if (
+            !setup ||
+            !setup.active ||
+            setup.prompts.length < 1 ||
+            setup.prompts.length > 12 ||
+            serializeCollegeSetup(setup) !== captured.setupSerialized
+        ) {
             throw new Error(STALE_SESSION_MESSAGE);
         }
         return setup;
@@ -311,6 +399,10 @@ export function createCollegeCapabilities(
     function neutralSnapshot(): CollegeCapabilitiesSnapshot {
         return {
             setup: null,
+            effectiveSetup: null,
+            sections: [],
+            sectionMode: false,
+            canEdit: false,
             status: "idle",
             error: "",
             saving: false,
@@ -352,6 +444,11 @@ export function createCollegeCapabilities(
             currentTab === target.tabId &&
             currentDraft === target.draftId;
         const currentProse = targetIsCurrent ? get(documentContent) : "";
+        const sections =
+            setup && targetIsCurrent ? resolveCollegeSections(setup, currentProse) : [];
+        const effectiveSetup =
+            setup && targetIsCurrent ? resolveCollegeSetup(setup, currentProse) : null;
+        const view = currentEditorView();
         const wordCount = currentProse.trim().split(/\s+/).filter(Boolean).length;
         const characterCount = Array.from(currentProse).length;
         const aiAvailable = appSettings.aiEnabled && hasApiKey();
@@ -359,6 +456,18 @@ export function createCollegeCapabilities(
 
         return {
             setup,
+            effectiveSetup: effectiveSetup ? cloneLoose(effectiveSetup) : null,
+            sections: cloneLoose(sections),
+            sectionMode: Boolean(
+                setup?.sectionMode || sections.some((section) => section.headingFrom !== null),
+            ),
+            canEdit: Boolean(
+                targetIsCurrent &&
+                    view &&
+                    !view.state.readOnly &&
+                    collegeState.hostEnabled &&
+                    ready,
+            ),
             status: collegeState.status,
             error: collegeState.error,
             saving: collegeState.saving,
@@ -427,17 +536,224 @@ export function createCollegeCapabilities(
         }
     }
 
-    function applyToExistingTab(setup: CollegeSetup): void {
+    function validateAddedPrompt(setup: CollegeSetup, prompt: CollegePrompt): CollegePrompt {
+        if (typeof prompt !== "object" || prompt === null || Array.isArray(prompt)) {
+            throw new Error("The College prompt is invalid.");
+        }
+        if (typeof prompt.text !== "string" || prompt.text.trim().length === 0) {
+            throw new Error("Enter a College prompt before adding it.");
+        }
+        const candidate = {
+            ...cloneLoose(prompt),
+            id: freshPromptId(),
+        } as CollegePrompt;
+        const validated = cloneCollegeSetup({
+            ...setup,
+            prompts: [candidate],
+        });
+        const [validatedPrompt] = validated.prompts;
+        if (!validatedPrompt) throw new Error("The College prompt is invalid.");
+        return validatedPrompt;
+    }
+
+    function migrateLegacyResearchReferences(next: CollegeSetup, current: CollegeSetup): void {
+        for (const reference of next.references) {
+            const research = reference.research;
+            if (!research || research.promptKeys) continue;
+            if (!isCollegeReferenceCurrent(reference, current)) continue;
+            const scoped = promptResearchKeys(current, research.promptIds);
+            if (!scoped.promptIds.length) continue;
+            reference.research = {
+                ...research,
+                promptIds: scoped.promptIds,
+                promptKeys: scoped.promptKeys,
+            };
+        }
+    }
+
+    type AddedPromptEdit = {
+        changes: Array<{ from: number; insert: string }>;
+        answerStart: number;
+        proposedProse: string;
+    };
+
+    function applyTextChanges(
+        prose: string,
+        changes: readonly { from: number; insert: string }[],
+    ): string {
+        return [...changes]
+            .sort((left, right) => right.from - left.from)
+            .reduce(
+                (value, change) =>
+                    `${value.slice(0, change.from)}${change.insert}${value.slice(change.from)}`,
+                prose,
+            );
+    }
+
+    function buildAddedPromptEdit(
+        setup: CollegeSetup,
+        prose: string,
+        sections: CollegeSection[],
+        prompt: CollegePrompt,
+    ): AddedPromptEdit {
+        const heading = formatCollegePromptHeading(prompt);
+        const hasHeading = sections.some((section) => section.headingFrom !== null);
+        const changes: Array<{ from: number; insert: string }> = [];
+        let answerStart: number;
+
+        if (!hasHeading && !setup.sectionMode) {
+            if (setup.prompts.length !== 1) {
+                throw new Error(
+                    "Restore the existing College prompt heading before adding another prompt.",
+                );
+            }
+            const originalHeading = formatCollegePromptHeading(setup.prompts[0]);
+            const originalInsert = `${originalHeading}\n\n`;
+            if (!prose) {
+                const insert = `${originalInsert}${heading}\n\n`;
+                changes.push({ from: 0, insert });
+                answerStart = insert.length;
+            } else {
+                const appended = `${sectionAppendPrefix(prose)}${heading}\n\n`;
+                changes.push({ from: 0, insert: originalInsert });
+                changes.push({ from: prose.length, insert: appended });
+                answerStart = prose.length + originalInsert.length + appended.length;
+            }
+        } else {
+            const appended = `${sectionAppendPrefix(prose)}${heading}\n\n`;
+            changes.push({ from: prose.length, insert: appended });
+            answerStart = prose.length + appended.length;
+        }
+
+        return {
+            changes,
+            answerStart,
+            proposedProse: applyTextChanges(prose, changes),
+        };
+    }
+
+    function dispatchAddedPrompt(
+        view: NonNullable<ReturnType<typeof currentEditorView>>,
+        setup: CollegeSetup,
+        prose: string,
+        sections: CollegeSection[],
+        prompt: CollegePrompt,
+    ): void {
+        const edit = buildAddedPromptEdit(setup, prose, sections, prompt);
+
+        view.dispatch({
+            changes: edit.changes,
+            selection: { anchor: edit.answerStart },
+            annotations: isolateHistory.of("full"),
+        });
+    }
+
+    async function addPrompt(prompt: CollegePrompt): Promise<void> {
         assertCurrent();
         assertTabOperationReady();
-        if (!target.documentId || get(currentDocumentId) !== target.documentId) {
+        if (
+            !target.documentId ||
+            !target.tabId ||
+            !target.draftId ||
+            !currentStateMatchesTarget()
+        ) {
             throw new Error(STALE_SESSION_MESSAGE);
         }
-        const validated = cloneCollegeSetup(setup);
-        if (validated.prompts.length !== 1) {
-            throw new Error("Choose exactly one prompt before applying it to a tab.");
+        const view = currentEditorView();
+        if (!view) throw new Error("The College editor is not ready. Try again shortly.");
+        if (view.state.readOnly) {
+            throw new Error("This College draft is read-only. Select an editable draft first.");
         }
-        beginCollegeTabPick(target.documentId, validated);
+        const stored = collegeState.setup;
+        if (!stored) {
+            throw new Error("Apply and activate a College setup before adding a prompt.");
+        }
+        const original = cloneCollegeSetup(stored);
+        const prose = view.state.doc.toString();
+        const sections = resolveCollegeSections(original, prose);
+        if (sections.length >= 12) {
+            throw new Error("This tab can contain at most 12 College prompts.");
+        }
+        if (
+            !original.sectionMode &&
+            !sections.some((section) => section.headingFrom !== null) &&
+            original.prompts.length !== 1
+        ) {
+            throw new Error(
+                "Restore the existing College prompt heading before adding another prompt.",
+            );
+        }
+        const normalized = normalizedPromptText(
+            typeof prompt?.text === "string" ? prompt.text : "",
+        );
+        if (
+            normalized &&
+            sections.some(
+                (section) =>
+                    section.headingFrom !== null &&
+                    normalizedPromptText(section.prompt.text) === normalized,
+            )
+        ) {
+            throw new Error("That College prompt is already in this tab.");
+        }
+        const added = validateAddedPrompt(original, prompt);
+        const resolvedBefore = cloneLoose(effectiveCurrentSetup(original));
+        const resolved = cloneLoose(resolvedBefore);
+        resolved.prompts = [...resolved.prompts, added];
+        resolved.sectionMode = true;
+        const edit = buildAddedPromptEdit(original, prose, sections, added);
+        const existingHeadingCount = sections.filter(
+            (section) => section.headingFrom !== null,
+        ).length;
+        const legacyConversion = !original.sectionMode && existingHeadingCount === 0;
+        const expectedHeadingCount = existingHeadingCount + (legacyConversion ? 2 : 1);
+        const proposedSections = resolveCollegeSections(resolved, edit.proposedProse);
+        const proposedHeadingCount = proposedSections.filter(
+            (section) => section.headingFrom !== null,
+        ).length;
+        if (proposedHeadingCount < expectedHeadingCount) {
+            throw new Error(
+                "Close the current fenced code block before adding a College prompt heading.",
+            );
+        }
+        const next = cloneLoose(archiveCollegePrompts(original, resolved));
+        next.sectionMode = true;
+        migrateLegacyResearchReferences(next, resolvedBefore);
+
+        const capturedState = view.state;
+        await saveCollegeSetup({ documentId: target.documentId, tabId: target.tabId }, next);
+
+        const stillCurrent =
+            session.isCurrent() &&
+            currentStateMatchesTarget() &&
+            currentEditorView() === view &&
+            view.state === capturedState &&
+            !view.state.readOnly;
+        if (!stillCurrent) {
+            const currentSetup = collegeState.setup;
+            if (
+                currentStateMatchesTarget() &&
+                currentEditorView() === view &&
+                currentSetup &&
+                serializeCollegeSetup(currentSetup) === serializeCollegeSetup(next)
+            ) {
+                try {
+                    await saveCollegeSetup(
+                        { documentId: target.documentId, tabId: target.tabId },
+                        original,
+                    );
+                } catch {
+                    // The target may have started another save; leave the
+                    // already-persisted prompt metadata dormant rather than
+                    // overwriting a newer mutation.
+                }
+            }
+            throw new Error(
+                "The College editor changed while adding a prompt. Select the current draft and try again.",
+            );
+        }
+
+        dispatchAddedPrompt(view, original, prose, sections, added);
     }
 
     function openPanelFromCapability(id: CollegeOpenPanel): void {
@@ -531,6 +847,8 @@ export function createCollegeCapabilities(
         }
 
         const setup = assertCapturedResearchAcceptable(captured);
+        const storedSetup = getActiveCollegeSetup();
+        if (!storedSetup) throw new Error(STALE_SESSION_MESSAGE);
 
         const findingsById = new Map(
             captured.result.findings.map((finding) => [finding.id, finding]),
@@ -547,7 +865,7 @@ export function createCollegeCapabilities(
             }
         }
 
-        const next = cloneCollegeSetup(setup);
+        const next = cloneLoose(archiveCollegePrompts(storedSetup, setup));
         const removeSet = new Set(removeIds);
         next.references = next.references.filter((reference) => !removeSet.has(reference.id));
 
@@ -555,7 +873,8 @@ export function createCollegeCapabilities(
         const referenceKeys = new Set(
             next.references
                 .filter(
-                    (reference) => !reference.research || reference.research.setupKey === setupKey,
+                    (reference) =>
+                        !reference.research || isCollegeReferenceCurrent(reference, setup),
                 )
                 .map((reference) => findingKey(reference)),
         );
@@ -566,19 +885,25 @@ export function createCollegeCapabilities(
             if (referenceKeys.has(key)) continue;
 
             const researchMetadata = finding.research;
+            const scoped = promptResearchKeys(
+                setup,
+                researchMetadata?.promptIds ??
+                    captured.result.target.prompts.map((prompt) => prompt.id),
+            );
+            if (!scoped.promptIds.length) continue;
+            const provenance: NonNullable<CollegeReference["research"]> = {
+                snapshotId: researchMetadata?.snapshotId ?? captured.result.id,
+                promptIds: scoped.promptIds,
+                promptKeys: scoped.promptKeys,
+                school: researchMetadata?.school ?? captured.result.target.school,
+                program: researchMetadata?.program ?? captured.result.target.program,
+                targetCycle: researchMetadata?.targetCycle ?? captured.result.target.cycle,
+                evidence: researchMetadata?.evidence ?? "",
+                setupKey,
+            };
             const appended: CollegeReference = {
                 ...JSON.parse(JSON.stringify(finding)),
-                research: {
-                    snapshotId: researchMetadata?.snapshotId ?? captured.result.id,
-                    promptIds:
-                        researchMetadata?.promptIds ??
-                        captured.result.target.prompts.map((prompt) => prompt.id),
-                    school: researchMetadata?.school ?? captured.result.target.school,
-                    program: researchMetadata?.program ?? captured.result.target.program,
-                    targetCycle: researchMetadata?.targetCycle ?? captured.result.target.cycle,
-                    evidence: researchMetadata?.evidence ?? "",
-                    setupKey,
-                },
+                research: provenance,
             };
             if (next.references.some((reference) => reference.id === appended.id)) {
                 throw new Error(
@@ -638,7 +963,7 @@ export function createCollegeCapabilities(
         save,
         retry,
         createTabs: createTabsForSetups,
-        applyToExistingTab,
+        addPrompt,
         openPanel: openPanelFromCapability,
         request,
         research,

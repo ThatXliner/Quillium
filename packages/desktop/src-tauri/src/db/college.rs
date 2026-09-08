@@ -10,8 +10,10 @@ use super::{now_ms, DbError, DbResult, TabMeta};
 
 use rusqlite::{params, Connection, Error, OptionalExtension, Result};
 use serde::Deserialize;
+use serde_json::json;
 
 const MAX_SETUP_BYTES: usize = 128 * 1024;
+const MAX_INITIAL_CONTENT_BYTES: usize = 12_000;
 const CURRENT_SETUP_VERSION: i64 = 1;
 
 #[derive(Debug, Deserialize)]
@@ -19,6 +21,8 @@ const CURRENT_SETUP_VERSION: i64 = 1;
 pub struct CollegeTabInput {
     pub label: String,
     pub setup_json: String,
+    #[serde(default)]
+    pub initial_content: Option<String>,
 }
 
 fn validate_tab_target(conn: &Connection, document_id: &str, tab_id: &str) -> Result<()> {
@@ -174,8 +178,38 @@ fn validate_batch_inputs(
                 "College tab labels must be at most 200 characters".to_string(),
             ));
         }
+        if let Some(initial_content) = entry.initial_content.as_deref() {
+            if initial_content.len() > MAX_INITIAL_CONTENT_BYTES {
+                return Err(DbError::Validation(
+                    "College tab initial content must be at most 12000 bytes".to_string(),
+                ));
+            }
+        }
         validate_batch_setup_json(&entry.setup_json)?;
     }
+    Ok(())
+}
+
+fn insert_initial_snapshot(conn: &Connection, tab_id: &str, content: &str) -> Result<()> {
+    let draft_id: String = conn.query_row(
+        "SELECT id FROM drafts WHERE tab_id = ?1 ORDER BY created_at ASC LIMIT 1",
+        params![tab_id],
+        |row| row.get(0),
+    )?;
+    let cursor = content.encode_utf16().count();
+    let state_json = json!({
+        "doc": content,
+        "selection": {
+            "ranges": [{ "anchor": cursor, "head": cursor }],
+            "main": 0,
+        },
+    })
+    .to_string();
+    conn.execute(
+        "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
+         VALUES (?1, 0, ?2, ?3, 'College prompt')",
+        params![draft_id, state_json, now_ms()],
+    )?;
     Ok(())
 }
 
@@ -241,6 +275,9 @@ pub fn create_college_tabs(
     for entry in entries {
         let tab = create_tab_in_connection(&tx, document_id, &entry.label)?;
         set_college_tab_setup(&tx, document_id, &tab.id, Some(&entry.setup_json))?;
+        if let Some(initial_content) = entry.initial_content.as_deref() {
+            insert_initial_snapshot(&tx, &tab.id, initial_content)?;
+        }
         tabs.push(tab);
     }
     tx.commit()?;
@@ -253,6 +290,7 @@ mod tests {
     use crate::db::documents::{
         create_document, delete_document, restore_document, trash_document,
     };
+    use crate::db::load::load_document_state;
     use crate::db::schema::open_db;
     use crate::db::tabs::{create_tab, list_tabs};
 
@@ -260,6 +298,19 @@ mod tests {
         CollegeTabInput {
             label: label.to_string(),
             setup_json: setup_json.to_string(),
+            initial_content: None,
+        }
+    }
+
+    fn batch_entry_with_content(
+        label: &str,
+        setup_json: &str,
+        initial_content: &str,
+    ) -> CollegeTabInput {
+        CollegeTabInput {
+            label: label.to_string(),
+            setup_json: setup_json.to_string(),
+            initial_content: Some(initial_content.to_string()),
         }
     }
 
@@ -554,13 +605,13 @@ mod tests {
             &conn,
             &document_id,
             &[
-                batch_entry("First", valid),
+                batch_entry_with_content("First", valid, "This must not be persisted"),
                 batch_entry("Second", two_prompts),
             ],
         )
         .is_err());
         assert_eq!(list_tabs(&conn, &document_id).unwrap().len(), 0);
-        for table in ["drafts", "doc_events", "college_tab_setups"] {
+        for table in ["drafts", "doc_events", "college_tab_setups", "snapshots"] {
             let count: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
                     row.get(0)
@@ -576,6 +627,128 @@ mod tests {
             &[batch_entry("x".repeat(201).as_str(), valid)],
         )
         .is_err());
+    }
+
+    #[test]
+    fn initial_content_is_saved_and_loaded_after_reopening_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("college-initial-content.db");
+        let setup = r#"{"version":1,"prompts":[{"id":"essay"}]}"#;
+        let content = "A short opening with an emoji: 👋";
+
+        let (document_id, draft_id) = {
+            let conn = open_db(&db_path).unwrap();
+            let document_id = create_document(&conn, "College", None).unwrap();
+            let tabs = create_college_tabs(
+                &conn,
+                &document_id,
+                &[batch_entry_with_content("Essay", setup, content)],
+            )
+            .unwrap();
+            let draft_id: String = conn
+                .query_row(
+                    "SELECT id FROM drafts WHERE tab_id = ?1",
+                    params![tabs[0].id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+
+            let loaded = load_document_state(&conn, &document_id, Some(&draft_id)).unwrap();
+            assert_eq!(loaded.snapshot_event_id, 0);
+            assert!(loaded.events_since.is_empty());
+            let state: serde_json::Value =
+                serde_json::from_str(loaded.snapshot_state_json.as_deref().unwrap()).unwrap();
+            assert_eq!(state["doc"], content);
+            let cursor = content.encode_utf16().count();
+            assert_eq!(state["selection"]["ranges"][0]["anchor"], cursor);
+            assert_eq!(state["selection"]["ranges"][0]["head"], cursor);
+            assert_eq!(state["selection"]["main"], 0);
+
+            let (snapshot_draft_id, up_to_event_id, label, created_at): (String, i64, String, i64) =
+                conn.query_row(
+                    "SELECT draft_id, up_to_event_id, label, created_at
+                     FROM snapshots WHERE draft_id = ?1",
+                    params![draft_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .unwrap();
+            assert_eq!(snapshot_draft_id, draft_id);
+            assert_eq!(up_to_event_id, 0);
+            assert_eq!(label, "College prompt");
+            assert!(created_at > 0);
+
+            (document_id, draft_id)
+        };
+
+        let reopened = open_db(&db_path).unwrap();
+        let loaded = load_document_state(&reopened, &document_id, Some(&draft_id)).unwrap();
+        assert_eq!(loaded.snapshot_event_id, 0);
+        let state: serde_json::Value =
+            serde_json::from_str(loaded.snapshot_state_json.as_deref().unwrap()).unwrap();
+        assert_eq!(state["doc"], content);
+        assert_eq!(
+            state["selection"]["ranges"][0]["anchor"],
+            content.encode_utf16().count()
+        );
+    }
+
+    #[test]
+    fn older_college_tab_input_without_initial_content_is_supported() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("legacy-college-input.db")).unwrap();
+        let document_id = create_document(&conn, "College", None).unwrap();
+        let setup = r#"{"version":1,"prompts":[{"id":"legacy"}]}"#;
+        let entry: CollegeTabInput = serde_json::from_value(serde_json::json!({
+            "label": "Legacy",
+            "setupJson": setup,
+        }))
+        .unwrap();
+
+        assert!(entry.initial_content.is_none());
+        let tabs = create_college_tabs(&conn, &document_id, &[entry]).unwrap();
+        let draft_id: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tabs[0].id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let loaded = load_document_state(&conn, &document_id, Some(&draft_id)).unwrap();
+        assert!(loaded.snapshot_state_json.is_none());
+        let snapshot_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM snapshots WHERE draft_id = ?1",
+                params![draft_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(snapshot_count, 0);
+    }
+
+    #[test]
+    fn initial_content_is_rejected_when_over_byte_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("oversized-college-input.db")).unwrap();
+        let document_id = create_document(&conn, "College", None).unwrap();
+        let setup = r#"{"version":1,"prompts":[{"id":"essay"}]}"#;
+        let oversized = "é".repeat(6_001);
+        assert!(oversized.len() > MAX_INITIAL_CONTENT_BYTES);
+
+        let error = create_college_tabs(
+            &conn,
+            &document_id,
+            &[batch_entry_with_content("Essay", setup, &oversized)],
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            DbError::Validation(message) if message.contains("12000 bytes")
+        ));
+        assert_eq!(list_tabs(&conn, &document_id).unwrap().len(), 0);
+        let snapshot_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(snapshot_count, 0);
     }
 
     #[test]

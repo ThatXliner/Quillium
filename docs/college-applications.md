@@ -17,44 +17,56 @@ for local configuration. Only model requests require a connection.
 
 ## Document and tab ownership
 
-The plugin works across a document. Each configured workspace tab owns one
-College prompt and its constraints. A document can hold multiple College tabs:
-selecting several prompts creates one named tab per prompt, including its root
-draft and setup, in one atomic operation. A UC document might have a separate
-tab for each PIQ. A Common App document might have a personal statement tab and
-separate school-supplement tabs. All drafts and runs in a tab remain alternative
-attempts at that tab's writing task.
+The plugin works across a document. Selecting prompts creates one named essay
+tab per prompt, including its root draft, initial H1, and setup in one atomic
+operation. Each tab can then contain multiple answers separated by top-level
+Markdown H1 headings. All drafts and runs in a tab remain alternative attempts
+at those writing tasks.
 
 Shared writer notes and confirmed decisions stay in the existing document-owned
 Context state. The plugin never replaces them with prompt text. Setup answers
-(intent and feedback focus), the prompt, constraints, and sourced guidance remain
+(intent and feedback focus), prompts, constraints, and sourced guidance remain
 separate from those notes. Prose and annotations continue through CodeMirror.
 
 The panel names its current document, tab, and draft. Select a different document
-tab to change its target. Applying one prompt to an existing tab uses the actual
-workspace tab selection and changes only that tab's College setup; the tab label,
-existing prose, and document-owned notes and decisions stay intact. Selecting
-several prompts creates the named tabs and their setups together, with no partial
-batch. Changing targets or hiding the panel abandons unsaved setup edits. An
-already-started write may finish for that original tab after navigation; its
-completion must not update the new tab's UI. Failed writes retain the accepted
-setup and expose an error.
+tab to change its target. Setup creates new essay tabs; there is no existing-tab
+picker. In a configured tab, **Add another prompt** appends an H1 and an empty
+answer through one ordinary CodeMirror transaction. Existing prose and
+annotations remain intact. For a legacy single-prompt tab without headings,
+adding another prompt also places the original prompt above its existing answer.
+Normal editor undo reverses the text change; there is no special undo control.
+
+Changing targets or hiding the panel abandons unsaved form edits. Setup is saved
+before inserting a heading, so failed setup writes leave prose untouched. A
+changed editor or target during that write prevents the late insertion.
 
 ## Setup and guidance
 
-The main setup asks for one prompt, its length limit, and an optional idea to
-convey. Prompt metadata, readers, and editorial preferences sit behind disclosure
-controls. The saved panel shows the prompt and its current length. Sources and
-setup management stay available under Sources and settings. Preview is informational and requires no
-acknowledgment checkbox or separate context-confirmation screen; applying the
-prompt saves the reviewed setup.
+The prompt picker offers UC PIQ, personal statement, and supplemental prompts.
+Selecting several creates separate tabs; **Add another prompt** selects just one
+for the current tab. Length constraints preserve words versus characters; blank
+bounds mean unknown, not zero. Writers can enter exact supplemental wording.
 
-UC PIQ, personal statement, and supplemental presets support edit, preview,
-cancel, apply, pause/resume, and removal preview. Each selected prompt becomes a
-named tab when configuring new tabs; the complete selection commits atomically.
-Length constraints preserve words versus characters; blank bounds mean unknown,
-not zero. The preset picker uses short labeled prompt summaries. Writers can
-replace a summary with exact application wording and enter source URLs.
+New tabs start with `# Prompt text (69 words)` and room for an answer. Edit or
+paste ordinary H1 headings to change prompts. Each answer runs from its heading
+to the next top-level H1. H2 headings remain inside the answer; fenced code,
+block quotes, and list-contained headings do not start College sections. The
+panel counts each answer independently, excluding its H1, and recognizes up to
+12 prompts. Markdown heading edits and insertions use normal editor history.
+
+Prompt metadata stays in the tab setup, outside the prose. Detection matches
+normalized prompt wording against saved prompts and archived metadata, so moving
+or restoring a matching heading reconnects its context. New or changed wording
+is detected as a new prompt; old research is retained but excluded until its
+original prompt returns or new research is accepted. Duplicate headings receive
+distinct identities and do not borrow research from each other. Avoid duplicate
+prompt wording when separate research identities matter.
+
+If all headings disappear in a section-based tab, no prompt context is applied.
+Legacy setups without section mode still support their original whole-tab brief.
+Prompt metadata is retained for recovery (up to 100 archived prompts); this is
+not a separate undo history. Accepted research remains saved until explicitly
+removed, even while its prompt is absent.
 
 The initial sources were checked on September 7, 2026:
 
@@ -68,12 +80,15 @@ The initial sources were checked on September 7, 2026:
   a source of general advice, shown with its original date rather than treated
   as current-cycle requirements.
 
-Supplemental setup supplies no invented school requirements. For each tab, the
-writer enters the school, optional program, one exact prompt, source links, cycle,
-and known constraints. A URL entered by the writer is not independently verified
+Supplemental setup supplies no invented school requirements. For each new tab, the
+writer enters the school, prompt, and optional word or character limit. A URL entered by the writer is not independently verified
 by the plugin. Optional school research runs only after the writer confirms a
 source and starts it; provider-returned findings still require explicit review
-before they enter essay context.
+before they enter essay context. Research references carry their selected prompt IDs
+and per-prompt scope keys. Adding another prompt does not invalidate unrelated
+research. Missing or changed prompts exclude their research from AI requests;
+restoring the matching heading reconnects it. The College panel shows accepted
+research beneath its prompt and retained, detached sources under Sources and settings.
 
 Accepted references include publisher, URL, check date, cycle or unknown, and a
 classification: official requirement, official advice, or Quillium editorial
@@ -122,18 +137,14 @@ editorial requests rather than guessing context.
 
 `college_tab_setups` stores one versioned JSON snapshot per stable tab ID. The
 native API validates document/tab ownership. Selecting multiple prompts for new
-tabs validates every one-prompt setup before creating any tab, root draft, or
-setup row; the tab, draft, and setup batch commits all at once or not at all.
-Applying one prompt to an existing workspace tab updates only its College setup,
-preserving that tab's label and prose plus the document's shared notes and
-decisions. Duplication copies rows under the new tab IDs in the same
+tabs validates every one-prompt setup and initial heading before creating any
+tab, root draft, snapshot, or setup row; the entire batch commits at once. Duplication copies rows under the new tab IDs in the same
 document-duplication transaction; copied JSON contains no source target IDs. Soft
 deletion and restoration retain setup. Permanent deletion cascades through tab
 ownership. No plugin metadata is added to Web Preview or Live Room payloads.
-Legacy saved setups containing multiple prompts remain readable until the writer
-explicitly replaces them; there is no automatic migration or deletion.
+Legacy saved setups remain readable without automatic migration or deletion.
 
-The panel receives a narrow host adapter for reading its snapshot, saving setup,
+The panel receives a narrow host adapter for reading its snapshot, adding a prompt, saving setup,
 retrying loads, opening general panels, and requesting three fixed actions. It
 receives no editor handle, credentials, native command API, or arbitrary network
 capability. The built-in interface is not a sandbox for externally installed code.

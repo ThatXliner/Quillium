@@ -1,14 +1,14 @@
 import { buildAiContextPacket } from "$lib/ai/context";
 import { documentContext, getEffectiveDocumentContext } from "$lib/ai/settings.svelte";
 import type { CollegeReference, CollegeSetup } from "$lib/college/model";
-import { collegeResearchSetupKey } from "$lib/college/researchModel";
+import { collegeResearchPromptKey, collegeResearchSetupKey } from "$lib/college/researchModel";
 import {
     collegeState,
     getActiveCollegeSetup,
     saveCollegeSetup,
     updateActiveCollegeSetup,
 } from "$lib/college/state.svelte";
-import { currentDocumentId, currentTabId } from "$lib/stores";
+import { currentDocumentId, currentTabId, documentContent } from "$lib/stores";
 import { cleanup, render, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CollegeEffectsHarness from "./CollegeEffectsHarness.svelte";
@@ -76,6 +76,7 @@ function researchReference(value: ReturnType<typeof setup>): CollegeReference {
 describe("College setup state", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        documentContent.set("");
         currentDocumentId.set("doc-1");
         currentTabId.set("tab-1");
         collegeState.documentId = "doc-1";
@@ -97,6 +98,48 @@ describe("College setup state", () => {
         documentContext.decisions = [];
         currentDocumentId.set(null);
         currentTabId.set(null);
+    });
+
+    it("uses only detected prompts and reconnects prompt research after restoring an H1", () => {
+        const value = setup();
+        value.sectionMode = true;
+        const reference = researchReference(value);
+        reference.research!.promptKeys = {
+            "prompt-1": collegeResearchPromptKey(value, value.prompts[0]),
+        };
+        value.references = [reference];
+        collegeState.setup = value;
+        const original = "# Describe a meaningful experience.\n\nMy answer.";
+        documentContent.set(original);
+        expect(getEffectiveDocumentContext().collegeReferences).toEqual([reference]);
+        documentContent.set(`${original}\n\n# Another question\n\nAnother answer.`);
+        expect(getEffectiveDocumentContext().collegeBrief?.prompts).toHaveLength(2);
+        expect(getEffectiveDocumentContext().collegeReferences).toEqual([reference]);
+        documentContent.set("# Another question\n\nAnother answer.");
+        expect(getEffectiveDocumentContext().collegeReferences).toEqual([]);
+        documentContent.set("");
+        expect(getEffectiveDocumentContext().collegeBrief?.prompts).toEqual([]);
+        expect(getEffectiveDocumentContext().collegeReferences).toEqual([]);
+        documentContent.set(original);
+        expect(getEffectiveDocumentContext().collegeReferences).toEqual([reference]);
+    });
+
+    it("invalidates pending AI when heading context changes, but not for answer edits", async () => {
+        const value = setup();
+        value.sectionMode = true;
+        db.getCollegeTabSetup.mockResolvedValue(JSON.stringify(value));
+        const heading = "# Describe a meaningful experience.";
+        documentContent.set(`${heading}\n\nAnswer.`);
+        const onChange = vi.fn();
+        render(CollegeEffectsHarness, { onChange });
+        await waitFor(() => expect(collegeState.status).toBe("ready"));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        onChange.mockClear();
+        documentContent.set(`${heading}\n\nA longer answer.`);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(onChange).not.toHaveBeenCalled();
+        documentContent.set("# A different prompt\n\nA longer answer.");
+        await waitFor(() => expect(onChange).toHaveBeenCalledOnce());
     });
 
     it("layers current research into bounded AI context and filters it after a public brief change", () => {

@@ -1,7 +1,6 @@
 <!-- Sidebar.svelte — Built-in sidebar navigation, sizing, and panel lifecycle. -->
 <script lang="ts">
 import { collegeActivation, useCollegeActivationEffects } from "$lib/college/activation.svelte";
-import { collegeWorkspace, cancelCollegeTabPick } from "$lib/college/workspace.svelte";
 import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
 import { createCollegeCapabilities } from "$lib/college/capabilities";
 import ContextInfoButton from "$lib/ai/ContextInfoButton.svelte";
@@ -135,14 +134,6 @@ const collegeCapabilities = $derived.by(() => {
     return session ? createCollegeCapabilities(session, selectAction) : null;
 });
 $effect(() => { collegeState.hostEnabled = panels.some((panel) => panel.id === "college"); });
-$effect(() => {
-    if (!collegeWorkspace.setup) return;
-    if (collegeWorkspace.documentId !== $currentDocumentId || !collegeState.hostEnabled) {
-        untrack(cancelCollegeTabPick);
-        return;
-    }
-    if (action === "college") untrack(() => closePanel());
-});
 
 const expanded = $derived(action !== null);
 const DEFAULT_WIDTH = 320;

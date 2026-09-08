@@ -6,7 +6,22 @@ test("College overlap is an editable Feedback action that creates linked, undoab
 }) => {
     const prose = "I organized the community garden and taught new volunteers to plant seeds.";
     const quote = "organized the community garden";
-    const q = new QuilliumPage(page, { apiKey: "fixture-key", initialDoc: prose });
+    const q = new QuilliumPage(page, {
+        apiKey: "fixture-key",
+        initialDoc: prose,
+        settings: { editorMode: "plain" },
+        snapshots: [
+            {
+                id: 100,
+                draftId: "draft-test-3",
+                tabId: "tab-test-3",
+                upToEventId: 100,
+                createdAt: 0,
+                label: "Source essay fixture",
+                doc: prose,
+            },
+        ],
+    });
     const requests: string[] = [];
     await page.route("https://api.openai.com/**", async (route) => {
         requests.push(route.request().postData() ?? "");
@@ -59,7 +74,7 @@ test("College overlap is an editable Feedback action that creates linked, undoab
     await expect(
         page.getByRole("button", { name: "Check overlap with other essays", exact: true }),
     ).toHaveCount(0);
-    await page.locator('button[aria-label="AI Settings"]:visible').first().click();
+    await page.locator('button[aria-label="AI Settings"]:visible').last().click();
     await page
         .getByRole("region", { name: "College applications setup" })
         .getByRole("button", { name: "UC PIQ", exact: true })
@@ -68,6 +83,9 @@ test("College overlap is an editable Feedback action that creates linked, undoab
     await college.getByRole("checkbox", { name: /PIQ 1/ }).check();
     await college.getByRole("checkbox", { name: /PIQ 7/ }).check();
     await college.getByRole("button", { name: "Create 2 essay tabs" }).click();
+    await expect(page.getByRole("tab", { name: /PIQ 1/ })).toBeVisible();
+    const firstHeading = await q.cmText();
+    await q.typeInEditor(`${firstHeading}\n${prose}`);
     await page
         .getByRole("toolbar", { name: "Sidebar panels" })
         .last()
@@ -89,13 +107,13 @@ test("College overlap is an editable Feedback action that creates linked, undoab
     await expect.poll(async () => (await picker.boundingBox())!.width).toBeLessThanOrEqual(288);
     await picker.getByRole("button", { name: "Check overlap", exact: true }).click({ trial: true });
     await page.screenshot({
-        path: "../../docs/assets/issue-424/feedback-overlap-narrow.png",
+        path: "/tmp/quillium-college-sections-overlap-narrow.png",
         animations: "disabled",
     });
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(picker.getByRole("button", { name: "Check overlap", exact: true })).toBeEnabled();
     await page.screenshot({
-        path: "../../docs/assets/issue-424/feedback-overlap.png",
+        path: "/tmp/quillium-college-sections-overlap.png",
         animations: "disabled",
     });
     await picker.getByRole("button", { name: "Check overlap", exact: true }).click();
@@ -103,13 +121,13 @@ test("College overlap is an editable Feedback action that creates linked, undoab
     await expect(link).toBeVisible();
     expect(requests).toHaveLength(1);
     await expect(page.getByRole("tab", { name: /PIQ 1/ })).toHaveAttribute("aria-selected", "true");
-    expect(await q.editor.innerText()).toBe(prose);
+    expect(await q.cmText()).toContain(prose);
     await q.editor.click();
     await q.undo();
     await expect(link).toHaveCount(0);
-    expect(await q.editor.innerText()).toBe(prose);
+    expect(await q.cmText()).toContain(prose);
     await q.editor.click();
-    await page.keyboard.press("Control+Shift+z");
+    await page.keyboard.press("ControlOrMeta+Shift+z");
     await expect(link).toBeVisible();
     await link.click();
     await expect(page.getByRole("tab", { name: /PIQ 7/ })).toHaveAttribute("aria-selected", "true");

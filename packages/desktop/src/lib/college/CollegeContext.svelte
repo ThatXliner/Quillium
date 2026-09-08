@@ -1,6 +1,8 @@
 <!-- CollegeContext.svelte — The same tab-owned setup in general writing panels. -->
 <script lang="ts">
-import { collegeResearchSetupKey } from "./researchModel";
+import { documentContent } from "$lib/stores";
+import { isCollegeReferenceCurrent } from "./researchModel";
+import { resolveCollegeSetup } from "./sections";
 import { collegeState, getActiveCollegeSetup } from "./state.svelte";
 let {
     detailed = false,
@@ -9,7 +11,7 @@ let {
     detailed?: boolean;
     purpose?: "context" | "readers";
 } = $props();
-const setup = $derived(collegeState.setup);
+const setup = $derived(collegeState.setup ? resolveCollegeSetup(collegeState.setup, $documentContent) : null);
 const effective = $derived(getActiveCollegeSetup());
 </script>
 {#if setup || collegeState.error || collegeState.status === "loading"}
@@ -41,7 +43,7 @@ const effective = $derived(getActiveCollegeSetup());
                         ? "Changes below apply only to this tab. Your default reader personas stay unchanged."
                         : "This College setup is paused. Changes below update your default reader personas."
                     : effective
-                      ? "AI requests for this tab include its college prompt and saved guidance."
+                      ? "AI requests for this tab include its detected college prompts and matching saved guidance."
                       : "AI requests ignore this tab’s college prompt and saved guidance."}
             </p>
             {#if detailed}
@@ -61,7 +63,7 @@ const effective = $derived(getActiveCollegeSetup());
                 </details>
                 <details><summary class="flex cursor-pointer items-center justify-between gap-2 font-medium"><span>Accepted source snapshots</span><span class="text-[10px] font-normal text-black/40">{setup.references.length}</span></summary>
                     {#each setup.references as reference (reference.id)}
-                        <div class="py-2 space-y-1">{#if reference.research}{#if reference.research.setupKey !== collegeResearchSetupKey(setup)}<p class="text-amber-900">Saved for an earlier setup. Excluded from requests; research this prompt again to review.</p>{/if}<p>{reference.research.school} · {reference.research.targetCycle || "Target cycle unknown"} · {reference.research.promptIds.length} selected prompt(s)</p><blockquote class="border-l-2 border-black/20 pl-2">{reference.research.evidence}</blockquote>{/if}<p>{reference.kind}: {reference.summary}</p><p class="text-black/60">{reference.publisher} · {reference.cycle || "Cycle unknown"} · Checked {reference.checkedDate || "unknown"}</p>{#if reference.url}<a class="text-blue-700 underline" href={reference.url} target="_blank" rel="noreferrer">View source</a>{/if}</div>
+                        <div class="py-2 space-y-1">{#if reference.research}{#if !isCollegeReferenceCurrent(reference, setup)}<p class="text-amber-900">Prompt missing or changed. Saved for recovery; excluded from requests.</p>{/if}<p>{reference.research.school} · {reference.research.targetCycle || "Target cycle unknown"} · {reference.research.promptIds.length} selected prompt(s)</p><blockquote class="border-l-2 border-black/20 pl-2">{reference.research.evidence}</blockquote>{/if}<p>{reference.kind}: {reference.summary}</p><p class="text-black/60">{reference.publisher} · {reference.cycle || "Cycle unknown"} · Checked {reference.checkedDate || "unknown"}</p>{#if reference.url}<a class="text-blue-700 underline" href={reference.url} target="_blank" rel="noreferrer">View source</a>{/if}</div>
                     {/each}
                 </details>
             {/if}
