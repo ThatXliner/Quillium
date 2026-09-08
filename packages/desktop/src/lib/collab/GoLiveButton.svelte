@@ -50,7 +50,7 @@ import {
     editorView,
     versionGroups,
 } from "$lib/stores";
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import {
     type ReadonlyShareScope,
     includesReadonlyShareTab,
@@ -372,6 +372,8 @@ async function toggleReadonlyShare() {
     }
     await publisher.disable(shareId);
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -448,14 +450,17 @@ async function toggleReadonlyShare() {
                             <span class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-amber-600">Beta</span>
                         </div>
                     </div>
-                    <button
-                        onclick={closeModal}
-                        aria-label="Close"
-                        class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-black/30 transition-[color,background] duration-150 hover:bg-black/5 hover:text-black/55"
-                    >
-                        <span class="font-mono text-[9px] text-black/20">esc</span>
-                        <X size={15} />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <RestoreSizeButton {restoreSize} />
+                        <button
+                            onclick={closeModal}
+                            aria-label="Close"
+                            class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-black/30 transition-[color,background] duration-150 hover:bg-black/5 hover:text-black/55"
+                        >
+                            <span class="font-mono text-[9px] text-black/20">esc</span>
+                            <X size={15} />
+                        </button>
+                    </div>
                 </header>
 
                 <p class="shrink-0 m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
@@ -523,7 +528,7 @@ async function toggleReadonlyShare() {
                         />
                     {/if}
                 </section>
-                <ModalResizeHandles />
+                <ModalResizeHandles bind:restoreSize />
             </div>
         </dialog>
     {/if}

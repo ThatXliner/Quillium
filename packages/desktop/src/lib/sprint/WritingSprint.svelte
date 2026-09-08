@@ -6,7 +6,7 @@
     The status bar controls the shared sprintOpen store to launch this dialog.
 -->
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { writingStats } from "$lib/stores";
 import { Check, Flag, History, Timer, X } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -142,6 +142,8 @@ function formatHistoryDate(timestamp: number): string {
         minute: "2-digit",
     }).format(timestamp);
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -185,12 +187,15 @@ function formatHistoryDate(timestamp: number): string {
                 <Timer size={17} class="text-violet-500" />
                 <h2 class="text-sm font-semibold text-black/70">Writing Sprint</h2>
             </div>
-            <button
-                type="button"
-                onclick={closeDialog}
-                aria-label="Close writing sprint"
-                class="p-1.5 rounded-lg text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
-            ><X size={17} /></button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    type="button"
+                    onclick={closeDialog}
+                    aria-label="Close writing sprint"
+                    class="p-1.5 rounded-lg text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                ><X size={17} /></button>
+            </div>
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -359,6 +364,6 @@ function formatHistoryDate(timestamp: number): string {
                 {/if}
             {/if}
         </div>
-        <ModalResizeHandles minHeight={280} />
+        <ModalResizeHandles bind:restoreSize minHeight={280} />
     </dialog>
 {/if}

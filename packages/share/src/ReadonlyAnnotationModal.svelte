@@ -264,6 +264,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key !== "Escape") return;
     onClose();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 {#snippet revisionHeaderLeading()}
@@ -322,8 +324,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	onclick={(event) => event.currentTarget === event.target && onClose()}
 >
 	{#if annotation.type === 'revision'}
-		<AnnotationModalFrame variant="revision">
-			<AnnotationModalHeader
+		<AnnotationModalFrame bind:restoreSize variant="revision">
+			<AnnotationModalHeader {restoreSize}
 				accent="revision"
 				leading={revisionHeaderLeading}
 				onClose={onClose}
@@ -417,8 +419,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			</div>
 		</AnnotationModalFrame>
 	{:else if annotation.type === 'comment'}
-		<AnnotationModalFrame variant="comment">
-			<AnnotationModalHeader
+		<AnnotationModalFrame bind:restoreSize variant="comment">
+			<AnnotationModalHeader {restoreSize}
 				accent="comment"
 				leading={commentHeaderLeading}
 				onClose={onClose}
@@ -451,8 +453,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			</div>
 		</AnnotationModalFrame>
 	{:else}
-		<AnnotationModalFrame variant="suggestion">
-			<AnnotationModalHeader
+		<AnnotationModalFrame bind:restoreSize variant="suggestion">
+			<AnnotationModalHeader {restoreSize}
 				accent="suggestion"
 				leading={suggestionHeaderLeading}
 				onClose={onClose}

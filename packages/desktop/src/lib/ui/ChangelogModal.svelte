@@ -14,7 +14,7 @@
 <script lang="ts">
 import { renderMarkdown } from "$lib/ai/utils";
 import { capture } from "$lib/posthog";
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { X } from "lucide-svelte";
 
@@ -53,6 +53,8 @@ function handleContentClick(event: MouseEvent) {
     event.preventDefault();
     void openUrl(href);
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <div class="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="What's New">
@@ -74,13 +76,16 @@ function handleContentClick(event: MouseEvent) {
                 <h3 class="text-2xl font-bold text-black/85 leading-tight">What's New</h3>
                 <p class="text-sm text-black/35 mt-1.5">{date}</p>
             </div>
-            <button
-                onclick={dismiss}
-                aria-label="Close"
-                class="flex items-center justify-center w-9 h-9 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
-            >
-                <X size={18} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={dismiss}
+                    aria-label="Close"
+                    class="flex items-center justify-center w-9 h-9 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                >
+                    <X size={18} />
+                </button>
+            </div>
         </div>
 
         <!-- Scrollable content -->
@@ -93,7 +98,7 @@ function handleContentClick(event: MouseEvent) {
                 {@html html}
             </div>
         </div>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>
 

@@ -3,7 +3,7 @@
     revision version when the active version matches its predecessor.
 -->
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { tick } from "svelte";
 
 let {
@@ -43,6 +43,8 @@ function confirm(): void {
     if (dismissalChoice === "never") onNeverShowAgain();
     onConfirm();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <dialog
@@ -58,7 +60,10 @@ function confirm(): void {
     }}
 >
     <div class="min-h-0 overflow-y-auto px-5 pt-5 pb-4">
-        <h2 class="text-[15px] font-semibold text-black/80">Create another draft?</h2>
+        <div class="flex min-h-[26px] items-center justify-between gap-2">
+            <h2 class="text-[15px] font-semibold text-black/80">Create another draft?</h2>
+            <RestoreSizeButton {restoreSize} />
+        </div>
         <p class="mt-2 text-[13px] leading-relaxed text-black/55">
             This draft is nearly identical to the last one. The text content matches once Markdown
             formatting is ignored. Are you sure you want to create a new draft?
@@ -101,7 +106,7 @@ function confirm(): void {
             onclick={confirm}
         >Create new draft</button>
     </div>
-    <ModalResizeHandles minHeight={220} />
+    <ModalResizeHandles bind:restoreSize minHeight={220} />
 </dialog>
 
 <style>

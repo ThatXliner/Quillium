@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { LogOut, Mail, UserRound, X } from "lucide-svelte";
 import { isAnonymous } from "./auth.svelte";
 import { avatarColor, initials } from "./avatarUtils";
@@ -37,6 +37,8 @@ function handleKeydown(e: KeyboardEvent) {
         onclose();
     }
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -46,14 +48,17 @@ function handleKeydown(e: KeyboardEvent) {
     <div class="profile-modal-inner">
         <div class="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06]">
             <h2 class="text-[13px] font-semibold text-black/60">Profile</h2>
-            <button
-                onclick={onclose}
-                aria-label="Close profile"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={onclose}
+                    aria-label="Close profile"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <div class="min-h-0 overflow-y-auto px-5 py-5 flex flex-col gap-4">
@@ -95,7 +100,7 @@ function handleKeydown(e: KeyboardEvent) {
                 Log out
             </button>
         </div>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </dialog>
 

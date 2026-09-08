@@ -15,6 +15,7 @@ export { default as SuggestionCard } from "./cards/SuggestionCard.svelte";
 export { default as ThreadList } from "./cards/ThreadList.svelte";
 export { default as ThreadMessage } from "./cards/ThreadMessage.svelte";
 export { default as AnnotationModalFrame } from "./modals/AnnotationModalFrame.svelte";
+export { default as RestoreSizeButton } from "./resize/RestoreSizeButton.svelte";
 export { default as ResizeHandles, type ResizeHandle } from "./resize/ResizeHandles.svelte";
 export { default as ModalResizeHandles } from "./modals/ModalResizeHandles.svelte";
 export { type PointerDragOptions, pointerDrag } from "./resize/pointerDrag";

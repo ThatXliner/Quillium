@@ -14,7 +14,7 @@
       oncancel     — dismiss without deleting
 -->
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { GitBranchIcon, Trash2Icon } from "lucide-svelte";
 
 const {
@@ -33,6 +33,8 @@ const {
 
 // Total drafts a cascade removes (the draft itself plus its descendants).
 const cascadeCount = $derived(descendants + 1);
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window
@@ -63,9 +65,12 @@ const cascadeCount = $derived(descendants + 1);
         role="document"
     >
         <div class="shrink-0 px-7 pt-7 pb-5">
-            <h3 class="text-xl font-bold text-black/85 leading-tight">
-                Delete “{label}”?
-            </h3>
+            <div class="flex min-h-[26px] items-center justify-between gap-2">
+                <h3 class="text-xl font-bold text-black/85 leading-tight">
+                    Delete “{label}”?
+                </h3>
+                <RestoreSizeButton {restoreSize} />
+            </div>
             <p class="text-sm text-black/50 mt-2 leading-relaxed">
                 This draft has {descendants}
                 {descendants === 1 ? "draft" : "drafts"} under it. Keep them, or delete
@@ -109,6 +114,6 @@ const cascadeCount = $derived(descendants + 1);
                 Cancel
             </button>
         </div>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

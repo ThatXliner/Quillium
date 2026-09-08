@@ -1,6 +1,6 @@
 <!-- NameVersionPrompt.svelte — A focused checkpoint prompt for the active editor. -->
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 
@@ -39,6 +39,8 @@ async function submit(event: SubmitEvent): Promise<void> {
         saving = false;
     }
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <dialog
@@ -49,7 +51,10 @@ async function submit(event: SubmitEvent): Promise<void> {
     onkeydown={(event) => { event.stopPropagation(); }}
 >
     <form onsubmit={submit} class="min-h-0 overflow-y-auto flex flex-col gap-4">
-        <h2 id="name-version-title" class="text-sm font-semibold">Name this version</h2>
+        <div class="flex min-h-[26px] items-center justify-between gap-2">
+            <h2 id="name-version-title" class="text-sm font-semibold">Name this version</h2>
+            <RestoreSizeButton {restoreSize} />
+        </div>
         <label class="flex flex-col gap-2 text-xs">
             Version name
             <input bind:this={input} bind:value={label} disabled={saving} placeholder="Before revising the opening"
@@ -65,5 +70,5 @@ async function submit(event: SubmitEvent): Promise<void> {
             </button>
         </div>
     </form>
-    <ModalResizeHandles minHeight={160} />
+    <ModalResizeHandles bind:restoreSize minHeight={160} />
 </dialog>

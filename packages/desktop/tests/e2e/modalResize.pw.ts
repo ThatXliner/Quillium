@@ -85,6 +85,7 @@ test("settings resize keeps its content scrollable and footer accessible", async
     await q.goto();
     const modal = await q.openSettings();
     const initial = (await modal.boundingBox())!;
+    const originalPadding = await modal.evaluate((el) => getComputedStyle(el).paddingBottom);
     const corner = modal.getByRole("button", { name: "Resize modal", exact: true });
     const restore = modal.getByRole("button", { name: "Restore original size" });
     await expect(restore).toHaveCount(0);
@@ -102,6 +103,13 @@ test("settings resize keeps its content scrollable and footer accessible", async
         .poll(() => corner.evaluate((el) => getComputedStyle(el, "::after").opacity))
         .toBe("0");
     await expect(restore).toBeVisible();
+    await expect(restore.locator("svg")).toBeVisible();
+    await expect(restore).toHaveText("");
+    const restoreBox = (await restore.boundingBox())!;
+    const closeBox = (await modal.getByRole("button", { name: "Close settings" }).boundingBox())!;
+    expect(restoreBox.x + restoreBox.width).toBeLessThanOrEqual(closeBox.x);
+    expect(Math.abs(restoreBox.y - closeBox.y)).toBeLessThan(10);
+    await expect(modal).toHaveCSS("padding-bottom", originalPadding);
     await expect(modal).toBeVisible();
     const body = modal.locator(".settings-shake-wrapper > .overflow-y-auto");
     await body.evaluate((element) => {
@@ -136,7 +144,7 @@ test("sidebar shares resize controls without changing its drag distance or outsi
     await expect(sidebar).toHaveCSS("height", `${initial.height + 20}px`);
     await corner.press("ArrowLeft");
     await expect(sidebar).toHaveCSS("width", `${initial.width + 10}px`);
-    await corner.press("Home");
+    await sidebar.getByRole("button", { name: "Reset to default size" }).click();
     await expect(sidebar).toHaveCSS("width", `${initial.width}px`);
     await drag(page, corner, 10, 10);
     await page.mouse.click(page.viewportSize()!.width - 5, page.viewportSize()!.height / 2);

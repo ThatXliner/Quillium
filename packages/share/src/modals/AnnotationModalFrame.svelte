@@ -11,9 +11,11 @@ import ModalResizeHandles from "./ModalResizeHandles.svelte";
 let {
     variant,
     children,
+    restoreSize = $bindable(),
 }: {
     variant: "revision" | "comment" | "suggestion";
     children: Snippet;
+    restoreSize?: () => void;
 } = $props();
 
 const modalWidth = $derived(
@@ -28,7 +30,7 @@ const modalWidth = $derived(
     style:--annotation-modal-width={modalWidth}
 >
     {@render children()}
-    <ModalResizeHandles minWidth={640} />
+    <ModalResizeHandles minWidth={640} bind:restoreSize />
 </div>
 
 <style>

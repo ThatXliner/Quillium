@@ -5,7 +5,7 @@
     Only available when import.meta.env.DEV is true.
 -->
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
 import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
 import { loadScenario } from "$lib/debug/loadScenario";
@@ -189,6 +189,8 @@ function triggerAuthOffline() {
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") close();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -215,11 +217,14 @@ function handleKeydown(e: KeyboardEvent) {
                 <span class="font-semibold text-black/80 text-sm">Scenarios</span>
                 <span class="text-[10px] font-mono bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">DEV</span>
             </div>
-            <button
-                onclick={close}
-                class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
-                aria-label="Close debug panel"
-            >✕</button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={close}
+                    class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
+                    aria-label="Close debug panel"
+                >✕</button>
+            </div>
         </div>
 
         <!-- Info bar -->
@@ -492,6 +497,6 @@ function handleKeydown(e: KeyboardEvent) {
                 <span>DEV only — stripped from production builds</span>
             </div>
         </div>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

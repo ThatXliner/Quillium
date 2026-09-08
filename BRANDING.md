@@ -312,8 +312,8 @@ Application modals, including export, confirmation, onboarding, and sprint dialo
 use the same right-edge, bottom-edge, and corner resize handles as
 sidebar panels. They stay centered while resizing, leave at least 16px of space
 from the viewport edge, and keep overflowing content scrollable. Arrow keys on a
-focused handle resize the modal. After resizing, a “Restore original size” button
-appears at the bottom edge; Home or a double-click also restores the default size.
+focused handle resize the modal. After resizing, the same compact restore icon
+button used by the sidebar appears in the modal header; Home or a double-click also restores the default size.
 Handles appear on hover, keyboard focus, or during a drag.
 Custom sizes last until the modal is unmounted. The sidebar and modals share their
 handle component and pointer gesture. Contextual popovers and guided-tour callouts

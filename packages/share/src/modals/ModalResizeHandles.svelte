@@ -10,17 +10,16 @@ import type { PointerDragOptions } from "../resize/pointerDrag";
 let {
     minWidth = 320,
     minHeight = 280,
-    contentSelector,
+    restoreSize = $bindable(),
 }: {
     minWidth?: number;
     minHeight?: number;
-    /** For two-layer glass shells, reserve the reset footer inside the painted layer. */
-    contentSelector?: string;
+    /** Exposes the reset action to the modal header only while a custom size is active. */
+    restoreSize?: () => void;
 } = $props();
 
 let anchor = $state<HTMLDivElement>();
 let surface: HTMLElement;
-let contentSurface: HTMLElement;
 let resizing = $state(false);
 let isCustomSize = $state(false);
 let originalWidth = "";
@@ -28,15 +27,15 @@ let originalHeight = "";
 let defaultMaxWidth = "";
 let defaultMaxHeight = "";
 let originalTransition = "";
-let originalPaddingBottom = "";
-let paddingBottom = 0;
+
+$effect(() => {
+    restoreSize = isCustomSize ? reset : undefined;
+});
 
 onMount(() => {
     const parent = anchor?.parentElement;
     if (!parent) return;
     surface = parent;
-    contentSurface =
-        (contentSelector && surface.querySelector<HTMLElement>(contentSelector)) || surface;
     originalWidth = surface.style.width;
     originalHeight = surface.style.height;
     const originalPosition = surface.style.position;
@@ -46,8 +45,6 @@ onMount(() => {
     defaultMaxWidth = `min(${computed.maxWidth === "none" ? "100vw" : computed.maxWidth}, calc(100vw - 32px))`;
     defaultMaxHeight = `min(${computed.maxHeight === "none" ? "100dvh" : computed.maxHeight}, calc(100dvh - 32px))`;
     originalTransition = surface.style.transition;
-    originalPaddingBottom = contentSurface.style.paddingBottom;
-    paddingBottom = Number.parseFloat(getComputedStyle(contentSurface).paddingBottom) || 0;
     if (computed.position === "static") surface.style.position = "relative";
     surface.style.maxWidth = defaultMaxWidth;
     surface.style.maxHeight = defaultMaxHeight;
@@ -56,19 +53,14 @@ onMount(() => {
         surface.style.height = originalHeight;
         surface.style.position = originalPosition;
         surface.style.transition = originalTransition;
-        contentSurface.style.paddingBottom = originalPaddingBottom;
+        restoreSize = undefined;
         surface.style.maxWidth = originalMaxWidth;
         surface.style.maxHeight = originalMaxHeight;
     };
 });
 
 function resize(handle: ResizeHandle, width: number, height: number): void {
-    if (!isCustomSize) {
-        // Reserve a footer for Restore without covering content or changing the outer height.
-        surface.style.height = `${surface.getBoundingClientRect().height}px`;
-        contentSurface.style.paddingBottom = `${paddingBottom + 36}px`;
-        isCustomSize = true;
-    }
+    isCustomSize = true;
     if (handle !== "bottom") {
         surface.style.maxWidth = "calc(100vw - 32px)";
         surface.style.width = `${Math.min(window.innerWidth - 32, Math.max(minWidth, width))}px`;
@@ -101,7 +93,6 @@ function dragOptions(handle: ResizeHandle): PointerDragOptions {
 
 function reset(): void {
     isCustomSize = false;
-    contentSurface.style.paddingBottom = originalPaddingBottom;
     surface.style.maxWidth = defaultMaxWidth;
     surface.style.maxHeight = defaultMaxHeight;
     surface.style.width = originalWidth;
@@ -119,7 +110,6 @@ function resizeBy(handle: ResizeHandle, dx: number, dy: number): void {
     label="modal"
     {dragOptions}
     {resizing}
-    showReset={isCustomSize}
     onResizeBy={resizeBy}
     onReset={reset}
 />

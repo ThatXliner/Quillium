@@ -22,7 +22,7 @@
       - Fires PostHog events: "tutorial_completed" / "tutorial_skipped".
 -->
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
@@ -460,6 +460,8 @@ onDestroy(() => {
         canBack: false,
     });
 });
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -548,7 +550,10 @@ onDestroy(() => {
                 class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto backdrop-blur-md bg-gray-300/85 border border-white/40 rounded-2xl p-5 flex flex-col gap-4"
               >
                 <div>
-                    <h3 class="text-sm font-semibold text-black/80 mb-1">Choose Tutorial Sections</h3>
+                    <div class="flex min-h-[26px] items-center justify-between gap-2">
+                        <h3 class="text-sm font-semibold text-black/80 mb-1">Choose Tutorial Sections</h3>
+                        <RestoreSizeButton {restoreSize} />
+                    </div>
                     <p class="text-xs text-black/60 leading-relaxed">Core editor basics are always included. Toggle optional sections below.</p>
                 </div>
 
@@ -610,7 +615,7 @@ onDestroy(() => {
                     </button>
                 </div>
               </div>
-                <ModalResizeHandles contentSelector=":scope > div" />
+                <ModalResizeHandles bind:restoreSize />
             </div>
         {:else if step && !useInlineModalGuide}
             <!--

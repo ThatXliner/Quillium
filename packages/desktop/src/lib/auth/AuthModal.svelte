@@ -11,7 +11,7 @@
 <script lang="ts">
 import { OMNI_WAITLIST_URL } from "$lib/constants";
 import { debugAuthWaitlistMode } from "$lib/debug/store.svelte";
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { X } from "lucide-svelte";
 import { toast } from "svelte-sonner";
 import { signIn, signUp } from "./auth.svelte";
@@ -99,6 +99,8 @@ async function handleSubmit(e: Event) {
         submitting = false;
     }
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -111,14 +113,17 @@ async function handleSubmit(e: Event) {
             <h2 class="text-[13px] font-semibold text-black/60">
                 {activeTab === "login" ? "Log In" : "Sign Up"}
             </h2>
-            <button
-                onclick={onclose}
-                aria-label="Close"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={onclose}
+                    aria-label="Close"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <div class="min-h-0 overflow-y-auto">
@@ -205,7 +210,7 @@ async function handleSubmit(e: Event) {
             </button>
         </form>
         </div>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </dialog>
 

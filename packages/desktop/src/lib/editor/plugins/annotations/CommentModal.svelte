@@ -197,6 +197,8 @@ async function aiSuggestion() {
         ]);
     }
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 {#snippet commentHeaderLeading()}
@@ -239,8 +241,8 @@ async function aiSuggestion() {
     onclick={(e) => { if (e.target === dialogEl) close(); }}
     oncancel={(e) => { e.preventDefault(); close(); }}
 >
-    <AnnotationModalFrame variant="comment">
-        <AnnotationModalHeader
+    <AnnotationModalFrame bind:restoreSize variant="comment">
+        <AnnotationModalHeader {restoreSize}
             accent="comment"
             leading={commentHeaderLeading}
             actions={commentHeaderActions}

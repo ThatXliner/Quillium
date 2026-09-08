@@ -7,7 +7,7 @@
 <script lang="ts">
 import { appLogPath, clearAppLog, logAppEvent, readAppLog } from "$lib/appLog";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Bug, Check, Copy, RefreshCw, Trash2, X } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -102,6 +102,8 @@ function handleKeydown(e: KeyboardEvent) {
 onMount(() => {
     void refreshLogs();
 });
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -165,6 +167,7 @@ onMount(() => {
                 >
                     <Trash2 size={16} />
                 </button>
+                <RestoreSizeButton {restoreSize} />
                 <button
                     type="button"
                     onclick={ondismiss}
@@ -203,6 +206,6 @@ onMount(() => {
                 </button>
             </div>
         </div>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

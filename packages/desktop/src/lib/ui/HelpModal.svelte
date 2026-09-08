@@ -9,10 +9,12 @@ export type HelpTab = {
     guidance: string;
     prompt?: string;
 };
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <script lang="ts">
-import { ModalResizeHandles } from "@quillium/share";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { Tabs } from "bits-ui";
 import { X } from "lucide-svelte";
 import { untrack } from "svelte";
@@ -70,14 +72,17 @@ $effect(() => {
     <div class="flex max-h-[85dvh] w-[620px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-gray-50 shadow-xl">
         <div class="flex shrink-0 items-center justify-between border-b border-black/[0.06] px-5 py-3.5">
             <h2 id={`${id}-title`} class="text-sm font-semibold text-black/80">{title}</h2>
-            <button
-                type="button"
-                onclick={closeGuide}
-                aria-label="Close guide"
-                class="flex size-7 items-center justify-center rounded-full text-black/50 hover:text-black/70 hover:bg-black/5 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500"
-            >
-                <X size={16} aria-hidden="true" />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    type="button"
+                    onclick={closeGuide}
+                    aria-label="Close guide"
+                    class="flex size-7 items-center justify-center rounded-full text-black/50 hover:text-black/70 hover:bg-black/5 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500"
+                >
+                    <X size={16} aria-hidden="true" />
+                </button>
+            </div>
         </div>
         <Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
             <Tabs.List aria-label={`${title} topics`} class="flex shrink-0 gap-1 overflow-x-auto border-b border-black/[0.06] px-4 py-2">
@@ -126,7 +131,7 @@ $effect(() => {
                 </Tabs.Content>
             {/each}
         </Tabs.Root>
-        <ModalResizeHandles />
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </dialog>
 

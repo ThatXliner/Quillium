@@ -36,8 +36,8 @@ import {
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
-import { ResizeHandles } from "@quillium/share";
-import { Minimize2Icon, SquareIcon, XIcon } from "lucide-svelte";
+import { ResizeHandles, RestoreSizeButton } from "@quillium/share";
+import { SquareIcon, XIcon } from "lucide-svelte";
 import { onDestroy, tick, untrack } from "svelte";
 import { derived, get } from "svelte/store";
 
@@ -540,16 +540,10 @@ function handleKeydown(e: KeyboardEvent) {
       <span class="flex-1 text-xs font-semibold text-black/50 truncate">
         {activePanel?.title ?? ""}
       </span>
-      {#if isCustomSize}
-        <button
-          onclick={() => resize.reset()}
-          aria-label="Reset to default size"
-          title="Reset size"
-          class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
-        >
-          <Minimize2Icon size={14} />
-        </button>
-      {/if}
+      <RestoreSizeButton
+        restoreSize={isCustomSize ? () => resize.reset() : undefined}
+        label="Reset to default size"
+      />
       {#if showHeaderContextInfo && headerContextPacket}
         <ContextInfoButton
           packet={headerContextPacket}
