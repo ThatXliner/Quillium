@@ -1,18 +1,22 @@
 <!-- ConversationHistory.svelte — Local conversation navigation and explicit lifecycle actions. -->
 <script lang="ts">
-import { currentDraftId, currentDraftLabel } from "$lib/stores";
-import { tick } from "svelte";
+import { currentDraftId } from "$lib/stores";
 import type { createAiChat } from "./chatFactory";
 import type { AiConversationMode } from "./persistence";
 let {
     conversations,
     mode,
     disabled = false,
+    onopen,
 }: {
     conversations: NonNullable<ReturnType<typeof createAiChat>["conversations"]>;
     mode: AiConversationMode;
     disabled?: boolean;
+    onopen?: () => void;
 } = $props();
+function showModal(node: HTMLDialogElement) {
+    node.showModal();
+}
 let browsing = $state(false);
 let search = $state("");
 let archived = $state(false);
@@ -44,18 +48,6 @@ function messageText(json: string): string {
     }
 }
 
-async function openOrigin() {
-    const source = conversations.current;
-    if (!source?.sourceConversationId) return;
-    await conversations.open(source.sourceConversationId);
-    await tick();
-    const message = Array.from(document.querySelectorAll<HTMLElement>("[data-message-id]")).find(
-        (element) =>
-            element.dataset.messageId === source.sourceMessageId && element.offsetParent !== null,
-    );
-    message?.scrollIntoView({ block: "center" });
-}
-
 async function act(action: () => Promise<unknown>) {
     actionError = "";
     try {
@@ -66,39 +58,38 @@ async function act(action: () => Promise<unknown>) {
 }
 </script>
 
-<div data-conversation-history class="shrink-0 max-h-[55%] overflow-y-auto border-b border-black/10 p-3 space-y-2 text-xs">
+<div data-conversation-history class="shrink-0 border-b border-black/10 p-3 space-y-2 text-xs">
     <div class="flex items-center justify-between gap-2">
-        <button class="rounded px-2 py-1 hover:bg-white/50" aria-expanded={browsing}
-            onclick={() => { browsing = !browsing; if (browsing) void act(() => conversations.refresh()); }}>
-            History
-        </button>
+        <span class="font-medium text-black/60">Discussions</span>
         <button class="rounded px-2 py-1 hover:bg-white/50" disabled={disabled || conversations.loading}
             onclick={() => act(() => conversations.newConversation())}>New chat</button>
     </div>
-    {#if conversations.current}
-        <p class="font-medium truncate" title={conversations.current.title}>{conversations.current.title}</p>
-        <p class="text-black/60 break-words">
-            Source draft: {conversations.current.draftLabel} · {conversations.current.draftId.slice(0, 8)}
-        </p>
+    {#if !browsing}
+        <ul class="space-y-1" aria-label="Recent conversations">
+            {#each conversations.items.filter(item => item.mode === mode && !item.archived).slice(0, 3) as item (item.id)}
+                <li><button class="w-full truncate rounded px-2 py-1.5 text-left hover:bg-white/50" disabled={disabled || conversations.loading}
+                    onclick={() => act(async () => { await conversations.open(item.id); onopen?.(); })}>{item.title}</button></li>
+            {/each}
+        </ul>
+    {/if}
+    <button class="rounded px-2 py-1 text-black/60 hover:bg-white/50" aria-expanded={browsing}
+        onclick={() => { browsing = !browsing; if (browsing) void act(() => conversations.refresh()); }}>History</button>
+    {#if !onopen && conversations.current}
         {#if conversations.current.archived}
-            <p>Archived. Restore this conversation to continue.</p>
+            <p>Archived. Restore this discussion from History to continue.</p>
         {:else if conversations.current.draftId !== $currentDraftId}
-            <p>Open the source draft to continue. If it was deleted, this conversation remains available to read.</p>
-        {:else}
-            <p class="text-black/60">Next turn uses the source draft as it is now.</p>
+            <p>Open the source draft to continue this discussion.</p>
         {/if}
         {#if conversations.current.sourceConversationId}
-            <button class="underline" disabled={disabled || conversations.loading}
-                onclick={() => act(openOrigin)}>
-                Open origin conversation
-            </button>
+            <button class="underline" disabled={disabled || conversations.loading} onclick={() => act(() => conversations.open(conversations.current!.sourceConversationId!))}>Open origin conversation</button>
         {/if}
-    {:else if $currentDraftId}
-        <p class="text-black/60">Next turn uses {$currentDraftLabel || "this draft"} · {$currentDraftId.slice(0, 8)} as it is now.</p>
     {/if}
     {#if conversations.loading}<p role="status">Loading conversation…</p>{/if}
     {#if conversations.error || actionError}<p role="alert" class="text-red-700">{actionError || conversations.error}</p>{/if}
     {#if browsing}
+        <dialog aria-label="Past discussions" use:showModal onclose={() => browsing = false} class="history-modal rounded-2xl bg-gray-100 p-6 shadow-xl">
+        <div class="mb-5 flex items-center justify-between"><h2 class="text-base font-semibold">Past discussions</h2><button aria-label="Close history" onclick={() => browsing = false}>Close</button></div>
+        {#if conversations.error || actionError}<p role="alert" class="text-red-700">{actionError || conversations.error}</p>{/if}
         <input aria-label="Search conversations" placeholder="Search titles and messages…" bind:value={search}
             class="w-full rounded border border-black/20 bg-white/70 px-2 py-1.5" />
         <label class="flex items-center gap-2"><input type="checkbox" bind:checked={archived} />Archived conversations</label>
@@ -107,7 +98,7 @@ async function act(action: () => Promise<unknown>) {
             {#each matches as item (item.id)}
                 <li class="rounded bg-white/50 p-2 space-y-1" aria-current={item.id === conversations.current?.id ? "true" : undefined}>
                     <button class="text-left font-medium w-full break-words hover:underline" disabled={disabled || conversations.loading}
-                        onclick={() => act(() => conversations.open(item.id))}>{item.title}</button>
+                        onclick={() => act(async () => { await conversations.open(item.id); browsing = false; onopen?.(); })}>{item.title}</button>
                     <p class="text-black/60">{item.draftLabel} · {new Date(item.updatedAt).toLocaleDateString()}</p>
                     <div class="flex gap-3">
                         <button disabled={disabled || conversations.loading} onclick={() => { renameId = item.id; title = item.title; }}>Rename</button>
@@ -131,5 +122,10 @@ async function act(action: () => Promise<unknown>) {
                 </li>
             {:else}<li class="text-black/60">No conversations found.</li>{/each}
         </ul>
+        </dialog>
     {/if}
 </div>
+<style>
+.history-modal { margin: auto; position: fixed; inset: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 64px); color: #27272a; }
+.history-modal::backdrop { background: rgb(0 0 0 / 25%); backdrop-filter: blur(3px); }
+</style>

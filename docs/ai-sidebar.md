@@ -198,8 +198,12 @@ intended prose-development scope.
 - Search matches titles and stored messages. Conversations can be renamed,
   archived, restored, or explicitly deleted. Archive hides a conversation from
   the default list and makes it read-only until restored.
-- Expand chat increases the existing Chat panel to fit longer discussions;
-  Compact view returns it to its usual size without remounting the chat.
+- The sidebar shows three recent discussions. Selecting one opens a centered
+  modal for reading and continuing it. History opens a separate modal with
+  search and lifecycle controls. Escape closes the modal and keeps the sidebar open.
+- Tool activity stays in transcript order with expandable input, result, and error
+  details. A tool response is not confirmation that an editor mutation was applied;
+  editor guards run separately. Incomplete saved calls show “No result recorded.”
 - Uses the shared context packet before the writer's latest prompt.
 - Shows a context lens for selection, nearby text, draft, annotations, brief, and
   saved decisions.
@@ -218,7 +222,9 @@ intended prose-development scope.
 
 ### Conversation identity and alternative paths
 
-![Expanded Chat with conversation history](assets/issue-436/conversation-history.png)
+![Discussions in the sidebar](assets/issue-436/discussions-sidebar.png)
+
+![Discussion modal with expandable tool activity](assets/issue-436/tool-details.png)
 
 Each conversation has a stable ID, a mode, a title, creation/update timestamps,
 and its original document and draft association. The draft label is captured

@@ -1133,6 +1133,8 @@ export class QuilliumPage {
 
     /** Open the Chat panel's conversation browser. */
     async openConversationHistory(): Promise<void> {
+        const close = this.chatPanel.getByRole("button", { name: "Close discussion", exact: true });
+        if (await close.isVisible()) await close.click();
         await this.openChat();
         if (!(await this.conversationHistory.isVisible().catch(() => false))) {
             await this.chatPanel.getByRole("button", { name: "History", exact: true }).click();
@@ -1157,6 +1159,7 @@ export class QuilliumPage {
 
     /** Open a conversation by its history title. */
     async openConversation(title: string): Promise<void> {
+        await this.openConversationHistory();
         await this.conversationHistory.getByRole("button", { name: title, exact: true }).click();
         await expect(this.chatPanel).toBeVisible({ timeout: 10_000 });
     }
@@ -1172,6 +1175,7 @@ export class QuilliumPage {
 
     /** Search the open conversation history by title or message text. */
     async searchConversations(query: string): Promise<void> {
+        await this.openConversationHistory();
         await this.chatPanel.getByRole("textbox", { name: "Search conversations" }).fill(query);
     }
 
@@ -1218,14 +1222,6 @@ export class QuilliumPage {
                 body,
             });
         });
-    }
-
-    /** Expand Chat to the larger review surface. */
-    async expandChat(): Promise<void> {
-        await this.aiSidebar.getByRole("button", { name: "Expand chat", exact: true }).click();
-        await expect(
-            this.aiSidebar.getByRole("button", { name: "Compact view", exact: true }),
-        ).toBeVisible();
     }
 
     /** Capture a full-page browser screenshot for visual verification. */

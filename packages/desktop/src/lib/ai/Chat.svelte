@@ -18,6 +18,8 @@
     stores (selectedText, documentContent), posthog.
 -->
 <script lang="ts">
+import ToolActivity from "./ToolActivity.svelte";
+import { isToolUIPart } from "ai";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { aiErrorMessage } from "$lib/ai/errorMessage";
 import { aiSettings } from "$lib/ai/settings.svelte";
@@ -70,6 +72,10 @@ import type { ContextAction } from "./context";
 let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
+let reviewing = $state(false);
+function showDiscussion(node: HTMLDialogElement) {
+    node.showModal();
+}
 const { chat, sendMessage, conversations } = createAiChat({ mode: "chat" });
 let isBusy = $derived(
     chat.status === "submitted" ||
@@ -146,9 +152,31 @@ async function handleSubmit(event: Event) {
 
 <div class="flex flex-col h-full">
     {#if conversations}
-        <ConversationHistory {conversations} mode="chat" />
+        <ConversationHistory {conversations} mode="chat" onopen={() => reviewing = true} />
     {/if}
 
+    {#if reviewing}
+        <dialog aria-label={conversations?.current?.title || "Discussion"} use:showDiscussion onclose={() => reviewing = false} class="discussion-modal rounded-2xl bg-gray-100 shadow-xl">
+            <div class="flex items-center justify-between border-b border-black/10 px-6 py-4">
+                <div><h2 class="text-sm font-semibold">{conversations?.current?.title || "Discussion"}</h2><p class="mt-1 text-xs text-black/60">{conversations?.current?.draftLabel || "Current draft"}</p></div>
+                <button class="rounded-full px-3 py-1 text-sm hover:bg-black/5" onclick={() => reviewing = false}>Close discussion</button>
+            </div>
+            <div class="flex min-h-0 flex-1 flex-col">{@render transcript()}</div>
+        </dialog>
+    {:else}
+        {@render transcript()}
+    {/if}
+</div>
+
+{#snippet transcript()}
+    {#if conversations?.current?.archived}
+        <p class="px-4 py-2 text-xs text-black/60">Archived. Restore this discussion from History to continue.</p>
+    {:else if conversations?.current && conversations.current.draftId !== $currentDraftId}
+        <p class="px-4 py-2 text-xs text-black/60">Open the source draft to continue this discussion.</p>
+    {/if}
+    {#if conversations?.current?.sourceConversationId}
+        <button class="px-4 py-2 text-left text-xs text-black/60 underline" onclick={() => conversations?.open(conversations.current!.sourceConversationId!)}>Open origin conversation</button>
+    {/if}
     {#if showStarterSuggestions}
         <ContextLens
             mode="chat"
@@ -193,6 +221,8 @@ async function handleSubmit(event: Event) {
                             </div>
                         </div>
                     </div>
+                {:else if isToolUIPart(part)}
+                    <ToolActivity {part} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
             {#if conversations}
@@ -263,4 +293,9 @@ async function handleSubmit(event: Event) {
             </button>
         </form>
     </div>
-</div>
+{/snippet}
+<style>
+.discussion-modal { margin: auto; position: fixed; inset: 0; width: min(760px, calc(100vw - 48px)); height: min(760px, calc(100dvh - 64px)); max-height: calc(100dvh - 64px); padding: 0; color: #27272a; }
+.discussion-modal[open] { display: flex; flex-direction: column; }
+.discussion-modal::backdrop { background: rgb(0 0 0 / 25%); backdrop-filter: blur(3px); }
+</style>

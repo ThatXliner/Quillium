@@ -21,6 +21,8 @@
     Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
 -->
 <script lang="ts">
+import ToolActivity from "./ToolActivity.svelte";
+import { isToolUIPart } from "ai";
 import {
     beginAiTask,
     createAiChat,
@@ -287,6 +289,8 @@ function useContextAction(action: ContextAction) {
                             </div>
                         </div>
                     </div>
+                {:else if isToolUIPart(part)}
+                    <ToolActivity {part} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
             {#if conversations}
