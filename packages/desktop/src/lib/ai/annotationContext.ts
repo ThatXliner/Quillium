@@ -167,9 +167,19 @@ function toAnnotationContextInput({
         messages: annotation.thread.map((message) => ({
             author: message.author,
             message: message.message,
+            time: message.time,
         })),
         distance: rangeDistance(from, to, selection),
         active: activeAnnotation?.id === annotation.id,
+        updatedAt:
+            annotation.thread.length > 0
+                ? annotation.thread.reduce(
+                      (latest, message) => Math.max(latest, message.time),
+                      Number.MIN_SAFE_INTEGER,
+                  )
+                : undefined,
+        threadMessageCount: annotation.thread.length,
+        status: annotation.status,
     };
 
     if (isAnnotationOfType(annotation, "suggestion")) {

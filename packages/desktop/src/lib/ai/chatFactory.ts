@@ -63,6 +63,8 @@ import {
     streamFeedback,
     streamRevise,
 } from "./clientStreams";
+import { createContextHistory } from "./contextHistory";
+import { type ContextRetrievalSnapshot, captureContextRetrieval } from "./contextRetrieval";
 import {
     type EditorialActionPayload,
     applyEditorialAction,
@@ -81,6 +83,7 @@ import {
     type EditorialTargetSnapshot,
     captureEditorialTarget,
     getActiveEditorialView,
+    getEditorialBranchPath,
     releaseEditorialTarget,
 } from "./editorialTarget";
 import {
@@ -126,6 +129,30 @@ type ToolCallGuard = {
     exactWordCount?: number;
 };
 
+function isEditorialToolCall(toolCall: unknown): toolCall is ToolCall {
+    if (!toolCall || typeof toolCall !== "object") return false;
+    const toolName = (toolCall as { toolName?: unknown }).toolName;
+    return (
+        toolName === "createComment" ||
+        toolName === "createSuggestion" ||
+        toolName === "createRevision"
+    );
+}
+
+function branchPathsEqual(
+    a: readonly { revisionId: number; versionId: string }[],
+    b: readonly { revisionId: number; versionId: string }[],
+): boolean {
+    return (
+        a.length === b.length &&
+        a.every(
+            (segment, index) =>
+                segment.revisionId === b[index]?.revisionId &&
+                segment.versionId === b[index]?.versionId,
+        )
+    );
+}
+
 /**
  * Route LLM tool calls to the CodeMirror annotation system.
  *
@@ -134,6 +161,7 @@ type ToolCallGuard = {
  * finds the target text in the editor and attaches the annotation.
  */
 function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: string) {
+    if (!isEditorialToolCall(toolCall)) return;
     const rootView = get(editorView);
     if (!rootView) return;
 
@@ -275,7 +303,7 @@ export async function runMultiPersonaStreams({
         exactWordCount,
     });
     const annotationContextAtStart = buildAnnotationContextInputs({
-        annotations: targetView?.state.field(annotationField, false) ?? get(annotations),
+        annotations: targetView ? targetView.state.field(annotationField, false) : get(annotations),
         documentContent: documentContentAtStart,
         selectedText: selectedTextAtStart,
         selectedTextRange: selectedTextRangeAtStart,
@@ -283,6 +311,27 @@ export async function runMultiPersonaStreams({
             ? getActiveAnnotation(targetView.state)
             : get(activeAnnotation),
     });
+    const contextRetrievalAtStart: ContextRetrievalSnapshot | undefined =
+        rootView && targetView
+            ? captureContextRetrieval({
+                  rootView,
+                  targetView,
+                  documentId: requestTarget.documentId,
+                  tabId: requestTarget.tabId,
+                  draftId: requestTarget.draftId,
+                  isCurrent: () =>
+                      !abortSignal.aborted &&
+                      get(editorView) === rootView &&
+                      requestTarget.documentId === get(currentDocumentId) &&
+                      requestTarget.tabId === get(currentTabId) &&
+                      requestTarget.draftId === get(currentDraftId) &&
+                      getActiveEditorialView(rootView) === targetView &&
+                      branchPathsEqual(
+                          getEditorialBranchPath(targetView),
+                          targetAtStart.branchPath,
+                      ),
+              })
+            : undefined;
 
     try {
         await ensureApiKeyLoaded();
@@ -292,6 +341,13 @@ export async function runMultiPersonaStreams({
             requestTarget.documentId !== get(currentDocumentId) ||
             requestTarget.tabId !== get(currentTabId) ||
             requestTarget.draftId !== get(currentDraftId) ||
+            get(editorView) !== rootView ||
+            (rootView &&
+                (getActiveEditorialView(rootView) !== targetView ||
+                    !branchPathsEqual(
+                        getEditorialBranchPath(targetView ?? rootView),
+                        targetAtStart.branchPath,
+                    ))) ||
             aiSettings.provider !== aiSettingsAtStart.provider ||
             aiSettings.model !== aiSettingsAtStart.model ||
             aiSettings.baseURL !== aiSettingsAtStart.baseURL
@@ -333,6 +389,7 @@ export async function runMultiPersonaStreams({
             editorialTask: task,
             exactWordCount,
             annotationContext: annotationContextAtStart,
+            contextRetrieval: contextRetrievalAtStart,
             persona,
             annotationOnly: true,
             abortSignal,
@@ -354,6 +411,7 @@ export async function runMultiPersonaStreams({
                 }
                 if (value?.type !== "tool-input-available") continue;
                 if (value.toolName === "noAction") continue;
+                if (!isEditorialToolCall(value)) continue;
                 if (!provenance) continue;
                 handleToolCall(
                     { toolName: value.toolName, input: value.input } as ToolCall,
@@ -427,6 +485,7 @@ function makeTransport(
     streamFn: StreamFn,
     captureTarget: (target: EditorialTargetSnapshot, turn: EditorialTurnAtSend) => void,
 ): ChatTransport<UIMessage> {
+    const contextHistory = createContextHistory();
     return {
         async sendMessages({
             messages,
@@ -467,6 +526,40 @@ function makeTransport(
                         ? undefined
                         : { from: selection.from, to: selection.to }
                     : get(selectedTextRange);
+            const annotationContextAtSend = buildAnnotationContextInputs({
+                annotations: targetView
+                    ? targetView.state.field(annotationField, false)
+                    : get(annotations),
+                documentContent: documentContentAtSend,
+                selectedText: selectedTextAtSend,
+                selectedTextRange: selectedTextRangeAtSend,
+                activeAnnotation: targetView
+                    ? getActiveAnnotation(targetView.state)
+                    : get(activeAnnotation),
+            });
+            const targetBranchPath = targetView ? getEditorialBranchPath(targetView) : [];
+            const contextRetrievalAtSend: ContextRetrievalSnapshot | undefined =
+                rootView && targetView
+                    ? captureContextRetrieval({
+                          rootView,
+                          targetView,
+                          documentId: requestTarget.documentId,
+                          tabId: requestTarget.tabId,
+                          draftId: requestTarget.draftId,
+                          isCurrent: () =>
+                              !globalAbortSignal.aborted &&
+                              !abortSignal?.aborted &&
+                              get(editorView) === rootView &&
+                              requestTarget.documentId === get(currentDocumentId) &&
+                              requestTarget.tabId === get(currentTabId) &&
+                              requestTarget.draftId === get(currentDraftId) &&
+                              getActiveEditorialView(rootView) === targetView &&
+                              branchPathsEqual(
+                                  getEditorialBranchPath(targetView),
+                                  targetBranchPath,
+                              ),
+                      })
+                    : undefined;
             await ensureApiKeyLoaded();
             assertCollegeContextReady();
             if (
@@ -475,6 +568,13 @@ function makeTransport(
                 requestTarget.documentId !== get(currentDocumentId) ||
                 requestTarget.tabId !== get(currentTabId) ||
                 requestTarget.draftId !== get(currentDraftId) ||
+                get(editorView) !== rootView ||
+                (rootView &&
+                    (getActiveEditorialView(rootView) !== targetView ||
+                        !branchPathsEqual(
+                            getEditorialBranchPath(targetView ?? rootView),
+                            targetBranchPath,
+                        ))) ||
                 aiSettings.provider !== aiSettingsAtSend.provider ||
                 aiSettings.model !== aiSettingsAtSend.model ||
                 aiSettings.baseURL !== aiSettingsAtSend.baseURL
@@ -514,16 +614,9 @@ function makeTransport(
                 editorialPreferences: { ...editorialPreferencesAtSend },
                 editorialTask: turn.task,
                 exactWordCount: turn.exactWordCount,
-                annotationContext: buildAnnotationContextInputs({
-                    annotations:
-                        targetView?.state.field(annotationField, false) ?? get(annotations),
-                    documentContent: documentContentAtSend,
-                    selectedText: selectedTextAtSend,
-                    selectedTextRange: selectedTextRangeAtSend,
-                    activeAnnotation: targetView
-                        ? getActiveAnnotation(targetView.state)
-                        : get(activeAnnotation),
-                }),
+                annotationContext: annotationContextAtSend,
+                contextRetrieval: contextRetrievalAtSend,
+                contextHistory,
                 abortSignal,
             });
         },
@@ -585,13 +678,14 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
                 : undefined;
         }),
         onToolCall: ({ toolCall }) => {
+            if (!isEditorialToolCall(toolCall)) return;
             if (!targetAtSend || !provenanceAtSend || !turnAtSend) return;
             const policy = compileEditorialPolicy({
                 task: turnAtSend.task,
                 hasSelection: !!targetAtSend.selectedText,
                 exactWordCount: turnAtSend.exactWordCount,
             });
-            handleToolCall(toolCall as ToolCall, {
+            handleToolCall(toolCall, {
                 target: targetAtSend,
                 allowedActions: policy.allowedActions,
                 provenance: provenanceAtSend,
