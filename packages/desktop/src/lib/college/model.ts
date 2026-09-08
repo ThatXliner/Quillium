@@ -167,7 +167,6 @@ const collegeSetupSchema = z
         feedbackFocus: z.string().max(2000),
         prompts: z
             .array(collegePromptSchema)
-            .max(12)
             .refine(
                 (prompts) => new Set(prompts.map((prompt) => prompt.id)).size === prompts.length,
                 "Prompt IDs must be unique",

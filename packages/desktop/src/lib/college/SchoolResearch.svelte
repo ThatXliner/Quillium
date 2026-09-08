@@ -57,7 +57,7 @@ async function open(): Promise<void> {
             "",
         prompts: setup.prompts.map(({ id, label, text }) => ({ id, label, text })),
     };
-    promptIds = target.prompts.map((prompt) => prompt.id);
+    promptIds = target.prompts.slice(0, 12).map((prompt) => prompt.id);
     opened = true;
     confirmed = false;
     result = null;
@@ -72,7 +72,7 @@ function close(): void {
     result = null;
 }
 async function research(): Promise<void> {
-    if (!target || !confirmed || !promptIds.length) return;
+    if (!target || !confirmed || !promptIds.length || promptIds.length > 12) return;
     controller?.abort();
     const operation = new AbortController();
     controller = operation;
@@ -168,12 +168,13 @@ async function accept(): Promise<void> {
                     <label class="check"><input type="checkbox" bind:checked={confirmed} />I checked that this is the official site for this school and campus.</label>
                     <fieldset class="space-y-2">
                         <legend class="font-medium text-xs mb-2">Prompts to research</legend>
+                        {#if target.prompts.length > 12}<p class="text-xs text-black/60">Choose up to 12 prompts per research request. {promptIds.length} selected.</p>{/if}
                         {#each target.prompts as prompt (prompt.id)}
-                            <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
+                            <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} disabled={!promptIds.includes(prompt.id) && promptIds.length >= 12} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
                         {/each}
                     </fieldset>
                     <p class="text-xs text-black/60">Edit the prompt heading to change its wording. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
-                    <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || !!view.researchUnavailable}>Start research</button>
+                    <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || promptIds.length > 12 || !!view.researchUnavailable}>Start research</button>
                 </fieldset>
             </form>
         {/if}

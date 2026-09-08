@@ -51,8 +51,9 @@ New tabs start with `# Prompt text (69 words)` and room for an answer. Edit or
 paste ordinary H1 headings to change prompts. Each answer runs from its heading
 to the next top-level H1. H2 headings remain inside the answer; fenced code,
 block quotes, and list-contained headings do not start College sections. The
-panel counts each answer independently, excluding its H1, and recognizes up to
-12 prompts. Markdown heading edits and insertions use normal editor history.
+panel counts each answer independently, excluding its H1, with no fixed limit
+on the number of detected sections. Markdown heading edits and insertions use
+normal editor history.
 
 Prompt metadata stays in the tab setup, outside the prose. Detection matches
 normalized prompt wording against saved prompts and archived metadata, so moving
@@ -85,8 +86,9 @@ writer enters the school, prompt, and optional word or character limit. A URL en
 by the plugin. Optional school research runs only after the writer confirms a
 source and starts it; provider-returned findings still require explicit review
 before they enter essay context. Research references carry their selected prompt IDs
-and per-prompt scope keys. Adding another prompt does not invalidate unrelated
-research. Missing or changed prompts exclude their research from AI requests;
+and per-prompt scope keys. Each research request can select up to 12 prompts,
+regardless of how many sections the tab contains. Adding another prompt does not
+invalidate unrelated research. Missing or changed prompts exclude their research from AI requests;
 restoring the matching heading reconnects it. The College panel shows accepted
 research beneath its prompt and retained, detached sources under Sources and settings.
 

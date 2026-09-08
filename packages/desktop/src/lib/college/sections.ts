@@ -8,7 +8,6 @@ import { parser } from "@lezer/markdown";
 import { type CollegePrompt, type CollegeSetup, parseCollegeSetup } from "./model";
 import { researchFingerprint } from "./researchModel";
 
-const MAX_COLLEGE_SECTIONS = 12;
 const MAX_ARCHIVED_PROMPTS = 100;
 const MAX_PROMPT_TEXT = 4000;
 const MAX_PROMPT_LABEL = 200;
@@ -237,7 +236,7 @@ function _resolvedPrompt(
 }
 
 function _sectionsForLegacySetup(setup: CollegeSetup, prose: string): CollegeSection[] {
-    return setup.prompts.slice(0, MAX_COLLEGE_SECTIONS).map((prompt) => ({
+    return setup.prompts.map((prompt) => ({
         prompt: _plainClone(prompt),
         from: 0,
         to: prose.length,
@@ -296,7 +295,7 @@ export function resolveCollegeSections(setup: CollegeSetup, prose: string): Coll
             characterCount: _characterCount(body),
         } satisfies CollegeSection;
     });
-    return sections.slice(0, MAX_COLLEGE_SECTIONS);
+    return sections;
 }
 
 /**

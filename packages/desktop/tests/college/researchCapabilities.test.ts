@@ -283,6 +283,49 @@ describe("College school research capability", () => {
         );
     });
 
+    it("researches a selected subset of a larger setup and rejects thirteen selected prompts", async () => {
+        const setup = activeSetup();
+        const firstPrompt = setup.prompts[0];
+        if (!firstPrompt) throw new Error("Expected the preset to contain a prompt");
+        setup.prompts = Array.from({ length: 14 }, (_, index) => ({
+            ...firstPrompt,
+            id: `prompt-${index + 1}`,
+            label: `Prompt ${index + 1}`,
+            text: `Prompt ${index + 1}`,
+            constraints: firstPrompt.constraints.map((constraint) => ({ ...constraint })),
+        }));
+        const selectedPrompts = setup.prompts.slice(0, 2).map(({ id, label, text }) => ({
+            id,
+            label,
+            text,
+        }));
+        const selectedTarget = targetFor(setup, { prompts: selectedPrompts });
+        const source = finding("finding-1");
+        source.research = { ...source.research!, promptIds: ["prompt-1", "prompt-2"] };
+        const result = resultFor(setup, [source]);
+        result.target = selectedTarget;
+        mocks.researchSchool.mockResolvedValue(result);
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await capabilities.research(selectedTarget, new AbortController().signal);
+        await capabilities.acceptResearch(result.id, [source.id], []);
+
+        const saved = mocks.state.saveCalls[0] as CollegeSetup;
+        const savedResearch = saved.references.find(
+            (reference) => reference.id === source.id,
+        )?.research;
+        expect(savedResearch?.promptIds).toEqual(["prompt-1", "prompt-2"]);
+        expect(Object.keys(savedResearch?.promptKeys ?? {})).toEqual(["prompt-1", "prompt-2"]);
+
+        const thirteenPromptTarget = targetFor(setup, {
+            prompts: setup.prompts.slice(0, 13).map(({ id, label, text }) => ({ id, label, text })),
+        });
+        await expect(
+            capabilities.research(thirteenPromptTarget, new AbortController().signal),
+        ).rejects.toThrow(/12/);
+    });
+
     it.each(["tab", "setup", "AI"] as const)(
         "rejects a %s change before installing a stale research result",
         async (changed) => {

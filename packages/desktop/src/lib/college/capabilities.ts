@@ -297,9 +297,6 @@ export function createCollegeCapabilities(
         if (setup.prompts.length < 1) {
             throw new Error("Restore at least one College prompt heading before researching.");
         }
-        if (setup.prompts.length > 12) {
-            throw new Error("Choose between 1 and 12 College prompts before researching.");
-        }
         return setup;
     }
 
@@ -324,7 +321,6 @@ export function createCollegeCapabilities(
             !setup ||
             !setup.active ||
             setup.prompts.length < 1 ||
-            setup.prompts.length > 12 ||
             serializeCollegeSetup(setup) !== setupSerialized
         ) {
             throw new Error(STALE_SESSION_MESSAGE);
@@ -354,7 +350,6 @@ export function createCollegeCapabilities(
             !setup ||
             !setup.active ||
             setup.prompts.length < 1 ||
-            setup.prompts.length > 12 ||
             serializeCollegeSetup(setup) !== captured.setupSerialized
         ) {
             throw new Error(STALE_SESSION_MESSAGE);
@@ -671,9 +666,6 @@ export function createCollegeCapabilities(
         const original = cloneCollegeSetup(stored);
         const prose = view.state.doc.toString();
         const sections = resolveCollegeSections(original, prose);
-        if (sections.length >= 12) {
-            throw new Error("This tab can contain at most 12 College prompts.");
-        }
         if (
             !original.sectionMode &&
             !sections.some((section) => section.headingFrom !== null) &&

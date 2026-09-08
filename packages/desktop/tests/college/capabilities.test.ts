@@ -424,6 +424,42 @@ describe("createCollegeCapabilities", () => {
         ).toHaveLength(1);
     });
 
+    it("adds a fourteenth prompt after thirteen existing H1 sections", async () => {
+        const setup = activeSetup();
+        const firstPrompt = setup.prompts[0];
+        if (!firstPrompt) throw new Error("Expected the preset to contain a prompt");
+        setup.prompts = Array.from({ length: 13 }, (_, index) => ({
+            ...firstPrompt,
+            id: `prompt-${index + 1}`,
+            label: `Prompt ${index + 1}`,
+            text: `Prompt ${index + 1}`,
+            constraints: firstPrompt.constraints.map((constraint) => ({ ...constraint })),
+        }));
+        setup.sectionMode = true;
+        const prose = setup.prompts
+            .map((prompt, index) => `${formatCollegePromptHeading(prompt)}\n\nAnswer ${index + 1}`)
+            .join("\n\n");
+        const view = createEditorView(prose);
+        mocks.stores.documentContent.set(prose);
+        mocks.saveCollegeSetup.mockImplementation(async (...args: unknown[]) => {
+            const saved = args[1] as ReturnType<typeof newCollegeSetup>;
+            mocks.state.saveArgs = args;
+            mocks.state.collegeState.setup = saved;
+            mocks.state.activeSetup = saved;
+        });
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await capabilities.addPrompt(addedPrompt());
+
+        expect(view.state.doc.toString()).toBe(
+            `${prose}\n\n# Describe another important experience.\n\n`,
+        );
+        expect(
+            (mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>).prompts,
+        ).toHaveLength(14);
+    });
+
     it("rejects adding to a read-only draft before saving metadata", async () => {
         activeSetup();
         createEditorView("Existing answer.", true);

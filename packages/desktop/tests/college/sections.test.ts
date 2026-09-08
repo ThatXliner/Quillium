@@ -61,6 +61,22 @@ describe("College prompt sections", () => {
         expect(sections[0]?.wordCount).toBe(1);
     });
 
+    it("resolves every top-level H1, including the final section beyond twelve", () => {
+        const value = setup();
+        value.sectionMode = true;
+        const prose = Array.from(
+            { length: 13 },
+            (_, index) => `# Prompt ${index + 1}\nAnswer ${index + 1}`,
+        ).join("\n");
+
+        const sections = resolveCollegeSections(value, prose);
+
+        expect(sections).toHaveLength(13);
+        expect(sections.at(-1)?.prompt.text).toBe("Prompt 13");
+        expect(sections.at(-1)?.to).toBe(prose.length);
+        expect(sections.at(-1)?.wordCount).toBe(2);
+    });
+
     it("gives duplicate headings fresh deterministic prompt IDs", () => {
         const value = setup();
         value.sectionMode = true;

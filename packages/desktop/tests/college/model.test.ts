@@ -146,6 +146,21 @@ describe("college setup model", () => {
         );
     });
 
+    it("preserves more than twelve prompts through serialization", () => {
+        const original = setup();
+        original.prompts = Array.from({ length: 14 }, (_, index) => ({
+            ...original.prompts[0],
+            id: `prompt-${index + 1}`,
+            label: `Prompt ${index + 1}`,
+            text: `Prompt ${index + 1}`,
+        }));
+
+        const parsed = parseCollegeSetup(JSON.stringify(original));
+
+        expect(parsed.prompts).toHaveLength(14);
+        expect(parsed.prompts.at(-1)?.id).toBe("prompt-14");
+    });
+
     it("matches prompt-scoped research independently of unrelated prompt changes", () => {
         const original = setup();
         const other = { ...original.prompts[0], id: "prompt-2", text: "Another prompt" };

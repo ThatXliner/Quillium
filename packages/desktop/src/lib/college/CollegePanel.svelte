@@ -168,7 +168,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
         {#if !view.sections.length}<p class="text-xs text-black/60">No prompt headings found. Add a prompt or restore an H1 to reconnect its saved context.</p>{/if}
         {#if !setup.active}<p class="text-xs text-black/60">Paused. Feedback isn’t using this prompt.</p>{/if}
         <div class="flex flex-wrap gap-2">
-            <button class="secondary" disabled={busy || view.saving || !view.canEdit || view.sections.length >= 12} onclick={() => start(true)}>Add another prompt</button>
+            <button class="secondary" disabled={busy || view.saving || !view.canEdit} onclick={() => start(true)}>Add another prompt</button>
             <button class="link" onclick={() => start()}>Create another essay tab</button>
         </div>
         {#if view.aiEnabled && college}
