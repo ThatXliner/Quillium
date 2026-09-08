@@ -231,17 +231,6 @@ and accessible names. The context icon toggles the saved turn context.
 
 ### Conversation identity and alternative paths
 
-![Discussions in the sidebar](assets/issue-436/discussions-sidebar.png)
-
-![Successful feedback activity](assets/issue-436/tool-activity.png)
-
-These browser captures use isolated test storage and a deterministic provider
-response. The successful feedback capture requires an actual CodeMirror annotation
-and verifies the saved editor outcome after reopening. Failure and interrupted
-fixtures are tested separately and are not used as showcase screenshots.
-
-[Command inspection of that same successful action](assets/issue-436/tool-details.png)
-
 Each conversation has a stable ID, a mode, a title, creation/update timestamps,
 and its original document and draft association. The draft label is captured
 when the conversation is created. Reopening shows that association; the next
