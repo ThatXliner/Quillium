@@ -15,7 +15,8 @@ Architecture decisions: [event log and snapshots](./adr/0001-event-log-with-snap
 | `doc_events` | Document-level structural audit log (tab CRUD, branching, locks, checkpoints) |
 | `events` | Append-only log of CM transactions (draft-scoped) |
 | `snapshots` | Full `EditorState.toJSON()` blobs (draft-scoped) |
-| `ai_conversations` | Draft-scoped Chat, Feedback, and Revise message JSON |
+| `ai_conversations` | Legacy draft/mode message arrays, preserved during migration |
+| `ai_conversation_history` | Distinct conversations, archive state, source draft and branch origin, message JSON |
 | `document_ai_profiles` | Document-scoped writer brief |
 | `document_editorial_decisions` | Writer-confirmed document-scoped decision JSON |
 | `_meta` | Key/value flags (`active_tab:{doc}`, `active_draft:{tab}`) |
@@ -251,15 +252,25 @@ These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Ta
 
 | Function | Purpose |
 |----------|---------|
-| `loadAiConversation` | Load one Chat, Feedback, or Revise history for a draft |
-| `saveAiConversation` | Validate and replace one draft-mode conversation |
-| `clearAiConversation` | Delete one draft-mode conversation |
+| `listConversations` / `getConversation` | Browse document history or load a conversation by ID |
+| `createConversation` / `saveConversationMessages` | Create a distinct conversation or update its messages by ID |
+| `renameConversation` / `archiveConversation` / `deleteConversation` | Manage one conversation without changing other paths |
+| `loadAiConversation` | Legacy: load one Chat, Feedback, or Revise history for a draft |
+| `saveAiConversation` | Legacy: validate and replace one draft-mode conversation |
+| `clearAiConversation` | Legacy: delete one draft-mode conversation |
 | `getDocumentWriterBrief` | Load the document-scoped writer brief |
 | `setDocumentWriterBrief` | Replace the document-scoped writer brief |
 | `getDocumentEditorialDecisions` | Load writer-confirmed decisions JSON |
 | `setDocumentEditorialDecisions` | Validate and replace writer-confirmed decisions JSON |
 
-Conversation rows cascade with their draft. Briefs and saved decisions cascade
+The ID-based wrappers live in `src/lib/ai/conversationStore.ts`; the legacy
+wrappers remain in `src/lib/db/index.ts` for compatibility.
+
+Legacy conversation rows cascade with their draft. Distinct conversation history
+retains its draft association after draft deletion and cascades with its document.
+The appended migration copies existing messages without changing their JSON.
+See [conversation management](ai-sidebar.md#conversation-identity-and-alternative-paths)
+for context, cancellation, and branch behavior. Briefs and saved decisions cascade
 with their document and are copied when a document is duplicated. Rust validates
 conversation JSON, brief length, and the saved-decision array before writing.
 

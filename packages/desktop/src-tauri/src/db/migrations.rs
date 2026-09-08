@@ -210,6 +210,65 @@ pub const MIGRATIONS: &[Migration] = &[
             ",
         ),
     },
+    Migration {
+        version: 15,
+        name: "ai_conversation_history",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS ai_conversation_history (
+                id                     TEXT PRIMARY KEY,
+                document_id            TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                draft_id               TEXT NOT NULL,
+                draft_label            TEXT NOT NULL DEFAULT '',
+                mode                   TEXT NOT NULL CHECK (mode IN ('chat', 'feedback', 'revise')),
+                title                  TEXT NOT NULL DEFAULT '',
+                created_at             INTEGER NOT NULL,
+                updated_at             INTEGER NOT NULL,
+                archived               INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+                messages_json          TEXT NOT NULL DEFAULT '[]',
+                source_conversation_id TEXT DEFAULT NULL,
+                source_message_id      TEXT DEFAULT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ai_conversation_history_document
+                ON ai_conversation_history(document_id, updated_at DESC, id DESC);
+
+            INSERT OR IGNORE INTO ai_conversation_history (
+                id,
+                document_id,
+                draft_id,
+                draft_label,
+                mode,
+                title,
+                created_at,
+                updated_at,
+                archived,
+                messages_json,
+                source_conversation_id,
+                source_message_id
+            )
+            SELECT
+                'legacy:' || c.draft_id || ':' || c.mode,
+                d.document_id,
+                c.draft_id,
+                d.label,
+                c.mode,
+                CASE c.mode
+                    WHEN 'chat' THEN 'Chat'
+                    WHEN 'feedback' THEN 'Feedback'
+                    WHEN 'revise' THEN 'Revise'
+                END,
+                c.updated_at,
+                c.updated_at,
+                0,
+                c.messages_json,
+                NULL,
+                NULL
+            FROM ai_conversations c
+            JOIN drafts d ON d.id = c.draft_id;
+            ",
+        ),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -562,6 +621,163 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn ai_history_migration_backfills_legacy_rows_without_mutating_legacy_data() {
+        // Register sqlite-vec before constructing the in-memory connection,
+        // then build an authentic pre-history (v14) database.
+        let registration_dir = tempfile::tempdir().unwrap();
+        let registration_path = registration_dir.path().join("registration.db");
+        drop(open_db(&registration_path).unwrap());
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for migration in &MIGRATIONS[..14] {
+            match &migration.kind {
+                MigrationKind::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                MigrationKind::Rust(f) => f(&conn).unwrap(),
+            }
+            conn.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('doc-a', 'A', 0, 0), ('doc-b', 'B', 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO drafts (id, document_id, label, created_at, is_active)
+             VALUES ('draft-a', 'doc-a', 'First take', 0, 1),
+                    ('draft-b', 'doc-b', 'Second take', 0, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_conversations (draft_id, mode, messages_json, updated_at)
+             VALUES ('draft-a', 'chat', '[{\"id\":\"chat\"}]', 10),
+                    ('draft-a', 'feedback', '[{\"id\":\"feedback\"}]', 20),
+                    ('draft-b', 'chat', '[{\"id\":\"other\"}]', 30)",
+            [],
+        )
+        .unwrap();
+
+        let legacy_before: Vec<(String, String, String, i64)> = conn
+            .prepare(
+                "SELECT draft_id, mode, messages_json, updated_at
+                 FROM ai_conversations ORDER BY draft_id, mode",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let legacy_after: Vec<(String, String, String, i64)> = conn
+            .prepare(
+                "SELECT draft_id, mode, messages_json, updated_at
+                 FROM ai_conversations ORDER BY draft_id, mode",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(legacy_after, legacy_before);
+
+        let history: Vec<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            i64,
+            i64,
+        )> = conn
+            .prepare(
+                "SELECT id, document_id, draft_id, draft_label, mode, title,
+                        created_at, updated_at, archived
+                 FROM ai_conversation_history ORDER BY id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(
+            history,
+            vec![
+                (
+                    "legacy:draft-a:chat".into(),
+                    "doc-a".into(),
+                    "draft-a".into(),
+                    "First take".into(),
+                    "chat".into(),
+                    "Chat".into(),
+                    10,
+                    10,
+                    0,
+                ),
+                (
+                    "legacy:draft-a:feedback".into(),
+                    "doc-a".into(),
+                    "draft-a".into(),
+                    "First take".into(),
+                    "feedback".into(),
+                    "Feedback".into(),
+                    20,
+                    20,
+                    0,
+                ),
+                (
+                    "legacy:draft-b:chat".into(),
+                    "doc-b".into(),
+                    "draft-b".into(),
+                    "Second take".into(),
+                    "chat".into(),
+                    "Chat".into(),
+                    30,
+                    30,
+                    0,
+                ),
+            ]
+        );
+
+        // A second migration pass must not duplicate the stable IDs.
+        let count_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_conversation_history", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        super::migrate(&conn).unwrap();
+        let count_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_conversation_history", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count_after, count_before);
     }
 
     #[test]

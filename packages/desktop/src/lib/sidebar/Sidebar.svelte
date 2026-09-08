@@ -65,8 +65,12 @@ let action = $state<string | null>(null);
 const panels = $derived(
     createSidebarPanels(contributions).filter(
         (panel) =>
-            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresAi) &&
-            (panel.id !== "college" || (collegeActivation.documentId === $currentDocumentId && collegeActivation.enabled && !collegeActivation.loading)),
+            !disabledPanelIds.includes(panel.id) &&
+            (appSettings.aiEnabled || !panel.requiresAi) &&
+            (panel.id !== "college" ||
+                (collegeActivation.documentId === $currentDocumentId &&
+                    collegeActivation.enabled &&
+                    !collegeActivation.loading)),
     ),
 );
 const actions = $derived(panels.filter((panel) => panel.placement === "main"));
@@ -134,7 +138,9 @@ const collegeCapabilities = $derived.by(() => {
     $currentDraftLabel;
     return session ? createCollegeCapabilities(session, selectAction) : null;
 });
-$effect(() => { collegeState.hostEnabled = panels.some((panel) => panel.id === "college"); });
+$effect(() => {
+    collegeState.hostEnabled = panels.some((panel) => panel.id === "college");
+});
 $effect(() => {
     if (!collegeWorkspace.setup) return;
     if (collegeWorkspace.documentId !== $currentDocumentId || !collegeState.hostEnabled) {
@@ -417,6 +423,9 @@ function handleSidebarClick(e: MouseEvent) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+    // A modal owns keyboard interaction until it closes. Switching the sidebar
+    // beneath it can leave a hidden dialog holding focus.
+    if (document.querySelector("dialog[open]")) return;
     // Escape closes the context popover first, before the sidebar itself.
     if (e.key === "Escape" && showContextPopover) {
         showContextPopover = false;
