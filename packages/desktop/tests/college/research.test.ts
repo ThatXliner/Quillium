@@ -150,6 +150,38 @@ describe("school research target and persistence models", () => {
         expect(collegeResearchSetupKey(setup)).not.toBe(first);
         expect(first.length).toBeLessThanOrEqual(100);
     });
+
+    it("normalizes a finding associated with fourteen prompts", async () => {
+        const promptIds = Array.from({ length: 14 }, (_, index) => `p${index + 1}`);
+        const selectedTarget = target({
+            prompts: promptIds.map((id) => ({
+                id,
+                label: `Prompt ${id}`,
+                text: `Describe ${id}.`,
+            })),
+        });
+
+        const result = await runSchoolResearch(
+            selectedTarget,
+            vi.fn(async () =>
+                adapterResult(
+                    [{ url: SOURCE, title: "Requirements", text: "650 words" }],
+                    [
+                        {
+                            url: SOURCE,
+                            summary: "650 words",
+                            evidence: "650 words",
+                            promptIds,
+                        },
+                    ],
+                ),
+            ),
+            new AbortController().signal,
+        );
+
+        expect(result.findings).toHaveLength(1);
+        expect(result.findings[0]?.research?.promptIds).toEqual(promptIds);
+    });
 });
 
 describe("runSchoolResearch", () => {

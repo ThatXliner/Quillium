@@ -3,6 +3,7 @@ import {
     cloneCollegeSetup,
     collegeSetupSchema,
     parseCollegeSetup,
+    serializeCollegeSetup,
 } from "$lib/college/model";
 import {
     collegeResearchPromptKey,
@@ -159,6 +160,24 @@ describe("college setup model", () => {
 
         expect(parsed.prompts).toHaveLength(14);
         expect(parsed.prompts.at(-1)?.id).toBe("prompt-14");
+    });
+
+    it("preserves more than twelve references through serialization", () => {
+        const original = setup();
+        original.references = Array.from({ length: 14 }, (_, index) => ({
+            id: `reference-${index + 1}`,
+            publisher: "Example University",
+            url: `https://example.edu/reference/${index + 1}`,
+            checkedDate: "2026-09-07",
+            cycle: "2026",
+            kind: "official-advice" as const,
+            summary: `Reference ${index + 1}`,
+        }));
+
+        const parsed = parseCollegeSetup(serializeCollegeSetup(original));
+
+        expect(parsed.references).toHaveLength(14);
+        expect(parsed.references.at(-1)?.id).toBe("reference-14");
     });
 
     it("matches prompt-scoped research independently of unrelated prompt changes", () => {

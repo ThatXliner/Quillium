@@ -57,7 +57,7 @@ async function open(): Promise<void> {
             "",
         prompts: setup.prompts.map(({ id, label, text }) => ({ id, label, text })),
     };
-    promptIds = target.prompts.slice(0, 12).map((prompt) => prompt.id);
+    promptIds = target.prompts.map((prompt) => prompt.id);
     opened = true;
     confirmed = false;
     result = null;
@@ -72,7 +72,7 @@ function close(): void {
     result = null;
 }
 async function research(): Promise<void> {
-    if (!target || !confirmed || !promptIds.length || promptIds.length > 12) return;
+    if (!target || !confirmed || !promptIds.length) return;
     controller?.abort();
     const operation = new AbortController();
     controller = operation;
@@ -168,13 +168,12 @@ async function accept(): Promise<void> {
                     <label class="check"><input type="checkbox" bind:checked={confirmed} />I checked that this is the official site for this school and campus.</label>
                     <fieldset class="space-y-2">
                         <legend class="font-medium text-xs mb-2">Prompts to research</legend>
-                        {#if target.prompts.length > 12}<p class="text-xs text-black/60">Choose up to 12 prompts per research request. {promptIds.length} selected.</p>{/if}
                         {#each target.prompts as prompt (prompt.id)}
-                            <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} disabled={!promptIds.includes(prompt.id) && promptIds.length >= 12} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
+                            <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
                         {/each}
                     </fieldset>
                     <p class="text-xs text-black/60">Edit the prompt heading to change its wording. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
-                    <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || promptIds.length > 12 || !!view.researchUnavailable}>Start research</button>
+                    <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || !!view.researchUnavailable}>Start research</button>
                 </fieldset>
             </form>
         {/if}
@@ -225,7 +224,7 @@ async function accept(): Promise<void> {
                 <button class="research-button" disabled={saving || !!view.researchUnavailable} onclick={accept}>{saving ? "Saving…" : selected.length ? "Add to essay context" : "Save review choices"}</button>
                 <button class="research-link" disabled={saving} onclick={() => { result = null; confirmed = false; }}>Change target or retry</button>
             </div>
-            <p class="text-xs text-black/60">Nothing is added automatically. Adding keeps your existing sources; only checked removals are deleted. Up to 12 sources fit in a setup, with 6,000 characters available to requests.</p>
+            <p class="text-xs text-black/60">Nothing is added automatically. Adding keeps your existing sources; only checked removals are deleted.</p>
             <details><summary class="research-link">Sources returned ({result.pages.length})</summary>{#each result.pages as page}<a class="block research-link mt-2 break-all" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>{/each}</details>
         {/if}
     </section>

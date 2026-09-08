@@ -283,7 +283,7 @@ describe("College school research capability", () => {
         );
     });
 
-    it("researches a selected subset of a larger setup and rejects thirteen selected prompts", async () => {
+    it("researches fourteen prompts and stores complete scoped provenance", async () => {
         const setup = activeSetup();
         const firstPrompt = setup.prompts[0];
         if (!firstPrompt) throw new Error("Expected the preset to contain a prompt");
@@ -294,14 +294,17 @@ describe("College school research capability", () => {
             text: `Prompt ${index + 1}`,
             constraints: firstPrompt.constraints.map((constraint) => ({ ...constraint })),
         }));
-        const selectedPrompts = setup.prompts.slice(0, 2).map(({ id, label, text }) => ({
+        const selectedPrompts = setup.prompts.map(({ id, label, text }) => ({
             id,
             label,
             text,
         }));
         const selectedTarget = targetFor(setup, { prompts: selectedPrompts });
         const source = finding("finding-1");
-        source.research = { ...source.research!, promptIds: ["prompt-1", "prompt-2"] };
+        source.research = {
+            ...source.research!,
+            promptIds: setup.prompts.map((prompt) => prompt.id),
+        };
         const result = resultFor(setup, [source]);
         result.target = selectedTarget;
         mocks.researchSchool.mockResolvedValue(result);
@@ -315,15 +318,10 @@ describe("College school research capability", () => {
         const savedResearch = saved.references.find(
             (reference) => reference.id === source.id,
         )?.research;
-        expect(savedResearch?.promptIds).toEqual(["prompt-1", "prompt-2"]);
-        expect(Object.keys(savedResearch?.promptKeys ?? {})).toEqual(["prompt-1", "prompt-2"]);
-
-        const thirteenPromptTarget = targetFor(setup, {
-            prompts: setup.prompts.slice(0, 13).map(({ id, label, text }) => ({ id, label, text })),
-        });
-        await expect(
-            capabilities.research(thirteenPromptTarget, new AbortController().signal),
-        ).rejects.toThrow(/12/);
+        expect(savedResearch?.promptIds).toEqual(setup.prompts.map((prompt) => prompt.id));
+        expect(Object.keys(savedResearch?.promptKeys ?? {})).toEqual(
+            setup.prompts.map((prompt) => prompt.id),
+        );
     });
 
     it.each(["tab", "setup", "AI"] as const)(
@@ -498,9 +496,9 @@ describe("College school research capability", () => {
         expect(saved.references.some((reference) => reference.id === bundled!.id)).toBe(true);
     });
 
-    it("rejects an over-capacity review before saving", async () => {
+    it("accepts research without losing fourteen existing references", async () => {
         const setup = activeSetup();
-        setup.references = Array.from({ length: 12 }, (_, index) => ({
+        setup.references = Array.from({ length: 14 }, (_, index) => ({
             ...finding(`existing-${index}`),
             id: `existing-${index}`,
             url: `https://example.edu/existing/${index}`,
@@ -512,10 +510,16 @@ describe("College school research capability", () => {
         const capabilities = createCollegeCapabilities(session, vi.fn());
         await capabilities.research(targetFor(setup), new AbortController().signal);
 
-        await expect(capabilities.acceptResearch(result.id, ["new-finding"], [])).rejects.toThrow(
-            /remove existing sources/i,
-        );
-        expect(mocks.saveCollegeSetup).not.toHaveBeenCalled();
+        await capabilities.acceptResearch(result.id, ["new-finding"], []);
+
+        const saved = mocks.state.saveCalls[0] as CollegeSetup;
+        expect(saved.references).toHaveLength(15);
+        for (let index = 0; index < 14; index += 1) {
+            expect(saved.references.some((reference) => reference.id === `existing-${index}`)).toBe(
+                true,
+            );
+        }
+        expect(saved.references.some((reference) => reference.id === "new-finding")).toBe(true);
     });
 
     it("retains a result when saving fails so the review can be retried", async () => {

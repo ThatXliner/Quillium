@@ -86,9 +86,9 @@ writer enters the school, prompt, and optional word or character limit. A URL en
 by the plugin. Optional school research runs only after the writer confirms a
 source and starts it; provider-returned findings still require explicit review
 before they enter essay context. Research references carry their selected prompt IDs
-and per-prompt scope keys. Each research request can select up to 12 prompts,
-regardless of how many sections the tab contains. Adding another prompt does not
-invalidate unrelated research. Missing or changed prompts exclude their research from AI requests;
+and per-prompt scope keys. Writers can select any or all detected prompts for
+research, with no fixed count limit on selected prompts or saved sources.
+Adding another prompt does not invalidate unrelated research. Missing or changed prompts exclude their research from AI requests;
 restoring the matching heading reconnects it. The College panel shows accepted
 research beneath its prompt and retained, detached sources under Sources and settings.
 

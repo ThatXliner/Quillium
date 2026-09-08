@@ -193,7 +193,6 @@ const collegeSetupSchema = z
         active: z.boolean(),
         references: z
             .array(collegeReferenceSchema)
-            .max(12)
             .refine(
                 (references) =>
                     new Set(references.map((reference) => reference.id)).size === references.length,

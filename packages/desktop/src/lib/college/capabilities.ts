@@ -906,10 +906,6 @@ export function createCollegeCapabilities(
             referenceKeys.add(key);
         }
 
-        if (next.references.length > 12) {
-            throw new Error("This tab can keep at most 12 sources. Remove existing sources first.");
-        }
-
         const selectedSet = new Set(selectedIds);
         const selectedKeys = new Set(
             selectedIds.map((id) => {

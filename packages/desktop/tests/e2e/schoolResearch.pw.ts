@@ -271,3 +271,37 @@ test("an API failure leaves the saved prompt unchanged and can be retried", asyn
     expect(await q.countInvocations("school_research_fetch")).toBe(0);
     q.expectNoPageErrors();
 });
+
+test("researches all fourteen selected prompts and saves their setup", async ({ page }) => {
+    const { q, requests } = await prepare(page);
+    const headings = [
+        "Why do you want to study here?",
+        ...Array.from({ length: 13 }, (_, index) => `Supplement question ${index + 2}`),
+    ];
+    await q.typeInEditor(
+        headings.map((heading) => `# ${heading}\n\nPRIVATE_ESSAY_SENTINEL`).join("\n\n"),
+    );
+    await openCollege(page);
+    await panel(page)
+        .getByRole("button", { name: "Research this school's prompts", exact: true })
+        .click();
+    const choices = research(page).getByRole("group", { name: "Prompts to research", exact: true });
+    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(14);
+    await research(page).getByLabel("Application cycle", { exact: true }).fill("2026-2027");
+    await research(page).getByLabel("Official admissions page", { exact: true }).fill(source);
+    await research(page)
+        .getByLabel("I checked that this is the official site for this school and campus.")
+        .check();
+    await research(page).getByRole("button", { name: "Start research", exact: true }).click();
+    await expect(research(page).getByRole("heading", { name: "Review sources" })).toBeVisible();
+    expect(requests).toHaveLength(1);
+    for (const heading of headings) expect(requests[0]).toContain(heading);
+    expect(requests[0]).not.toContain("PRIVATE_ESSAY_SENTINEL");
+    await research(page).getByLabel("Write no more than 250 words.", { exact: true }).check();
+    await research(page).getByRole("button", { name: "Add to essay context", exact: true }).click();
+    await expect(research(page).getByRole("status")).toContainText("Source review saved");
+    const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), stored);
+    expect(saved.prompts).toHaveLength(14);
+    expect(saved.researchReview.target.prompts).toHaveLength(14);
+    q.expectNoPageErrors();
+});

@@ -55,7 +55,6 @@ export const researchTargetSchema = z
         prompts: z
             .array(researchTargetPromptSchema)
             .min(1)
-            .max(12)
             .refine(
                 (prompts) => new Set(prompts.map((prompt) => prompt.id)).size === prompts.length,
                 "Research prompt IDs must be unique",
@@ -70,14 +69,8 @@ export const researchProvenanceSchema = z
     .object({
         setupKey: z.string().max(100),
         snapshotId: z.string().min(1).max(100),
-        promptIds: z.array(z.string().min(1).max(100)).min(1).max(12),
-        promptKeys: z
-            .record(z.string().min(1).max(100), z.string().min(1).max(100))
-            .refine(
-                (promptKeys) => Object.keys(promptKeys).length <= 12,
-                "Research prompt keys cannot contain more than 12 prompts",
-            )
-            .optional(),
+        promptIds: z.array(z.string().min(1).max(100)).min(1),
+        promptKeys: z.record(z.string().min(1).max(100), z.string().min(1).max(100)).optional(),
         school: z.string().max(200),
         program: z.string().max(200),
         targetCycle: z.string().max(100),

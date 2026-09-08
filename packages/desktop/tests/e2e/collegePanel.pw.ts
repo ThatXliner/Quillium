@@ -202,9 +202,7 @@ test("reopening and toggling AI preserves the prompt setup", async ({ page }) =>
     q.expectNoPageErrors();
 });
 
-test("detects and adds beyond twelve sections while research selects a bounded subset", async ({
-    page,
-}) => {
+test("detects, adds, and selects all prompts beyond twelve sections", async ({ page }) => {
     const q = new QuilliumPage(page, { apiKey: null, settings: { editorMode: "plain" } });
     await q.init();
     await createSupplement(page);
@@ -223,11 +221,12 @@ test("detects and adds beyond twelve sections while research selects a bounded s
         .click();
     const choices = panel(page).getByRole("group", { name: "Prompts to research", exact: true });
     await expect(choices.getByRole("checkbox")).toHaveCount(14);
-    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(12);
-    await expect(choices.getByRole("checkbox").nth(12)).toBeDisabled();
+    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(14);
+    await expect(choices.getByRole("checkbox").nth(12)).toBeEnabled();
     await choices.getByRole("checkbox").first().uncheck();
-    await choices.getByRole("checkbox").nth(12).check();
-    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(12);
+    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(13);
+    await choices.getByRole("checkbox").first().check();
+    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(14);
     await expect(choices.getByRole("checkbox").nth(12)).toBeChecked();
     q.expectNoPageErrors();
 });
