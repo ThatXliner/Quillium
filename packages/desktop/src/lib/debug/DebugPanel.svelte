@@ -5,6 +5,7 @@
     Only available when import.meta.env.DEV is true.
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
 import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
 import { loadScenario } from "$lib/debug/loadScenario";
@@ -208,7 +209,7 @@ function handleKeydown(e: KeyboardEvent) {
         tabindex="-1"
     >
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-4 border-b border-black/10">
+        <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-black/10">
             <div class="flex items-center gap-2.5">
                 <span class="text-lg">🐛</span>
                 <span class="font-semibold text-black/80 text-sm">Scenarios</span>
@@ -222,7 +223,7 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <!-- Info bar -->
-        <div class="px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
+        <div class="shrink-0 px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
             Saves the scenario to disk and reloads the editor. <strong>Overwrites your current draft.</strong>
         </div>
 
@@ -491,5 +492,6 @@ function handleKeydown(e: KeyboardEvent) {
                 <span>DEV only — stripped from production builds</span>
             </div>
         </div>
+        <ModalResizeHandles />
     </div>
 </div>

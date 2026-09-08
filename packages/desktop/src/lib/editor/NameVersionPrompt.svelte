@@ -1,5 +1,6 @@
 <!-- NameVersionPrompt.svelte — A focused checkpoint prompt for the active editor. -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 
@@ -43,11 +44,11 @@ async function submit(event: SubmitEvent): Promise<void> {
 <dialog
     bind:this={dialog}
     aria-labelledby="name-version-title"
-    class="m-auto w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/40 bg-gray-200 p-6 text-black/80 shadow-xl backdrop:bg-black/25 backdrop:backdrop-blur-sm"
+    class="open:flex flex-col overflow-hidden m-auto w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/40 bg-gray-200 p-6 text-black/80 shadow-xl backdrop:bg-black/25 backdrop:backdrop-blur-sm"
     oncancel={(event) => { event.preventDefault(); if (!saving) onclose(); }}
     onkeydown={(event) => { event.stopPropagation(); }}
 >
-    <form onsubmit={submit} class="flex flex-col gap-4">
+    <form onsubmit={submit} class="min-h-0 overflow-y-auto flex flex-col gap-4">
         <h2 id="name-version-title" class="text-sm font-semibold">Name this version</h2>
         <label class="flex flex-col gap-2 text-xs">
             Version name
@@ -64,4 +65,5 @@ async function submit(event: SubmitEvent): Promise<void> {
             </button>
         </div>
     </form>
+    <ModalResizeHandles minHeight={160} />
 </dialog>

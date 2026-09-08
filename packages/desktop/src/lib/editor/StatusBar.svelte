@@ -18,6 +18,7 @@
         button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { initials } from "$lib/auth/avatarUtils";
 import {
     MAX_RECONNECT_ATTEMPTS,
@@ -220,7 +221,7 @@ $effect(() => {
                 </button>
             </div>
 
-            <div class="px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
+            <div class="min-h-0 overflow-y-auto px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
                 {#each exportItems as item}
                     <button
                         type="button"
@@ -236,6 +237,7 @@ $effect(() => {
                     </button>
                 {/each}
             </div>
+            <ModalResizeHandles />
         </div>
     </div>
 {/if}

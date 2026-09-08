@@ -308,11 +308,14 @@ Panel:
 
 #### Resizable Modals
 
-Content modals use the same right-edge, bottom-edge, and corner resize handles as
+Application modals, including export, confirmation, onboarding, and sprint dialogs,
+use the same right-edge, bottom-edge, and corner resize handles as
 sidebar panels. They stay centered while resizing, leave at least 16px of space
 from the viewport edge, and keep overflowing content scrollable. Arrow keys on a
 focused handle resize the modal; Home or a double-click restores its default size.
-Custom sizes last until the modal is unmounted.
+Custom sizes last until the modal is unmounted. The sidebar and modals share their
+handle component and pointer gesture. Contextual popovers and guided-tour callouts
+keep their existing anchored layout.
 
 #### Annotation Card
 

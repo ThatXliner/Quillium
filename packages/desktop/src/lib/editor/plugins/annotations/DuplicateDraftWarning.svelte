@@ -3,6 +3,7 @@
     revision version when the active version matches its predecessor.
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { tick } from "svelte";
 
 let {
@@ -46,7 +47,7 @@ function confirm(): void {
 
 <dialog
     bind:this={dialogEl}
-    class="duplicate-draft-warning m-auto w-[min(500px,calc(100vw-2rem))] rounded-2xl border
+    class="open:flex flex-col overflow-hidden duplicate-draft-warning m-auto w-[min(500px,calc(100vw-2rem))] rounded-2xl border
         border-purple-200/70 bg-[#fdfaff] p-0 text-black shadow-2xl"
     onclick={(event) => {
         if (event.target === dialogEl) cancel();
@@ -56,7 +57,7 @@ function confirm(): void {
         cancel();
     }}
 >
-    <div class="px-5 pt-5 pb-4">
+    <div class="min-h-0 overflow-y-auto px-5 pt-5 pb-4">
         <h2 class="text-[15px] font-semibold text-black/80">Create another draft?</h2>
         <p class="mt-2 text-[13px] leading-relaxed text-black/55">
             This draft is nearly identical to the last one. The text content matches once Markdown
@@ -87,7 +88,7 @@ function confirm(): void {
         </div>
     </div>
 
-    <div class="flex justify-end gap-2 border-t border-black/[0.07] bg-white/45 px-5 py-3">
+    <div class="shrink-0 flex justify-end gap-2 border-t border-black/[0.07] bg-white/45 px-5 py-3">
         <button
             class="rounded-lg px-3 py-1.5 text-[12px] font-medium text-black/55 transition-colors
                 hover:bg-black/5 hover:text-black/75"
@@ -100,6 +101,7 @@ function confirm(): void {
             onclick={confirm}
         >Create new draft</button>
     </div>
+    <ModalResizeHandles minHeight={220} />
 </dialog>
 
 <style>
