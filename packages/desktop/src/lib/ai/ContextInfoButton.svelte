@@ -3,7 +3,7 @@
 
     Stands in for the in-panel context summary card whenever that card isn't
     shown. The popover lists each context source from the packet so the writer
-    can see exactly what the AI will be shown.
+    can see the initial summary sources and what is available to read.
 
     `open` is bindable: the sidebar coordinates dismissal (click elsewhere in
     the sidebar, Escape before the sidebar itself closes, panel switches), so
@@ -12,7 +12,6 @@
 <script lang="ts">
 import { InfoIcon } from "lucide-svelte";
 import type { AiContextPacket } from "./context";
-import { contextScopeDetail } from "./context";
 
 let {
     packet,
@@ -27,7 +26,7 @@ let {
     open: boolean;
 } = $props();
 
-const label = $derived(`Next turn: ${targetLabel.toLowerCase()}. ${contextScopeDetail(packet)} Refreshed when you send.`);
+const label = $derived(`Next turn: ${targetLabel.toLowerCase()}. Changes are noted when you send. Passages and discussions can be read on demand.`);
 const sources = $derived(packet.sources ?? []);
 </script>
 
@@ -65,7 +64,7 @@ const sources = $derived(packet.sources ?? []);
                     Next turn: {targetLabel.toLowerCase()}
                 </p>
                 <p class="mt-0.5 text-[10px] text-black/45 leading-relaxed">
-                    {contextScopeDetail(packet)} Refreshed when you send. Draft passages and annotation discussions can be read on demand. Earlier responses describe the writing as it was then.
+                    An initial summary starts the conversation. Changes are noted when you send. Draft passages and annotation discussions can be read on demand. Earlier responses describe the writing as it was then.
                 </p>
                 <div class="mt-2.5 flex flex-col gap-1.5">
                     {#each sources as source (source.id)}

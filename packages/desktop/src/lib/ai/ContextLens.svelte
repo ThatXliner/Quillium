@@ -157,7 +157,7 @@ function sourceIcon(id: string) {
 
 <div class="p-3 border-b border-black/10 space-y-2.5">
     <p class="text-[10px] leading-snug text-black/50" data-next-turn-context>
-        Next turn: {contextTargetLabel.toLowerCase()}, refreshed when you send.
+        Next turn: {contextTargetLabel.toLowerCase()}. Changes are noted when you send.
         Draft passages and annotation discussions can be read on demand.
         Earlier responses describe the writing as it was then.
     </p>

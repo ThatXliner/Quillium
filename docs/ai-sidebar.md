@@ -300,7 +300,7 @@ before provider inference starts.
 ## Context Packets
 
 AI calls do not send an unbounded raw document. `buildAiContextPacket()` creates
-a deterministic, mode-specific packet with these possible sources:
+a deterministic, mode-specific initial summary with these possible sources:
 
 | Source | Behavior |
 |--------|----------|
@@ -334,11 +334,27 @@ When a selection is active, the draft portion is capped at 9,000 characters.
 Annotation context is separately capped at six items and approximately 4,800
 characters. These are character budgets, not provider token limits.
 
-The current context follows historical conversation and precedes the latest user
-message. Drafts, selections, annotations, and briefs are JSON-serialized and
-labeled as untrusted reference material. The context preview follows the focused
-editor, including nested revision versions, and labels the next turn as refreshed
-on send. Earlier responses describe the writing at the time of that response.
+A sidebar conversation receives one initial summary, anchored before the user
+turn that first captures context. Later turns receive a compact change notice
+only when captured writing, discussions, selection, focused version, or writer
+guidance changes. A notice identifies the current target and selection; draft
+text and discussions are fetched through the read tools. Changed writer guidance
+is included in its notice because the draft tools do not retrieve it; a prose
+edit does not resend unchanged guidance.
+
+The transport retains these model-only references by user message ID. Each
+request reconstructs them at their original positions alongside chat history;
+it does not append another copy of the initial summary. Normal stateless model
+requests still resend retained history. Reset or imported history without a
+known context reference gets a new initial summary. Retries compare against the
+preceding retained turn, and references for removed turns are discarded. This
+cache is local to the Chat transport, not a new conversation persistence system.
+
+Drafts, selections, annotations, and briefs are JSON-serialized and labeled as
+untrusted reference material. Initial summaries and change notices describe the
+writing at their anchored turn. The context preview follows the focused editor,
+including nested revision versions, and explains that changes are noted on send
+while passages and discussions can be read on demand.
 
 ### Continuity between Feedback and annotation discussions
 
@@ -347,7 +363,12 @@ retrieval snapshot synchronously before credential loading. Replies added after
 an earlier Feedback turn are included in the next snapshot. An older annotation
 with a new reply competes by reply time rather than its original creation ID.
 
-Automatic context remains small. Chat, Feedback, and Revise can search/list
+Snapshot capture stays local; it does not inject all captured content into the
+prompt. A content fingerprint ignores request IDs and capture times, so unchanged
+writing does not create a notice. It includes retained nested versions and full
+discussions, including material beyond the automatic summary budget.
+
+Chat, Feedback, and Revise can search/list
 annotation discussions, retrieve their complete contents in pages, and read
 omitted draft passages. Retrieval covers the current draft and its nested
 revision versions, including versions outside the current selection. It does
@@ -372,6 +393,15 @@ can accurately describe incomplete coverage. Lists return at most 20 previews;
 text reads return at most 12,000 characters per page. Capture is bounded to 512
 scopes and 20 nested levels, with omitted scope counts reported. The focused
 version remains available within that limit.
+
+Before starting a new sidebar turn, the SDK's `pruneMessages()` removes prior
+retrieval tool calls and results from the model input. Assistant prose and
+annotation-creation tool records remain; the visible UI history is unchanged.
+Fresh retrieval results remain available throughout the current tool loop.
+This uses the installed AI SDK's selective tool pruning and `stopWhen` /
+`prepareStep` controls rather than adding a separate loop implementation. See
+[SDK message pruning](https://ai-sdk.dev/docs/reference/ai-sdk-ui/prune-messages)
+and [tool loop control](https://ai-sdk.dev/docs/agents/loop-control).
 
 Retrieval tools execute locally through the AI SDK, with bounded continuation
 steps so the model can use their results in its answer. The eighth step disables

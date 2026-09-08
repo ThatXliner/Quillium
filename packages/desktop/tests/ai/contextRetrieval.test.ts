@@ -1,3 +1,4 @@
+import { webcrypto } from "node:crypto";
 import { captureContextRetrieval } from "$lib/ai/contextRetrieval";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import type {
@@ -7,11 +8,14 @@ import type {
 } from "$lib/editor/plugins/annotations/models";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const views: EditorView[] = [];
 
+beforeEach(() => vi.stubGlobal("crypto", webcrypto));
+
 afterEach(() => {
+    vi.unstubAllGlobals();
     for (const view of views.splice(0)) view.destroy();
 });
 
@@ -315,4 +319,34 @@ describe("captureContextRetrieval", () => {
             reason: "context-switched",
         });
     });
+});
+
+it("fingerprints full nested content and discussions without request identity noise", async () => {
+    const capture = (reply: string, nestedText: string, draftId = "draft") =>
+        captureContextRetrieval({
+            rootView: createView("Root text", {
+                1: revision(
+                    1,
+                    [version("v1", nestedText, { 9: comment(9, reply, nestedText.length) })],
+                    "v1",
+                    9,
+                ),
+            }),
+            documentId: "doc",
+            tabId: "tab",
+            draftId,
+        });
+    const original = capture("Discuss this", "Nested text");
+    const unchanged = capture("Discuss this", "Nested text");
+    expect(original.snapshotId).not.toBe(unchanged.snapshotId);
+    expect(await original.contentFingerprint()).toBe(await unchanged.contentFingerprint());
+    expect(await original.contentFingerprint()).not.toBe(
+        await capture("Concern withdrawn", "Nested text").contentFingerprint(),
+    );
+    expect(await original.contentFingerprint()).not.toBe(
+        await capture("Discuss this", "Edited alternative").contentFingerprint(),
+    );
+    expect(await original.contentFingerprint()).not.toBe(
+        await capture("Discuss this", "Nested text", "other-draft").contentFingerprint(),
+    );
 });

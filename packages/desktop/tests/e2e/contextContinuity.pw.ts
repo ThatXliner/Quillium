@@ -65,7 +65,8 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
             phase = "reconsider";
             output = responseStream("thread", withdrawal);
         } else if (phase === "reconsider") {
-            expect(JSON.stringify(body)).toContain("The harvest doubled in 2025.");
+            expect(JSON.stringify(body)).not.toContain("The harvest doubled in 2025.");
+            expect(JSON.stringify(body)).toContain("Editor context changed");
             expect(JSON.stringify(body.tools)).toContain("readAnnotationThread");
             phase = "list";
             output = responseStream("list", undefined, {
@@ -84,10 +85,16 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
                 name: "readAnnotationThread",
                 input: { threadReference: entry.threadReference, offset: 0 },
             });
-        } else {
+        } else if (phase === "read") {
             const items = body.input as Array<{ type?: string; output?: string }>;
             const result = items.filter((item) => item.type === "function_call_output").at(-1);
             expect(result?.output).toContain("I withdraw the evidence concern");
+            phase = "draft";
+            output = responseStream("draft", undefined, { name: "readDraftContext", input: {} });
+        } else {
+            const items = body.input as Array<{ type?: string; output?: string }>;
+            const result = items.filter((item) => item.type === "function_call_output").at(-1);
+            expect(result?.output).toContain("The harvest doubled in 2025.");
             phase = "done";
             output = responseStream(
                 "reassessment",
@@ -100,7 +107,7 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
     await page.locator("#ai-tab-feedback").click();
     await expect(feedback(page)).toBeVisible();
     await expect(feedback(page).locator("[data-next-turn-context]")).toContainText(
-        "refreshed when you send",
+        "Changes are noted when you send",
     );
     await sendFeedback(page, "Review the evidence.");
     await expect(
@@ -140,7 +147,7 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
         { timeout: 15000 },
     );
     expect(phase).toBe("done");
-    expect(requests).toHaveLength(5);
+    expect(requests).toHaveLength(6);
     // Reading context neither adds a new comment nor changes prose.
     await expect(q.editor).toHaveText(`${draft} The harvest doubled in 2025.`);
     await expect(q.annotationCards).toHaveCount(1);
@@ -275,5 +282,61 @@ test("a retrieval roundtrip rejects a nested-editor switch instead of reading a 
     if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-feedback").click();
     await expect(feedback(page)).toContainText("The focused editor changed during this turn");
     await expect(q.inlineEditor).toHaveText("A revision passage.");
+    q.expectNoPageErrors();
+});
+
+test("unchanged turns keep one initial summary and later turns omit old retrieved passages", async ({
+    page,
+}) => {
+    const draft = "The orchard supplied our neighborhood.";
+    const q = new QuilliumPage(page, { apiKey: "fixture-key", initialDoc: draft });
+    q.capturePageErrors();
+    let requestCount = 0;
+    await page.route("https://api.openai.com/**", async (route) => {
+        requestCount++;
+        const body = route.request().postDataJSON();
+        const input = JSON.stringify(body.input);
+        expect(input.match(/Initial editor context/g)).toHaveLength(1);
+        const results = body.input.filter(
+            (item: { type?: string }) => item.type === "function_call_output",
+        );
+        if (requestCount <= 2) {
+            expect(input).not.toContain("Editor context changed");
+            expect(input.match(/The orchard supplied our neighborhood\./g)).toHaveLength(1);
+        } else {
+            expect(input.match(/Editor context changed/g)).toHaveLength(1);
+        }
+        let output: string;
+        if (requestCount === 3) {
+            expect(input).not.toContain("FRESH_CONTEXT_MARKER");
+            output = responseStream("fresh-read", undefined, {
+                name: "readDraftContext",
+                input: {},
+            });
+        } else if (requestCount === 4) {
+            expect(results).toHaveLength(1);
+            expect(results[0].output).toContain("FRESH_CONTEXT_MARKER");
+            output = responseStream("fresh-answer", "I have checked the updated passage.");
+        } else {
+            expect(results).toHaveLength(0);
+            expect(input).not.toContain("FRESH_CONTEXT_MARKER");
+            output = responseStream(`answer-${requestCount}`, `Response ${requestCount}.`);
+        }
+        await route.fulfill({ contentType: "text/event-stream", body: output });
+    });
+    await q.init();
+    await sendFeedback(page, "Discuss the opening.");
+    await expect(feedback(page)).toContainText("Response 1.");
+    await sendFeedback(page, "Explain further.");
+    await expect(feedback(page)).toContainText("Response 2.");
+    await q.editor.click();
+    await q.editor.press("ControlOrMeta+End");
+    await page.keyboard.type(" FRESH_CONTEXT_MARKER");
+    await sendFeedback(page, "Read the updated passage.");
+    await expect(feedback(page)).toContainText("I have checked the updated passage.");
+    await sendFeedback(page, "Thanks. What should I consider next?");
+    await expect(feedback(page)).toContainText("Response 5.");
+    expect(requestCount).toBe(5);
+    await expect(q.editor).toHaveText(`${draft} FRESH_CONTEXT_MARKER`);
     q.expectNoPageErrors();
 });

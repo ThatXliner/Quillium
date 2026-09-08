@@ -63,6 +63,7 @@ import {
     streamFeedback,
     streamRevise,
 } from "./clientStreams";
+import { createContextHistory } from "./contextHistory";
 import { type ContextRetrievalSnapshot, captureContextRetrieval } from "./contextRetrieval";
 import {
     type EditorialActionPayload,
@@ -484,6 +485,7 @@ function makeTransport(
     streamFn: StreamFn,
     captureTarget: (target: EditorialTargetSnapshot, turn: EditorialTurnAtSend) => void,
 ): ChatTransport<UIMessage> {
+    const contextHistory = createContextHistory();
     return {
         async sendMessages({
             messages,
@@ -614,6 +616,7 @@ function makeTransport(
                 exactWordCount: turn.exactWordCount,
                 annotationContext: annotationContextAtSend,
                 contextRetrieval: contextRetrievalAtSend,
+                contextHistory,
                 abortSignal,
             });
         },
