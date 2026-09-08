@@ -438,10 +438,15 @@ export function useAiChatEffects(
         status: string;
         stop: () => void;
         messages: UIMessage[];
+        conversationController?: {
+            subscribe: () => () => void;
+            dispose: () => Promise<void>;
+        };
     },
     mode: AiConversationMode | "dictionary",
 ) {
     let processingTask: symbol | null = null;
+    const conversationController = chat.conversationController;
 
     $effect(() => {
         const active = chat.status === "submitted" || chat.status === "streaming";
@@ -462,6 +467,8 @@ export function useAiChatEffects(
     });
 
     $effect(() => {
+        if (conversationController) return conversationController.subscribe();
+
         let generation = 0;
         const scope = derived([currentDocumentId, currentDraftId], ([$documentId, $draftId]) => ({
             documentId: $documentId,
@@ -495,6 +502,15 @@ export function useAiChatEffects(
                     });
             }),
         );
+    });
+
+    $effect(() => {
+        if (!conversationController) return;
+        return () => {
+            void conversationController.dispose().catch((error) => {
+                console.error("[aiSettings] failed to dispose conversation controller", error);
+            });
+        };
     });
 }
 

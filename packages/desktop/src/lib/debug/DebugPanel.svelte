@@ -5,6 +5,7 @@
     Only available when import.meta.env.DEV is true.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
 import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
 import { loadScenario } from "$lib/debug/loadScenario";
@@ -188,6 +189,8 @@ function triggerAuthOffline() {
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") close();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -208,21 +211,24 @@ function handleKeydown(e: KeyboardEvent) {
         tabindex="-1"
     >
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-4 border-b border-black/10">
+        <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-black/10">
             <div class="flex items-center gap-2.5">
                 <span class="text-lg">🐛</span>
                 <span class="font-semibold text-black/80 text-sm">Scenarios</span>
                 <span class="text-[10px] font-mono bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">DEV</span>
             </div>
-            <button
-                onclick={close}
-                class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
-                aria-label="Close debug panel"
-            >✕</button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={close}
+                    class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
+                    aria-label="Close debug panel"
+                >✕</button>
+            </div>
         </div>
 
         <!-- Info bar -->
-        <div class="px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
+        <div class="shrink-0 px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
             Saves the scenario to disk and reloads the editor. <strong>Overwrites your current draft.</strong>
         </div>
 
@@ -491,5 +497,6 @@ function handleKeydown(e: KeyboardEvent) {
                 <span>DEV only — stripped from production builds</span>
             </div>
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

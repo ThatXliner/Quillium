@@ -665,6 +665,8 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
         (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)
             ?.thread ?? [];
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 {#snippet annotationPanelContent()}
@@ -750,8 +752,8 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onkeydowncapture={onDialogKeydownCapture}
   onkeydown={onDialogKeydown}
 >
-  <AnnotationModalFrame variant="revision">
-    <AnnotationModalHeader
+  <AnnotationModalFrame bind:restoreSize variant="revision">
+    <AnnotationModalHeader {restoreSize}
       accent="revision"
       leading={revisionHeaderLeading}
       actions={revisionHeaderActions}

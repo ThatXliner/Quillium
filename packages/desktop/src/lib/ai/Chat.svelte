@@ -18,6 +18,9 @@
     stores (selectedText, documentContent), posthog.
 -->
 <script lang="ts">
+import { readable } from "svelte/store";
+import ToolActivity from "./ToolActivity.svelte";
+import { isToolUIPart } from "ai";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { aiErrorMessage } from "$lib/ai/errorMessage";
 import { aiSettings } from "$lib/ai/settings.svelte";
@@ -61,6 +64,9 @@ import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
  */
 import { documentContent, selectedText } from "$lib/stores";
 import ContextLens from "./ContextLens.svelte";
+import DiscussionModal from "./DiscussionModal.svelte";
+import ConversationHistory from "./ConversationHistory.svelte";
+import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
 
@@ -68,19 +74,21 @@ import type { ContextAction } from "./context";
 let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
-const { chat, clearChat, sendMessage } = createAiChat({ mode: "chat" });
-let isBusy = $derived(chat.status === "submitted" || chat.status === "streaming");
+let reviewing = $state(false);
+let reviewOpener = $state<HTMLElement>();
+
+const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "chat" });
+let isBusy = $derived(
+    chat.status === "submitted" ||
+        chat.status === "streaming" ||
+        (conversations ? !conversations.canSend : false),
+);
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || !!chat.error,
 );
 let showStarterSuggestions = $derived(!hasConversationActivity);
-let showConversationControls = $derived(hasConversationActivity);
-
-function clearConversation() {
-    clearChat();
-}
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
@@ -144,17 +152,28 @@ async function handleSubmit(event: Event) {
 </script>
 
 <div class="flex flex-col h-full">
-    <!-- Clear chat row -->
-    {#if showConversationControls}
-        <div class="flex justify-end px-3 pt-2 shrink-0">
-            <button
-                onclick={clearConversation}
-                title="Start a fresh conversation (clears all messages)"
-                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
-            >New chat</button>
-        </div>
+    {#if conversations}
+        <ConversationHistory {conversations} mode="chat" onopen={(opener) => { reviewOpener = opener; reviewing = true; }} />
     {/if}
 
+    {#if reviewing}
+        <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            {@render transcript()}
+        </DiscussionModal>
+    {:else}
+        {@render transcript()}
+    {/if}
+</div>
+
+{#snippet transcript()}
+    {#if conversations?.current?.archived}
+        <p class="px-4 py-2 text-xs text-black/60">Archived. Restore this discussion from History to continue.</p>
+    {:else if conversations?.current && conversations.current.draftId !== $currentDraftId}
+        <p class="px-4 py-2 text-xs text-black/60">Open the source draft to continue this discussion.</p>
+    {/if}
+    {#if conversations?.current?.sourceConversationId}
+        <button class="px-4 py-2 text-left text-xs text-black/60 underline" onclick={() => conversations?.open(conversations.current!.sourceConversationId!)}>Open origin conversation</button>
+    {/if}
     {#if showStarterSuggestions}
         <ContextLens
             mode="chat"
@@ -166,6 +185,7 @@ async function handleSubmit(event: Event) {
     <!-- Chat messages -->
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message (message.id)}
+            <div class="space-y-0.5" data-conversation-message={message.id}>
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
                     {@const renderPromise = renderMarkdown(part.text)}
@@ -199,8 +219,14 @@ async function handleSubmit(event: Event) {
                             </div>
                         </div>
                     </div>
+                {:else if isToolUIPart(part)}
+                    <ToolActivity {part} outcomes={$toolApplications} metadata={message.metadata} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
+            {#if conversations}
+                <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading} />
+            {/if}
+            </div>
         {/each}
 
         {#if chat.status === "streaming"}
@@ -266,4 +292,4 @@ async function handleSubmit(event: Event) {
             </button>
         </form>
     </div>
-</div>
+{/snippet}

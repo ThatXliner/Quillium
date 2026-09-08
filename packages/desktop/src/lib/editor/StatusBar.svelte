@@ -18,6 +18,7 @@
         button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { initials } from "$lib/auth/avatarUtils";
 import {
     MAX_RECONNECT_ATTEMPTS,
@@ -168,6 +169,8 @@ $effect(() => {
         titleLinger = false;
     }
 });
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleExportKeydown} />
@@ -210,17 +213,20 @@ $effect(() => {
                     <h3 class="text-xl font-bold text-black/85 leading-tight">Export document</h3>
                     <p class="text-xs text-black/35 mt-1">Choose a format to save your document</p>
                 </div>
-                <button
-                    type="button"
-                    onclick={closeExport}
-                    aria-label="Close"
-                    class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
-                >
-                    <X size={16} />
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                    <RestoreSizeButton {restoreSize} />
+                    <button
+                        type="button"
+                        onclick={closeExport}
+                        aria-label="Close"
+                        class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
             </div>
 
-            <div class="px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
+            <div class="min-h-0 overflow-y-auto px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
                 {#each exportItems as item}
                     <button
                         type="button"
@@ -236,6 +242,7 @@ $effect(() => {
                     </button>
                 {/each}
             </div>
+            <ModalResizeHandles bind:restoreSize />
         </div>
     </div>
 {/if}

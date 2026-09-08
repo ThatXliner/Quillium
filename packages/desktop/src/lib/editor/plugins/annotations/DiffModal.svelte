@@ -151,6 +151,8 @@ $effect(() => {
         dialogEl.close();
     }
 });
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 {#snippet suggestionHeaderLeading()}
@@ -191,8 +193,8 @@ $effect(() => {
     onclick={(e) => { if (e.target === dialogEl) close(); }}
     oncancel={(e) => { e.preventDefault(); close(); }}
 >
-    <AnnotationModalFrame variant="suggestion">
-        <AnnotationModalHeader
+    <AnnotationModalFrame bind:restoreSize variant="suggestion">
+        <AnnotationModalHeader {restoreSize}
             accent="suggestion"
             leading={suggestionHeaderLeading}
             actions={suggestionHeaderActions}

@@ -14,6 +14,7 @@
       oncancel     — dismiss without deleting
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { GitBranchIcon, Trash2Icon } from "lucide-svelte";
 
 const {
@@ -32,6 +33,8 @@ const {
 
 // Total drafts a cascade removes (the draft itself plus its descendants).
 const cascadeCount = $derived(descendants + 1);
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window
@@ -61,10 +64,13 @@ const cascadeCount = $derived(descendants + 1);
         class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-black/[0.06]"
         role="document"
     >
-        <div class="px-7 pt-7 pb-5">
-            <h3 class="text-xl font-bold text-black/85 leading-tight">
-                Delete “{label}”?
-            </h3>
+        <div class="shrink-0 px-7 pt-7 pb-5">
+            <div class="flex min-h-[26px] items-center justify-between gap-2">
+                <h3 class="text-xl font-bold text-black/85 leading-tight">
+                    Delete “{label}”?
+                </h3>
+                <RestoreSizeButton {restoreSize} />
+            </div>
             <p class="text-sm text-black/50 mt-2 leading-relaxed">
                 This draft has {descendants}
                 {descendants === 1 ? "draft" : "drafts"} under it. Keep them, or delete
@@ -72,7 +78,7 @@ const cascadeCount = $derived(descendants + 1);
             </p>
         </div>
 
-        <div class="flex flex-col gap-2 px-7 pb-7">
+        <div class="min-h-0 overflow-y-auto flex flex-col gap-2 px-7 pb-7">
             <button
                 onclick={onorphan}
                 class="flex items-start gap-3 w-full text-left rounded-xl border border-black/[0.08] px-4 py-3 hover:bg-black/[0.03] hover:border-black/15 transition-colors"
@@ -108,5 +114,6 @@ const cascadeCount = $derived(descendants + 1);
                 Cancel
             </button>
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

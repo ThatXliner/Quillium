@@ -50,6 +50,7 @@ import {
     editorView,
     versionGroups,
 } from "$lib/stores";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import {
     type ReadonlyShareScope,
     includesReadonlyShareTab,
@@ -371,6 +372,8 @@ async function toggleReadonlyShare() {
     }
     await publisher.disable(shareId);
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -439,30 +442,33 @@ async function toggleReadonlyShare() {
             class="m-0 flex h-screen max-h-screen w-screen max-w-screen items-center justify-center border-none bg-transparent p-0 [&::backdrop]:bg-black/20 [&::backdrop]:backdrop-blur-[5px]"
             onclick={handleBackdropClick}
         >
-            <div class="w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
-                <header class="flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
+            <div class="flex flex-col w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
+                <header class="shrink-0 flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
                     <div>
                         <div class="flex items-center gap-2.5">
                             <h2 class="m-0 text-2xl/[1.1] font-[650] text-black/80">Share your document</h2>
                             <span class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-amber-600">Beta</span>
                         </div>
                     </div>
-                    <button
-                        onclick={closeModal}
-                        aria-label="Close"
-                        class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-black/30 transition-[color,background] duration-150 hover:bg-black/5 hover:text-black/55"
-                    >
-                        <span class="font-mono text-[9px] text-black/20">esc</span>
-                        <X size={15} />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <RestoreSizeButton {restoreSize} />
+                        <button
+                            onclick={closeModal}
+                            aria-label="Close"
+                            class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-black/30 transition-[color,background] duration-150 hover:bg-black/5 hover:text-black/55"
+                        >
+                            <span class="font-mono text-[9px] text-black/20">esc</span>
+                            <X size={15} />
+                        </button>
+                    </div>
                 </header>
 
-                <p class="m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
+                <p class="shrink-0 m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
                     Because writing is better together, always.
                 </p>
 
                 <div
-                    class="relative mx-6 flex gap-0.5 rounded-full bg-black/[0.055] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]"
+                    class="shrink-0 relative mx-6 flex gap-0.5 rounded-full bg-black/[0.055] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]"
                     bind:this={tabTrackEl}
                     style={tabPillStyle}
                     role="tablist"
@@ -490,7 +496,7 @@ async function toggleReadonlyShare() {
                     </button>
                 </div>
 
-                <section class="m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
+                <section class="min-h-0 overflow-y-auto m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
                     {#if activeTab === "preview"}
                         <ShareModalPreviewTab
                             {authenticated}
@@ -522,6 +528,7 @@ async function toggleReadonlyShare() {
                         />
                     {/if}
                 </section>
+                <ModalResizeHandles bind:restoreSize />
             </div>
         </dialog>
     {/if}

@@ -10,6 +10,7 @@
       - onclose: () => void
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { X } from "lucide-svelte";
 
 const { onclose }: { onclose: () => void } = $props();
@@ -48,6 +49,8 @@ const RECOMMENDATIONS: Recommendation[] = [
         desc: "Choose Sol when quality matters most, or Luna for fast, economical everyday writing work. Quillium also accepts OpenAI-compatible local endpoints, making this the easiest route to Ollama, LM Studio, and other model hosts.",
     },
 ];
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === "Escape") { e.preventDefault(); onclose(); } }} />
@@ -62,14 +65,17 @@ const RECOMMENDATIONS: Recommendation[] = [
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
             <h2 class="text-[13px] font-semibold text-black/60">Which model should I use?</h2>
-            <button
-                onclick={onclose}
-                aria-label="Close model guide"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={onclose}
+                    aria-label="Close model guide"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->
@@ -107,6 +113,7 @@ const RECOMMENDATIONS: Recommendation[] = [
                 </p>
             </div>
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </dialog>
 

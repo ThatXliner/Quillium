@@ -36,8 +36,8 @@ import {
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
-import { pointerDrag } from "$lib/ui/pointerDrag";
-import { Minimize2Icon, SquareIcon, XIcon } from "lucide-svelte";
+import { ResizeHandles, RestoreSizeButton } from "@quillium/share";
+import { SquareIcon, XIcon } from "lucide-svelte";
 import { onDestroy, tick, untrack } from "svelte";
 import { derived, get } from "svelte/store";
 
@@ -64,8 +64,12 @@ let action = $state<string | null>(null);
 const panels = $derived(
     createSidebarPanels(contributions).filter(
         (panel) =>
-            !disabledPanelIds.includes(panel.id) && (appSettings.aiEnabled || !panel.requiresAi) &&
-            (panel.id !== "college" || (collegeActivation.documentId === $currentDocumentId && collegeActivation.enabled && !collegeActivation.loading)),
+            !disabledPanelIds.includes(panel.id) &&
+            (appSettings.aiEnabled || !panel.requiresAi) &&
+            (panel.id !== "college" ||
+                (collegeActivation.documentId === $currentDocumentId &&
+                    collegeActivation.enabled &&
+                    !collegeActivation.loading)),
     ),
 );
 const actions = $derived(panels.filter((panel) => panel.placement === "main"));
@@ -133,7 +137,9 @@ const collegeCapabilities = $derived.by(() => {
     $currentDraftLabel;
     return session ? createCollegeCapabilities(session, selectAction) : null;
 });
-$effect(() => { collegeState.hostEnabled = panels.some((panel) => panel.id === "college"); });
+$effect(() => {
+    collegeState.hostEnabled = panels.some((panel) => panel.id === "college");
+});
 
 const expanded = $derived(action !== null);
 const DEFAULT_WIDTH = 320;
@@ -298,8 +304,6 @@ function navigateIcons(event: KeyboardEvent): void {
 }
 
 function handleClickOutside(e: MouseEvent) {
-    // The click that ends a drag-resize must not collapse the panel.
-    if (resize.consumeJustResized()) return;
     const target = e.target as Node;
     if (
         expanded &&
@@ -408,6 +412,9 @@ function handleSidebarClick(e: MouseEvent) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+    // A modal owns keyboard interaction until it closes. Switching the sidebar
+    // beneath it can leave a hidden dialog holding focus.
+    if (document.querySelector("dialog[open]")) return;
     // Escape closes the context popover first, before the sidebar itself.
     if (e.key === "Escape" && showContextPopover) {
         showContextPopover = false;
@@ -451,7 +458,7 @@ function handleKeydown(e: KeyboardEvent) {
      + box-shadow squares the shadow at the corners; splitting avoids it while still
      clipping the blur. The .ai-processing animation targets box-shadow, so it stays on
      the outer layer alongside the radius. Resize handles and the context popover live
-     inside the inner layer so its overflow-hidden still clips their intentional overhang. -->
+     inside the inner layer, which clips them to the rounded panel surface. -->
 <div
   id="ai-sidebar"
   bind:this={container}
@@ -562,16 +569,10 @@ function handleKeydown(e: KeyboardEvent) {
       <span class="flex-1 text-xs font-semibold text-black/50 truncate">
         {activePanel?.title ?? ""}
       </span>
-      {#if isCustomSize}
-        <button
-          onclick={() => resize.reset()}
-          aria-label="Reset to default size"
-          title="Reset size"
-          class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
-        >
-          <Minimize2Icon size={14} />
-        </button>
-      {/if}
+      <RestoreSizeButton
+        restoreSize={isCustomSize ? () => resize.reset() : undefined}
+        label="Reset to default size"
+      />
       {#if showHeaderContextInfo && headerContextPacket}
         <ContextInfoButton
           packet={headerContextPacket}
@@ -625,26 +626,13 @@ function handleKeydown(e: KeyboardEvent) {
   </div>
 
   {#if expanded}
-    <div
-      role="separator"
-      aria-label="Resize width"
-      aria-orientation="vertical"
-      class="resize-handle resize-handle-right"
-      use:pointerDrag={resize.dragOptions("right")}
-    ></div>
-    <div
-      role="separator"
-      aria-label="Resize height"
-      aria-orientation="horizontal"
-      class="resize-handle resize-handle-bottom"
-      use:pointerDrag={resize.dragOptions("bottom")}
-    ></div>
-    <div
-      role="separator"
-      aria-label="Resize panel"
-      class="resize-handle resize-handle-corner"
-      use:pointerDrag={resize.dragOptions("corner")}
-    ></div>
+    <ResizeHandles
+      label="panel"
+      resizing={resize.isResizing}
+      dragOptions={(handle) => resize.dragOptions(handle)}
+      onResizeBy={(handle, dx, dy) => resize.resizeBy(handle, dx, dy)}
+      onReset={() => resize.reset()}
+    />
   {/if}
   </div>
 </div>
@@ -705,99 +693,6 @@ function handleKeydown(e: KeyboardEvent) {
   }
   div[style*="scrollbar-width"]::-webkit-scrollbar {
     display: none;
-  }
-
-  .resize-handle {
-    position: absolute;
-    z-index: 10;
-    /* Prevent the browser from treating a drag on the handle as a scroll
-           gesture on touch devices, so pointer drags resize the panel. */
-    touch-action: none;
-    /*background: transparent;
-        border: 0;
-        padding: 0;*/
-  }
-
-  .resize-handle-right {
-    top: 14px;
-    bottom: 14px;
-    right: -2px;
-    width: 10px;
-    cursor: ew-resize;
-  }
-
-  .resize-handle-bottom {
-    left: 14px;
-    right: 14px;
-    bottom: -2px;
-    height: 10px;
-    cursor: ns-resize;
-  }
-
-  .resize-handle-corner {
-    right: 0;
-    bottom: 0;
-    width: 14px;
-    height: 14px;
-    cursor: nwse-resize;
-  }
-
-  .resize-handle-right::after {
-    content: "";
-    position: absolute;
-    top: 25%;
-    bottom: 25%;
-    right: 4px;
-    width: 2px;
-    border-radius: 9999px;
-    background-color: rgba(0, 0, 0, 0.08);
-    opacity: 0;
-    transition:
-      background-color 200ms ease,
-      opacity 200ms ease;
-  }
-
-  .resize-handle-right:hover::after {
-    background-color: rgba(0, 0, 0, 0.18);
-    opacity: 1;
-  }
-
-  .resize-handle-bottom::after {
-    content: "";
-    position: absolute;
-    left: 25%;
-    right: 25%;
-    bottom: 4px;
-    height: 2px;
-    border-radius: 9999px;
-    background-color: rgba(0, 0, 0, 0.08);
-    opacity: 0;
-    transition:
-      background-color 200ms ease,
-      opacity 200ms ease;
-  }
-
-  .resize-handle-bottom:hover::after {
-    background-color: rgba(0, 0, 0, 0.18);
-    opacity: 1;
-  }
-
-  .resize-handle-corner::after {
-    content: "";
-    position: absolute;
-    right: 3px;
-    bottom: 3px;
-    width: 5px;
-    height: 5px;
-    border-right: 2px solid rgba(0, 0, 0, 0.2);
-    border-bottom: 2px solid rgba(0, 0, 0, 0.2);
-    border-radius: 1px;
-    opacity: 0;
-    transition: opacity 200ms ease;
-  }
-
-  .resize-handle-corner:hover::after {
-    opacity: 1;
   }
 
   /* AI processing glow — reads aiProcessing.active from settings.svelte.ts.

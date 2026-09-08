@@ -55,6 +55,21 @@ export type MockDraft = {
     deletedAt: number | null;
 };
 
+export type MockConversation = {
+    id: string;
+    documentId: string;
+    draftId: string;
+    draftLabel: string;
+    mode: "chat" | "feedback" | "revise";
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+    archived: boolean;
+    messagesJson: string;
+    sourceConversationId: string | null;
+    sourceMessageId: string | null;
+};
+
 export type TauriMockOptions = {
     /** Return value for `get_api_key`. null = no key configured. */
     apiKey: string | null;
@@ -83,6 +98,8 @@ export type TauriMockOptions = {
     tabs: MockTab[];
     /** Full draft roster returned by cmd_list_document_structure. */
     drafts: MockDraft[];
+    /** Pre-seeded AI conversation rows returned by conversation history commands. */
+    conversations: MockConversation[];
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
@@ -100,6 +117,7 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     docEvents: [],
     tabs: [],
     drafts: [],
+    conversations: [],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -126,6 +144,18 @@ export class QuilliumPage {
     }
     get aiSidebar(): Locator {
         return this.page.locator("#ai-sidebar");
+    }
+    get chatPanel(): Locator {
+        return this.page.locator("#ai-sidebar [data-panel-id='chat']");
+    }
+    get chatInput(): Locator {
+        return this.chatPanel.locator('input[name="message"]');
+    }
+    get conversationHistory(): Locator {
+        return this.page.getByRole("list", { name: "Conversation history" });
+    }
+    get conversationRows(): Locator {
+        return this.conversationHistory.locator("li");
     }
     get annotationCards(): Locator {
         return this.page.locator(".annotation-card");
@@ -162,6 +192,7 @@ export class QuilliumPage {
                 docEvents: MockDocEvent[];
                 tabs: MockTab[];
                 drafts: MockDraft[];
+                conversations: MockConversation[];
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
@@ -202,6 +233,20 @@ export class QuilliumPage {
                     locked: boolean;
                     deletedAt: number | null;
                 };
+                type MockConversation = {
+                    id: string;
+                    documentId: string;
+                    draftId: string;
+                    draftLabel: string;
+                    mode: "chat" | "feedback" | "revise";
+                    title: string;
+                    createdAt: number;
+                    updatedAt: number;
+                    archived: boolean;
+                    messagesJson: string;
+                    sourceConversationId: string | null;
+                    sourceMessageId: string | null;
+                };
                 const defaultTabs: MockTab[] = [
                     {
                         id: "tab-test-1",
@@ -230,6 +275,7 @@ export class QuilliumPage {
                 const persistedTabsKey = "mock-workspace-tabs";
                 const persistedDraftsKey = "mock-workspace-drafts";
                 const persistedSnapshotsKey = "mock-workspace-snapshots";
+                const persistedConversationsKey = "mock-ai-conversations";
                 function readPersistedRows<T>(key: string, fallback: T[]): T[] {
                     const raw = localStorage.getItem(key);
                     if (!raw) return fallback;
@@ -265,6 +311,44 @@ export class QuilliumPage {
                 if (payload.snapshots.length === 0) {
                     payload.snapshots = readPersistedRows(persistedSnapshotsKey, []);
                 }
+                const seededConversations = payload.conversations.map((conversation) => ({
+                    ...conversation,
+                    sourceConversationId: conversation.sourceConversationId ?? null,
+                    sourceMessageId: conversation.sourceMessageId ?? null,
+                }));
+                const persistedConversations = localStorage.getItem(persistedConversationsKey);
+                const conversations: MockConversation[] = persistedConversations
+                    ? readPersistedRows(persistedConversationsKey, [])
+                    : seededConversations;
+                if (!persistedConversations && conversations.length > 0) {
+                    localStorage.setItem(persistedConversationsKey, JSON.stringify(conversations));
+                }
+                const persistConversations = () => {
+                    localStorage.setItem(persistedConversationsKey, JSON.stringify(conversations));
+                };
+                const validateConversationMessages = (messagesJson: string): void => {
+                    let messages: unknown;
+                    try {
+                        messages = JSON.parse(messagesJson);
+                    } catch {
+                        throw new Error("AI conversation messages must be valid JSON");
+                    }
+                    if (!Array.isArray(messages)) {
+                        throw new Error("AI conversation messages must be a JSON array");
+                    }
+                };
+                const requireConversation = (id: string): MockConversation => {
+                    const conversation = conversations.find((item) => item.id === id);
+                    if (!conversation) throw new Error(`conversation ${id} not found`);
+                    return conversation;
+                };
+                const validateConversationTitle = (title: string): void => {
+                    if (!title.trim() || [...title].length > 200) {
+                        throw new Error(
+                            "conversation title must be non-empty and at most 200 characters",
+                        );
+                    }
+                };
                 const nextIndex = (ids: string[], prefix: string) =>
                     Math.max(
                         1,
@@ -287,6 +371,7 @@ export class QuilliumPage {
 
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
                     invokeCalls,
+                    conversations,
                     emitEvent: (event: string, payload: unknown) => {
                         const callbackId = eventHandlers.get(event);
                         if (callbackId === undefined) return false;
@@ -812,6 +897,109 @@ export class QuilliumPage {
                             else localStorage.setItem(key, a.decisionsJson);
                             return null;
                         }
+
+                        // AI conversation history (#436). The browser harness
+                        // keeps rows in localStorage so lifecycle actions and
+                        // reloads exercise the same persistence boundary as
+                        // the native commands without requiring SQLite.
+                        if (cmd === "cmd_list_ai_conversations") {
+                            const a = args as { documentId: string };
+                            return conversations.filter(
+                                (conversation) => conversation.documentId === a.documentId,
+                            );
+                        }
+                        if (cmd === "cmd_get_ai_conversation") {
+                            const a = args as { id: string };
+                            return (
+                                conversations.find((conversation) => conversation.id === a.id) ??
+                                null
+                            );
+                        }
+                        if (cmd === "cmd_create_ai_conversation") {
+                            const a = args as {
+                                id: string;
+                                documentId: string;
+                                draftId: string;
+                                mode: MockConversation["mode"];
+                                title: string;
+                                messagesJson: string;
+                                sourceConversationId?: string;
+                                sourceMessageId?: string;
+                            };
+                            if (!a.id.trim()) throw new Error("conversation id must not be empty");
+                            if (conversations.some((conversation) => conversation.id === a.id)) {
+                                throw new Error(`conversation ${a.id} already exists`);
+                            }
+                            const draft = drafts.find(
+                                (candidate) =>
+                                    candidate.id === a.draftId &&
+                                    candidate.documentId === a.documentId,
+                            );
+                            if (!draft) {
+                                throw new Error(
+                                    `draft ${a.draftId} does not belong to document ${a.documentId}`,
+                                );
+                            }
+                            if (
+                                !(a.mode === "chat" || a.mode === "feedback" || a.mode === "revise")
+                            ) {
+                                throw new Error(`unsupported AI conversation mode: ${a.mode}`);
+                            }
+                            validateConversationTitle(a.title);
+                            validateConversationMessages(a.messagesJson);
+                            const now = Date.now();
+                            const conversation: MockConversation = {
+                                id: a.id,
+                                documentId: a.documentId,
+                                draftId: a.draftId,
+                                draftLabel: draft.label,
+                                mode: a.mode,
+                                title: a.title,
+                                createdAt: now,
+                                updatedAt: now,
+                                archived: false,
+                                messagesJson: a.messagesJson,
+                                sourceConversationId: a.sourceConversationId ?? null,
+                                sourceMessageId: a.sourceMessageId ?? null,
+                            };
+                            conversations.push(conversation);
+                            persistConversations();
+                            return conversation;
+                        }
+                        if (cmd === "cmd_save_ai_conversation_messages") {
+                            const a = args as { id: string; messagesJson: string };
+                            const conversation = requireConversation(a.id);
+                            validateConversationMessages(a.messagesJson);
+                            conversation.messagesJson = a.messagesJson;
+                            conversation.updatedAt = Date.now();
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_rename_ai_conversation") {
+                            const a = args as { id: string; title: string };
+                            const conversation = requireConversation(a.id);
+                            validateConversationTitle(a.title);
+                            conversation.title = a.title;
+                            conversation.updatedAt = Date.now();
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_archive_ai_conversation") {
+                            const a = args as { id: string; archived: boolean };
+                            const conversation = requireConversation(a.id);
+                            conversation.archived = a.archived;
+                            conversation.updatedAt = Date.now();
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_ai_conversation") {
+                            const a = args as { id: string };
+                            requireConversation(a.id);
+                            const index = conversations.findIndex((item) => item.id === a.id);
+                            conversations.splice(index, 1);
+                            persistConversations();
+                            return null;
+                        }
                         if (cmd === "cmd_get_college_document_enabled") {
                             const a = args as { documentId: string };
                             const saved = localStorage.getItem(
@@ -990,6 +1178,7 @@ export class QuilliumPage {
                 docEvents: opts.docEvents,
                 tabs: opts.tabs,
                 drafts: opts.drafts,
+                conversations: opts.conversations,
             },
         );
     }
@@ -1004,6 +1193,126 @@ export class QuilliumPage {
     async init(): Promise<void> {
         await this.setup();
         await this.goto();
+    }
+
+    /** Open the AI Chat panel and wait for its panel surface. */
+    async openChat(): Promise<void> {
+        if (!(await this.chatPanel.isVisible().catch(() => false))) {
+            await this.page.locator("#ai-tab-chat").click();
+        }
+        await expect(this.chatPanel).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** Open the Chat panel's conversation browser. */
+    async openConversationHistory(): Promise<void> {
+        const close = this.chatPanel.getByRole("button", { name: "Close discussion", exact: true });
+        if (await close.isVisible()) await close.click();
+        await this.openChat();
+        if (!(await this.conversationHistory.isVisible().catch(() => false))) {
+            await this.chatPanel.getByRole("button", { name: "History", exact: true }).click();
+        }
+        await expect(this.conversationHistory).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** Return one conversation history row by its title. */
+    conversationRow(title: string): Locator {
+        return this.conversationRows.filter({ hasText: title }).first();
+    }
+
+    /** Return the action strip for a rendered message ID. */
+    conversationMessageActions(messageId: string): Locator {
+        return this.chatPanel.locator(`[data-message-id="${messageId}"]`);
+    }
+
+    /** Return an exact rendered Chat message text locator. */
+    conversationMessage(text: string): Locator {
+        return this.chatPanel.getByText(text, { exact: true }).first();
+    }
+
+    /** Open a conversation by its history title. */
+    async openConversation(title: string): Promise<void> {
+        await this.openConversationHistory();
+        await this.conversationHistory.getByRole("button", { name: title, exact: true }).click();
+        await expect(this.chatPanel).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** Toggle the archived conversation filter. */
+    async showArchivedConversations(): Promise<void> {
+        const checkbox = this.chatPanel.getByRole("checkbox", {
+            name: "Archived conversations",
+        });
+        await checkbox.check();
+        await expect(checkbox).toBeChecked();
+    }
+
+    /** Search the open conversation history by title or message text. */
+    async searchConversations(query: string): Promise<void> {
+        await this.openConversationHistory();
+        await this.chatPanel.getByRole("textbox", { name: "Search conversations" }).fill(query);
+    }
+
+    /** Reset the history container so the header and controls are in frame. */
+    async resetConversationHistoryScroll(): Promise<void> {
+        await this.chatPanel.locator("[data-conversation-history]").evaluate((element) => {
+            element.scrollTop = 0;
+        });
+    }
+
+    /** Assert the history browser controls are visible in the current viewport. */
+    async expectConversationHistoryControlsVisible(): Promise<void> {
+        await expect(
+            this.chatPanel.getByRole("button", { name: "History", exact: true }),
+        ).toBeVisible();
+        await expect(
+            this.chatPanel.getByRole("button", { name: "New chat", exact: true }),
+        ).toBeVisible();
+    }
+
+    /** Configure the deterministic DeepSeek-compatible route used by provider UI tests. */
+    async mockDeepSeekProvider(responseText = "Alternative answer"): Promise<void> {
+        await this.page.addInitScript(() => {
+            localStorage.setItem("quillium-ai-provider", "deepseek");
+            localStorage.setItem("quillium-ai-model", "deepseek-chat");
+        });
+        await this.page.route("https://api.deepseek.com/chat/completions", async (route) => {
+            const created = Math.floor(Date.now() / 1_000);
+            const chunk = (delta: Record<string, string>, finishReason: string | null = null) =>
+                `data: ${JSON.stringify({
+                    id: "chatcmpl-quillium-test",
+                    object: "chat.completion.chunk",
+                    created,
+                    model: "deepseek-chat",
+                    choices: [{ index: 0, delta, finish_reason: finishReason }],
+                })}\n\n`;
+            const body = `${chunk({ role: "assistant" })}${chunk({ content: responseText })}${chunk({}, "stop")}data: [DONE]\n\n`;
+            await route.fulfill({
+                status: 200,
+                headers: {
+                    "cache-control": "no-cache",
+                    "content-type": "text/event-stream; charset=utf-8",
+                },
+                body,
+            });
+        });
+    }
+
+    /** Capture a full-page browser screenshot for visual verification. */
+    async captureScreenshot(path: string): Promise<void> {
+        await this.page.screenshot({ path, fullPage: true });
+    }
+
+    /** Read the browser-only conversation roster used by the Tauri mock. */
+    async mockConversations(): Promise<MockConversation[]> {
+        return this.page.evaluate(() => {
+            const raw = localStorage.getItem("mock-ai-conversations");
+            if (!raw) return [];
+            try {
+                const parsed: unknown = JSON.parse(raw);
+                return Array.isArray(parsed) ? (parsed as MockConversation[]) : [];
+            } catch {
+                return [];
+            }
+        });
     }
 
     /** Navigate to "/history" and wait for the history page to render. */

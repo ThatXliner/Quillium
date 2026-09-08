@@ -6,6 +6,7 @@
     The status bar controls the shared sprintOpen store to launch this dialog.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { writingStats } from "$lib/stores";
 import { Check, Flag, History, Timer, X } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -141,6 +142,8 @@ function formatHistoryDate(timestamp: number): string {
         minute: "2-digit",
     }).format(timestamp);
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -169,7 +172,7 @@ function formatHistoryDate(timestamp: number): string {
 {#if $sprintOpen}
     <dialog
         bind:this={dialogEl}
-        class="m-auto w-[30rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-2xl p-0 bg-white text-black shadow-2xl border border-black/[0.06] backdrop:bg-black/45"
+        class="open:flex flex-col overflow-hidden m-auto w-[30rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-2xl p-0 bg-white text-black shadow-2xl border border-black/[0.06] backdrop:bg-black/45"
         aria-label="Writing sprint"
         oncancel={(event) => {
             event.preventDefault();
@@ -179,20 +182,23 @@ function formatHistoryDate(timestamp: number): string {
             if (event.target === dialogEl) closeDialog();
         }}
     >
-        <div class="flex items-center justify-between px-6 py-4 border-b border-black/[0.06]">
+        <div class="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/[0.06]">
             <div class="flex items-center gap-2.5">
                 <Timer size={17} class="text-violet-500" />
                 <h2 class="text-sm font-semibold text-black/70">Writing Sprint</h2>
             </div>
-            <button
-                type="button"
-                onclick={closeDialog}
-                aria-label="Close writing sprint"
-                class="p-1.5 rounded-lg text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
-            ><X size={17} /></button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    type="button"
+                    onclick={closeDialog}
+                    aria-label="Close writing sprint"
+                    class="p-1.5 rounded-lg text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                ><X size={17} /></button>
+            </div>
         </div>
 
-        <div class="overflow-y-auto max-h-[calc(100vh-7rem)] px-6 py-5">
+        <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             {#if $sprintSummary}
                 <div class="text-center py-2">
                     <div class="mx-auto mb-4 w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
@@ -358,5 +364,6 @@ function formatHistoryDate(timestamp: number): string {
                 {/if}
             {/if}
         </div>
+        <ModalResizeHandles bind:restoreSize minHeight={280} />
     </dialog>
 {/if}

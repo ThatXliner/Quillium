@@ -14,3 +14,5 @@ of phase-local markers; the files here are the canonical architecture decisions.
 8. [Run owner-led Yjs Live Rooms with ephemeral joiners](./0008-owner-led-yjs-live-rooms.md)
 9. [Share editor presentation through app-neutral capabilities](./0009-app-neutral-editor-capabilities.md)
 10. [Keep public Web Preview identity document-keyed](./0010-document-keyed-web-preview.md)
+
+11. [Preserve AI conversation paths independently of prose](./0011-distinct-ai-conversations.md)

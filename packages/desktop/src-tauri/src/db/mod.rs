@@ -82,6 +82,27 @@ pub struct DraftMeta {
     pub locked: bool,
 }
 
+/// A saved Chat, Feedback, or Revise discussion. The draft association is
+/// intentionally retained as text so a conversation remains readable after
+/// its source draft is deleted; `draft_label` is the label captured at save
+/// time rather than a live join against the draft row.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Conversation {
+    pub id: String,
+    pub document_id: String,
+    pub draft_id: String,
+    pub draft_label: String,
+    pub mode: String,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub archived: bool,
+    pub messages_json: String,
+    pub source_conversation_id: Option<String>,
+    pub source_message_id: Option<String>,
+}
+
 /// The document's full tab/draft roster INCLUDING soft-deleted rows, for the
 /// version-history preview map (which must render structure as-of any past
 /// point, including since-deleted tabs/drafts). Unlike `list_tabs` /

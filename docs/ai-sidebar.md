@@ -69,7 +69,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `editorialAction.ts` | Unique-range resolution, stale/read-only checks, duplicate-concern screening, and annotation dispatch |
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
 | `editorialTarget.ts` | Transient CodeMirror target bookmarks plus document, tab, draft, nested-branch, and selection validation |
-| `persistence.ts` | AI SDK message validation and draft-scoped conversation persistence |
+| `conversationController.svelte.ts`, `conversationStore.ts` | Conversation identity, lifecycle, branching, and SQLite persistence |
 | `provenance.ts` | Stable request metadata for AI-created annotations and accepted text |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
 | `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
@@ -193,9 +193,23 @@ intended prose-development scope.
 
 ### Chat
 
-- Conversational writing help with message history stored per draft and sidebar mode.
-- Switching drafts loads that draft's Chat, Feedback, and Revise histories. Clearing
-  a panel deletes only that mode's history for the active draft.
+- Chat, Feedback, and Revise each keep distinct, durable conversations. New chat
+  preserves the previous discussion. History browses the current document within
+  the selected mode, including discussions from its other drafts.
+- Search matches titles and stored messages. Conversations can be renamed,
+  archived, restored, or explicitly deleted. Archive hides a conversation from
+  the default list and makes it read-only until restored.
+- The sidebar shows three recent discussions. Selecting one opens a centered
+  modal for reading and continuing it. History opens a separate modal with
+  search and lifecycle controls. Escape closes the modal and keeps the sidebar open.
+- Tool activity uses plain language in transcript order. “Comment added” requires
+  a successful editor action, not merely a provider response. Rejected actions
+  show “Couldn't add comment”; interrupted actions are labeled as interrupted.
+  Editor outcomes persist in message metadata and survive reopening. Older
+  activity without an editor outcome says “Comment requested,” never “added.”
+- Hold Command and click an activity row to inspect raw names, inputs, results,
+  errors, and editor outcomes. Releasing Command or leaving the window hides them.
+  Unknown tool names appear as “Assistant action” outside inspection.
 - Uses the shared context packet before the writer's latest prompt.
 - Shows a context lens for selection, nearby text, draft, annotations, brief, and
   saved decisions.
@@ -211,6 +225,43 @@ intended prose-development scope.
   structural gaps in the conversation without creating annotations.
 - When an active revision is in context, Compare versions gives a read-only
   account of meaning, voice, pacing, emphasis, and reader-effect tradeoffs.
+
+Message actions use compact branch, edit, retry, and context icons with tooltips
+and accessible names. The context icon toggles the saved turn context.
+
+### Conversation identity and alternative paths
+
+Each conversation has a stable ID, a mode, a title, creation/update timestamps,
+and its original document and draft association. The draft label is captured
+when the conversation is created. Reopening shows that association; the next
+turn uses the source draft's **current** writing context. A discussion opened
+from another draft is readable, but sending requires opening its original draft.
+If that draft is no longer available, its discussion remains readable. Permanently
+deleting the document deletes its conversations.
+
+Branch here copies messages through the chosen point into a separate conversation
+with source conversation/message references. Open origin conversation returns to
+the source; deleting the source leaves the copied path intact. Edit as new path
+copies the prefix before the edited prompt, then sends its replacement. Retry as
+new path copies the prefix before the selected answer and generates another
+answer. None of these actions deletes the old path. Copying or reopening messages
+does not create a draft, modify prose, or execute historical tools. Stored tool
+parts remain intact, but the transport omits them from later provider requests;
+current annotations still arrive through the writing-context packet.
+
+Conversation changes stop an active response and wait for its final save before
+replacing the displayed messages. Saves target the conversation that initiated
+the request. Cancellation and errors retain the available message prefix. A new
+prompt is persisted before inference; storage failures are shown in the panel.
+Per-turn message metadata records the writing target, provider, a bounded draft
+excerpt, and selection at send time;
+legacy messages retain their original data without invented provenance.
+
+The appended SQLite migration copies the old draft/mode message arrays into
+`ai_conversation_history` once. The legacy table remains for compatibility, but
+new panels use conversation IDs. The history table retains draft IDs after a
+draft is deleted, while document deletion still cascades. Message updates never
+recreate a deleted conversation.
 
 ### Feedback
 

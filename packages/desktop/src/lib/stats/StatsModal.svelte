@@ -33,6 +33,7 @@ import {
     documentContent,
     lastPersistedEventId,
 } from "$lib/stores";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { BarChart3, Clock3, HelpCircle, X } from "lucide-svelte";
 import { onMount } from "svelte";
 
@@ -217,6 +218,8 @@ function formatGradeLevel(grade: number): string {
     if (grade >= 13) return "College";
     return `${grade}th grade`;
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -242,14 +245,17 @@ function formatGradeLevel(grade: number): string {
                 <BarChart3 size={14} class="text-black/35" />
                 <h2 class="text-[13px] font-semibold text-black/60">Writing Statistics</h2>
             </div>
-            <button
-                onclick={onclose}
-                aria-label="Close statistics"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={onclose}
+                    aria-label="Close statistics"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         {#if $novelNovemberEnabled}
@@ -488,6 +494,7 @@ function formatGradeLevel(grade: number): string {
             {/if}
             {/if}
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </dialog>
 

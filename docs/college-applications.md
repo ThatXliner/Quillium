@@ -91,7 +91,7 @@ restoring the matching heading reconnects it. The College panel shows accepted
 research beneath its prompt and retained, detached sources under Sources and settings.
 
 Accepted references include publisher, URL, check date, cycle or unknown, and a
-classification: official requirement, official advice, or Quillium editorial
+classification: official requirement, official advice, or editorial
 guidance. Applying saves these snapshots. Opening a saved setup never silently
 substitutes a new bundle. A future guidance update must offer a preview before
 replacing accepted references.

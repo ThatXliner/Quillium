@@ -51,7 +51,7 @@ import { toast } from "svelte-sonner";
  * Dependencies: @ai-sdk/svelte (Chat), ai SDK types, Svelte stores,
  *   settings.svelte.ts, clientStreams.ts, annotation system.
  */
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     type CommentInput,
@@ -65,6 +65,10 @@ import {
 } from "./clientStreams";
 import { createContextHistory } from "./contextHistory";
 import { type ContextRetrievalSnapshot, captureContextRetrieval } from "./contextRetrieval";
+import {
+    createConversationController,
+    sanitizeOutboundMessages,
+} from "./conversationController.svelte";
 import {
     type EditorialActionPayload,
     applyEditorialAction,
@@ -86,11 +90,7 @@ import {
     getEditorialBranchPath,
     releaseEditorialTarget,
 } from "./editorialTarget";
-import {
-    clearAiConversation,
-    isPersistentConversationMode,
-    saveAiConversation,
-} from "./persistence";
+import { isPersistentConversationMode } from "./persistence";
 import { createAiGenerationProvenance } from "./provenance";
 import {
     aiSettings,
@@ -98,7 +98,6 @@ import {
     getAiAbortSignal,
     getEffectiveDocumentContext,
     getEffectiveEditorialPreferences,
-    setAiProcessing,
 } from "./settings.svelte";
 import type { DocumentContext } from "./settings.svelte";
 
@@ -111,9 +110,14 @@ function effectiveEditorialPreferencesSnapshot(): EditorialPreferences {
 }
 
 type ToolCall =
-    | { toolName: "createComment"; input: CommentInput }
-    | { toolName: "createSuggestion"; input: SuggestionInput }
-    | { toolName: "createRevision"; input: RevisionInput };
+    | { toolCallId?: string; toolName: "createComment"; input: CommentInput }
+    | { toolCallId?: string; toolName: "createSuggestion"; input: SuggestionInput }
+    | { toolCallId?: string; toolName: "createRevision"; input: RevisionInput };
+
+export type ToolApplicationResult = {
+    status: "applied" | "skipped";
+    reason?: string;
+};
 
 type AiChatMode = EditorialPanelMode;
 
@@ -127,6 +131,17 @@ type ToolCallGuard = {
     allowedActions: readonly EditorialAction[];
     provenance: AiGenerationProvenance;
     exactWordCount?: number;
+};
+
+type RequestContextSnapshot = {
+    documentId: string | null;
+    tabId: string | null;
+    draftId: string | null;
+    capturedAt: number;
+    provider: string;
+    model: string;
+    draftText: string;
+    selectedText: string;
 };
 
 function isEditorialToolCall(toolCall: unknown): toolCall is ToolCall {
@@ -152,7 +167,6 @@ function branchPathsEqual(
         )
     );
 }
-
 /**
  * Route LLM tool calls to the CodeMirror annotation system.
  *
@@ -160,10 +174,21 @@ function branchPathsEqual(
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: string) {
-    if (!isEditorialToolCall(toolCall)) return;
+function handleToolCall(
+    toolCall: ToolCall,
+    guard: ToolCallGuard,
+    author?: string,
+): ToolApplicationResult {
+    if (!isEditorialToolCall(toolCall)) {
+        return { status: "skipped", reason: "Quillium skipped an unsupported AI action." };
+    }
     const rootView = get(editorView);
-    if (!rootView) return;
+    if (!rootView) {
+        return {
+            status: "skipped",
+            reason: "The editor was unavailable, so Quillium skipped the AI annotation.",
+        };
+    }
 
     const result = applyEditorialAction({
         rootView,
@@ -185,10 +210,14 @@ function handleToolCall(toolCall: ToolCall, guard: ToolCallGuard, author?: strin
     if (!result.ok) {
         console.warn("[chatFactory] rejected AI annotation:", result.reason);
         toast.warning(editorialActionFailureMessage(result.reason));
-        return;
+        return {
+            status: "skipped",
+            reason: editorialActionFailureMessage(result.reason),
+        };
     }
 
     captureToolCallAnalytics(toolCall, author);
+    return { status: "applied" };
 }
 
 function toolCallPayload(toolCall: ToolCall): EditorialActionPayload {
@@ -483,7 +512,11 @@ function resolveTurnFromBody(mode: AiChatMode, body: object | undefined): Editor
 function makeTransport(
     mode: AiChatMode,
     streamFn: StreamFn,
-    captureTarget: (target: EditorialTargetSnapshot, turn: EditorialTurnAtSend) => void,
+    captureTarget: (
+        target: EditorialTargetSnapshot,
+        turn: EditorialTurnAtSend,
+        context: RequestContextSnapshot,
+    ) => void,
 ): ChatTransport<UIMessage> {
     const contextHistory = createContextHistory();
     return {
@@ -598,9 +631,19 @@ function makeTransport(
                     selectedTextRange: selectedTextRangeAtSend,
                 }),
                 turn,
+                {
+                    documentId: requestTarget.documentId,
+                    tabId: get(currentTabId),
+                    draftId: requestTarget.draftId,
+                    capturedAt: Date.now(),
+                    provider: aiSettingsAtSend.provider,
+                    model: aiSettingsAtSend.model,
+                    draftText: documentContentAtSend.slice(0, 2_000),
+                    selectedText: selectedTextAtSend.slice(0, 500),
+                },
             );
             return streamFn({
-                messages: JSON.parse(JSON.stringify(messages)) as UIMessage[],
+                messages: sanitizeOutboundMessages(messages),
                 documentContent: documentContentAtSend,
                 selectedText: selectedTextAtSend,
                 selectedTextRange: selectedTextRangeAtSend,
@@ -655,6 +698,7 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
     let targetAtSend: EditorialTargetSnapshot | undefined;
     let provenanceAtSend: AiGenerationProvenance | undefined;
     let turnAtSend: EditorialTurnAtSend | undefined;
+    const toolApplications = writable<Record<string, ToolApplicationResult>>({});
 
     function releaseTargetAtSend() {
         releaseEditorialTarget(targetAtSend?.ownerView, targetAtSend);
@@ -663,11 +707,124 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         turnAtSend = undefined;
     }
 
+    function recordToolApplication(toolCallId: string, result: ToolApplicationResult): void {
+        toolApplications.update((current) => ({ ...current, [toolCallId]: result }));
+        updateMessageToolApplication(toolCallId, result);
+    }
+
+    function updateMessageToolApplication(toolCallId: string, result: ToolApplicationResult): void {
+        const messages = chat.messages;
+        const message = messages
+            .slice(-1)
+            .find(
+                (candidate) =>
+                    candidate.role === "assistant" &&
+                    candidate.parts.some(
+                        (part) => "toolCallId" in part && part.toolCallId === toolCallId,
+                    ),
+            );
+        if (!message) return;
+        const metadata =
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata)
+                ? (message.metadata as Record<string, unknown>)
+                : {};
+        const applications =
+            metadata.toolApplications &&
+            typeof metadata.toolApplications === "object" &&
+            !Array.isArray(metadata.toolApplications)
+                ? (metadata.toolApplications as Record<string, ToolApplicationResult>)
+                : {};
+        // Keep metadata on the SDK's active message object so later stream chunks preserve it.
+        message.metadata = {
+            ...metadata,
+            toolApplications: { ...applications, [toolCallId]: result },
+        };
+        chat.messages = [...messages];
+    }
+
+    function persistToolApplications(messages: UIMessage[]): void {
+        const applications = get(toolApplications);
+        if (Object.keys(applications).length === 0) return;
+        const nextMessages = messages.map((message, index) => {
+            if (index !== messages.length - 1 || message.role !== "assistant") return message;
+            const matchingApplications = Object.fromEntries(
+                Object.entries(applications).filter(([toolCallId]) =>
+                    message.parts.some(
+                        (part) => "toolCallId" in part && part.toolCallId === toolCallId,
+                    ),
+                ),
+            );
+            if (Object.keys(matchingApplications).length === 0) return message;
+            const metadata =
+                message.metadata &&
+                typeof message.metadata === "object" &&
+                !Array.isArray(message.metadata)
+                    ? (message.metadata as Record<string, unknown>)
+                    : {};
+            return {
+                ...message,
+                metadata: {
+                    ...metadata,
+                    toolApplications: {
+                        ...(metadata.toolApplications &&
+                        typeof metadata.toolApplications === "object" &&
+                        !Array.isArray(metadata.toolApplications)
+                            ? metadata.toolApplications
+                            : {}),
+                        ...matchingApplications,
+                    },
+                },
+            };
+        });
+        if (nextMessages.some((message, index) => message !== messages[index])) {
+            chat.messages = nextMessages;
+        }
+    }
+
+    function updateRequestContextMetadata(context: RequestContextSnapshot) {
+        const index = [...chat.messages]
+            .map((message, messageIndex) => ({ message, messageIndex }))
+            .reverse()
+            .find(({ message }) => message.role === "user")?.messageIndex;
+        if (index === undefined) return;
+        const message = chat.messages[index];
+        const metadata =
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata)
+                ? (message.metadata as Record<string, unknown>)
+                : {};
+        const oldContext =
+            metadata.writingContext &&
+            typeof metadata.writingContext === "object" &&
+            !Array.isArray(metadata.writingContext)
+                ? (metadata.writingContext as Record<string, unknown>)
+                : {};
+        chat.messages = chat.messages.map((candidate, candidateIndex) =>
+            candidateIndex === index
+                ? {
+                      ...candidate,
+                      metadata: {
+                          ...metadata,
+                          writingContext: {
+                              ...oldContext,
+                              ...context,
+                          },
+                      },
+                  }
+                : candidate,
+        );
+    }
+
     const chat = new Chat({
-        transport: makeTransport(mode, transportWithTracking, (target, turn) => {
+        transport: makeTransport(mode, transportWithTracking, (target, turn, context) => {
             releaseTargetAtSend();
+            toolApplications.set({});
             targetAtSend = target;
             turnAtSend = turn;
+            updateRequestContextMetadata(context);
             const provenanceTask = actionProvenanceTask(turn.task);
             provenanceAtSend = provenanceTask
                 ? createAiGenerationProvenance({
@@ -679,43 +836,78 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         }),
         onToolCall: ({ toolCall }) => {
             if (!isEditorialToolCall(toolCall)) return;
-            if (!targetAtSend || !provenanceAtSend || !turnAtSend) return;
-            const policy = compileEditorialPolicy({
-                task: turnAtSend.task,
-                hasSelection: !!targetAtSend.selectedText,
-                exactWordCount: turnAtSend.exactWordCount,
-            });
-            handleToolCall(toolCall, {
-                target: targetAtSend,
-                allowedActions: policy.allowedActions,
-                provenance: provenanceAtSend,
-                exactWordCount: turnAtSend.exactWordCount,
-            });
+            const result =
+                !targetAtSend || !provenanceAtSend || !turnAtSend
+                    ? {
+                          status: "skipped" as const,
+                          reason: "The AI request target was unavailable, so Quillium skipped the annotation.",
+                      }
+                    : handleToolCall(toolCall, {
+                          target: targetAtSend,
+                          allowedActions: compileEditorialPolicy({
+                              task: turnAtSend.task,
+                              hasSelection: !!targetAtSend.selectedText,
+                              exactWordCount: turnAtSend.exactWordCount,
+                          }).allowedActions,
+                          provenance: provenanceAtSend,
+                          exactWordCount: turnAtSend.exactWordCount,
+                      });
+            if (toolCall.toolCallId) recordToolApplication(toolCall.toolCallId, result);
         },
         onFinish: ({ messages }) => {
-            const draftId = targetAtSend?.draftId;
+            persistToolApplications(messages);
+            toolApplications.set({});
             releaseTargetAtSend();
-            if (!draftId || !isPersistentConversationMode(mode)) return;
-            void saveAiConversation(draftId, mode, messages).catch((error) => {
-                console.error("[chatFactory] failed to save AI conversation", error);
-            });
         },
         onError: (error) => {
+            persistToolApplications(chat.messages);
             void logAppEvent("error", "ai", "AI chat failed", { mode, error });
             releaseTargetAtSend();
         },
     });
 
-    function clearChat() {
-        chat.messages = [];
-        const draftId = get(currentDraftId);
-        if (!draftId || !isPersistentConversationMode(mode)) return;
-        void clearAiConversation(draftId, mode).catch((error) => {
-            console.error("[chatFactory] failed to clear AI conversation", error);
+    const conversationController = isPersistentConversationMode(mode)
+        ? createConversationController({
+              chat,
+              mode,
+              beforeReplace: releaseTargetAtSend,
+              requestSettings: () => ({
+                  provider: aiSettings.provider,
+                  model: aiSettings.model,
+              }),
+          })
+        : undefined;
+
+    if (conversationController) {
+        Object.assign(chat, {
+            conversationManaged: true,
+            conversationController,
         });
     }
 
+    const originalStop = chat.stop.bind(chat);
+    chat.stop = async () => {
+        releaseTargetAtSend();
+        return originalStop();
+    };
+
+    function clearChat() {
+        if (conversationController) {
+            void conversationController.newConversation().catch((error) => {
+                conversationController.reportError(error);
+            });
+            return;
+        }
+        chat.messages = [];
+    }
+
     function sendMessage(text: string, turn?: EditorialTurn): Promise<void> {
+        if (conversationController) {
+            return conversationController.sendMessage(text, turn).catch((error) => {
+                conversationController.reportError(error);
+            });
+        }
+
         const task = resolveEditorialTask(mode, turn?.task);
         const exactWordCount = validExactWordCount(turn?.exactWordCount);
         if (task === "exact-compression" && exactWordCount === undefined) {
@@ -734,7 +926,13 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         );
     }
 
-    return { chat, clearChat, sendMessage };
+    return {
+        chat,
+        toolApplications,
+        clearChat,
+        sendMessage,
+        conversations: conversationController?.conversations,
+    };
 }
 
 // Re-export so components only need one import for all chat concerns

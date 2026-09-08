@@ -14,6 +14,7 @@
     panels (green / purple) can use it.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { InfoIcon, UsersIcon, X } from "lucide-svelte";
 
 let open = $state(false);
@@ -30,6 +31,8 @@ function close() {
 function handleBackdropClick(e: MouseEvent) {
     if (e.target === dialogEl) close();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <button
@@ -60,18 +63,21 @@ function handleBackdropClick(e: MouseEvent) {
                 class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0"
             >
                 <h2 class="text-[13px] font-semibold text-black/60">Reader personas</h2>
-                <button
-                    onclick={close}
-                    aria-label="Close info"
-                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-                >
-                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                    <X size={15} />
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                    <RestoreSizeButton {restoreSize} />
+                    <button
+                        onclick={close}
+                        aria-label="Close info"
+                        class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                    >
+                        <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                        <X size={15} />
+                    </button>
+                </div>
             </div>
 
             <!-- Body -->
-            <div class="px-5 py-4 flex flex-col gap-3">
+            <div class="px-5 py-4 flex flex-col gap-3 min-h-0 overflow-y-auto">
                 <p class="text-sm text-black/70 leading-relaxed font-medium">
                     Personas let several AI "readers" review your writing at once, each from a
                     distinct perspective.
@@ -90,6 +96,7 @@ function handleBackdropClick(e: MouseEvent) {
                     </p>
                 </div>
             </div>
+            <ModalResizeHandles bind:restoreSize />
         </div>
     </dialog>
 {/if}
@@ -115,6 +122,8 @@ function handleBackdropClick(e: MouseEvent) {
     }
 
     .info-inner {
+        display: flex;
+        flex-direction: column;
         position: relative;
         max-width: 24rem;
         width: 85vw;

@@ -7,6 +7,7 @@
 <script lang="ts">
 import { appLogPath, clearAppLog, logAppEvent, readAppLog } from "$lib/appLog";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Bug, Check, Copy, RefreshCw, Trash2, X } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -101,6 +102,8 @@ function handleKeydown(e: KeyboardEvent) {
 onMount(() => {
     void refreshLogs();
 });
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -164,6 +167,7 @@ onMount(() => {
                 >
                     <Trash2 size={16} />
                 </button>
+                <RestoreSizeButton {restoreSize} />
                 <button
                     type="button"
                     onclick={ondismiss}
@@ -177,14 +181,14 @@ onMount(() => {
             </div>
         </div>
 
-        <div class="flex-1 min-h-0 px-7 pb-7">
+        <div class="flex flex-col flex-1 min-h-0 px-7 pb-7">
             <pre
                 aria-busy={loading}
-                class="h-[54vh] max-h-[54vh] min-h-[280px] overflow-auto rounded-lg
+                class="h-[54vh] min-h-0 flex-1 overflow-auto rounded-lg
                     border border-black/[0.08] bg-neutral-950 text-neutral-100 p-4
                     text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono"
             >{logText.trim() || (loading ? "Loading logs..." : "No app log entries yet.")}</pre>
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
+            <div class="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
                 <p class="text-[11px] leading-relaxed text-black/40 max-w-[470px]">
                     Includes console output, errors, app lifecycle events, and the previous rotated
                     log. It may contain file paths or values printed during a failure, so review it
@@ -202,5 +206,6 @@ onMount(() => {
                 </button>
             </div>
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

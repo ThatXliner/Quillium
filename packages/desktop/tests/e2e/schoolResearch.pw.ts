@@ -191,7 +191,9 @@ test("hosted research is reviewed, saved offline, and excluded after changing th
     );
     expect(saved.researchReview?.rejectedKeys).toHaveLength(1);
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toContain('"allowed_domains":["admissions.example.edu"]');
+    expect(requests[0]).toContain(
+        '"allowed_domains":["admissions.example.edu","collegeessayguy.com"]',
+    );
     expect(requests.join(" ")).not.toMatch(/PRIVATE_ESSAY_SENTINEL|PRIVATE_NOTES_SENTINEL/);
     expect(await q.countInvocations("school_research_fetch")).toBe(0);
 
@@ -262,7 +264,9 @@ test("an API failure leaves the saved prompt unchanged and can be retried", asyn
     await expect(research(page).getByRole("heading", { name: "Review sources" })).toBeVisible();
     expect(await page.evaluate((key) => localStorage.getItem(key), stored)).toBe(before);
     expect(requests).toHaveLength(2);
-    expect(requests[1]).toContain('"allowed_domains":["admissions.example.edu"]');
+    expect(requests[1]).toContain(
+        '"allowed_domains":["admissions.example.edu","collegeessayguy.com"]',
+    );
     expect(requests.join(" ")).not.toMatch(/PRIVATE_ESSAY_SENTINEL|PRIVATE_NOTES_SENTINEL/);
     expect(await q.countInvocations("school_research_fetch")).toBe(0);
     q.expectNoPageErrors();

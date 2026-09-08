@@ -3,17 +3,15 @@
  *
  * Owns the custom width/height overrides (null = use the tab's default size)
  * and the resize semantics (per-handle axes, min/max + viewport caps). The
- * drag gesture itself is the `pointerDrag` action from $lib/ui/pointerDrag:
- * each handle element gets `use:pointerDrag={controller.dragOptions(handle)}`,
- * and the action's own destroy covers unmount-mid-drag cleanup.
+ * shared ResizeHandles component owns pointer capture and keyboard controls;
+ * its pointerDrag action also cleans up when unmounted mid-drag.
  *
  * The caller supplies the effective size at drag start (custom override or
  * tab default) via `getEffectiveSize`.
  */
 
-import type { PointerDragOptions } from "$lib/ui/pointerDrag";
-
-export type ResizeHandle = "right" | "bottom" | "corner";
+import type { PointerDragOptions, ResizeHandle } from "@quillium/share";
+export type { ResizeHandle } from "@quillium/share";
 
 export type PanelResizeOptions = {
     minWidth: number;
@@ -29,8 +27,6 @@ export class PanelResizeController {
     customHeight = $state<number | null>(null);
     /** True during a drag — the panel disables CSS transitions while set. */
     isResizing = $state(false);
-
-    #justResized = false;
 
     readonly #options: PanelResizeOptions;
 
@@ -69,34 +65,30 @@ export class PanelResizeController {
                 this.isResizing = true;
             },
             onMove: (dx, dy) => {
-                if (handle === "right" || handle === "corner") {
-                    this.customWidth = Math.min(
-                        this.#widthCap(),
-                        Math.max(this.#options.minWidth, startWidth + dx),
-                    );
-                }
-                if (handle === "bottom" || handle === "corner") {
-                    this.customHeight = Math.min(
-                        this.#heightCap(),
-                        Math.max(this.#options.minHeight, startHeight + dy),
-                    );
-                }
+                this.#resize(handle, startWidth + dx, startHeight + dy);
             },
             onEnd: () => {
                 this.isResizing = false;
-                this.#justResized = true;
             },
         };
     }
 
-    /**
-     * True exactly once after a drag ends. The window click that ends a drag
-     * would otherwise be treated as a click-outside and collapse the panel.
-     */
-    consumeJustResized(): boolean {
-        if (!this.#justResized) return false;
-        this.#justResized = false;
-        return true;
+    /** Keyboard resizing uses the same limits as dragging. */
+    resizeBy(handle: ResizeHandle, dx: number, dy: number): void {
+        const { width, height } = this.#options.getEffectiveSize();
+        this.#resize(handle, width + dx, height + dy);
+    }
+
+    #resize(handle: ResizeHandle, width: number, height: number): void {
+        if (handle !== "bottom") {
+            this.customWidth = Math.min(this.#widthCap(), Math.max(this.#options.minWidth, width));
+        }
+        if (handle !== "right") {
+            this.customHeight = Math.min(
+                this.#heightCap(),
+                Math.max(this.#options.minHeight, height),
+            );
+        }
     }
 
     reset() {
