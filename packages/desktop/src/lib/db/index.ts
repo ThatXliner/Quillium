@@ -113,7 +113,7 @@ export async function setCollegeDocumentEnabled(
 
 export async function createCollegeTabs(
     documentId: string,
-    entries: { label: string; setupJson: string }[],
+    entries: { label: string; setupJson: string; initialContent?: string }[],
 ): Promise<TabMeta[]> {
     return invoke<TabMeta[]>("cmd_create_college_tabs", { documentId, entries });
 }

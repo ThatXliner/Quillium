@@ -730,6 +730,8 @@ export function contextPacketToPrompt(packet: AiContextPacket): string {
             omittedCharacters: packet.omittedCollegeBriefChars,
             status: "tab-scoped-writer-guidance",
             brief: packet.collegeBriefText,
+            sectionGuidance:
+                "Each section identifies the answer to its prompt by promptId. Assess its answer against that prompt and limit; exclude H1 headings from answer counts. Apply research only to the promptIds in its provenance. Section offsets refer to the full root draft, not a nested editor or selection.",
         });
     }
 

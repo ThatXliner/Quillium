@@ -4,7 +4,7 @@ import { onDestroy, tick } from "svelte";
 import type { CollegeCapabilities, CollegeCapabilitiesSnapshot } from "./capabilities";
 import type { CollegeReference } from "./model";
 import { type ResearchResult, findingKey } from "./research";
-import { type ResearchTarget, collegeResearchSetupKey } from "./researchModel";
+import { type ResearchTarget, isCollegeReferenceCurrent } from "./researchModel";
 
 let { college, view }: { college: CollegeCapabilities; view: CollegeCapabilitiesSnapshot } =
     $props();
@@ -26,7 +26,7 @@ const groups = [
     { kind: "official-advice", label: "Official guidance" },
     { kind: "editorial-guidance", label: "Editorial guidance" },
 ] as const;
-const setupKey = $derived(view.setup ? collegeResearchSetupKey(view.setup) : "");
+const researchLabel = $derived(`Research this school's prompt${(view.setup?.prompts.length ?? 0) > 1 ? "s" : ""}`);
 const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
 const missing = $derived(
     result
@@ -43,7 +43,7 @@ async function open(): Promise<void> {
     const setup = view.setup;
     if (!setup) return;
     const previous = setup.references.some(
-        (reference) => reference.research?.setupKey === collegeResearchSetupKey(setup),
+        (reference) => isCollegeReferenceCurrent(reference, setup),
     )
         ? setup.researchReview?.target
         : undefined;
@@ -118,7 +118,7 @@ function statusFor(finding: CollegeReference): string {
             (reference) =>
                 findingKey(reference) === findingKey(finding) &&
                 view.setup &&
-                reference.research?.setupKey === setupKey,
+                isCollegeReferenceCurrent(reference, view.setup),
         )
     )
         return "Already saved";
@@ -144,11 +144,11 @@ async function accept(): Promise<void> {
 </script>
 
 {#if !opened}
-    <button class="research-link" disabled={!view.setup?.active || view.saving} onclick={open}>Research this school's prompt</button>
+    <button class="research-link" disabled={!view.setup?.active || !view.setup.prompts.length || view.saving} onclick={open}>{researchLabel}</button>
 {:else}
     <section class="space-y-3 border-t border-black/10 pt-3" aria-label="School research">
         <div class="flex items-center justify-between gap-2">
-            <h3 class="font-semibold text-sm" tabindex="-1" bind:this={heading}>{result ? "Review sources" : "Research this school's prompt"}</h3>
+            <h3 class="font-semibold text-sm" tabindex="-1" bind:this={heading}>{result ? "Review sources" : researchLabel}</h3>
             <button class="research-link" disabled={saving} onclick={close}>Close</button>
         </div>
         <p class="text-xs text-black/60">{view.tabLabel} · {view.draftLabel}</p>
@@ -172,7 +172,7 @@ async function accept(): Promise<void> {
                             <label class="check"><input type="checkbox" bind:group={promptIds} value={prompt.id} /><span>{prompt.label || "Prompt"}<span class="block font-normal whitespace-pre-wrap mt-1">{prompt.text}</span></span></label>
                         {/each}
                     </fieldset>
-                    <p class="text-xs text-black/60">Edit setup to change a prompt. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
+                    <p class="text-xs text-black/60">Edit the prompt heading to change its wording. Only the school, cycle, program, selected public prompts, and public source content go to {view.researchProvider || "your model"}. Research uses the network and may incur AI usage.</p>
                     <button class="research-button" type="submit" disabled={!confirmed || !promptIds.length || !!view.researchUnavailable}>Start research</button>
                 </fieldset>
             </form>
@@ -224,7 +224,7 @@ async function accept(): Promise<void> {
                 <button class="research-button" disabled={saving || !!view.researchUnavailable} onclick={accept}>{saving ? "Saving…" : selected.length ? "Add to essay context" : "Save review choices"}</button>
                 <button class="research-link" disabled={saving} onclick={() => { result = null; confirmed = false; }}>Change target or retry</button>
             </div>
-            <p class="text-xs text-black/60">Nothing is added automatically. Adding keeps your existing sources; only checked removals are deleted. Up to 12 sources fit in a setup, with 6,000 characters available to requests.</p>
+            <p class="text-xs text-black/60">Nothing is added automatically. Adding keeps your existing sources; only checked removals are deleted.</p>
             <details><summary class="research-link">Sources returned ({result.pages.length})</summary>{#each result.pages as page}<a class="block research-link mt-2 break-all" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>{/each}</details>
         {/if}
     </section>

@@ -6,9 +6,9 @@
 // response from another tab must never become the active setup.
 
 import { getCollegeTabSetup, setCollegeTabSetup } from "$lib/db";
-import { currentDocumentId, currentTabId } from "$lib/stores";
+import { currentDocumentId, currentTabId, documentContent } from "$lib/stores";
 import { untrack } from "svelte";
-import { derived, get } from "svelte/store";
+import { derived, fromStore, get } from "svelte/store";
 import {
     type CollegeSetup,
     CollegeSetupParseError,
@@ -16,6 +16,9 @@ import {
     parseCollegeSetup,
     serializeCollegeSetup,
 } from "./model";
+
+import { collegeResearchSetupKey } from "./researchModel";
+import { resolveCollegeSetup } from "./sections";
 
 export type CollegeStateStatus = "idle" | "loading" | "ready" | "error" | "unsupported";
 
@@ -153,6 +156,25 @@ function beginLoad(target: CollegeSetupTarget): Promise<void> {
  * late DB response able to update the next host instance.
  */
 export function useCollegeEffects(onChange?: () => void): void {
+    const prose = fromStore(documentContent);
+    let previousPromptKey: string | null = null;
+    let previousSetup: CollegeSetup | null = null;
+    $effect(() => {
+        const setup = getActiveCollegeSetup();
+        const key = setup
+            ? collegeResearchSetupKey(resolveCollegeSetup(setup, prose.current))
+            : null;
+        if (
+            previousSetup === collegeState.setup &&
+            previousPromptKey !== null &&
+            key !== null &&
+            key !== previousPromptKey
+        ) {
+            untrack(() => onChange?.());
+        }
+        previousPromptKey = key;
+        previousSetup = collegeState.setup;
+    });
     $effect(() => {
         if (effectsInitialized) return;
         effectsInitialized = true;

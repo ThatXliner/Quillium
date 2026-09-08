@@ -4,7 +4,7 @@ import type { CollegeSetup } from "../../src/lib/college/model";
 import { QuilliumPage } from "./QuilliumPage";
 
 const source = "https://admissions.example.edu/essays";
-const stored = "mock-college-setup:doc-test-1:tab-test-1";
+let stored = "";
 const panel = (page: Page) => page.locator('#ai-sidebar [data-panel-id="college"]');
 const research = (page: Page) => panel(page).getByRole("region", { name: "School research" });
 
@@ -17,6 +17,7 @@ async function openCollege(page: Page): Promise<void> {
 async function prepare(page: Page): Promise<{ q: QuilliumPage; requests: string[] }> {
     const q = new QuilliumPage(page, {
         apiKey: "fixture-key",
+        settings: { editorMode: "plain" },
         initialDoc: "PRIVATE_ESSAY_SENTINEL",
     });
     await q.setup();
@@ -133,13 +134,16 @@ async function prepare(page: Page): Promise<{ q: QuilliumPage; requests: string[
         .getByRole("button", { name: "Supplemental", exact: true })
         .click();
     await panel(page).getByRole("button", { name: "School supplement", exact: true }).click();
-    await panel(page).getByLabel("School", { exact: true }).fill("Example University");
+    await panel(page).getByLabel("School (optional)", { exact: true }).fill("Example University");
     await panel(page).getByLabel("Prompt", { exact: true }).fill("Why do you want to study here?");
-    await panel(page).getByRole("button", { name: "Apply to existing tab", exact: true }).click();
-    await page.locator('[data-tab-id="tab-test-1"]').click();
+    await panel(page).getByRole("button", { name: "Create essay tab", exact: true }).click();
+    const tab = page.getByRole("tab", { name: "Example University", exact: true });
+    await expect(tab).toBeVisible();
+    await q.typeInEditor("# Why do you want to study here?\n\nPRIVATE_ESSAY_SENTINEL");
+    stored = `mock-college-setup:doc-test-1:${await tab.getAttribute("data-tab-id")}`;
     await openCollege(page);
     await expect(
-        panel(page).getByRole("button", { name: "Change prompt", exact: true }),
+        panel(page).getByRole("button", { name: "Add another prompt", exact: true }),
     ).toBeVisible();
     return { q, requests };
 }
@@ -187,7 +191,9 @@ test("hosted research is reviewed, saved offline, and excluded after changing th
     );
     expect(saved.researchReview?.rejectedKeys).toHaveLength(1);
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toContain('"allowed_domains":["admissions.example.edu"]');
+    expect(requests[0]).toContain(
+        '"allowed_domains":["admissions.example.edu","collegeessayguy.com"]',
+    );
     expect(requests.join(" ")).not.toMatch(/PRIVATE_ESSAY_SENTINEL|PRIVATE_NOTES_SENTINEL/);
     expect(await q.countInvocations("school_research_fetch")).toBe(0);
 
@@ -196,38 +202,45 @@ test("hosted research is reviewed, saved offline, and excluded after changing th
     await expect(q.editor).toBeVisible();
     await page.locator("#ai-tab-college").click();
     await expect(
-        panel(page).getByRole("button", { name: "Change prompt", exact: true }),
+        panel(page).getByRole("button", { name: "Add another prompt", exact: true }),
     ).toBeVisible();
     await panel(page).getByText("Sources and settings", { exact: true }).click();
     await panel(page).getByRole("button", { name: "Context", exact: true }).click();
     const context = page.locator('#ai-sidebar [data-panel-id="context"]');
     await expect(context).toBeVisible();
-    await context.getByText("Accepted source snapshots", { exact: true }).click();
+    if (
+        (await context
+            .locator("details")
+            .filter({ hasText: "Accepted source snapshots" })
+            .getAttribute("open")) === null
+    )
+        await context.getByText("Accepted source snapshots", { exact: true }).click();
     await expect(context.getByText("Write no more than 250 words.", { exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
 
     await page.locator("#ai-tab-college").evaluate((element: HTMLElement) => element.click());
-    await panel(page).getByRole("button", { name: "Change prompt", exact: true }).click();
-    await panel(page)
-        .getByLabel("Prompt", { exact: true })
-        .fill("Describe a community you belong to.");
-    await panel(page).getByRole("button", { name: "Use this prompt", exact: true }).click();
-    await expect(
-        panel(page).getByRole("button", { name: "Change prompt", exact: true }),
-    ).toBeVisible();
+    await q.typeInEditor("# Describe a community you belong to.\n\nPRIVATE_ESSAY_SENTINEL");
+    await openCollege(page);
     const changed = JSON.parse(
         (await page.evaluate((key) => localStorage.getItem(key), stored))!,
     ) as CollegeSetup;
-    expect(changed.prompts[0]?.text).toBe("Describe a community you belong to.");
-    expect(changed.references.some((reference) => reference.research)).toBe(false);
-    expect(changed.researchReview).toBeUndefined();
+    expect(changed.prompts[0]?.text).toBe("Why do you want to study here?");
+    expect(changed.references.some((reference) => reference.research)).toBe(true);
+    expect(changed.researchReview).toBeDefined();
     await panel(page).getByText("Sources and settings", { exact: true }).click();
     await panel(page).getByRole("button", { name: "Context", exact: true }).click();
     await expect(context).toBeVisible();
-    await context.getByText("Accepted source snapshots", { exact: true }).click();
-    await expect(context.getByText("Write no more than 250 words.", { exact: true })).toHaveCount(
-        0,
-    );
+    if (
+        (await context
+            .locator("details")
+            .filter({ hasText: "Accepted source snapshots" })
+            .getAttribute("open")) === null
+    )
+        await context.getByText("Accepted source snapshots", { exact: true }).click();
+    await expect(
+        context.getByText("Prompt missing or changed. Saved for recovery; excluded from requests."),
+    ).toBeVisible();
+    await expect(context.getByText("Write no more than 250 words.", { exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
     expect(await q.countInvocations("school_research_fetch")).toBe(0);
     q.expectNoPageErrors();
@@ -251,8 +264,44 @@ test("an API failure leaves the saved prompt unchanged and can be retried", asyn
     await expect(research(page).getByRole("heading", { name: "Review sources" })).toBeVisible();
     expect(await page.evaluate((key) => localStorage.getItem(key), stored)).toBe(before);
     expect(requests).toHaveLength(2);
-    expect(requests[1]).toContain('"allowed_domains":["admissions.example.edu"]');
+    expect(requests[1]).toContain(
+        '"allowed_domains":["admissions.example.edu","collegeessayguy.com"]',
+    );
     expect(requests.join(" ")).not.toMatch(/PRIVATE_ESSAY_SENTINEL|PRIVATE_NOTES_SENTINEL/);
     expect(await q.countInvocations("school_research_fetch")).toBe(0);
+    q.expectNoPageErrors();
+});
+
+test("researches all fourteen selected prompts and saves their setup", async ({ page }) => {
+    const { q, requests } = await prepare(page);
+    const headings = [
+        "Why do you want to study here?",
+        ...Array.from({ length: 13 }, (_, index) => `Supplement question ${index + 2}`),
+    ];
+    await q.typeInEditor(
+        headings.map((heading) => `# ${heading}\n\nPRIVATE_ESSAY_SENTINEL`).join("\n\n"),
+    );
+    await openCollege(page);
+    await panel(page)
+        .getByRole("button", { name: "Research this school's prompts", exact: true })
+        .click();
+    const choices = research(page).getByRole("group", { name: "Prompts to research", exact: true });
+    await expect(choices.getByRole("checkbox", { checked: true })).toHaveCount(14);
+    await research(page).getByLabel("Application cycle", { exact: true }).fill("2026-2027");
+    await research(page).getByLabel("Official admissions page", { exact: true }).fill(source);
+    await research(page)
+        .getByLabel("I checked that this is the official site for this school and campus.")
+        .check();
+    await research(page).getByRole("button", { name: "Start research", exact: true }).click();
+    await expect(research(page).getByRole("heading", { name: "Review sources" })).toBeVisible();
+    expect(requests).toHaveLength(1);
+    for (const heading of headings) expect(requests[0]).toContain(heading);
+    expect(requests[0]).not.toContain("PRIVATE_ESSAY_SENTINEL");
+    await research(page).getByLabel("Write no more than 250 words.", { exact: true }).check();
+    await research(page).getByRole("button", { name: "Add to essay context", exact: true }).click();
+    await expect(research(page).getByRole("status")).toContainText("Source review saved");
+    const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), stored);
+    expect(saved.prompts).toHaveLength(14);
+    expect(saved.researchReview.target.prompts).toHaveLength(14);
     q.expectNoPageErrors();
 });

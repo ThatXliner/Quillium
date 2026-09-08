@@ -52,7 +52,6 @@ const extractedFindingSchema = z
         promptIds: z
             .array(z.string().min(1).max(100))
             .min(1)
-            .max(12)
             .refine(
                 (promptIds) => new Set(promptIds).size === promptIds.length,
                 "Finding prompt IDs must be unique",

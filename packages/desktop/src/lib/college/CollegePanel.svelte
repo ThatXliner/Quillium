@@ -1,7 +1,8 @@
-<!-- CollegePanel.svelte — Choose prompts, then create essay tabs or pick a workspace tab. -->
+<!-- CollegePanel.svelte — Create essay tabs and add prompts as ordinary H1 sections. -->
 <script lang="ts">
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { tick, untrack } from "svelte";
+import { isCollegeReferenceCurrent } from "./researchModel";
 import SchoolResearch from "./SchoolResearch.svelte";
 import { type CollegeSetup, collegeSetupSchema } from "./model";
 import { COMMON_APP_PROMPTS, UC_PROMPTS, newCollegeSetup } from "./presets";
@@ -9,7 +10,7 @@ import { COMMON_APP_PROMPTS, UC_PROMPTS, newCollegeSetup } from "./presets";
 let { active, session, college, collegePreset }: SidebarPanelProps = $props();
 let view = $derived(college?.read());
 let choosing = $state(false);
-let replacing = $state(false);
+let adding = $state(false);
 let kind = $state<CollegeSetup["kind"]>(untrack(() => collegePreset ?? "uc-piq"));
 let selected = $state<number[]>([]);
 let school = $state("");
@@ -27,8 +28,8 @@ const selectedCount = $derived(kind === "supplemental" ? (customPrompt.trim() ? 
 $effect(() => {
     if (!active || previousTarget !== targetKey) {
         previousTarget = targetKey;
-        choosing = active && collegePreset !== undefined;
-        replacing = false;
+        choosing = false;
+        adding = false;
         removing = false;
         selected = [];
         school = "";
@@ -42,25 +43,21 @@ function label(index: number): string {
     const text = options[index].label.replace(/\s*\(summary\)$/, "");
     return kind === "uc-piq" ? `PIQ ${index + 1} · ${text}` : text;
 }
-function start(replace = false): void {
-    replacing = replace;
+function start(add = false): void {
+    adding = add;
     choosing = true;
     selected = [];
     error = "";
-    if (replace && view?.setup) {
+    customPrompt = "";
+    max = undefined;
+    if (view?.setup) {
         kind = view.setup.kind;
         school = view.setup.school;
-        customPrompt = view.setup.prompts[0]?.text ?? "";
-        const limit = view.setup.prompts[0]?.constraints.find(c => c.unit === "words" || c.unit === "characters");
-        max = limit?.max ?? undefined;
-        unit = limit?.unit === "characters" ? "characters" : "words";
-        const index = (kind === "uc-piq" ? UC_PROMPTS : COMMON_APP_PROMPTS).findIndex(p => p.text === customPrompt);
-        if (index >= 0) selected = [index];
     }
     void tick().then(() => heading?.focus());
 }
 function select(index: number, checked: boolean): void {
-    selected = replacing ? [index] : checked ? [...selected, index] : selected.filter(i => i !== index);
+    selected = adding ? [index] : checked ? [...selected, index] : selected.filter(i => i !== index);
 }
 function setups(): CollegeSetup[] {
     const indices = kind === "supplemental" ? [0] : selected;
@@ -75,26 +72,17 @@ function setups(): CollegeSetup[] {
             setup.prompts[0].label = label(index);
             setup.prompts[0].text = options[index].text;
         }
-        if (replacing && view?.setup) {
-            setup.intent = view.setup.intent;
-            setup.feedbackFocus = view.setup.feedbackFocus;
-            setup.preferences = { ...view.setup.preferences };
-            setup.readers = JSON.parse(JSON.stringify(view.setup.readers));
-            setup.feedbackReaders = view.setup.feedbackReaders;
-            setup.reviseReaders = view.setup.reviseReaders;
-        }
         return collegeSetupSchema.parse(setup);
     });
 }
-async function apply(mode: "create" | "existing" | "replace"): Promise<void> {
+async function apply(): Promise<void> {
     if (!college || !selectedCount || busy) return;
     const origin = targetKey;
     error = "";
     busy = true;
     try {
         const next = setups();
-        if (mode === "existing") college.applyToExistingTab(next[0]);
-        else if (mode === "replace") await college.save(next[0]);
+        if (adding) await college.addPrompt(next[0].prompts[0]);
         else await college.createTabs(next);
         if (origin === targetKey) choosing = false;
     } catch (cause) {
@@ -113,7 +101,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
 </script>
 
 <div data-sidebar-size={!choosing && view?.setup ? "compact" : undefined} class="college-panel p-4 space-y-4 text-sm text-black/80">
-    {#if choosing || !view?.setup}<h2 bind:this={heading} tabindex="-1" class="font-semibold">{choosing || !view?.setup ? (replacing ? "Choose a prompt" : "Which prompts are you answering?") : view.tabLabel}</h2>{/if}
+    {#if choosing || !view?.setup}<h2 bind:this={heading} tabindex="-1" class="font-semibold">{choosing || !view?.setup ? (adding ? "Add another prompt" : "Which prompts are you answering?") : view.tabLabel}</h2>{/if}
     {#if error || view?.error}<p role="alert" class="rounded-lg bg-red-50 text-red-800 p-3">{error || view?.error}</p>{/if}
     {#if !view?.documentId || !view.tabId}
         <p>Open a document to get started.</p>
@@ -128,7 +116,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
         <button class="secondary" disabled={busy} onclick={() => removing = false}>Cancel</button>
         <button class="secondary" disabled={busy} onclick={() => update(null)}>Remove setup</button>
     {:else if choosing || !view.setup}
-        <p class="text-xs text-black/60">{replacing ? "Your writing stays in this tab." : "Each prompt gets its own tab. Feedback uses its prompt and word limit automatically."}</p>
+        <p class="text-xs text-black/60">{adding ? "This prompt starts a new section below your existing answers." : "Each prompt gets its own tab. You can add more prompts to that tab as you write."}</p>
         <fieldset disabled={busy || view.saving} class="space-y-4">
             <div class="flex flex-wrap gap-1" aria-label="Application">
                 {#each [["uc-piq", "UC PIQs"], ["common-app", "Common App"], ["supplemental", "School supplement"]] as [value, title]}
@@ -136,7 +124,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 {/each}
             </div>
             {#if kind === "supplemental"}
-                <label>School<input maxlength="200" bind:value={school} placeholder="School name" /></label>
+                {#if !adding}<label>School (optional)<input maxlength="200" bind:value={school} placeholder="School name" /></label>{/if}
                 <label>Prompt<textarea rows="4" maxlength="4000" bind:value={customPrompt} placeholder="Paste the essay question"></textarea></label>
                 <div class="grid grid-cols-2 gap-2">
                     <label>Length limit (optional)<input type="number" min="1" max="10000000" step="1" bind:value={max} placeholder="If specified" /></label>
@@ -147,43 +135,44 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 <div class="space-y-2">
                     {#each options as option, index}
                         <label class="choice" class:chosen={selected.includes(index)}>
-                            <input type={replacing ? "radio" : "checkbox"} name="college-prompt" checked={selected.includes(index)} onchange={event => select(index, event.currentTarget.checked)} />
+                            <input type={adding ? "radio" : "checkbox"} name="college-prompt" checked={selected.includes(index)} onchange={event => select(index, event.currentTarget.checked)} />
                             <span><strong class="font-medium">{label(index)}</strong><span class="block text-xs text-black/60 mt-1">{option.text}</span></span>
                         </label>
                     {/each}
                 </div>
             {/if}
             <div class="space-y-2">
-                <button class="primary w-full" disabled={!selectedCount} onclick={() => apply(replacing ? "replace" : "create")}>{busy ? "Saving…" : replacing ? "Use this prompt" : selectedCount > 1 ? `Create ${selectedCount} essay tabs` : "Create essay tab"}</button>
-                {#if !replacing}
-                    <button class="link" disabled={selectedCount !== 1} onclick={() => apply("existing")}>Apply to existing tab</button>
-                    {#if selectedCount > 1}<p class="text-xs text-black/60">Select one prompt to use an existing tab.</p>{/if}
-                {/if}
+                <button class="primary w-full" disabled={!selectedCount} onclick={() => apply()}>{busy ? "Saving…" : adding ? "Add prompt to this tab" : selectedCount > 1 ? `Create ${selectedCount} essay tabs` : "Create essay tab"}</button>
                 {#if view.setup}<button class="link" onclick={() => choosing = false}>Back to writing</button>{/if}
             </div>
         </fieldset>
     {:else}
         {@const setup = view.setup}
-        {#each setup.prompts as prompt (prompt.id)}
+        {#each view.sections as section, index (section.prompt.id)}
+            {@const prompt = section.prompt}
+            {@const sources = setup.references.filter(ref => ref.research?.promptIds.includes(prompt.id) && view.effectiveSetup && isCollegeReferenceCurrent(ref, view.effectiveSetup))}
             <section class="space-y-2" aria-label={prompt.label || "Your prompt"}>
                 <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <h2 class="font-semibold">{prompt.label || "Your prompt"}</h2>
+                    <h2 class="font-semibold">{setup.kind === "supplemental" ? `Prompt ${index + 1}` : prompt.label || "Your prompt"}</h2>
                     {#each prompt.constraints.filter(c => c.unit !== "other") as constraint (constraint.id)}
-                        <span class="text-xs text-black/60 whitespace-nowrap tabular-nums" aria-label="Essay length">{constraint.unit === "characters" ? view.characterCount : view.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</span>
+                        <span class="text-xs text-black/60 whitespace-nowrap tabular-nums" aria-label="Essay length">{constraint.unit === "characters" ? section.characterCount : section.wordCount}{constraint.max !== null ? ` / ${constraint.max}` : ""} {constraint.unit}</span>
                     {/each}
                 </div>
+                {#if !prompt.constraints.some(c => c.unit !== "other")}<span class="text-xs text-black/60 tabular-nums" aria-label="Essay length">{section.wordCount} words · no limit</span>{/if}
                 <p class="whitespace-pre-wrap leading-relaxed">{prompt.text}</p>
+                {#if sources.length}<details><summary class="text-xs text-black/60">Research for this prompt ({sources.length})</summary>{#each sources as source (source.id)}<p class="text-xs mt-2">{source.summary} <a class="source-link" href={source.url} target="_blank" rel="noreferrer">{source.publisher}</a></p>{/each}</details>{/if}
                 {#if prompt.sourceUrl}<a class="source-link" href={prompt.sourceUrl} target="_blank" rel="noreferrer">{setup.kind === "supplemental" ? "Original prompt" : "Prompt summary · View original"}<span aria-hidden="true"> ↗</span></a>{/if}
             </section>
         {/each}
-        {#if setup.prompts.length > 1}<p class="text-xs text-black/60">This earlier setup has multiple prompts. Change prompt to replace it with one; your writing stays.</p>{/if}
+        {#if view.sectionMode}<p class="text-xs text-black/60">Edit prompts and limits in the H1 headings. Counts include answer text only.</p>{/if}
+        {#if !view.sections.length}<p class="text-xs text-black/60">No prompt headings found. Add a prompt or restore an H1 to reconnect its saved context.</p>{/if}
         {#if !setup.active}<p class="text-xs text-black/60">Paused. Feedback isn’t using this prompt.</p>{/if}
         <div class="flex flex-wrap gap-2">
-            <button class="secondary" onclick={() => start(true)}>Change prompt</button>
-            <button class="secondary" onclick={() => start()}>Add essays</button>
+            <button class="secondary" disabled={busy || view.saving || !view.canEdit} onclick={() => start(true)}>Add another prompt</button>
+            <button class="link" onclick={() => start()}>Create another essay tab</button>
         </div>
         {#if view.aiEnabled && college}
-            <SchoolResearch {college} {view} />
+            <SchoolResearch {college} view={{...view, setup: view.effectiveSetup}} />
         {/if}
         <details class="border-t border-black/10 pt-3">
             <summary class="text-xs cursor-pointer">Sources and settings</summary>
@@ -192,6 +181,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 <div class="space-y-3">
                     {#each setup.references as ref (ref.id)}
                         <div class="source-card">
+                            {#if ref.research && view.effectiveSetup && !isCollegeReferenceCurrent(ref, view.effectiveSetup)}<p class="text-amber-900 mb-2">Prompt missing or changed. Saved for recovery; excluded from AI context.</p>{/if}
                             {#if ref.url}<a class="source-link font-medium" href={ref.url} target="_blank" rel="noreferrer">{ref.publisher}<span aria-hidden="true"> ↗</span></a>{:else}<p class="font-medium">{ref.publisher}</p>{/if}
                             <p class="leading-relaxed mt-1">{ref.summary}</p>
                             <p class="text-black/50 mt-2">Checked {ref.checkedDate}{ref.cycle ? ` · ${ref.cycle}` : ""}</p>

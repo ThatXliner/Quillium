@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => {
     const currentTabId = store<string | null>(state.target.tabId);
     const currentTabLabel = store("Personal statement");
     const documentContent = store("A real draft with evidence.");
+    const editorView = store<unknown>(undefined);
     const appSettings = { aiEnabled: true };
     const getActiveCollegeSetup = vi.fn(() => state.activeSetup);
     const saveCollegeSetup = vi.fn(async (...args: unknown[]) => {
@@ -116,6 +117,7 @@ const mocks = vi.hoisted(() => {
             currentTabId,
             currentTabLabel,
             documentContent,
+            editorView,
         },
         appSettings,
         getActiveCollegeSetup,
@@ -198,6 +200,7 @@ function activeSetup(): CollegeSetup {
     setup.school = "Example University";
     setup.program = "History";
     setup.cycle = "2026";
+    setup.prompts[0].id = "prompt-1";
     setup.prompts[0].label = "Supplement prompt";
     setup.prompts[0].text = "Describe a meaningful experience.";
     mocks.state.collegeState.setup = setup;
@@ -277,6 +280,47 @@ describe("College school research capability", () => {
         const saved = mocks.state.saveCalls[0] as CollegeSetup;
         expect(saved.references.find((reference) => reference.id === source.id)?.summary).toBe(
             source.summary,
+        );
+    });
+
+    it("researches fourteen prompts and stores complete scoped provenance", async () => {
+        const setup = activeSetup();
+        const firstPrompt = setup.prompts[0];
+        if (!firstPrompt) throw new Error("Expected the preset to contain a prompt");
+        setup.prompts = Array.from({ length: 14 }, (_, index) => ({
+            ...firstPrompt,
+            id: `prompt-${index + 1}`,
+            label: `Prompt ${index + 1}`,
+            text: `Prompt ${index + 1}`,
+            constraints: firstPrompt.constraints.map((constraint) => ({ ...constraint })),
+        }));
+        const selectedPrompts = setup.prompts.map(({ id, label, text }) => ({
+            id,
+            label,
+            text,
+        }));
+        const selectedTarget = targetFor(setup, { prompts: selectedPrompts });
+        const source = finding("finding-1");
+        source.research = {
+            ...source.research!,
+            promptIds: setup.prompts.map((prompt) => prompt.id),
+        };
+        const result = resultFor(setup, [source]);
+        result.target = selectedTarget;
+        mocks.researchSchool.mockResolvedValue(result);
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+
+        await capabilities.research(selectedTarget, new AbortController().signal);
+        await capabilities.acceptResearch(result.id, [source.id], []);
+
+        const saved = mocks.state.saveCalls[0] as CollegeSetup;
+        const savedResearch = saved.references.find(
+            (reference) => reference.id === source.id,
+        )?.research;
+        expect(savedResearch?.promptIds).toEqual(setup.prompts.map((prompt) => prompt.id));
+        expect(Object.keys(savedResearch?.promptKeys ?? {})).toEqual(
+            setup.prompts.map((prompt) => prompt.id),
         );
     });
 
@@ -452,9 +496,9 @@ describe("College school research capability", () => {
         expect(saved.references.some((reference) => reference.id === bundled!.id)).toBe(true);
     });
 
-    it("rejects an over-capacity review before saving", async () => {
+    it("accepts research without losing fourteen existing references", async () => {
         const setup = activeSetup();
-        setup.references = Array.from({ length: 12 }, (_, index) => ({
+        setup.references = Array.from({ length: 14 }, (_, index) => ({
             ...finding(`existing-${index}`),
             id: `existing-${index}`,
             url: `https://example.edu/existing/${index}`,
@@ -466,10 +510,16 @@ describe("College school research capability", () => {
         const capabilities = createCollegeCapabilities(session, vi.fn());
         await capabilities.research(targetFor(setup), new AbortController().signal);
 
-        await expect(capabilities.acceptResearch(result.id, ["new-finding"], [])).rejects.toThrow(
-            /remove existing sources/i,
-        );
-        expect(mocks.saveCollegeSetup).not.toHaveBeenCalled();
+        await capabilities.acceptResearch(result.id, ["new-finding"], []);
+
+        const saved = mocks.state.saveCalls[0] as CollegeSetup;
+        expect(saved.references).toHaveLength(15);
+        for (let index = 0; index < 14; index += 1) {
+            expect(saved.references.some((reference) => reference.id === `existing-${index}`)).toBe(
+                true,
+            );
+        }
+        expect(saved.references.some((reference) => reference.id === "new-finding")).toBe(true);
     });
 
     it("retains a result when saving fails so the review can be retried", async () => {

@@ -106,11 +106,23 @@ const collegeReferenceSchema = z
     })
     .strict();
 
+/** A document range and count for one prompt answer in the tab writing brief. */
+export type CollegeBriefSection = {
+    promptId: string;
+    heading: string;
+    from: number;
+    to: number;
+    wordCount: number;
+    characterCount: number;
+};
+
 /** The tab-specific writing brief sent to editorial requests. */
 export type CollegeBrief = Pick<
     CollegeSetup,
     "school" | "program" | "cycle" | "intent" | "feedbackFocus" | "prompts"
->;
+> & {
+    sections?: CollegeBriefSection[];
+};
 
 export type CollegePrompt = z.infer<typeof collegePromptSchema>;
 export type CollegeReference = z.infer<typeof collegeReferenceSchema>;
@@ -128,6 +140,8 @@ export type CollegeSetup = {
     intent: string;
     feedbackFocus: string;
     prompts: CollegePrompt[];
+    sectionMode?: boolean;
+    promptArchive?: CollegePrompt[];
     preferences: EditorialPreferences;
     readers: ReaderPersona[];
     feedbackReaders: boolean;
@@ -153,12 +167,19 @@ const collegeSetupSchema = z
         feedbackFocus: z.string().max(2000),
         prompts: z
             .array(collegePromptSchema)
-            .min(1)
-            .max(12)
             .refine(
                 (prompts) => new Set(prompts.map((prompt) => prompt.id)).size === prompts.length,
                 "Prompt IDs must be unique",
             ),
+        sectionMode: z.boolean().optional(),
+        promptArchive: z
+            .array(collegePromptSchema)
+            .max(100)
+            .refine(
+                (prompts) => new Set(prompts.map((prompt) => prompt.id)).size === prompts.length,
+                "Archived prompt IDs must be unique",
+            )
+            .optional(),
         preferences: editorialPreferencesSchema,
         readers: z
             .array(collegeReaderSchema)
@@ -172,7 +193,6 @@ const collegeSetupSchema = z
         active: z.boolean(),
         references: z
             .array(collegeReferenceSchema)
-            .max(12)
             .refine(
                 (references) =>
                     new Set(references.map((reference) => reference.id)).size === references.length,
@@ -180,7 +200,16 @@ const collegeSetupSchema = z
             ),
         researchReview: researchReviewSchema.optional(),
     })
-    .strict();
+    .strict()
+    .superRefine((setup, context) => {
+        if (!setup.sectionMode && setup.prompts.length === 0) {
+            context.addIssue({
+                code: "custom",
+                path: ["prompts"],
+                message: "At least one prompt is required outside section mode",
+            });
+        }
+    });
 
 export { collegeSetupSchema };
 
