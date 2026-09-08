@@ -221,6 +221,9 @@ intended prose-development scope.
 - When an active revision is in context, Compare versions gives a read-only
   account of meaning, voice, pacing, emphasis, and reader-effect tradeoffs.
 
+Message actions use compact branch, edit, retry, and context icons with tooltips
+and accessible names. The context icon toggles the saved turn context.
+
 ### Conversation identity and alternative paths
 
 ![Discussions in the sidebar](assets/issue-436/discussions-sidebar.png)
