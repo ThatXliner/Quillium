@@ -50,6 +50,7 @@ import {
     editorView,
     versionGroups,
 } from "$lib/stores";
+import { ModalResizeHandles } from "@quillium/share";
 import {
     type ReadonlyShareScope,
     includesReadonlyShareTab,
@@ -439,8 +440,8 @@ async function toggleReadonlyShare() {
             class="m-0 flex h-screen max-h-screen w-screen max-w-screen items-center justify-center border-none bg-transparent p-0 [&::backdrop]:bg-black/20 [&::backdrop]:backdrop-blur-[5px]"
             onclick={handleBackdropClick}
         >
-            <div class="w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
-                <header class="flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
+            <div class="flex flex-col w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
+                <header class="shrink-0 flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
                     <div>
                         <div class="flex items-center gap-2.5">
                             <h2 class="m-0 text-2xl/[1.1] font-[650] text-black/80">Share your document</h2>
@@ -457,12 +458,12 @@ async function toggleReadonlyShare() {
                     </button>
                 </header>
 
-                <p class="m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
+                <p class="shrink-0 m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
                     Because writing is better together, always.
                 </p>
 
                 <div
-                    class="relative mx-6 flex gap-0.5 rounded-full bg-black/[0.055] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]"
+                    class="shrink-0 relative mx-6 flex gap-0.5 rounded-full bg-black/[0.055] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]"
                     bind:this={tabTrackEl}
                     style={tabPillStyle}
                     role="tablist"
@@ -490,7 +491,7 @@ async function toggleReadonlyShare() {
                     </button>
                 </div>
 
-                <section class="m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
+                <section class="min-h-0 overflow-y-auto m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
                     {#if activeTab === "preview"}
                         <ShareModalPreviewTab
                             {authenticated}
@@ -522,6 +523,7 @@ async function toggleReadonlyShare() {
                         />
                     {/if}
                 </section>
+                <ModalResizeHandles />
             </div>
         </dialog>
     {/if}

@@ -33,6 +33,7 @@ import {
     documentContent,
     lastPersistedEventId,
 } from "$lib/stores";
+import { ModalResizeHandles } from "@quillium/share";
 import { BarChart3, Clock3, HelpCircle, X } from "lucide-svelte";
 import { onMount } from "svelte";
 
@@ -488,6 +489,7 @@ function formatGradeLevel(grade: number): string {
             {/if}
             {/if}
         </div>
+        <ModalResizeHandles />
     </div>
 </dialog>
 

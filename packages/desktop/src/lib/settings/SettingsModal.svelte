@@ -37,6 +37,7 @@ import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(
 import posthog from "$lib/posthog";
 import { appSettings, previewSettings, updateSettings } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
+import { ModalResizeHandles } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
 import { Bug, ChevronDown, MessageSquare, Scale, X } from "lucide-svelte";
@@ -473,6 +474,7 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         </div><!-- end shake wrapper -->
+        <ModalResizeHandles minWidth={480} />
     </div>
 </dialog>
 

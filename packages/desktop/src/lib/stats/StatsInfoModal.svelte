@@ -9,6 +9,7 @@
       - onclose: () => void
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { X } from "lucide-svelte";
 
 const { topic, onclose }: { topic: string; onclose: () => void } = $props();
@@ -105,7 +106,7 @@ const entry: InfoEntry = $derived(
         </div>
 
         <!-- Body -->
-        <div class="px-5 py-4 flex flex-col gap-3">
+        <div class="px-5 py-4 flex flex-col gap-3 min-h-0 overflow-y-auto">
             <p class="text-sm text-black/70 leading-relaxed font-medium">{entry.description}</p>
             {#if entry.details}
                 <p class="text-[13px] text-black/50 leading-relaxed">{entry.details}</p>
@@ -126,6 +127,7 @@ const entry: InfoEntry = $derived(
                 </div>
             {/if}
         </div>
+        <ModalResizeHandles />
     </div>
 </dialog>
 
@@ -150,6 +152,8 @@ const entry: InfoEntry = $derived(
     }
 
     .info-inner {
+        display: flex;
+        flex-direction: column;
         position: relative;
         max-width: 26rem;
         width: 85vw;

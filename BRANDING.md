@@ -306,6 +306,14 @@ Panel:
   radius: 14px
 ```
 
+#### Resizable Modals
+
+Content modals use the same right-edge, bottom-edge, and corner resize handles as
+sidebar panels. They stay centered while resizing, leave at least 16px of space
+from the viewport edge, and keep overflowing content scrollable. Arrow keys on a
+focused handle resize the modal; Home or a double-click restores its default size.
+Custom sizes last until the modal is unmounted.
+
 #### Annotation Card
 
 Floating cards pinned to the right of the document, aligned to their source

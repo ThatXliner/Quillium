@@ -8,6 +8,7 @@
       ondismiss — called when the user closes the modal
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { X } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -119,5 +120,6 @@ const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
                 {/each}
             {/if}
         </div>
+        <ModalResizeHandles />
     </div>
 </div>

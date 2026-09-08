@@ -10,6 +10,7 @@
       - onclose: () => void
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { X } from "lucide-svelte";
 
 const { onclose }: { onclose: () => void } = $props();
@@ -107,6 +108,7 @@ const RECOMMENDATIONS: Recommendation[] = [
                 </p>
             </div>
         </div>
+        <ModalResizeHandles />
     </div>
 </dialog>
 

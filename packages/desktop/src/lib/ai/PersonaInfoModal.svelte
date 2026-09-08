@@ -14,6 +14,7 @@
     panels (green / purple) can use it.
 -->
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { InfoIcon, UsersIcon, X } from "lucide-svelte";
 
 let open = $state(false);
@@ -71,7 +72,7 @@ function handleBackdropClick(e: MouseEvent) {
             </div>
 
             <!-- Body -->
-            <div class="px-5 py-4 flex flex-col gap-3">
+            <div class="px-5 py-4 flex flex-col gap-3 min-h-0 overflow-y-auto">
                 <p class="text-sm text-black/70 leading-relaxed font-medium">
                     Personas let several AI "readers" review your writing at once, each from a
                     distinct perspective.
@@ -90,6 +91,7 @@ function handleBackdropClick(e: MouseEvent) {
                     </p>
                 </div>
             </div>
+            <ModalResizeHandles />
         </div>
     </dialog>
 {/if}
@@ -115,6 +117,8 @@ function handleBackdropClick(e: MouseEvent) {
     }
 
     .info-inner {
+        display: flex;
+        flex-direction: column;
         position: relative;
         max-width: 24rem;
         width: 85vw;

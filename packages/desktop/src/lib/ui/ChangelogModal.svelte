@@ -14,6 +14,7 @@
 <script lang="ts">
 import { renderMarkdown } from "$lib/ai/utils";
 import { capture } from "$lib/posthog";
+import { ModalResizeHandles } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { X } from "lucide-svelte";
 
@@ -92,6 +93,7 @@ function handleContentClick(event: MouseEvent) {
                 {@html html}
             </div>
         </div>
+        <ModalResizeHandles />
     </div>
 </div>
 

@@ -3,9 +3,10 @@
  * AnnotationModalFrame.svelte — App-neutral modal surface shared by desktop and Web Preview.
  *
  * Hosts retain ownership of the outer overlay or native `<dialog>` lifecycle. This component owns
- * only the behavior-neutral inner surface, including the canonical size for each annotation type.
+ * the resizable inner surface, including the default size for each annotation type.
  */
 import type { Snippet } from "svelte";
+import ModalResizeHandles from "./ModalResizeHandles.svelte";
 
 let {
     variant,
@@ -27,6 +28,7 @@ const modalWidth = $derived(
     style:--annotation-modal-width={modalWidth}
 >
     {@render children()}
+    <ModalResizeHandles minWidth={640} />
 </div>
 
 <style>

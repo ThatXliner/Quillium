@@ -1,4 +1,5 @@
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { LogOut, Mail, UserRound, X } from "lucide-svelte";
 import { isAnonymous } from "./auth.svelte";
 import { avatarColor, initials } from "./avatarUtils";
@@ -43,7 +44,7 @@ function handleKeydown(e: KeyboardEvent) {
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 <dialog bind:this={dialogEl} class="profile-modal" onclick={handleBackdropClick}>
     <div class="profile-modal-inner">
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06]">
+        <div class="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06]">
             <h2 class="text-[13px] font-semibold text-black/60">Profile</h2>
             <button
                 onclick={onclose}
@@ -55,7 +56,7 @@ function handleKeydown(e: KeyboardEvent) {
             </button>
         </div>
 
-        <div class="px-5 py-5 flex flex-col gap-4">
+        <div class="min-h-0 overflow-y-auto px-5 py-5 flex flex-col gap-4">
             <div class="flex items-center gap-3">
                 <div
                     class="w-14 h-14 rounded-full flex items-center justify-center text-white text-lg font-semibold shadow-md"
@@ -94,6 +95,7 @@ function handleKeydown(e: KeyboardEvent) {
                 Log out
             </button>
         </div>
+        <ModalResizeHandles />
     </div>
 </dialog>
 
@@ -117,6 +119,8 @@ function handleKeydown(e: KeyboardEvent) {
     }
 
     .profile-modal-inner {
+        display: flex;
+        flex-direction: column;
         width: 360px;
         background: white;
         border-radius: 1rem;

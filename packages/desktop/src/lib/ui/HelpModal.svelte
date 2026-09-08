@@ -12,6 +12,7 @@ export type HelpTab = {
 </script>
 
 <script lang="ts">
+import { ModalResizeHandles } from "@quillium/share";
 import { Tabs } from "bits-ui";
 import { X } from "lucide-svelte";
 import { untrack } from "svelte";
@@ -78,7 +79,7 @@ $effect(() => {
                 <X size={16} aria-hidden="true" />
             </button>
         </div>
-        <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-col">
+        <Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
             <Tabs.List aria-label={`${title} topics`} class="flex shrink-0 gap-1 overflow-x-auto border-b border-black/[0.06] px-4 py-2">
                 {#each tabs as tab (tab.id)}
                     <Tabs.Trigger
@@ -125,6 +126,7 @@ $effect(() => {
                 </Tabs.Content>
             {/each}
         </Tabs.Root>
+        <ModalResizeHandles />
     </div>
 </dialog>
 

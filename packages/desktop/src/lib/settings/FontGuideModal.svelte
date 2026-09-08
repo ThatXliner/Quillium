@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
 import { FEEDBACK_FORM_URL } from "$lib/constants";
+import { ModalResizeHandles } from "@quillium/share";
 import { X } from "lucide-svelte";
 import { FONTS } from "./fonts";
 
@@ -211,6 +212,7 @@ $effect(() => {
             {/each}
 
         </div>
+        <ModalResizeHandles minWidth={480} />
     </div>
 </dialog>
 
