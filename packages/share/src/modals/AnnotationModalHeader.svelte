@@ -7,6 +7,7 @@
  */
 import { X } from "lucide-svelte";
 import type { Snippet } from "svelte";
+import RestoreSizeButton from "../resize/RestoreSizeButton.svelte";
 
 let {
     accent,
@@ -14,12 +15,14 @@ let {
     actions,
     onClose,
     closeLabel = "Close modal",
+    restoreSize,
 }: {
     accent: "revision" | "comment" | "suggestion";
     leading: Snippet;
     actions?: Snippet;
     onClose: () => void;
     closeLabel?: string;
+    restoreSize?: () => void;
 } = $props();
 </script>
 
@@ -37,6 +40,7 @@ let {
                 {@render actions()}
             </div>
         {/if}
+        <RestoreSizeButton {restoreSize} />
         <button type="button" class="annotation-modal-close" onclick={onClose} aria-label={closeLabel}>
             <span>esc</span>
             <X size={16} />

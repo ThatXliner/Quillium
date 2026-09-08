@@ -1,5 +1,6 @@
 <!-- NameVersionPrompt.svelte — A focused checkpoint prompt for the active editor. -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 
@@ -38,17 +39,22 @@ async function submit(event: SubmitEvent): Promise<void> {
         saving = false;
     }
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <dialog
     bind:this={dialog}
     aria-labelledby="name-version-title"
-    class="m-auto w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/40 bg-gray-200 p-6 text-black/80 shadow-xl backdrop:bg-black/25 backdrop:backdrop-blur-sm"
+    class="open:flex flex-col overflow-hidden m-auto w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/40 bg-gray-200 p-6 text-black/80 shadow-xl backdrop:bg-black/25 backdrop:backdrop-blur-sm"
     oncancel={(event) => { event.preventDefault(); if (!saving) onclose(); }}
     onkeydown={(event) => { event.stopPropagation(); }}
 >
-    <form onsubmit={submit} class="flex flex-col gap-4">
-        <h2 id="name-version-title" class="text-sm font-semibold">Name this version</h2>
+    <form onsubmit={submit} class="min-h-0 overflow-y-auto flex flex-col gap-4">
+        <div class="flex min-h-[26px] items-center justify-between gap-2">
+            <h2 id="name-version-title" class="text-sm font-semibold">Name this version</h2>
+            <RestoreSizeButton {restoreSize} />
+        </div>
         <label class="flex flex-col gap-2 text-xs">
             Version name
             <input bind:this={input} bind:value={label} disabled={saving} placeholder="Before revising the opening"
@@ -64,4 +70,5 @@ async function submit(event: SubmitEvent): Promise<void> {
             </button>
         </div>
     </form>
+    <ModalResizeHandles bind:restoreSize minHeight={160} />
 </dialog>

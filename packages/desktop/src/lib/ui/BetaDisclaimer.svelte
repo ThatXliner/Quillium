@@ -6,6 +6,7 @@
     full terms on the website. Persists acceptance to localStorage.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import posthog from "$lib/posthog";
 
 const { onaccept }: { onaccept: () => void } = $props();
@@ -17,6 +18,8 @@ function accept() {
     posthog.capture("beta_terms_accepted");
     onaccept();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <div class="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="Beta disclaimer">
@@ -33,14 +36,17 @@ function accept() {
         rounded; the INNER clips the backdrop-blur to the radius via overflow-hidden.
     -->
     <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] shadow-xl rounded-2xl"
+        class="flex flex-col absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] shadow-xl rounded-2xl"
         role="document"
     >
         <div
-            class="overflow-hidden backdrop-blur-md bg-gray-300/85 border border-white/40 rounded-2xl p-6 flex flex-col gap-4"
+            class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto backdrop-blur-md bg-gray-300/85 border border-white/40 rounded-2xl p-6 flex flex-col gap-4"
         >
             <div>
-                <h3 class="text-sm font-semibold text-black/80 mb-1">Welcome to the Quillium Beta</h3>
+                <div class="flex min-h-[26px] items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-black/80 mb-1">Welcome to the Quillium Beta</h3>
+                    <RestoreSizeButton {restoreSize} />
+                </div>
                 <p class="text-xs text-black/60 leading-relaxed">
                     By continuing, you agree to the
                     <a
@@ -61,5 +67,6 @@ function accept() {
                 </button>
             </div>
         </div>
+        <ModalResizeHandles bind:restoreSize minHeight={160} />
     </div>
 </div>

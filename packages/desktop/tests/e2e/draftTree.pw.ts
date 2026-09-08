@@ -218,6 +218,11 @@ test.describe("Draft panel", () => {
         const modal = page.locator('[aria-label="Delete draft"]');
         await expect(modal).toBeVisible({ timeout: 5_000 });
 
+        const surface = modal.locator('[role="document"]');
+        const initialWidth = (await surface.boundingBox())!.width;
+        await modal.getByRole("button", { name: "Resize modal width" }).press("ArrowRight");
+        await expect(surface).toHaveCSS("width", `${initialWidth + 20}px`);
+
         // Keep the children: v1 goes, the child survives reattached to main.
         await modal.getByText("Keep the children").click();
         await expect(panel.getByText(parentLabel)).toBeHidden({ timeout: 5_000 });

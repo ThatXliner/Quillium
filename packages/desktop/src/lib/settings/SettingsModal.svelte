@@ -37,6 +37,7 @@ import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(
 import posthog from "$lib/posthog";
 import { appSettings, previewSettings, updateSettings } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
 import { Bug, ChevronDown, MessageSquare, Scale, X } from "lucide-svelte";
@@ -298,6 +299,8 @@ function handleKeydown(e: KeyboardEvent) {
         tryClose();
     }
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -365,6 +368,7 @@ function handleKeydown(e: KeyboardEvent) {
                         {/if}
                     </div>
                 {/if}
+                <RestoreSizeButton {restoreSize} />
                 <button
                     onclick={tryClose}
                     aria-label="Close settings"
@@ -473,6 +477,7 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         </div><!-- end shake wrapper -->
+        <ModalResizeHandles bind:restoreSize minWidth={480} />
     </div>
 </dialog>
 
