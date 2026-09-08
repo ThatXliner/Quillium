@@ -26,6 +26,7 @@ const groups = [
     { kind: "official-advice", label: "Official guidance" },
     { kind: "editorial-guidance", label: "Editorial guidance" },
 ] as const;
+const researchLabel = $derived(`Research this school's prompt${(view.setup?.prompts.length ?? 0) > 1 ? "s" : ""}`);
 const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
 const missing = $derived(
     result
@@ -143,11 +144,11 @@ async function accept(): Promise<void> {
 </script>
 
 {#if !opened}
-    <button class="research-link" disabled={!view.setup?.active || !view.setup.prompts.length || view.saving} onclick={open}>Research this school's prompt</button>
+    <button class="research-link" disabled={!view.setup?.active || !view.setup.prompts.length || view.saving} onclick={open}>{researchLabel}</button>
 {:else}
     <section class="space-y-3 border-t border-black/10 pt-3" aria-label="School research">
         <div class="flex items-center justify-between gap-2">
-            <h3 class="font-semibold text-sm" tabindex="-1" bind:this={heading}>{result ? "Review sources" : "Research this school's prompt"}</h3>
+            <h3 class="font-semibold text-sm" tabindex="-1" bind:this={heading}>{result ? "Review sources" : researchLabel}</h3>
             <button class="research-link" disabled={saving} onclick={close}>Close</button>
         </div>
         <p class="text-xs text-black/60">{view.tabLabel} · {view.draftLabel}</p>
