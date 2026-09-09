@@ -17,8 +17,13 @@ Two-panel layout:
 
 | Type | Description | Retention |
 |------|-------------|-----------|
-| Auto-saved | Created every 50 events or 120 seconds | Configurable policy |
+| Auto-saved | Created every 50 events or 120 seconds, and when leaving with unsnapshotted edits | Configurable policy |
 | Named checkpoints | Created by user via "Name this version…" | Until explicitly deleted |
+
+Leaving the editor queues a snapshot of the latest persisted draft state before navigation
+completes. Repeated navigation without further edits reuses that checkpoint, including
+when an automatic or named snapshot already captured the latest event. Normal editing
+keeps the existing snapshot thresholds.
 
 ## Document Activity
 

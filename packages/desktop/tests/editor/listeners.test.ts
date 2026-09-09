@@ -80,6 +80,197 @@ afterEach(async () => {
 });
 
 describe("listeners integration", () => {
+    it("checkpoints the latest edit before leaving below the automatic snapshot threshold", async () => {
+        const snapshots: Array<{ draftId: string; stateJson: string; upToEventId: number }> = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: 7, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") snapshots.push(args as (typeof snapshots)[number]);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await flushPersistQueue();
+        expect(snapshots).toHaveLength(0);
+        await flushPersistence();
+        expect(snapshots).toHaveLength(1);
+        expect(snapshots[0]).toMatchObject({ draftId: "draft-1", upToEventId: 7 });
+        expect(JSON.parse(snapshots[0].stateJson).doc).toBe("Hello world!");
+    });
+
+    it("deduplicates repeated flushes and awaits the delayed checkpoint", async () => {
+        const snapshots: unknown[] = [];
+        let releaseSnapshot!: () => void;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: 8, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") {
+                snapshots.push(args);
+                return new Promise<void>((resolve) => {
+                    releaseSnapshot = resolve;
+                });
+            }
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        const firstFlush = flushPersistence();
+        const secondFlush = flushPersistence();
+
+        await vi.waitFor(() => expect(releaseSnapshot).toBeDefined());
+        expect(snapshots).toHaveLength(1);
+        let finished = false;
+        void Promise.all([firstFlush, secondFlush]).then(() => {
+            finished = true;
+        });
+        await flushMicrotasks();
+        expect(finished).toBe(false);
+        releaseSnapshot();
+        await Promise.all([firstFlush, secondFlush]);
+        expect(snapshots).toHaveLength(1);
+    });
+
+    it("keeps later edits after the captured flush barrier", async () => {
+        const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];
+        let releaseSnapshot!: () => void;
+        let appendCount = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: ++appendCount, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") {
+                snapshots.push(args as (typeof snapshots)[number]);
+                if (snapshots.length === 1) {
+                    return new Promise<void>((resolve) => {
+                        releaseSnapshot = resolve;
+                    });
+                }
+            }
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: " first" } });
+        const firstFlush = flushPersistence();
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " later" } });
+        const secondFlush = flushPersistence();
+
+        await vi.waitFor(() => expect(releaseSnapshot).toBeDefined());
+        expect(snapshots).toHaveLength(1);
+        expect(JSON.parse(snapshots[0].stateJson).doc).toBe("Hello world first");
+        releaseSnapshot();
+        await Promise.all([firstFlush, secondFlush]);
+
+        expect(snapshots).toHaveLength(2);
+        expect(JSON.parse(snapshots[1].stateJson).doc).toBe("Hello world first later");
+    });
+
+    it("reuses a named version at the latest event when leaving", async () => {
+        const snapshots: string[] = [];
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 13, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot" || cmd === "cmd_create_named_snapshot") {
+                snapshots.push(cmd);
+            }
+            return 1;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await persistNamedVersion(
+            "draft-1",
+            JSON.stringify(view.state.toJSON()),
+            "Latest",
+            () => true,
+        );
+        await flushPersistence();
+        expect(snapshots).toEqual(["cmd_create_named_snapshot"]);
+    });
+
+    it("checkpoints effect-only edits on flush", async () => {
+        const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: 14, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") snapshots.push(args as (typeof snapshots)[number]);
+            return null;
+        });
+
+        view = makeView();
+        const { spec } = createVersionGroup("Linked", [
+            { revisionId: 1, versionId: "one" },
+            { revisionId: 2, versionId: "two" },
+        ]);
+        view.dispatch(spec);
+        await flushPersistence();
+
+        expect(snapshots).toHaveLength(1);
+        expect(JSON.parse(snapshots[0].stateJson).versionGroupField).toBeDefined();
+        expect(snapshots[0].upToEventId).toBe(14);
+    });
+
+    it("retries a failed flush checkpoint while keeping the queue usable", async () => {
+        let snapshotAttempts = 0;
+        const snapshotError = new Error("disk full");
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 15, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") {
+                snapshotAttempts += 1;
+                if (snapshotAttempts === 1) return Promise.reject(snapshotError);
+            }
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await expect(flushPersistence()).rejects.toBe(snapshotError);
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "[listeners] flush snapshot failed:",
+            snapshotError,
+        );
+        await expect(flushPersistence()).resolves.toBeUndefined();
+        expect(snapshotAttempts).toBe(2);
+    });
+
+    it("isolates a pending checkpoint when the draft is seeded", async () => {
+        const snapshots: Array<{ draftId: string; stateJson: string }> = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: 16, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") snapshots.push(args as (typeof snapshots)[number]);
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await flushPersistQueue();
+        currentDraftId.set("draft-2");
+        seedPersistenceBookkeeping(90);
+        await flushPersistence();
+        expect(snapshots).toHaveLength(0);
+
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " new" } });
+        await flushPersistence();
+        expect(snapshots).toHaveLength(1);
+        expect(snapshots[0].draftId).toBe("draft-2");
+    });
+
+    it("does not checkpoint after an append failure even if a later append succeeds", async () => {
+        let appendCount = 0;
+        const snapshots: unknown[] = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") {
+                appendCount += 1;
+                if (appendCount === 1) return Promise.reject(new Error("disk full"));
+                return { eventId: 17, needsSnapshot: false };
+            }
+            if (cmd === "cmd_create_snapshot") snapshots.push(args);
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: " first" } });
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " later" } });
+        await flushPersistence();
+
+        expect(appendCount).toBe(2);
+        expect(snapshots).toHaveLength(0);
+    });
+
     it("invokes cmd_append_event when the document changes", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
@@ -343,6 +534,8 @@ describe("listeners integration", () => {
             annotationField?: Record<string, unknown>;
         };
         expect(snapshotState.annotationField?.[comment.id]).toBeDefined();
+        await flushPersistence();
+        expect(invoked.filter((call) => call.cmd === "cmd_create_snapshot")).toHaveLength(0);
     });
 
     it("creates an autosave from the pre-change state before a sentence-sized deletion", async () => {
@@ -550,6 +743,8 @@ describe("listeners integration", () => {
         const args = snapshotCall?.args as { draftId: string; upToEventId: number };
         expect(args.draftId).toBe("draft-1");
         expect(args.upToEventId).toBe(50);
+        await flushPersistence();
+        expect(invoked.filter((call) => call.cmd === "cmd_create_snapshot")).toHaveLength(1);
     });
 
     it("skips persisting when no document or draft is set", async () => {

@@ -32,7 +32,13 @@ import {
 } from "$lib/stores";
 import { recordWritingActivity as recordReminderWritingActivity } from "$lib/writingReminders";
 import { historyField, isolateHistory } from "@codemirror/commands";
-import { type Annotation, ChangeSet, EditorSelection, Transaction } from "@codemirror/state";
+import {
+    type Annotation,
+    ChangeSet,
+    EditorSelection,
+    type EditorState,
+    Transaction,
+} from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { isEqual } from "lodash-es";
 import { toast } from "svelte-sonner";
@@ -110,6 +116,14 @@ let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
 const deletionBurstTracker = new DeletionBurstTracker();
+
+type PendingCheckpoint = {
+    draftId: string;
+    eventId: number;
+    state: EditorState;
+};
+
+let pendingCheckpoint: PendingCheckpoint | null = null;
 
 function serializeSelection(sel: EditorSelection): SelectionJSON {
     return {
@@ -591,7 +605,10 @@ export function persistNamedVersion(
             throw new Error(
                 "Your latest changes could not be saved. Reopen the draft before naming a version.",
             );
-        return createNamedSnapshot(draftId, stateJson, get(lastPersistedEventId), label);
+        const eventId = get(lastPersistedEventId);
+        const snapshotId = await createNamedSnapshot(draftId, stateJson, eventId, label);
+        clearPendingCheckpoint(draftId, eventId);
+        return snapshotId;
     });
     // Navigation and subsequent edits must wait for this snapshot too.
     persistQueue = write.then(
@@ -825,8 +842,36 @@ function showSavingAfterDelay(docId: string, draftId: string): void {
     }, 150);
 }
 
+function clearPendingCheckpoint(draftId: string, eventId: number): void {
+    const checkpoint = pendingCheckpoint;
+    if (checkpoint?.draftId === draftId && checkpoint.eventId === eventId) {
+        pendingCheckpoint = null;
+    }
+}
+
+async function persistPendingCheckpoint(): Promise<void> {
+    if (persistenceFailed) return;
+
+    const checkpoint = pendingCheckpoint;
+    if (!checkpoint) return;
+
+    try {
+        await createSnapshot(
+            checkpoint.draftId,
+            JSON.stringify(checkpoint.state.toJSON(savedFields)),
+            checkpoint.eventId,
+        );
+        if (pendingCheckpoint === checkpoint) pendingCheckpoint = null;
+    } catch (error) {
+        console.error("[listeners] flush snapshot failed:", error);
+        captureException(error);
+        throw error;
+    }
+}
+
 /** Call after draining persistence and loading a draft's snapshot and events. */
 export function seedPersistenceBookkeeping(eventId = -1): void {
+    pendingCheckpoint = null;
     persistenceFailed = false;
     clearSavingIndicator();
     lastPersistedEventId.set(eventId);
@@ -849,12 +894,19 @@ async function snapshotAfterChange(
           )
         : false;
 
+    if (wroteCommentSnapshot) {
+        clearPendingCheckpoint(draftId, result.eventId);
+    }
+
     if (result.needsSnapshot && !wroteCommentSnapshot) {
         const stateJson = JSON.stringify(update.state.toJSON(savedFields));
-        await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
-            console.error(e);
+        try {
+            await createSnapshot(draftId, stateJson, result.eventId);
+            clearPendingCheckpoint(draftId, result.eventId);
+        } catch (e) {
+            console.error("[listeners] post-change snapshot failed:", e);
             captureException(e);
-        });
+        }
     }
 }
 
@@ -876,6 +928,13 @@ async function doAppend(
         if (isActiveDraft(docId, draftId)) {
             lastPersistedEventId.set(result.eventId);
             lastSavedAt.set(Date.now());
+        }
+        if (isActiveDraft(docId, draftId)) {
+            pendingCheckpoint = {
+                draftId,
+                eventId: result.eventId,
+                state: update.state,
+            };
         }
         await snapshotAfterChange(update, draftId, result, policy.afterComment);
         if (isActiveDraft(docId, draftId)) saveStatus.set("saved");
@@ -943,10 +1002,16 @@ export async function flushMetaDebounces(): Promise<void> {
     await Promise.all(metaWrites);
 }
 
-/** Drain event writes before metadata: appends can schedule a new metadata debounce. */
+/** Checkpoint pending edits before leaving; appends can also schedule metadata debounces. */
 export async function flushPersistence(): Promise<void> {
-    await flushPersistQueue();
-    await flushMetaDebounces();
+    const checkpoint = persistQueue.then(persistPendingCheckpoint);
+    // Queue synchronously so later edits and concurrent flushes retain their order.
+    persistQueue = checkpoint.catch(() => {});
+    try {
+        await checkpoint;
+    } finally {
+        await flushMetaDebounces();
+    }
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
