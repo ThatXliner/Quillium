@@ -109,6 +109,13 @@ if (result.needsSnapshot) {
 Snapshot triggers:
 - ≥50 events since last snapshot
 - ≥120 seconds elapsed
+- Leaving the editor or switching drafts with edits not yet captured by a snapshot
+
+`flushPersistence()` queues this last checkpoint behind pending event writes and awaits
+it before flushing metadata. The checkpoint retains the immutable state and draft/event
+IDs from the successful append; repeated flushes do not duplicate it. A failed checkpoint
+blocks the transition and can be retried. Exit checkpoints are skipped after an event
+write fails.
 
 ## Load Flow
 
