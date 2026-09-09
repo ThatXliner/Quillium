@@ -1478,6 +1478,10 @@ export const annotationField = StateField.define<Annotations>({
         return {};
     },
     update(oldAnnotations: Annotations, tr: Transaction): Annotations {
+        if (!tr.docChanged && classifyAnnotationMutation(tr) === "none") {
+            return oldAnnotations;
+        }
+
         // Phase 1: remap annotation ranges through doc changes
         let annotations = remapAnnotationSelections(oldAnnotations, tr);
 

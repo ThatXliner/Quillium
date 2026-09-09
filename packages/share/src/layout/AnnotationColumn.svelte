@@ -83,12 +83,6 @@ $effect(() => {
 });
 
 $effect(() => {
-    void ids;
-    void cardElementsVersion;
-    tick().then(() => dom.observeCards());
-});
-
-$effect(() => {
     dom.setEventTargets([window, ...scrollTargets]);
     window.addEventListener("resize", dom.schedule);
     return () => {

@@ -21,10 +21,12 @@ export type ApplyAnnotationColumnOptions<Id extends AnnotationLayoutId> = {
     items: Omit<LayoutItem<Id>, "height">[];
     activeId: Id | null;
     geometry: AnnotationColumnGeometry;
+    preserveScroll?: boolean;
 };
 
 export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
     private readonly elements = new Map<Id, HTMLDivElement>();
+    private readonly observedElements = new Set<HTMLDivElement>();
     private resizeObserver: ResizeObserver | undefined;
     private timeout: ReturnType<typeof setTimeout> | undefined;
     private eventTargets = new Set<EventTarget>();
@@ -32,24 +34,45 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
     public constructor(private readonly updateLayout: () => void) {}
 
     public mountCard(node: HTMLDivElement, id: Id) {
+        this.initializeResizeObserver();
         let currentId = id;
-        this.elements.set(currentId, node);
-        this.observeCards();
+        this.replaceCard(currentId, node);
         this.schedule();
         return {
             update: (nextId: Id) => {
-                if (this.elements.get(currentId) === node) this.elements.delete(currentId);
+                if (nextId === currentId || this.elements.get(currentId) !== node) return;
+                this.elements.delete(currentId);
+                this.unobserveCard(this.elements.get(nextId));
                 currentId = nextId;
                 this.elements.set(currentId, node);
-                this.observeCards();
+                this.observeCard(node);
                 this.schedule();
             },
             destroy: () => {
-                if (this.elements.get(currentId) === node) this.elements.delete(currentId);
-                this.observeCards();
+                if (this.elements.get(currentId) !== node) return;
+                this.elements.delete(currentId);
+                this.unobserveCard(node);
                 this.schedule();
             },
         };
+    }
+
+    private replaceCard(id: Id, node: HTMLDivElement): void {
+        const previous = this.elements.get(id);
+        if (previous !== node) this.unobserveCard(previous);
+        this.elements.set(id, node);
+        this.observeCard(node);
+    }
+
+    private observeCard(node: HTMLDivElement | undefined): void {
+        if (!node || !this.resizeObserver || this.observedElements.has(node)) return;
+        this.resizeObserver.observe(node);
+        this.observedElements.add(node);
+    }
+
+    private unobserveCard(node: HTMLDivElement | undefined): void {
+        if (!node || !this.resizeObserver || !this.observedElements.delete(node)) return;
+        this.resizeObserver.unobserve(node);
     }
 
     public getCardElement(id: Id): HTMLDivElement | undefined {
@@ -60,11 +83,13 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
         return this.elements.get(id)?.offsetHeight || 80;
     }
 
-    public observeCards(): void {
+    /** Card lifecycle methods own registration; callers never rebuild the observer. */
+    private initializeResizeObserver(): void {
         if (typeof ResizeObserver === "undefined") return;
-        this.resizeObserver?.disconnect();
-        this.resizeObserver = new ResizeObserver(() => this.schedule());
-        for (const element of this.elements.values()) this.resizeObserver.observe(element);
+        if (!this.resizeObserver) {
+            this.resizeObserver = new ResizeObserver(() => this.schedule());
+            for (const element of this.elements.values()) this.observeCard(element);
+        }
     }
 
     public setEventTargets(targets: readonly EventTarget[]): void {
@@ -105,6 +130,8 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
             element.style.left = "0px";
         }
 
+        if (options.preserveScroll) return;
+
         // `overhead` only accounts for cards packed above the visible top
         // (the boundary/UI-chrome case). Stacking can just as easily push the
         // active card's own top and bottom below the container's visible
@@ -134,6 +161,8 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
     public destroy(): void {
         if (this.timeout !== undefined) clearTimeout(this.timeout);
         this.resizeObserver?.disconnect();
+        this.resizeObserver = undefined;
+        this.observedElements.clear();
         for (const target of this.eventTargets) target.removeEventListener("scroll", this.schedule);
         this.eventTargets.clear();
     }

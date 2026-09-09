@@ -202,7 +202,9 @@ shows a request toast instead of reading or mutating the root version-group map.
 
 ## The annotationField StateField
 
-`annotationField` is the single source of truth for all annotation data. Its `update()` function runs on **every** CodeMirror transaction in three phases:
+`annotationField` is the single source of truth for all annotation data. Its `update()` function returns the existing field unchanged for cursor-only or
+unrelated transactions. Document changes and annotation mutation effects run
+through three phases:
 
 ```mermaid
 flowchart LR

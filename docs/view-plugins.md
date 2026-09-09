@@ -186,3 +186,41 @@ stack rather than reviving the pre-collaboration branch.
 `persistentHistoryStateExtension` stays outside `historyCompartment` so a temporary collaboration
 reconfiguration cannot resurrect stale pre-collaboration history. The runtime history initializer
 lives inside the compartment and is removed together with CodeMirror history.
+
+## Dense annotation columns
+
+The desktop floating column keeps lightweight card shells for its complete
+filtered list. Above 100 annotations, an IntersectionObserver per column mounts
+full card content near the viewport, with 900px overscan. Distant shells retain
+their last measured height (128px before first measurement) so the column stays
+scrollable. Active, pending, and focused cards always mount. Unfinished message
+edits also keep their card mounted until saved or cancelled; the message component
+reports that lifetime through a bubbling `thread-message-editing` event. Reply
+drafts live in the existing shared draft store and survive unmounting. Completed,
+unfocused cards can unmount again outside the overscan region. Shell count stays
+linear. Inline modal lists keep their existing rendering behavior.
+
+The shared column controller uses one ResizeObserver with incremental card
+registration owned by card mount/unmount actions, without reactive refresh passes.
+Loading a nearby card can update layout without resetting manual
+column scrolling; editor-anchor changes and active-card height changes still
+reveal the active card. Editor-shell scroll events explicitly reposition cards
+because viewport-only updates no longer republish annotation stores.
+
+`tests/e2e/editorScaling.pw.ts` checks dense mounting, distant activation, undo/redo,
+and unfinished replies across column scrolling. Its optional timing matrix uses
+25k/250k-character drafts with 0/100/1,000 comments. Run it against a production
+build with one worker (public environment variables must be configured, or use
+the documented local build override):
+
+```bash
+CI=1 QUILLIUM_PERF=1 bun run desktop:test:e2e tests/e2e/editorScaling.pw.ts --workers=1 --retries=0
+```
+
+`CI=1` makes the existing Playwright config build and serve a production preview.
+The optional matrix attaches JSON with initial load, full-card count, seven
+20-character browser input timings, and median input latency, asserting a 50ms
+median budget. Ordinary CI leaves wall-clock checks disabled and runs the
+structural/behavior regressions. The [dense-draft capture](pr-screenshots/editor-scaling-dense.png)
+shows the resulting floating columns. Compare performance on the same machine; the
+Tauri persistence mock does not measure SQLite or WebKit latency.

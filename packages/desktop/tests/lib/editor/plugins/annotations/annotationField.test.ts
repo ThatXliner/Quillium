@@ -33,7 +33,7 @@ import { history, isolateHistory, redo, undo, undoDepth } from "@codemirror/comm
  *
  * These are pure CodeMirror state-level tests — no DOM or Svelte needed.
  */
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import type { TransactionSpec } from "@codemirror/state";
 import { Transaction } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
@@ -52,6 +52,8 @@ function makeState(doc: string): EditorState {
 function getAnnotations(state: EditorState): Annotations {
     return state.field(annotationField);
 }
+
+const unrelatedEffect = StateEffect.define<void>();
 
 /** Get a revision annotation by id, or throw. */
 function getRevision(state: EditorState, id: number) {
@@ -101,6 +103,50 @@ function updateRevisionVersionState(
         options,
     );
 }
+
+describe("annotationField identity", () => {
+    it("preserves the annotation map for cursor-only and unrelated-effect transactions", () => {
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, ["hello"]);
+        const before = getAnnotations(state);
+
+        const afterCursor = state.update({ selection: EditorSelection.cursor(2) }).state;
+        expect(getAnnotations(afterCursor)).toBe(before);
+
+        const afterUnrelatedEffect = afterCursor.update({
+            effects: unrelatedEffect.of(),
+        }).state;
+        expect(getAnnotations(afterUnrelatedEffect)).toBe(before);
+    });
+
+    it("creates a new map for thread mutations without mutating the previous state", () => {
+        let state = makeState("hello");
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 0,
+                    _type: "comment",
+                    status: "pending",
+                    selection: EditorSelection.single(0, 5),
+                    thread: [],
+                }),
+            ],
+        }).state;
+        const before = getAnnotations(state);
+        const beforeComment = before[0];
+
+        const nextThread = [{ message: "A note", author: "Writer", time: 1 }];
+        const afterState = state.update({
+            effects: updateThread.of({ annotationId: 0, newThread: nextThread }),
+        }).state;
+        const after = getAnnotations(afterState);
+
+        expect(after).not.toBe(before);
+        expect(after[0]).not.toBe(beforeComment);
+        expect(before[0]?.thread).toEqual([]);
+        expect(after[0]?.thread).toEqual(nextThread);
+    });
+});
 
 /** Add a revision annotation covering [from, to) with the given version docs. */
 function addRevision(
