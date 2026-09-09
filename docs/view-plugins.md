@@ -201,7 +201,8 @@ unfocused cards can unmount again outside the overscan region. Shell count stays
 linear. Inline modal lists keep their existing rendering behavior.
 
 The shared column controller uses one ResizeObserver with incremental card
-registration. Loading a nearby card can update layout without resetting manual
+registration owned by card mount/unmount actions, without reactive refresh passes.
+Loading a nearby card can update layout without resetting manual
 column scrolling; editor-anchor changes and active-card height changes still
 reveal the active card. Editor-shell scroll events explicitly reposition cards
 because viewport-only updates no longer republish annotation stores.

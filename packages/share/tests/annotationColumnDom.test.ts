@@ -148,7 +148,6 @@ describe("AnnotationColumnDomController", () => {
         const controller = new AnnotationColumnDomController<number>(vi.fn());
 
         for (let id = 0; id < 1000; id++) controller.mountCard(card(), id);
-        controller.observeCards();
 
         expect(FakeResizeObserver.instances).toHaveLength(1);
         expect(FakeResizeObserver.instances[0].observe).toHaveBeenCalledTimes(1000);
@@ -169,7 +168,6 @@ describe("AnnotationColumnDomController", () => {
 
         mountedFirst.update(1);
         mountedSecond.update(4);
-        controller.observeCards();
 
         expect(observer.observe).toHaveBeenCalledTimes(3);
         expect(observer.observe.mock.calls.some(([element]) => element === third)).toBe(true);
@@ -209,7 +207,6 @@ describe("AnnotationColumnDomController", () => {
         const controller = new AnnotationColumnDomController<number>(vi.fn());
 
         controller.mountCard(card(), 1);
-        controller.observeCards();
 
         expect(FakeResizeObserver.instances).toHaveLength(0);
         controller.destroy();

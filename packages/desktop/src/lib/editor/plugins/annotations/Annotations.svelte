@@ -552,7 +552,6 @@ function computeCardSides(positions: Positioned[]): { [id: number]: ColumnSide }
     return balancedSides;
 }
 
-let annotationElementsVersion = $state(0);
 const annotationColumnDom = new AnnotationColumnDomController<number>(updateAnnotationPositions);
 
 const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
@@ -570,12 +569,10 @@ const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
         editingCards = next;
     }
     node.addEventListener("thread-message-editing", messageEditing);
-    annotationElementsVersion++;
     return {
         update(nextId) {
             mounted.update(nextId);
             observeCard(node, nextId);
-            annotationElementsVersion++;
         },
         destroy() {
             node.removeEventListener("thread-message-editing", messageEditing);
@@ -595,7 +592,6 @@ const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
                 nodeObservers.delete(node);
             }
             mounted.destroy();
-            annotationElementsVersion++;
         },
     };
 };
@@ -616,16 +612,6 @@ $effect(() => {
     // is laid out after the template mounts/unmounts containers.
     void renderMode;
     tick().then(updateAnnotationPositions);
-});
-
-// Re-run positioning whenever any card changes height
-// (e.g. nested editor toggle). Re-observes whenever the
-// annotation list changes.
-$effect(() => {
-    if (!isFloating) return;
-    void sortedAnnotations; // track additions/removals
-    void annotationElementsVersion; // re-observe when elements register
-    tick().then(() => annotationColumnDom.observeCards());
 });
 
 function debouncedUpdatePositions() {

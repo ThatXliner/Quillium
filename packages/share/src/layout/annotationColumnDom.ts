@@ -34,7 +34,7 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
     public constructor(private readonly updateLayout: () => void) {}
 
     public mountCard(node: HTMLDivElement, id: Id) {
-        this.observeCards();
+        this.initializeResizeObserver();
         let currentId = id;
         this.replaceCard(currentId, node);
         this.schedule();
@@ -83,8 +83,8 @@ export class AnnotationColumnDomController<Id extends AnnotationLayoutId> {
         return this.elements.get(id)?.offsetHeight || 80;
     }
 
-    /** Initialize the single observer and register currently mounted cards once. */
-    public observeCards(): void {
+    /** Card lifecycle methods own registration; callers never rebuild the observer. */
+    private initializeResizeObserver(): void {
         if (typeof ResizeObserver === "undefined") return;
         if (!this.resizeObserver) {
             this.resizeObserver = new ResizeObserver(() => this.schedule());
