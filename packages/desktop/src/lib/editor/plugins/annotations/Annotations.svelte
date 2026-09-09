@@ -348,13 +348,14 @@ const visibleAnnotations = $derived(
 const visibleAnnotationIds = $derived(visibleAnnotations.map((annotation) => annotation.id));
 
 // Dense floating columns keep their scroll geometry, but only nearby cards
-// need the full component tree. Once a writer interacts with a card, retain
-// it until the draft changes so replies and inline editors survive.
+// need the full component tree. Keep focused cards and unfinished message edits
+// mounted; reply drafts already live outside the component tree.
 const windowCards = $derived(
     isFloating && visibleAnnotations.length > 100 && typeof IntersectionObserver !== "undefined",
 );
 let nearbyCards = $state<Set<number>>(new Set());
-let retainedCards = $state<Set<number>>(new Set());
+let editingCards = $state<Set<number>>(new Set());
+let focusedCard = $state<number | null>(null);
 let cardHeights = $state<Record<number, number>>({});
 type CardObserver = { root: Element; observer: IntersectionObserver; count: number };
 const cardObservers = new Map<Element, CardObserver>();
@@ -364,17 +365,8 @@ const observedCards = new Map<Element, number>();
 $effect(() => {
     if (!isFloating) return;
     void $currentDraftId;
-    retainedCards = new Set();
+    focusedCard = null;
     cardHeights = {};
-});
-
-function retainCard(id: number): void {
-    if (!windowCards || retainedCards.has(id)) return;
-    retainedCards = new Set([...retainedCards, id]);
-}
-
-$effect(() => {
-    if (resolvedActiveAnnotation) retainCard(resolvedActiveAnnotation.id);
 });
 
 function observeCard(node: HTMLDivElement, id: number): void {
@@ -566,6 +558,18 @@ const annotationColumnDom = new AnnotationColumnDomController<number>(updateAnno
 const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
     const mounted = annotationColumnDom.mountCard(node, id);
     observeCard(node, id);
+    // Message editors report their lifetime, including cancellation and removal.
+    const editors = new Set<EventTarget>();
+    function messageEditing(event: Event): void {
+        if (!event.target) return;
+        if ((event as CustomEvent<boolean>).detail) editors.add(event.target);
+        else editors.delete(event.target);
+        const next = new Set(editingCards);
+        if (editors.size) next.add(id);
+        else next.delete(id);
+        editingCards = next;
+    }
+    node.addEventListener("thread-message-editing", messageEditing);
     annotationElementsVersion++;
     return {
         update(nextId) {
@@ -574,6 +578,12 @@ const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
             annotationElementsVersion++;
         },
         destroy() {
+            node.removeEventListener("thread-message-editing", messageEditing);
+            if (editingCards.has(id)) {
+                const next = new Set(editingCards);
+                next.delete(id);
+                editingCards = next;
+            }
             observedCards.delete(node);
             const shared = nodeObservers.get(node);
             if (shared) {
@@ -1004,7 +1014,7 @@ onDestroy(() => annotationColumnDom.destroy());
     {#snippet floatingCard(i: number)}
         {@const isActive = resolvedActiveAnnotation?.id === i}
         {@const isPendingComment = pendingComment?.id === i}
-        {@const mounted = !windowCards || nearbyCards.has(i) || retainedCards.has(i) || isActive || isPendingComment}
+        {@const mounted = !windowCards || nearbyCards.has(i) || editingCards.has(i) || focusedCard === i || isActive || isPendingComment}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
@@ -1013,8 +1023,12 @@ onDestroy(() => annotationColumnDom.destroy());
             data-annotation-id={i}
             data-card-mounted={mounted}
             style:height={mounted ? undefined : `${cardHeights[i] ?? 128}px`}
-            onfocusin={() => retainCard(i)}
-            onpointerdown={() => retainCard(i)}
+            onfocusin={() => { focusedCard = i; }}
+            onfocusout={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null) && focusedCard === i) {
+                    focusedCard = null;
+                }
+            }}
             class:is-active={isActive}
             style:z-index={isActive ? 120 : isPendingComment ? 110 : 50}
             style:transition={ANNOTATION_CARD_TOP_TRANSITION}

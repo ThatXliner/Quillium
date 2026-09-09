@@ -1,4 +1,5 @@
 <script lang="ts">
+import { untrack } from "svelte";
 import { avatarColor, initials } from "./avatar";
 import type { ThreadMessagePersonaView, ThreadMessageView } from "./types";
 
@@ -15,6 +16,23 @@ let {
 } = $props();
 
 let editing = $state(false);
+let element: HTMLDivElement | undefined = $state();
+
+// Floating card hosts must preserve local edit text until save or cancel.
+$effect(() => {
+    if (!editing || !element) return;
+    const node = element;
+    function notifyEditing(value: boolean): void {
+        untrack(() => {
+            node.dispatchEvent(new CustomEvent("thread-message-editing", {
+                bubbles: true,
+                detail: value,
+            }));
+        });
+    }
+    notifyEditing(true);
+    return () => notifyEditing(false);
+});
 let editMessage = $state("");
 
 $effect.pre(() => {
@@ -42,7 +60,7 @@ function formatTime(timestamp: number): string {
 }
 </script>
 
-<div class="flex gap-2.5">
+<div bind:this={element} class="flex gap-2.5">
     {#if persona}
         <div
             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm"

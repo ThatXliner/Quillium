@@ -193,11 +193,12 @@ The desktop floating column keeps lightweight card shells for its complete
 filtered list. Above 100 annotations, an IntersectionObserver per column mounts
 full card content near the viewport, with 900px overscan. Distant shells retain
 their last measured height (128px before first measurement) so the column stays
-scrollable. Active and pending cards always mount; cards the writer has interacted
-with remain mounted until the draft changes, preserving inline editors and reply
-state. This bounds initial component work, not the number of shells or the number
-of cards retained after a writer interacts with many annotations. Inline modal
-lists keep their existing rendering behavior.
+scrollable. Active, pending, and focused cards always mount. Unfinished message
+edits also keep their card mounted until saved or cancelled; the message component
+reports that lifetime through a bubbling `thread-message-editing` event. Reply
+drafts live in the existing shared draft store and survive unmounting. Completed,
+unfocused cards can unmount again outside the overscan region. Shell count stays
+linear. Inline modal lists keep their existing rendering behavior.
 
 The shared column controller uses one ResizeObserver with incremental card
 registration. Loading a nearby card can update layout without resetting manual

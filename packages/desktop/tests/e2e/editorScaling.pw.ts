@@ -104,6 +104,7 @@ test("scrolls dense columns without losing an unfinished reply", async ({ page }
     await reply.fill("Keep this unfinished reply");
     // Move the editor cursor out of the annotation, so the card is no longer active.
     await selectAt(q, 0);
+    await q.editor.focus();
     const column = firstCard.locator(
         "xpath=ancestor::*[contains(@class,'annotation-scroll-container')]",
     );
@@ -118,6 +119,7 @@ test("scrolls dense columns without losing an unfinished reply", async ({ page }
     await expect
         .poll(() => column.locator('[data-card-mounted="true"]').count())
         .toBeGreaterThan(2);
+    await expect(firstCard).toHaveAttribute("data-card-mounted", "false");
     await page.waitForTimeout(500);
     expect(await column.evaluate((element) => element.scrollTop)).toBeGreaterThan(10_000);
     await column.evaluate((element) => {
@@ -126,7 +128,60 @@ test("scrolls dense columns without losing an unfinished reply", async ({ page }
     await firstCard.getByRole("button", { name: "Focus annotation", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(reply).toHaveValue("Keep this unfinished reply");
+    await reply.press("ControlOrMeta+Enter");
+    await expect(firstCard).toContainText("Keep this unfinished reply");
+    await expect(reply).toHaveValue("");
+    await selectAt(q, 0);
+    await q.editor.focus();
+    await column.evaluate((element) => {
+        element.scrollTop = 12_000;
+    });
+    await expect(firstCard).toHaveAttribute("data-card-mounted", "false");
 });
+
+for (const action of ["Save", "Cancel"]) {
+    test(`releases an offscreen card after message edit ${action}`, async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            initialStateJson: fixture(),
+            settings: { aiEnabled: false },
+        });
+        await q.init();
+        const card = page.locator('.annotation-card[data-annotation-id="0"]');
+        await card.getByRole("button", { name: "Focus annotation", exact: true }).focus();
+        await page.keyboard.press("Enter");
+        await card.getByRole("button", { name: "Edit", exact: true }).click();
+        await card.locator("textarea").first().fill("Unfinished message edit");
+        await selectAt(q, 0);
+        await q.editor.focus();
+        const column = card.locator(
+            "xpath=ancestor::*[contains(@class,'annotation-scroll-container')]",
+        );
+        await column.evaluate((element) => {
+            element.scrollTop = 12_000;
+        });
+        await expect
+            .poll(() => column.evaluate((element) => element.scrollTop))
+            .toBeGreaterThan(10_000);
+        await page.waitForTimeout(500);
+        await expect(card).toHaveAttribute("data-card-mounted", "true");
+        await expect(card.locator("textarea").first()).toHaveValue("Unfinished message edit");
+        await column.evaluate((element) => {
+            element.scrollTop = 0;
+        });
+        await card.getByRole("button", { name: action, exact: true }).click();
+        await card.getByRole("button", { name: "Focus annotation", exact: true }).focus();
+        await column.evaluate((element) => {
+            element.scrollTop = 12_000;
+        });
+        await page.waitForTimeout(500);
+        await expect(card).toHaveAttribute("data-card-mounted", "true");
+        await q.editor.focus();
+        await column.evaluate((element) => {
+            element.scrollTop = 12_000;
+        });
+        await expect(card).toHaveAttribute("data-card-mounted", "false");
+    });
+}
 
 // Wall-clock budgets are opt-in; ordinary CI checks the structural and editing
 // regressions above without depending on shared-runner timing.
