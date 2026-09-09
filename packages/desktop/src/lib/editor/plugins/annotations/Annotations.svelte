@@ -17,11 +17,18 @@ import {
     appSettings,
     updateSettings,
 } from "$lib/settings.svelte";
-import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
+import {
+    activeAnnotation,
+    annotations,
+    currentDraftId,
+    editorView,
+    modalStack,
+    selectedText,
+} from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 /**
- * Annotations.svelte — Container that renders all annotation
+ * Annotations.svelte — Container that renders annotation
  * cards (comments, revisions, suggestions) in either a
  * "floating" layout (absolutely positioned beside the editor)
  * or an "inline" layout (stacked vertically inside a sidebar).
@@ -257,8 +264,10 @@ function activateAnnotation(annotation: GenericAnnotation): void {
  */
 function getAnnotationViewportY(annotation: GenericAnnotation): number {
     if (!resolvedView) return 0;
+    const position = annotation.selection.main.from;
+    if (position < resolvedView.viewport.from || position > resolvedView.viewport.to) return 0;
     try {
-        const coords = resolvedView.coordsAtPos(annotation.selection.main.from);
+        const coords = resolvedView.coordsAtPos(position);
         if (!coords) return 0;
         return coords.top - 10;
     } catch {
@@ -336,6 +345,79 @@ const visibleAnnotations = $derived(
           ),
 );
 
+const visibleAnnotationIds = $derived(visibleAnnotations.map((annotation) => annotation.id));
+
+// Dense floating columns keep their scroll geometry, but only nearby cards
+// need the full component tree. Once a writer interacts with a card, retain
+// it until the draft changes so replies and inline editors survive.
+const windowCards = $derived(
+    isFloating && visibleAnnotations.length > 100 && typeof IntersectionObserver !== "undefined",
+);
+let nearbyCards = $state<Set<number>>(new Set());
+let retainedCards = $state<Set<number>>(new Set());
+let cardHeights = $state<Record<number, number>>({});
+type CardObserver = { root: Element; observer: IntersectionObserver; count: number };
+const cardObservers = new Map<Element, CardObserver>();
+const nodeObservers = new Map<Element, CardObserver>();
+const observedCards = new Map<Element, number>();
+
+$effect(() => {
+    if (!isFloating) return;
+    void $currentDraftId;
+    retainedCards = new Set();
+    cardHeights = {};
+});
+
+function retainCard(id: number): void {
+    if (!windowCards || retainedCards.has(id)) return;
+    retainedCards = new Set([...retainedCards, id]);
+}
+
+$effect(() => {
+    if (resolvedActiveAnnotation) retainCard(resolvedActiveAnnotation.id);
+});
+
+function observeCard(node: HTMLDivElement, id: number): void {
+    if (!isFloating || typeof IntersectionObserver === "undefined") return;
+    const root = node.closest(".annotation-scroll-container");
+    if (!root) return;
+    let shared = cardObservers.get(root);
+    if (!shared) {
+        const observer = new IntersectionObserver((entries) => {
+            const next = new Set(nearbyCards);
+            for (const entry of entries) {
+                const cardId = observedCards.get(entry.target);
+                if (cardId === undefined) continue;
+                if (entry.isIntersecting) {
+                    next.add(cardId);
+                } else {
+                    if ((entry.target as HTMLElement).dataset.cardMounted === "true") {
+                        cardHeights[cardId] = (entry.target as HTMLElement).offsetHeight;
+                    }
+                    next.delete(cardId);
+                }
+            }
+            if (next.size !== nearbyCards.size || [...next].some((id) => !nearbyCards.has(id))) {
+                nearbyCards = next;
+            }
+        }, { root, rootMargin: "900px 0px" });
+        shared = { root, observer, count: 0 };
+        cardObservers.set(root, shared);
+    }
+    if (!nodeObservers.has(node)) shared.count++;
+    nodeObservers.set(node, shared);
+    const { observer } = shared;
+    observedCards.set(node, id);
+    // Let the column's tick-based layout position the placeholder first.
+    tick().then(() => {
+        if (observedCards.get(node) === id) observer.observe(node);
+    });
+}
+
+onDestroy(() => {
+    for (const { observer } of cardObservers.values()) observer.disconnect();
+});
+
 const hasComments = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "comment")));
 const hasRevisions = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "revision")));
 
@@ -376,8 +458,8 @@ const pendingComment = $derived(
 type Positioned = { annotation: GenericAnnotation; viewportY: number };
 
 function getPositionedAnnotations(): Positioned[] {
-    if (!sortedAnnotations.length || !resolvedView || !isFloating) return [];
-    return sortedAnnotations.map((annotation) => ({
+    if (!visibleAnnotations.length || !resolvedView || !isFloating) return [];
+    return visibleAnnotations.map((annotation) => ({
         annotation,
         viewportY: getAnnotationViewportY(annotation),
     }));
@@ -483,13 +565,25 @@ const annotationColumnDom = new AnnotationColumnDomController<number>(updateAnno
 
 const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
     const mounted = annotationColumnDom.mountCard(node, id);
+    observeCard(node, id);
     annotationElementsVersion++;
     return {
         update(nextId) {
             mounted.update(nextId);
+            observeCard(node, nextId);
             annotationElementsVersion++;
         },
         destroy() {
+            observedCards.delete(node);
+            const shared = nodeObservers.get(node);
+            if (shared) {
+                shared.observer.unobserve(node);
+                if (--shared.count === 0) {
+                    shared.observer.disconnect();
+                    cardObservers.delete(shared.root);
+                }
+                nodeObservers.delete(node);
+            }
             mounted.destroy();
             annotationElementsVersion++;
         },
@@ -545,10 +639,29 @@ type Column = {
  * changes to avoid an effect loop (the write would re-trigger the
  * positioning effect).
  */
+let lastLayout: {
+    view: EditorView;
+    state: EditorView["state"];
+    top: number;
+    activeHeight: number;
+} | undefined;
+
 function updateAnnotationPositions() {
     if (!resolvedView || !isFloating) return;
 
     const positions = getPositionedAnnotations();
+    const top = resolvedView.scrollDOM.getBoundingClientRect().top;
+    const activeHeight = resolvedActiveAnnotation ? getCardHeight(resolvedActiveAnnotation.id) : 0;
+    // Mounting nearby content changes placeholder heights. Preserve a user's
+    // column scroll unless the editor anchor or the active card itself moved.
+    const preserveScroll = Boolean(
+        windowCards && lastLayout &&
+        lastLayout.view === resolvedView &&
+        lastLayout.state.doc === resolvedView.state.doc &&
+        lastLayout.state.selection.eq(resolvedView.state.selection) &&
+        lastLayout.top === top && lastLayout.activeHeight === activeHeight,
+    );
+    lastLayout = { view: resolvedView, state: resolvedView.state, top, activeHeight };
 
     // Resolve each card's column and publish it for the template.
     const sides = computeCardSides(positions);
@@ -565,13 +678,13 @@ function updateAnnotationPositions() {
             leftPx: getAnnotationLeftColumnX(),
             cards: left,
             el: scrollContainerLeft,
-        });
+        }, preserveScroll);
         layoutColumn({
             side: "right",
             leftPx: getAnnotationLeft(),
             cards: right,
             el: scrollContainer,
-        });
+        }, preserveScroll);
     } else {
         // Single column: every card on the right (matches classic layout).
         layoutColumn({
@@ -579,7 +692,7 @@ function updateAnnotationPositions() {
             leftPx: getAnnotationLeft(),
             cards: positions,
             el: scrollContainer,
-        });
+        }, preserveScroll);
     }
 }
 
@@ -590,7 +703,7 @@ function updateAnnotationPositions() {
  * card list / container, so each column keeps its own scrollTop, overhead,
  * and inner height.
  */
-function layoutColumn(col: Column) {
+function layoutColumn(col: Column, preserveScroll = false) {
     if (!resolvedView || !isFloating) return;
 
     const items = col.cards.map(({ annotation, viewportY }) => ({
@@ -608,6 +721,7 @@ function layoutColumn(col: Column) {
         items,
         activeId,
         geometry: getColumnGeometry(col),
+        preserveScroll,
     });
 }
 
@@ -759,7 +873,10 @@ $effect(() => {
 // Listen for editor scroll and window resize to reposition cards
 $effect(() => {
     if (!isFloating || !resolvedView) return;
-    annotationColumnDom.setEventTargets([resolvedView.scrollDOM]);
+    annotationColumnDom.setEventTargets([
+        resolvedView.scrollDOM,
+        resolvedView.scrollDOM.closest(".editor-shell") ?? resolvedView.scrollDOM,
+    ]);
     window.addEventListener("resize", annotationColumnDom.schedule);
     return () => {
         annotationColumnDom.setEventTargets([]);
@@ -884,21 +1001,26 @@ onDestroy(() => annotationColumnDom.destroy());
         {/if}
     {/snippet}
 
-    {#snippet floatingCard(c: GenericAnnotation)}
-        {@const i = c.id}
-        {@const isActive = resolvedActiveAnnotation?.id === c.id}
-        {@const isPendingComment = pendingComment?.id === c.id}
+    {#snippet floatingCard(i: number)}
+        {@const isActive = resolvedActiveAnnotation?.id === i}
+        {@const isPendingComment = pendingComment?.id === i}
+        {@const mounted = !windowCards || nearbyCards.has(i) || retainedCards.has(i) || isActive || isPendingComment}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             use:annotationElement={i}
             class="annotation-card"
+            data-annotation-id={i}
+            data-card-mounted={mounted}
+            style:height={mounted ? undefined : `${cardHeights[i] ?? 128}px`}
+            onfocusin={() => retainCard(i)}
+            onpointerdown={() => retainCard(i)}
             class:is-active={isActive}
             style:z-index={isActive ? 120 : isPendingComment ? 110 : 50}
             style:transition={ANNOTATION_CARD_TOP_TRANSITION}
             onclick={(e) => {
                 if (isInteractiveTarget(e.target)) return;
-                if (!isActive) activateAnnotation(c);
+                if (!isActive) activateAnnotation(resolvedAnnotations[i]);
             }}
             role="group"
             aria-label="Annotation card"
@@ -907,10 +1029,12 @@ onDestroy(() => annotationColumnDom.destroy());
                 type="button"
                 class="sr-only"
                 aria-label="Focus annotation"
-                onclick={() => activateAnnotation(c)}
+                onclick={() => activateAnnotation(resolvedAnnotations[i])}
             ></button>
-            {@render cardContent(c, i, isActive, isPendingComment)}
-            {#if alertingPendingId === c.id}
+            {#if mounted}
+                {@render cardContent(resolvedAnnotations[i], i, isActive, isPendingComment)}
+            {/if}
+            {#if alertingPendingId === i}
                 <div
                     class="alert-ring rounded-[14px]"
                     onanimationend={() => { alertingPendingId = undefined; }}
@@ -924,9 +1048,9 @@ onDestroy(() => annotationColumnDom.destroy());
              columns symmetrically via the shared panel width). -->
         <div class="annotation-scroll-container" bind:this={scrollContainerLeft}>
             <div class="annotation-scroll-inner">
-                {#each visibleAnnotations as c (c.id)}
-                    {#if cardSide[c.id] !== "right"}
-                        {@render floatingCard(c)}
+                {#each visibleAnnotationIds as id (id)}
+                    {#if cardSide[id] !== "right"}
+                        {@render floatingCard(id)}
                     {/if}
                 {/each}
             </div>
@@ -955,9 +1079,9 @@ onDestroy(() => annotationColumnDom.destroy());
                 {/if}
             </div>
             <div class="annotation-scroll-inner">
-                {#each visibleAnnotations as c (c.id)}
-                    {#if renderMode === "single" || cardSide[c.id] === "right"}
-                        {@render floatingCard(c)}
+                {#each visibleAnnotationIds as id (id)}
+                    {#if renderMode === "single" || cardSide[id] === "right"}
+                        {@render floatingCard(id)}
                     {/if}
                 {/each}
             </div>

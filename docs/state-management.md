@@ -17,6 +17,13 @@ values components need into [stores.ts](../packages/desktop/src/lib/stores.ts).
 It also runs after loading a draft, so the UI reflects the newly loaded state
 before the writer makes another edit.
 
+The bridge compares the new state with the update's starting state. It publishes
+annotation and version-group mirrors only when their fields change, and only
+flattens/counts the full draft when the document changes. Cursor movement still
+updates selection, active annotation, and selection statistics immediately.
+Viewport-only updates do not republish editor data. Draft loading forces a full
+synchronization even though `view.setState()` does not emit a normal update.
+
 ```mermaid
 flowchart LR
     Action["Typing or command"] --> CM["EditorView.dispatch"]

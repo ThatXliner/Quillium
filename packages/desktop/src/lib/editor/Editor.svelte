@@ -375,22 +375,38 @@ function computeWritingStats(doc: string, selText: string) {
 // from CodeMirror's updateListener on every transaction, manually pushing
 // the new state into Svelte-reactive stores so the rest of the UI can
 // react normally. $effect is not used here; the hook is CodeMirror's own.
-function syncStoresToEditorState(state: EditorState) {
-    const doc = state.doc.toString();
-    const selection = state.selection.main;
-    const selText = extractSelectedText(state);
-    writingStats.set(computeWritingStats(doc, selText));
-    $annotations = state.field(annotationField);
-    $versionGroups = state.field(versionGroupField);
-    $activeAnnotation = getActiveAnnotation(state);
-    $documentContent = doc;
-    $selectedText = selText;
-    $selectedTextRange = selection.empty
-        ? undefined
-        : {
-              from: selection.from,
-              to: selection.to,
-          };
+function syncStoresToEditorState(state: EditorState, previous?: EditorState) {
+    const docChanged = !previous || state.doc !== previous.doc;
+    const selectionChanged = !previous || !state.selection.eq(previous.selection);
+    const nextAnnotations = state.field(annotationField);
+    const annotationsChanged = !previous || nextAnnotations !== previous.field(annotationField);
+    const nextGroups = state.field(versionGroupField);
+    if (annotationsChanged) $annotations = nextAnnotations;
+    if (!previous || nextGroups !== previous.field(versionGroupField)) $versionGroups = nextGroups;
+    if (docChanged || selectionChanged || annotationsChanged) {
+        $activeAnnotation = getActiveAnnotation(state);
+    }
+    if (docChanged || selectionChanged) {
+        const selection = state.selection.main;
+        const selText = extractSelectedText(state);
+        if (docChanged) {
+            // Keep action-time consumers current, but never flatten the draft
+            // again just because the cursor or viewport moved.
+            const doc = state.doc.toString();
+            $documentContent = doc;
+            writingStats.set(computeWritingStats(doc, selText));
+        } else {
+            writingStats.set({
+                ...get(writingStats),
+                selWords: selText ? getWordCount(selText) : 0,
+                selChars: selText.length,
+            });
+        }
+        $selectedText = selText;
+        $selectedTextRange = selection.empty
+            ? undefined
+            : { from: selection.from, to: selection.to };
+    }
 }
 
 // ── Keyboard shortcut telemetry ─────────────────────────────────
@@ -411,7 +427,7 @@ function trackKeyboardActions(update: ViewUpdate) {
 // ── Update listener ─────────────────────────────────────────────
 const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
-        syncStoresToEditorState(update.state);
+        syncStoresToEditorState(update.state, update.startState);
         trackKeyboardActions(update);
     },
 };
