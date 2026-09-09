@@ -3,10 +3,11 @@ import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { modalStack } from "$lib/stores";
+import { currentDraftId, modalStack } from "$lib/stores";
 import { EditorSelection } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { CommentCard } from "@quillium/share";
+import { get } from "svelte/store";
 /**
  * Comment.svelte — Displays a single comment annotation card with
  * its message thread and AI suggestion action.
@@ -30,10 +31,11 @@ import { CommentCard } from "@quillium/share";
  * button are visible.
  */
 import type { Annotation, Thread as ThreadType } from ".";
-import { annotationField } from ".";
+import { annotationField, updateThread as updateThreadEffect } from ".";
 import Thread from "./Thread.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 import { type CommentEditorPosition, captureCommentEditorPosition } from "./commentFocus";
+import { isAnnotationOfType } from "./models";
 
 const {
     comment,
@@ -59,28 +61,42 @@ const selectedText = $derived(
 let replyOrigin = $state<CommentEditorPosition | undefined>();
 
 async function aiSuggestion() {
+    const owningView = view;
+    const requestDraftId = get(currentDraftId);
+    const annotationId = comment.id;
+    const requestHistoryId = owningView.state.field(annotationField)[annotationId]?._historyId;
     posthog.capture("comment_ai_suggestion_requested", {
         thread_length: thread.length,
         has_selection: !!selectedText,
     });
-    const annotationId = comment.id;
     const prompt = buildCommentAiPrompt(thread, selectedText);
+    // The card may unmount while waiting; append to the original comment
+    // using its latest thread, never the component's captured thread.
+    const appendAiReply = (message: string): void => {
+        if (get(currentDraftId) !== requestDraftId) return;
+        const current = owningView.state.field(annotationField)[annotationId];
+        if (
+            !requestHistoryId ||
+            !current ||
+            current._historyId !== requestHistoryId ||
+            !isAnnotationOfType(current, "comment")
+        ) {
+            return;
+        }
+        owningView.dispatch({
+            effects: updateThreadEffect.of({
+                annotationId,
+                newThread: [...current.thread, { message, author: "AI", time: Date.now() }],
+            }),
+        });
+    };
     try {
         const aiResponse = await streamCommentAiResponse(prompt, aiSettings);
         // Empty response means the stream was stopped before any text arrived.
         if (!aiResponse.trim()) return;
-        if (!view.state.field(annotationField)[annotationId]) return;
-        updateThread([...thread, { message: aiResponse, author: "AI", time: Date.now() }]);
+        appendAiReply(aiResponse);
     } catch {
-        if (!view.state.field(annotationField)[annotationId]) return;
-        updateThread([
-            ...thread,
-            {
-                message: "Sorry, I encountered an error generating a suggestion.",
-                author: "AI",
-                time: Date.now(),
-            },
-        ]);
+        appendAiReply("Sorry, I encountered an error generating a suggestion.");
     }
 }
 
