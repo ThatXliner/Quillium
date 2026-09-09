@@ -31,10 +31,11 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { normalizeSerializedSelection } from "$lib/editor/plugins/annotations/nestedEditor";
+import posthog from "$lib/posthog";
 import { history, redo, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,14 @@ function addRevision(
     view: EditorView,
     from: number,
     to: number,
-    version: string | { doc: string; label?: string; annotationField?: Record<string, unknown> },
+    version:
+        | string
+        | {
+              doc: string;
+              label?: string;
+              provenance?: VersionState["provenance"];
+              annotationField?: Record<string, unknown> | null;
+          },
 ): number {
     const built = makeVersion(typeof version === "string" ? { doc: version } : version);
     const annotation = {
@@ -109,6 +117,12 @@ function getVersionDoc(view: EditorView, revId: number): string {
     return versionText(activeVersion(rev));
 }
 
+function getActiveVersion(view: EditorView, revId: number): VersionState {
+    const rev = view.state.field(annotationField)[revId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+    return activeVersion(rev);
+}
+
 /** Resolve the stable version id at a positional index for an updateRevisionVersionState call. */
 function versionIdAt(state: EditorState, revId: number, index: number): string {
     const rev = state.field(annotationField)[revId];
@@ -162,6 +176,12 @@ function nestedSuggestion(
         thread: [],
         replacements,
     };
+}
+
+function annotationFieldWithIds(count: number): Record<string, unknown> {
+    return Object.fromEntries(
+        Array.from({ length: count }, (_, id) => [String(id), nestedComment(id, 0, 1)]),
+    );
 }
 
 function getVersionAnnotationField(view: EditorView, revId: number): Record<string, unknown> {
@@ -237,8 +257,8 @@ function mountNestedController(view: EditorView, revId: number) {
     return {
         controller,
         editor,
-        destroy() {
-            controller.destroy({ skipFlush: true });
+        destroy(options?: { skipFlush?: boolean }) {
+            controller.destroy(options ?? { skipFlush: true });
             host.remove();
         },
     };
@@ -612,6 +632,161 @@ describe("nested annotation creation enters parent undo history via version stat
 // ── NestedEditorController sync gap regressions ─────────────────────────────
 
 describe("NestedEditorController annotation flush regressions", () => {
+    it("reports annotation diff categories on a normal destroy flush", () => {
+        const initialAnnotationField = {
+            1: nestedComment(1, 0, 1),
+            2: nestedComment(2, 1, 2),
+            4: nestedComment(4, 2, 3),
+        };
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            label: "parent metadata",
+            provenance: "ai",
+            annotationField: initialAnnotationField,
+        });
+        const mounted = mountNestedController(view, revId);
+        const capture = vi.spyOn(posthog, "capture").mockImplementation(() => undefined);
+        const version = getActiveVersion(view, revId);
+        const nestedState = mounted.editor.state.toJSON(nestedSavedFields) as {
+            annotationField: Record<string, Record<string, unknown>>;
+        };
+
+        try {
+            view.dispatch(
+                updateRevisionVersionState(
+                    view.state,
+                    revId,
+                    version.id,
+                    makeVersionBlob({
+                        ...version,
+                        annotationField: {
+                            2: {
+                                ...nestedState.annotationField["2"],
+                                selection: rawSelection(1, 3),
+                            },
+                            4: nestedState.annotationField["4"],
+                            9: nestedComment(9, 3, 4),
+                        },
+                    }),
+                    { addToHistory: false },
+                ),
+            );
+
+            mounted.destroy({ skipFlush: false });
+
+            expect(capture).toHaveBeenCalledWith("nested_editor_flush_to_parent_meaningful", {
+                revisionId: revId,
+                versionId: version.id,
+                annsDiffer: true,
+                missing_on_parent_annotation_ids: ["1"],
+                missing_on_nested_annotation_ids: ["9"],
+                changed_annotation_ids: ["2"],
+                missing_on_parent_annotation_count: 1,
+                missing_on_nested_annotation_count: 1,
+                changed_annotation_count: 1,
+                diff_summary_truncated: false,
+            });
+
+            const flushedVersion = getActiveVersion(view, revId);
+            expect(flushedVersion.id).toBe(version.id);
+            expect(flushedVersion.doc).toBe("hello world");
+            expect(flushedVersion.label).toBe("parent metadata");
+            expect(flushedVersion.provenance).toBe("ai");
+        } finally {
+            mounted.destroy();
+            capture.mockRestore();
+        }
+    });
+
+    it.each([
+        ["absent", undefined],
+        ["null", null],
+        ["empty", {}],
+    ] as const)(
+        "does not report an empty annotation field on destroy (%s)",
+        (_, annotationField) => {
+            const revId = addRevision(
+                view,
+                0,
+                11,
+                annotationField === undefined
+                    ? { doc: "hello world" }
+                    : { doc: "hello world", annotationField },
+            );
+            const mounted = mountNestedController(view, revId);
+            const capture = vi.spyOn(posthog, "capture").mockImplementation(() => undefined);
+
+            try {
+                mounted.destroy({ skipFlush: false });
+                expect(capture).not.toHaveBeenCalled();
+            } finally {
+                mounted.destroy();
+                capture.mockRestore();
+            }
+        },
+    );
+
+    it("does not report a synced actual nested edit on destroy", () => {
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: { 1: nestedComment(1, 0, 1) },
+        });
+        const mounted = mountNestedController(view, revId);
+        const capture = vi.spyOn(posthog, "capture").mockImplementation(() => undefined);
+
+        try {
+            mounted.editor.dispatch({ changes: { from: 11, insert: "!" } });
+            mounted.destroy({ skipFlush: false });
+            expect(capture).not.toHaveBeenCalled();
+        } finally {
+            mounted.destroy();
+            capture.mockRestore();
+        }
+    });
+
+    it("bounds diff IDs while retaining full category counts", () => {
+        const initialAnnotationField = annotationFieldWithIds(55);
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: initialAnnotationField,
+        });
+        const mounted = mountNestedController(view, revId);
+        const capture = vi.spyOn(posthog, "capture").mockImplementation(() => undefined);
+        const version = getActiveVersion(view, revId);
+
+        try {
+            view.dispatch(
+                updateRevisionVersionState(
+                    view.state,
+                    revId,
+                    version.id,
+                    makeVersionBlob({ ...version, annotationField: {} }),
+                    { addToHistory: false },
+                ),
+            );
+            mounted.destroy({ skipFlush: false });
+
+            const call = capture.mock.calls.find(
+                ([event]) => event === "nested_editor_flush_to_parent_meaningful",
+            );
+            expect(call).toBeDefined();
+            const properties = call?.[1] as Record<string, unknown>;
+            const expectedIds = Object.keys(initialAnnotationField).sort().slice(0, 50);
+            expect(properties.missing_on_parent_annotation_ids).toEqual(expectedIds);
+            expect(properties.missing_on_parent_annotation_count).toBe(55);
+            expect(properties.missing_on_nested_annotation_ids).toEqual([]);
+            expect(properties.missing_on_nested_annotation_count).toBe(0);
+            expect(properties.changed_annotation_ids).toEqual([]);
+            expect(properties.changed_annotation_count).toBe(0);
+            expect(properties.diff_summary_truncated).toBe(true);
+            expect(properties).not.toHaveProperty("annotationField");
+            expect(properties).not.toHaveProperty("doc");
+        } finally {
+            mounted.destroy();
+            capture.mockRestore();
+        }
+    });
+
     it("keeps a plain inline edit in the active version instead of syncing stale text back", () => {
         const revId = addRevision(view, 0, 11, "hello world");
         const mounted = mountNestedController(view, revId);

@@ -52,6 +52,55 @@ function hasAnnotations(annotations: Annotations): boolean {
     return Object.keys(annotations).length > 0;
 }
 
+const MAX_FLUSH_DIFF_IDS = 50;
+
+type AnnotationDiffSummary = {
+    missing_on_parent_annotation_ids: string[];
+    missing_on_nested_annotation_ids: string[];
+    changed_annotation_ids: string[];
+    missing_on_parent_annotation_count: number;
+    missing_on_nested_annotation_count: number;
+    changed_annotation_count: number;
+    diff_summary_truncated: boolean;
+};
+
+function annotationRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return value as Record<string, unknown>;
+}
+
+function summarizeAnnotationDiff(
+    parentField: unknown,
+    nestedField: unknown,
+): AnnotationDiffSummary {
+    const parentAnnotations = annotationRecord(parentField);
+    const nestedAnnotations = annotationRecord(nestedField);
+    const parentIds = new Set(Object.keys(parentAnnotations));
+    const nestedIds = new Set(Object.keys(nestedAnnotations));
+    const missingOnParent = [...nestedIds].filter((id) => !parentIds.has(id)).sort();
+    const missingOnNested = [...parentIds].filter((id) => !nestedIds.has(id)).sort();
+    const changed = [...nestedIds]
+        .filter(
+            (id) =>
+                parentIds.has(id) &&
+                JSON.stringify(nestedAnnotations[id]) !== JSON.stringify(parentAnnotations[id]),
+        )
+        .sort();
+
+    return {
+        missing_on_parent_annotation_ids: missingOnParent.slice(0, MAX_FLUSH_DIFF_IDS),
+        missing_on_nested_annotation_ids: missingOnNested.slice(0, MAX_FLUSH_DIFF_IDS),
+        changed_annotation_ids: changed.slice(0, MAX_FLUSH_DIFF_IDS),
+        missing_on_parent_annotation_count: missingOnParent.length,
+        missing_on_nested_annotation_count: missingOnNested.length,
+        changed_annotation_count: changed.length,
+        diff_summary_truncated:
+            missingOnParent.length > MAX_FLUSH_DIFF_IDS ||
+            missingOnNested.length > MAX_FLUSH_DIFF_IDS ||
+            changed.length > MAX_FLUSH_DIFF_IDS,
+    };
+}
+
 export function transactionsHaveAnnotationMutationEffect(
     transactions: readonly Transaction[],
 ): boolean {
@@ -512,15 +561,13 @@ export class NestedEditorController {
     }
 
     /**
-     * SAFETY NET — believed redundant. Doc text is already synced
-     * per-keystroke by `translateAndDispatch`, and sub-annotations
-     * are synced per-effect by `flushAnnotationStateToParent`.
-     * This only fires on destroy as a belt-and-suspenders guard.
+     * Destroy-time safety net. Nested text and annotations normally sync
+     * through atomic parent edits or `flushAnnotationStateToParent`.
+     * The non-zero #251 baseline requires keeping this fallback.
      *
      * Instrumented with PostHog to track whether it ever writes
-     * state that differs from what the parent already has. If
-     * telemetry shows zero meaningful flushes over ~1 month,
-     * this method and the destroy-time call should be removed.
+     * state that differs from what the parent already has. The historical
+     * baseline and diagnostic field contract live in docs/posthog-events.md.
      */
     private flushToParent(): void {
         if (!this._editor) return;
@@ -567,6 +614,10 @@ export class NestedEditorController {
                     revisionId: this.revisionId,
                     versionId: this._editorVersionId,
                     annsDiffer,
+                    ...summarizeAnnotationDiff(
+                        (existing as { annotationField?: unknown }).annotationField,
+                        nestedState.annotationField,
+                    ),
                 });
             }
 

@@ -52,9 +52,23 @@ Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors deleg
 | Mode | Behavior | Used By |
 |------|----------|---------|
 | `"flush"` | Serialize nested state to parent on destroy | Modal |
-| `"no-flush"` | Parent is source of truth via Phase 3 | Inline |
+| `"flush-on-destroy"` | Same sync and destroy safety net as `"flush"` | Inline |
+| `"no-flush"` | Translate text without annotation-state or destroy flushes | Explicit opt-out |
 
-The flush is believed to be redundant (translateAndDispatch syncs per-keystroke), kept as a safety net. Instrumented with PostHog `nested_editor_flush_to_parent_meaningful` to verify.
+The destroy-time flush remains a safety net. Nested document edits with
+annotations store text and annotation state in the same parent transaction;
+annotation-only mutations also enter parent history. Both the pre-update and
+post-update annotation counts matter, so deleting the last annotation still
+updates the version blob. Parent-sync remaps flush as bookkeeping without adding
+an undo step.
+
+The three gaps reported in [#251](https://github.com/ThatXliner/Quillium/issues/251)
+were fixed in [#265](https://github.com/ThatXliner/Quillium/pull/265). Mutation
+classification was subsequently unified in
+[#409](https://github.com/ThatXliner/Quillium/pull/409). The completed telemetry
+baseline contains a qualifying meaningful flush, so it does not justify removing
+`flushToParent()` or its destroy-time call. See the
+[baseline evidence and follow-up](posthog-events.md#nested-editor-flush-baseline).
 
 ### Parent Sync Edit Annotation
 
@@ -69,7 +83,7 @@ parent from becoming another parent edit or undo step.
 
 ## Inline Editor (Revision.svelte)
 
-Creates a `NestedEditorController` with `flushBehavior: "no-flush"`. Svelte `$effect` blocks watch `activeVersion?.doc` and call `controller.syncFromParent()`. Version switches trigger destroy + recreate.
+Creates a `NestedEditorController` with `flushBehavior: "flush-on-destroy"`. Svelte `$effect` blocks watch `activeVersion?.doc` and call `controller.syncFromParent()`. Version switches trigger destroy + recreate.
 
 ## Modal Editor (RevisionModal.svelte)
 

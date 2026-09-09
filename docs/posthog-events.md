@@ -250,3 +250,56 @@ Preview either hero with `/omni?omni-hero=original` or
 `/omni?omni-hero=manuscript`. These links never enroll visitors in the experiment.
 Pausing the experiment returns visitors to the manuscript fallback on their next
 visit. Keep the split unchanged while collecting results.
+
+## Nested editor flush baseline
+
+Checked on September 8, 2026 in PostHog project **Quillium (334824)** for
+[#251](https://github.com/ThatXliner/Quillium/issues/251). The requested July 13
+through August 13 window is interpreted as inclusive calendar dates in the
+project's UTC timezone: `[2026-07-13 00:00:00, 2026-08-14 00:00:00)`.
+The query includes all captured events, without test-account exclusions.
+
+```sql
+SELECT properties.app_version AS app_version,
+       count() AS events,
+       min(timestamp) AS first_seen,
+       max(timestamp) AS last_seen
+FROM events
+WHERE event = 'nested_editor_flush_to_parent_meaningful'
+  AND timestamp >= '2026-07-13 00:00:00'
+  AND timestamp < '2026-08-14 00:00:00'
+GROUP BY app_version
+ORDER BY app_version
+```
+
+| App version | Events | Verdict |
+|---|---:|---|
+| 0.15.2 | 2 | Excluded: below 0.22.0 |
+| 0.23.0 | 1 | Qualifies: July 22 at 23:17:29.318 UTC |
+
+These were the only returned version groups. Compare versions numerically rather
+than filtering with a lexicographic string comparison. A separate query for
+`app_session_started` with the same dates returned 54 events on qualifying
+versions (0.22.0: 13, 0.23.0: 18, 0.23.1: 6, 0.23.2: 17). Session starts establish
+some usage; they do not measure annotated modal closes or prove coverage of every
+sync path.
+
+The qualifying flush reported `revisionId: 7`, `versionId: v6_q7n2jj`, and
+`annsDiffer: true`. The old event has no annotation diff, so it cannot establish
+which state diverged or reproduce the underlying cause. Preserve the safety net.
+
+Future meaningful flushes include sorted annotation-ID lists:
+`missing_on_parent_annotation_ids`, `missing_on_nested_annotation_ids`, and
+`changed_annotation_ids`. Each list is limited to 50 IDs.
+`missing_on_parent_annotation_count`, `missing_on_nested_annotation_count`, and
+`changed_annotation_count` retain the full totals; `diff_summary_truncated`
+reports omitted IDs. IDs are local to the nested editor and must be interpreted together with the
+existing revision/version identifiers. The summary contains no annotation text,
+thread contents, or document text. It retains the existing serialized comparison
+semantics, including normalization of absent/null annotation fields to `{}`.
+
+After a release containing these diagnostics, inspect new meaningful events by
+release and diff category, reproduce any remaining divergence, and fix it before
+considering removal. This historical non-zero baseline is not a zero-event
+verdict for the new release. Removal still requires an observed qualifying
+baseline with adequate relevant usage; no future observation is claimed here.
