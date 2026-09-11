@@ -1,8 +1,4 @@
-// presets.ts — Source-aware starting points for College writing setups.
-//
-// Prompt text in this module is deliberately paraphrased. It gives a writer a
-// useful place to start while the accepted source snapshots make the boundary
-// between editorial guidance and an official requirement visible.
+// presets.ts — Official, source-linked starting points for College writing setups.
 
 import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
 import type { ReaderPersona } from "$lib/readers/presets";
@@ -16,76 +12,87 @@ export const PRESET_LABELS: Record<CollegeSetup["kind"], string> = {
 
 export const UC_PROMPTS = [
     {
-        label: "Leadership (summary)",
-        text: "Explain how your leadership helped others or a group over time.",
+        label: "Leadership",
+        text: "Describe an example of your leadership experience in which you have positively influenced others, helped resolve disputes or contributed to group efforts over time.",
     },
     {
-        label: "Creativity (summary)",
-        text: "Show how you express creativity.",
+        label: "Creativity",
+        text: "Every person has a creative side, and it can be expressed in many ways: problem solving, original and innovative thinking, and artistically, to name a few. Describe how you express your creative side.",
     },
     {
-        label: "Skill (summary)",
-        text: "Trace the development and demonstration of your strongest skill.",
+        label: "Skill",
+        text: "What would you say is your greatest talent or skill? How have you developed and demonstrated that talent over time?",
     },
     {
-        label: "Education (summary)",
-        text: "Explain using an educational opportunity or overcoming an educational barrier.",
+        label: "Education",
+        text: "Describe how you have taken advantage of a significant educational opportunity or worked to overcome an educational barrier you have faced.",
     },
     {
-        label: "Challenge (summary)",
-        text: "Describe your biggest challenge, your response, and its effect on academic achievement.",
+        label: "Challenge",
+        text: "Describe the most significant challenge you have faced and the steps you have taken to overcome this challenge. How has this challenge affected your academic achievement?",
     },
     {
-        label: "Academic interest (summary)",
-        text: "Explain how you pursued an inspiring academic subject.",
+        label: "Academic interest",
+        text: "Think about an academic subject that inspires you. Describe how you have furthered this interest inside and/or outside of the classroom.",
     },
     {
-        label: "Community (summary)",
-        text: "Describe your contribution to improving a community.",
+        label: "Community",
+        text: "What have you done to make your school or your community a better place?",
     },
     {
-        label: "Additional perspective (summary)",
-        text: "Explain what else makes you a strong UC candidate.",
+        label: "Additional perspective",
+        text: "Beyond what has already been shared in your application, what do you believe makes you a strong candidate for admissions to the University of California?",
     },
 ] as const;
 
 export const COMMON_APP_PROMPTS = [
     {
-        label: "Identity (summary)",
-        text: "Share a defining part of your background, identity, interest, or talent.",
+        label: "Identity",
+        text: "Some students have a background, identity, interest, or talent that is so meaningful they believe their application would be incomplete without it. If this sounds like you, then please share your story.",
     },
     {
-        label: "Obstacle (summary)",
-        text: "Reflect on a setback or obstacle, its effect, and what you learned.",
+        label: "Obstacle",
+        text: [
+            "The lessons we take from obstacles we encounter can be fundamental to later success.",
+            "Recount a time when you faced a challenge, setback, or failure.",
+            "How did it affect you, and what did you learn from the experience?",
+        ].join(" "),
     },
     {
-        label: "Belief (summary)",
-        text: "Describe questioning an idea or belief, what prompted it, and the outcome.",
+        label: "Belief",
+        text: "Reflect on a time when you questioned or challenged a belief or idea. What prompted your thinking? What was the outcome?",
     },
     {
-        label: "Gratitude (summary)",
-        text: "Explore unexpected gratitude, its effect, and how it motivates you.",
+        label: "Gratitude",
+        text: "Reflect on something that someone has done for you that has made you happy or thankful in a surprising way. How has this gratitude affected or motivated you?",
     },
     {
-        label: "Growth (summary)",
-        text: "Describe an experience that led to a new understanding of yourself or others.",
+        label: "Growth",
+        text: "Discuss an accomplishment, event, or realization that sparked a period of personal growth and a new understanding of yourself or others.",
     },
     {
-        label: "Curiosity (summary)",
-        text: "Explore an idea or interest that captivates you, and how you learn more.",
+        label: "Curiosity",
+        text: [
+            "Describe a topic, idea, or concept you find so engaging that it makes you lose all track of time.",
+            "Why does it captivate you? What or who do you turn to when you want to learn more?",
+        ].join(" "),
     },
     {
-        label: "Open topic (summary)",
-        text: "Choose an existing or custom topic that reveals what matters to you.",
+        label: "Open topic",
+        text: [
+            "Share an essay on any topic of your choice.",
+            "It can be one you've already written, one that responds to a different prompt, or one of your own design.",
+        ].join(" "),
     },
 ] as const;
 
-const CHECKED_DATE = "2026-09-07";
+const CHECKED_DATE = "2026-09-11";
 const UC_SOURCE_URL =
     "https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-first-year/personal-insight-questions.html";
 const COMMON_WORKSHEET_URL =
     "https://www.commonapp.org/static/ff69a4ea4ce044fe419826e26803aa65/Resource_FY_Essays_ENG_2025.06.25_0.pdf";
-const COMMON_CURRENT_URL = "https://www.commonapp.org/apply/essay-prompts/";
+const COMMON_CURRENT_URL =
+    "https://www.commonapp.org/blog/announcing-2026-2027-common-app-essay-prompts/";
 
 const DEFAULT_PREFERENCES: EditorialPreferences = {
     stance: "author-first",
@@ -98,9 +105,9 @@ const UC_REQUIREMENT_SUMMARY =
 const UC_ADVICE_SUMMARY =
     "Choose relevant experiences. Support your points with concrete examples and use your own words.";
 const COMMON_WORKSHEET_SUMMARY =
-    "Consider experiences and interests that reveal who you are beyond grades. These prompt summaries come from the 2025 worksheet; verify the exact prompt and limit for your cycle.";
+    "Consider experiences and interests that reveal who you are beyond grades. Verify the prompt and limit for your application cycle.";
 const COMMON_CURRENT_SUMMARY =
-    "The current page labels its prompts 2026–2027; this preset keeps concise paraphrases of its prompt themes. Verify current length limits in the application.";
+    "The official announcement publishes the complete 2026–2027 prompts bundled in this preset. Verify current length limits in the application.";
 
 function constraint(
     id: string,
@@ -112,16 +119,16 @@ function constraint(
     return { id, unit, min, max, detail };
 }
 
-function summaryPrompt(
+function officialPrompt(
     id: string,
-    summary: (typeof UC_PROMPTS)[number] | (typeof COMMON_APP_PROMPTS)[number],
+    prompt: (typeof UC_PROMPTS)[number] | (typeof COMMON_APP_PROMPTS)[number],
     sourceUrl: string,
     constraints: CollegePrompt["constraints"],
 ): CollegePrompt {
     return {
         id,
-        label: summary.label,
-        text: summary.text,
+        label: prompt.label,
+        text: prompt.text,
         sourceUrl,
         constraints,
     };
@@ -228,7 +235,7 @@ export function newCollegePrompt(): CollegePrompt {
 
 function presetPrompt(kind: CollegeSetup["kind"]): CollegePrompt {
     if (kind === "uc-piq") {
-        return summaryPrompt("uc-piq-1", UC_PROMPTS[0], UC_SOURCE_URL, [
+        return officialPrompt("uc-piq-1", UC_PROMPTS[0], UC_SOURCE_URL, [
             constraint(
                 "word-limit",
                 "words",
@@ -239,7 +246,7 @@ function presetPrompt(kind: CollegeSetup["kind"]): CollegePrompt {
         ]);
     }
     if (kind === "common-app") {
-        return summaryPrompt("common-app-identity", COMMON_APP_PROMPTS[0], COMMON_CURRENT_URL, [
+        return officialPrompt("common-app-identity", COMMON_APP_PROMPTS[0], COMMON_CURRENT_URL, [
             constraint(
                 "word-limit",
                 "words",

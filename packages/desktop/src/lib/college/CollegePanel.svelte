@@ -1,6 +1,7 @@
 <!-- CollegePanel.svelte — Create essay tabs and add prompts as ordinary H1 sections. -->
 <script lang="ts">
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { tick, untrack } from "svelte";
 import { isCollegeReferenceCurrent } from "./researchModel";
 import SchoolResearch from "./SchoolResearch.svelte";
@@ -24,7 +25,9 @@ let heading = $state<HTMLHeadingElement>();
 let previousTarget = $state("");
 const targetKey = $derived(session ? JSON.stringify(session.target) : "");
 const options = $derived(kind === "uc-piq" ? UC_PROMPTS : COMMON_APP_PROMPTS);
-const selectedCount = $derived(kind === "supplemental" ? (customPrompt.trim() ? 1 : 0) : selected.length);
+const selectedCount = $derived(
+    kind === "supplemental" ? (customPrompt.trim() ? 1 : 0) : selected.length,
+);
 $effect(() => {
     if (!active || previousTarget !== targetKey) {
         previousTarget = targetKey;
@@ -57,17 +60,23 @@ function start(add = false): void {
     void tick().then(() => heading?.focus());
 }
 function select(index: number, checked: boolean): void {
-    selected = adding ? [index] : checked ? [...selected, index] : selected.filter(i => i !== index);
+    selected = adding
+        ? [index]
+        : checked
+          ? [...selected, index]
+          : selected.filter((i) => i !== index);
 }
 function setups(): CollegeSetup[] {
     const indices = kind === "supplemental" ? [0] : selected;
-    return indices.map(index => {
+    return indices.map((index) => {
         const setup = newCollegeSetup(kind);
         if (kind === "supplemental") {
             setup.school = school.trim();
             setup.prompts[0].label = school.trim() || "School supplement";
             setup.prompts[0].text = customPrompt.trim();
-            setup.prompts[0].constraints = [{id: crypto.randomUUID(), unit, min: null, max: max ?? null, detail: ""}];
+            setup.prompts[0].constraints = [
+                { id: crypto.randomUUID(), unit, min: null, max: max ?? null, detail: "" },
+            ];
         } else {
             setup.prompts[0].label = label(index);
             setup.prompts[0].text = options[index].text;
@@ -86,7 +95,9 @@ async function apply(): Promise<void> {
         else await college.createTabs(next);
         if (origin === targetKey) choosing = false;
     } catch (cause) {
-        if (origin === targetKey) error = cause instanceof Error ? cause.message : "Could not save your prompts. Try again.";
+        if (origin === targetKey)
+            error =
+                cause instanceof Error ? cause.message : "Could not save your prompts. Try again.";
     } finally {
         if (origin === targetKey) busy = false;
     }
@@ -94,9 +105,14 @@ async function apply(): Promise<void> {
 async function update(setup: CollegeSetup | null): Promise<void> {
     const origin = targetKey;
     busy = true;
-    try { await college?.save(setup); if (origin === targetKey) removing = false; }
-    catch (cause) { if (origin === targetKey) error = String(cause); }
-    finally { if (origin === targetKey) busy = false; }
+    try {
+        await college?.save(setup);
+        if (origin === targetKey) removing = false;
+    } catch (cause) {
+        if (origin === targetKey) error = String(cause);
+    } finally {
+        if (origin === targetKey) busy = false;
+    }
 }
 </script>
 
@@ -131,7 +147,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                     <label>Count in<select bind:value={unit}><option value="words">Words</option><option value="characters">Characters</option></select></label>
                 </div>
             {:else}
-                <p class="text-xs text-black/60">Prompt summaries · {kind === "uc-piq" ? "350 words each" : "2026–27"}</p>
+                <p class="text-xs text-black/60">Official prompts · {kind === "uc-piq" ? "350 words each" : "2026–27"}</p>
                 <div class="space-y-2">
                     {#each options as option, index}
                         <label class="choice" class:chosen={selected.includes(index)}>
@@ -160,8 +176,8 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 </div>
                 {#if !prompt.constraints.some(c => c.unit !== "other")}<span class="text-xs text-black/60 tabular-nums" aria-label="Essay length">{section.wordCount} words · no limit</span>{/if}
                 <p class="whitespace-pre-wrap leading-relaxed">{prompt.text}</p>
-                {#if sources.length}<details><summary class="text-xs text-black/60">Research for this prompt ({sources.length})</summary>{#each sources as source (source.id)}<p class="text-xs mt-2">{source.summary} <a class="source-link" href={source.url} target="_blank" rel="noreferrer">{source.publisher}</a></p>{/each}</details>{/if}
-                {#if prompt.sourceUrl}<a class="source-link" href={prompt.sourceUrl} target="_blank" rel="noreferrer">{setup.kind === "supplemental" ? "Original prompt" : "Prompt summary · View original"}<span aria-hidden="true"> ↗</span></a>{/if}
+                {#if sources.length}<details><summary class="text-xs text-black/60">Research for this prompt ({sources.length})</summary>{#each sources as source (source.id)}<p class="text-xs mt-2">{source.summary} <a class="source-link" href={source.url} onclick={(event) => { event.preventDefault(); void openUrl(source.url); }}>{source.publisher}</a></p>{/each}</details>{/if}
+                {#if prompt.sourceUrl}<a class="source-link" href={prompt.sourceUrl} onclick={(event) => { event.preventDefault(); void openUrl(prompt.sourceUrl); }}>{setup.kind === "supplemental" ? "View prompt source" : "View official prompt source"}<span aria-hidden="true"> ↗</span></a>{/if}
             </section>
         {/each}
         {#if view.sectionMode}<p class="text-xs text-black/60">Edit prompts and limits in the H1 headings. Counts include answer text only.</p>{/if}
@@ -182,7 +198,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                     {#each setup.references as ref (ref.id)}
                         <div class="source-card">
                             {#if ref.research && view.effectiveSetup && !isCollegeReferenceCurrent(ref, view.effectiveSetup)}<p class="text-amber-900 mb-2">Prompt missing or changed. Saved for recovery; excluded from AI context.</p>{/if}
-                            {#if ref.url}<a class="source-link font-medium" href={ref.url} target="_blank" rel="noreferrer">{ref.publisher}<span aria-hidden="true"> ↗</span></a>{:else}<p class="font-medium">{ref.publisher}</p>{/if}
+                            {#if ref.url}<a class="source-link font-medium" href={ref.url} onclick={(event) => { event.preventDefault(); void openUrl(ref.url); }}>{ref.publisher}<span aria-hidden="true"> ↗</span></a>{:else}<p class="font-medium">{ref.publisher}</p>{/if}
                             <p class="leading-relaxed mt-1">{ref.summary}</p>
                             <p class="text-black/50 mt-2">Checked {ref.checkedDate}{ref.cycle ? ` · ${ref.cycle}` : ""}</p>
                         </div>

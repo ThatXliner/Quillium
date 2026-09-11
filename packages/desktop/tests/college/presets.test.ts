@@ -8,10 +8,11 @@ import {
 } from "$lib/college/presets";
 import { describe, expect, it } from "vitest";
 
-const CHECKED_DATE = "2026-09-07";
+const CHECKED_DATE = "2026-09-11";
 const UC_URL =
     "https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-first-year/personal-insight-questions.html";
-const COMMON_CURRENT_URL = "https://www.commonapp.org/apply/essay-prompts/";
+const COMMON_CURRENT_URL =
+    "https://www.commonapp.org/blog/announcing-2026-2027-common-app-essay-prompts/";
 const COMMON_WORKSHEET_URL =
     "https://www.commonapp.org/static/ff69a4ea4ce044fe419826e26803aa65/Resource_FY_Essays_ENG_2025.06.25_0.pdf";
 
@@ -43,19 +44,23 @@ describe("College presets", () => {
             ]);
             expect(setup.readers.every((reader) => reader.builtin)).toBe(true);
             expect(setup.readers.every((reader) => reader.chattiness === "quiet")).toBe(true);
-            expect(
-                setup.prompts.every(
-                    (prompt) => prompt.label.includes("summary") || kind === "supplemental",
-                ),
-            ).toBe(true);
+            expect(setup.prompts.every((prompt) => !prompt.label.includes("summary"))).toBe(true);
         },
     );
 
-    it("keeps the UC source snapshot and the first summary bounded to 350 words", () => {
+    it("bundles verbatim UC prompts and bounds responses to 350 words", () => {
         const setup = newCollegeSetup("uc-piq");
         const prompt = setup.prompts[0];
 
-        expect(prompt.text).toBe("Explain how your leadership helped others or a group over time.");
+        expect(prompt.text).toBe(
+            "Describe an example of your leadership experience in which you have positively influenced others, helped resolve disputes or contributed to group efforts over time.",
+        );
+        expect(UC_PROMPTS[1].text).toBe(
+            "Every person has a creative side, and it can be expressed in many ways: problem solving, original and innovative thinking, and artistically, to name a few. Describe how you express your creative side.",
+        );
+        expect(UC_PROMPTS[7].text).toBe(
+            "Beyond what has already been shared in your application, what do you believe makes you a strong candidate for admissions to the University of California?",
+        );
         expect(prompt.sourceUrl).toBe(UC_URL);
         expect(prompt.constraints).toEqual([
             expect.objectContaining({ unit: "words", min: null, max: 350 }),
@@ -81,12 +86,18 @@ describe("College presets", () => {
         );
     });
 
-    it("keeps the Common App cycle/source and leaves the current length limit unknown", () => {
+    it("bundles verbatim Common App prompts with their current official source", () => {
         const setup = newCollegeSetup("common-app");
         const prompt = setup.prompts[0];
 
         expect(setup.cycle).toBe("2026–2027");
-        expect(prompt.label).toBe("Identity (summary)");
+        expect(prompt.label).toBe("Identity");
+        expect(COMMON_APP_PROMPTS[4].text).toBe(
+            "Discuss an accomplishment, event, or realization that sparked a period of personal growth and a new understanding of yourself or others.",
+        );
+        expect(COMMON_APP_PROMPTS[6].text).toBe(
+            "Share an essay on any topic of your choice. It can be one you've already written, one that responds to a different prompt, or one of your own design.",
+        );
         expect(prompt.sourceUrl).toBe(COMMON_CURRENT_URL);
         expect(prompt.constraints[0]).toEqual(
             expect.objectContaining({ unit: "words", min: null, max: null }),

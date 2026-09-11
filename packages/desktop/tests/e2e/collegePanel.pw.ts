@@ -60,6 +60,32 @@ test("creates independent essay tabs with prompt headings and no provider traffi
     q.expectNoPageErrors();
 });
 
+test("shows the verbatim Common App prompt and opens its official source natively", async ({
+    page,
+}) => {
+    const q = new QuilliumPage(page, { apiKey: null });
+    await q.init();
+    await openCollege(page);
+    await panel(page).getByRole("button", { name: "Common App", exact: true }).click();
+    const growth = panel(page).getByRole("checkbox", { name: /Growth/ });
+    await expect(
+        panel(page).getByText(
+            /Discuss an accomplishment, event, or realization that sparked a period of personal growth/,
+        ),
+    ).toBeVisible();
+    await growth.check();
+    await panel(page).getByRole("button", { name: "Create essay tab", exact: true }).click();
+    await openCollege(page);
+    const source = panel(page).getByRole("link", { name: "View official prompt source" });
+    await expect(source).toHaveAttribute(
+        "href",
+        "https://www.commonapp.org/blog/announcing-2026-2027-common-app-essay-prompts/",
+    );
+    await source.click();
+    await expect.poll(() => q.countInvocations("plugin:opener|open_url")).toBe(1);
+    q.expectNoPageErrors();
+});
+
 test("adds a prompt as an undoable H1, preserves the answer, and detects pasted sections", async ({
     page,
 }) => {

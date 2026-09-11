@@ -1,5 +1,6 @@
 <!-- SchoolResearch.svelte — Explicit public research and source review for one tab. -->
 <script lang="ts">
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { onDestroy, tick } from "svelte";
 import type { CollegeCapabilities, CollegeCapabilitiesSnapshot } from "./capabilities";
 import type { CollegeReference } from "./model";
@@ -26,7 +27,9 @@ const groups = [
     { kind: "official-advice", label: "Official guidance" },
     { kind: "editorial-guidance", label: "Editorial guidance" },
 ] as const;
-const researchLabel = $derived(`Research this school's prompt${(view.setup?.prompts.length ?? 0) > 1 ? "s" : ""}`);
+const researchLabel = $derived(
+    `Research this school's prompt${(view.setup?.prompts.length ?? 0) > 1 ? "s" : ""}`,
+);
 const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
 const missing = $derived(
     result
@@ -42,8 +45,8 @@ onDestroy(() => controller?.abort());
 async function open(): Promise<void> {
     const setup = view.setup;
     if (!setup) return;
-    const previous = setup.references.some(
-        (reference) => isCollegeReferenceCurrent(reference, setup),
+    const previous = setup.references.some((reference) =>
+        isCollegeReferenceCurrent(reference, setup),
     )
         ? setup.researchReview?.target
         : undefined;
@@ -199,7 +202,7 @@ async function accept(): Promise<void> {
                                 <label class="check"><input type="checkbox" bind:group={selected} value={finding.id} disabled={statusFor(finding) === "Already saved"} /><span>{finding.summary}</span></label>
                                 <blockquote class="text-xs border-l-2 border-black/20 pl-2 whitespace-pre-wrap">{finding.research?.evidence}</blockquote>
                                 <p class="text-xs text-black/60">{finding.publisher} · {finding.cycle || "Cycle unknown"} · Checked {finding.checkedDate}</p>
-                                <a class="research-link break-all" href={finding.url} target="_blank" rel="noreferrer">{finding.url}</a>
+                                <a class="research-link break-all" href={finding.url} onclick={(event) => { event.preventDefault(); void openUrl(finding.url); }}>{finding.url}</a>
                                 {#if previous && statusFor(finding) !== "Already saved"}
                                     <details><summary class="research-link">Compare saved finding</summary><p class="text-xs py-2">{previous.summary}</p><label class="check"><input type="checkbox" bind:group={removed} value={previous.id} />Remove this older finding when saving this review</label></details>
                                 {/if}
@@ -225,7 +228,7 @@ async function accept(): Promise<void> {
                 <button class="research-link" disabled={saving} onclick={() => { result = null; confirmed = false; }}>Change target or retry</button>
             </div>
             <p class="text-xs text-black/60">Nothing is added automatically. Adding keeps your existing sources; only checked removals are deleted.</p>
-            <details><summary class="research-link">Sources returned ({result.pages.length})</summary>{#each result.pages as page}<a class="block research-link mt-2 break-all" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}</a>{/each}</details>
+            <details><summary class="research-link">Sources returned ({result.pages.length})</summary>{#each result.pages as page}<a class="block research-link mt-2 break-all" href={page.url} onclick={(event) => { event.preventDefault(); void openUrl(page.url); }}>{page.title || page.url}</a>{/each}</details>
         {/if}
     </section>
 {/if}

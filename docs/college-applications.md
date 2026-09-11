@@ -69,14 +69,14 @@ Prompt metadata is retained for recovery (up to 100 archived prompts); this is
 not a separate undo history. Accepted research remains saved until explicitly
 removed, even while its prompt is absent.
 
-The initial sources were checked on September 7, 2026:
+The bundled prompt sources were checked on September 11, 2026. UC and Common App
+presets use the official prompt wording verbatim:
 
 - [UC first-year PIQ guidance](https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-first-year/personal-insight-questions.html):
   its response limit is included; the source does not name an application cycle.
-- [Common App's current prompt page](https://www.commonapp.org/apply/essay-prompts/):
-  the official page data contains all seven prompts for 2026–2027. The preset
-  uses concise summaries with that cycle and links to the original wording.
-  The page does not state a length limit; the preset leaves it unknown.
+- [Common App's 2026–2027 prompt announcement](https://www.commonapp.org/blog/announcing-2026-2027-common-app-essay-prompts/):
+  the official announcement contains all seven prompts bundled by the preset.
+  It does not state a length limit, so the preset leaves the limit unknown.
 - [Common App's 2025 writing worksheet](https://www.commonapp.org/static/ff69a4ea4ce044fe419826e26803aa65/Resource_FY_Essays_ENG_2025.06.25_0.pdf):
   a source of general advice, shown with its original date rather than treated
   as current-cycle requirements.
