@@ -1,6 +1,7 @@
 <!-- ConversationHistory.svelte — Local conversation navigation and explicit lifecycle actions. -->
 <script lang="ts">
 import { currentDraftId } from "$lib/stores";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { ChevronDown, History, MoreHorizontal, Plus } from "lucide-svelte";
 import type { createAiChat } from "./chatFactory";
 import type { AiConversationMode } from "./persistence";
@@ -26,6 +27,7 @@ function showModal(node: HTMLDialogElement) {
     };
 }
 let browsing = $state(false);
+let restoreSize = $state<(() => void) | undefined>();
 let collapsed = $state(false);
 let actionsId = $state<string | null>(null);
 let historyButton = $state<HTMLButtonElement>();
@@ -134,17 +136,25 @@ async function act(action: () => Promise<unknown>) {
     {#if conversations.error || actionError}<p role="alert" class="text-red-700">{actionError || conversations.error}</p>{/if}
     {#if browsing}
         <dialog aria-label="Past discussions" use:showModal onclose={() => browsing = false} class="history-modal rounded-2xl bg-gray-100 p-6 shadow-xl">
-        <div class="mb-5 flex items-center justify-between"><h2 class="text-base font-semibold">Past discussions</h2><button aria-label="Close history" onclick={() => browsing = false}>Close</button></div>
+        <div class="shrink-0">
+        <div class="mb-5 flex items-center justify-between gap-3">
+            <h2 class="text-base font-semibold">Past discussions</h2>
+            <div class="flex shrink-0 items-center gap-1">
+                <RestoreSizeButton {restoreSize} />
+                <button aria-label="Close history" onclick={() => browsing = false}>Close</button>
+            </div>
+        </div>
         {#if conversations.error || actionError}<p role="alert" class="text-red-700">{actionError || conversations.error}</p>{/if}
         <input aria-label="Search conversations" placeholder="Search titles and messages…" bind:value={search}
             class="w-full rounded border border-black/20 bg-white/70 px-2 py-1.5" />
         <label class="flex items-center gap-2"><input type="checkbox" bind:checked={archived} />Archived conversations</label>
         <p class="text-black/60">{mode === "chat" ? "Chat" : mode === "feedback" ? "Feedback" : "Revise"} conversations in this document</p>
-        <ul class="max-h-[55dvh] overflow-y-auto space-y-2 mt-3" aria-label="Conversation history">
+        </div>
+        <ul class="min-h-0 flex-auto overflow-y-auto space-y-2 mt-3" aria-label="Conversation history">
             {#each matches as item (item.id)}
                 <li class="rounded bg-white/50 p-2 space-y-1" aria-current={item.id === conversations.current?.id ? "true" : undefined}>
                     <button class="text-left font-medium w-full break-words hover:underline" disabled={disabled || conversations.loading}
-                        onclick={() => act(async () => { await conversations.open(item.id); browsing = false; onopen?.(historyButton); })}>{item.title}</button>
+                        onclick={() => act(async () => { await conversations.open(item.id); browsing = false; if (historyButton) onopen?.(historyButton); })}>{item.title}</button>
                     <p class="text-black/60">{item.draftLabel} · {new Date(item.updatedAt).toLocaleDateString()}</p>
                     <div class="flex gap-3">
                         <button disabled={disabled || conversations.loading} onclick={() => { renameId = item.id; title = item.title; }}>Rename</button>
@@ -168,10 +178,12 @@ async function act(action: () => Promise<unknown>) {
                 </li>
             {:else}<li class="text-black/60">No conversations found.</li>{/each}
         </ul>
+        <ModalResizeHandles bind:restoreSize />
         </dialog>
     {/if}
 </div>
 <style>
-.history-modal { margin: auto; position: fixed; inset: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 64px); color: #27272a; }
+.history-modal { margin: auto; position: fixed; inset: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 64px); overflow: hidden; color: #27272a; }
+.history-modal[open] { display: flex; flex-direction: column; }
 .history-modal::backdrop { background: rgb(0 0 0 / 25%); backdrop-filter: blur(3px); }
 </style>
