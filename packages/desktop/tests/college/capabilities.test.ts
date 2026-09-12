@@ -1,5 +1,5 @@
 import { createCollegeCapabilities } from "$lib/college/capabilities";
-import { newCollegeSetup } from "$lib/college/presets";
+import { UC_PROMPTS, newCollegeSetup } from "$lib/college/presets";
 import { formatCollegePromptHeading } from "$lib/college/sections";
 import type { TabMeta } from "$lib/db/types";
 import type { SidebarPanelSession, SidebarPanelTarget } from "$lib/sidebar/panels";
@@ -242,6 +242,49 @@ function createEditorView(doc: string, readOnly = false): EditorView {
 }
 
 describe("createCollegeCapabilities", () => {
+    it("adds only the new prompt's guidance without refreshing previously accepted sources", async () => {
+        const setup = activeSetup();
+        setup.references[0].summary = "Previously accepted guidance";
+        const originals = structuredClone(setup.references);
+        const prose = "Existing answer.";
+        createEditorView(prose);
+        mocks.stores.documentContent.set(prose);
+        mocks.saveCollegeSetup.mockImplementation(async (...args: unknown[]) => {
+            mocks.state.saveArgs = args;
+            mocks.state.collegeState.setup = args[1] as ReturnType<typeof newCollegeSetup>;
+            mocks.state.activeSetup = mocks.state.collegeState.setup;
+        });
+        const { session } = sessionFor();
+        await createCollegeCapabilities(session, vi.fn()).addPrompt({
+            ...setup.prompts[0],
+            ...UC_PROMPTS[1],
+        });
+        const saved = mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>;
+        expect(saved.references.slice(0, originals.length)).toEqual(originals);
+        const added = saved.references.slice(originals.length);
+        expect(added.length).toBeGreaterThan(0);
+        expect(
+            added.every((reference) => reference.bundle?.promptIds[0] === saved.prompts[1].id),
+        ).toBe(true);
+    });
+
+    it("accepts bundled guidance locally and rejects a changed preview", async () => {
+        const setup = activeSetup();
+        setup.references = [];
+        mocks.state.credentials = false;
+        const { session } = sessionFor();
+        const capabilities = createCollegeCapabilities(session, vi.fn());
+        const expected = capabilities.read().effectiveSetup!;
+        await capabilities.acceptBundledGuidance(expected);
+        const saved = mocks.state.saveArgs?.[1] as ReturnType<typeof newCollegeSetup>;
+        expect(saved.references.length).toBeGreaterThan(0);
+        expect(saved.references.every((reference) => reference.bundle)).toBe(true);
+        expect(mocks.ensureApiKeyLoaded).not.toHaveBeenCalled();
+        setup.intent = "Changed since preview";
+        await expect(capabilities.acceptBundledGuidance(expected)).rejects.toThrow(/changed/i);
+        expect(mocks.saveCollegeSetup).toHaveBeenCalledTimes(1);
+    });
+
     it("reads target labels/context and returns a cloned setup without loading credentials", () => {
         const setup = activeSetup();
         setup.school = "Example University";

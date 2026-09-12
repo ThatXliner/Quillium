@@ -69,7 +69,7 @@ Prompt metadata is retained for recovery (up to 100 archived prompts); this is
 not a separate undo history. Accepted research remains saved until explicitly
 removed, even while its prompt is absent.
 
-The bundled prompt sources were checked on September 11, 2026. UC and Common App
+The bundled guidance sources were checked on September 12, 2026. UC and Common App
 presets use the official prompt wording verbatim:
 
 - [UC first-year PIQ guidance](https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-first-year/personal-insight-questions.html):
@@ -92,11 +92,30 @@ Adding another prompt does not invalidate unrelated research. Missing or changed
 restoring the matching heading reconnects it. The College panel shows accepted
 research beneath its prompt and retained, detached sources under Sources and settings.
 
+UC PIQ and Personal statement tabs include bundled guidance for their selected
+prompts, available offline without a model connection. Each prompt gets general
+application guidance and advice specific to its wording. Official advice remains
+distinct from requirements and editorial guidance. These references use the same
+6,000-character context budget as accepted school research.
+
+**Check for updated guidance** compares the saved references with the bundle
+shipped in the installed app. It shows additions, before-and-after changes, and
+removals for review. Applying the preview saves the new snapshot; simply opening
+the panel or updating Quillium does not change accepted guidance. A prompt or
+setup change while reviewing requires a fresh preview. **Research additional
+sources** opens live research for UC and Common App; supplemental tabs retain
+**Research this school's prompt**.
+
+Bundled guidance is scoped to the selected prompt's identity and wording. Changing
+or removing its heading excludes that guidance from requests, while restoring it
+reconnects the saved sources. Adding a prompt attaches guidance for that prompt
+without updating references already accepted for other prompts.
+
 Accepted references include publisher, URL, check date, cycle or unknown, and a
 classification: official requirement, official advice, or editorial
 guidance. Applying saves these snapshots. Opening a saved setup never silently
-substitutes a new bundle. A future guidance update must offer a preview before
-replacing accepted references.
+substitutes a new bundle. Guidance updates offer a preview before replacing
+accepted references.
 
 ## Effective preferences and requests
 

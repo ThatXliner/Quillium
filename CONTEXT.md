@@ -171,6 +171,12 @@ _Avoid_: Preset, distribution package
 
 ## AI discussions
 
+**Bundled guidance**:
+Source-linked College advice and requirements supplied with Quillium for a
+recognized application prompt. Writers retain the guidance they accepted until
+they choose an update.
+_Avoid_: Cached research
+
 **Conversation**:
 A saved Chat, Feedback, or Revise discussion with its own identity and original
 draft association. A conversation branch copies a message prefix into another

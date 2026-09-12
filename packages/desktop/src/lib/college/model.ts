@@ -11,6 +11,7 @@ import {
     type ResearchProvenance,
     type ResearchReview,
     type ResearchTarget,
+    bundledGuidanceProvenanceSchema,
     collegeResearchSetupKey,
     researchProvenanceSchema,
     researchReviewSchema,
@@ -103,6 +104,7 @@ const collegeReferenceSchema = z
         kind: z.enum(["requirement", "official-advice", "editorial-guidance"]),
         summary: z.string().max(2000),
         research: researchProvenanceSchema.optional(),
+        bundle: bundledGuidanceProvenanceSchema.optional(),
     })
     .strict();
 

@@ -66,6 +66,10 @@ const effective = $derived(getActiveCollegeSetup());
                 </details>
                 <details><summary class="flex cursor-pointer items-center justify-between gap-2 font-medium"><span>Accepted source snapshots</span><span class="text-[10px] font-normal text-black/40">{setup.references.length}</span></summary>
                     {#each setup.references as reference (reference.id)}
+                        {#if reference.bundle}
+                            <p class="pt-2 text-black/60">Bundled guidance · {reference.bundle.promptIds.length} selected prompt(s)</p>
+                            {#if !isCollegeReferenceCurrent(reference, setup)}<p class="text-amber-900">Prompt missing or changed. Saved for recovery; excluded from requests.</p>{/if}
+                        {/if}
                         <div class="py-2 space-y-1">{#if reference.research}{#if !isCollegeReferenceCurrent(reference, setup)}<p class="text-amber-900">Prompt missing or changed. Saved for recovery; excluded from requests.</p>{/if}<p>{reference.research.school} · {reference.research.targetCycle || "Target cycle unknown"} · {reference.research.promptIds.length} selected prompt(s)</p><blockquote class="border-l-2 border-black/20 pl-2">{reference.research.evidence}</blockquote>{/if}<p>{reference.kind}: {reference.summary}</p><p class="text-black/60">{reference.publisher} · {reference.cycle || "Cycle unknown"} · Checked {reference.checkedDate || "unknown"}</p>{#if reference.url}<a class="text-blue-700 underline" href={reference.url} onclick={(event) => { event.preventDefault(); void openUrl(reference.url); }}>View source</a>{/if}</div>
                     {/each}
                 </details>

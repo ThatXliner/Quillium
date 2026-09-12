@@ -28,7 +28,9 @@ const groups = [
     { kind: "editorial-guidance", label: "Editorial guidance" },
 ] as const;
 const researchLabel = $derived(
-    `Research this school's prompt${(view.setup?.prompts.length ?? 0) > 1 ? "s" : ""}`,
+    view.setup?.kind === "supplemental"
+        ? `Research this school's prompt${(view.setup?.prompts.length ?? 0) > 1 ? "s" : ""}`
+        : "Research additional sources",
 );
 const saved = $derived(view.setup?.references.filter((reference) => reference.research) ?? []);
 const missing = $derived(
@@ -161,14 +163,14 @@ async function accept(): Promise<void> {
         {#if target && !result}
             <form class="space-y-3" onsubmit={(event) => { event.preventDefault(); void research(); }}>
                 <fieldset class="space-y-3" disabled={running || saving}>
-                    <label>School and campus<input required maxlength="200" bind:value={target.school} /></label>
+                    <label>{view.setup?.kind === "supplemental" ? "School and campus" : "Application system"}<input required maxlength="200" bind:value={target.school} /></label>
                     <div class="grid grid-cols-2 gap-2">
                         <label>Application cycle<input maxlength="100" bind:value={target.cycle} placeholder="Unknown" /></label>
                         <label>Program (optional)<input maxlength="200" bind:value={target.program} /></label>
                     </div>
                     <label>Official admissions page<input type="url" required maxlength="2000" bind:value={target.sourceUrl} placeholder="https://admissions.school.edu/…" oninput={() => confirmed = false} /></label>
                     <p class="text-xs text-black/60">Uses this as the official source. Models with web search also look for relevant College Essay Guy guides. Use a public page without a login.</p>
-                    <label class="check"><input type="checkbox" bind:checked={confirmed} />I checked that this is the official site for this school and campus.</label>
+                    <label class="check"><input type="checkbox" bind:checked={confirmed} />I checked that this is the official site for {view.setup?.kind === "supplemental" ? "this school and campus" : "this application system"}.</label>
                     <fieldset class="space-y-2">
                         <legend class="font-medium text-xs mb-2">Prompts to research</legend>
                         {#each target.prompts as prompt (prompt.id)}

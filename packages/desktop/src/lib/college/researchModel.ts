@@ -80,6 +80,18 @@ export const researchProvenanceSchema = z
 
 export type ResearchProvenance = z.infer<typeof researchProvenanceSchema>;
 
+/** The shipped guidance version and exact prompt identities accepted by the writer. */
+export const bundledGuidanceProvenanceSchema = z
+    .object({
+        version: z.string().min(1).max(100),
+        key: z.string().min(1).max(100),
+        promptIds: z.array(z.string().min(1).max(100)).min(1),
+        promptKeys: z.record(z.string().min(1).max(100), z.string().min(1).max(100)),
+    })
+    .strict();
+
+export type BundledGuidanceProvenance = z.infer<typeof bundledGuidanceProvenanceSchema>;
+
 export const researchReviewSchema = z
     .object({
         target: researchTargetSchema,
@@ -134,10 +146,10 @@ export function collegeResearchPromptKey(
  * provenance continues to use its original whole-setup comparison.
  */
 export function isCollegeReferenceCurrent(
-    reference: { research?: ResearchProvenance },
+    reference: { research?: ResearchProvenance; bundle?: BundledGuidanceProvenance },
     setup: Pick<CollegeSetup, "school" | "program" | "cycle" | "prompts">,
 ): boolean {
-    const research = reference.research;
+    const research = reference.bundle ?? reference.research;
     if (!research) return true;
 
     if (research.promptKeys) {
@@ -153,7 +165,7 @@ export function isCollegeReferenceCurrent(
         });
     }
 
-    return research.setupKey === collegeResearchSetupKey(setup);
+    return "setupKey" in research && research.setupKey === collegeResearchSetupKey(setup);
 }
 
 /** Compact deterministic identity for persisted research comparisons. */

@@ -28,6 +28,7 @@ import {
 } from "$lib/stores";
 import { isolateHistory } from "@codemirror/commands";
 import { get } from "svelte/store";
+import { bundledReferencesFor, previewBundledGuidance } from "./bundledGuidance";
 import {
     type CollegePrompt,
     type CollegeReference,
@@ -94,6 +95,7 @@ export interface CollegeCapabilities {
     readonly retry: () => Promise<void>;
     readonly createTabs: (setups: CollegeSetup[]) => Promise<void>;
     readonly addPrompt: (prompt: CollegePrompt) => Promise<void>;
+    readonly acceptBundledGuidance: (expectedSetup: CollegeSetup) => Promise<void>;
     readonly openPanel: (id: CollegeOpenPanel) => void;
     readonly request: (action: CollegeAction) => void;
     readonly research: (target: ResearchTarget, signal: AbortSignal) => Promise<ResearchResult>;
@@ -160,6 +162,10 @@ function createTabPayload(
             throw new Error("Each College tab must contain exactly one prompt.");
         }
         validated.sectionMode = true;
+        validated.references = [
+            ...validated.references.filter((reference) => !reference.bundle),
+            ...bundledReferencesFor(validated),
+        ];
         return {
             label: tabLabelForSetup(validated),
             setupJson: serializeCollegeSetup(validated),
@@ -711,6 +717,7 @@ export function createCollegeCapabilities(
         const next = cloneLoose(archiveCollegePrompts(original, resolved));
         next.sectionMode = true;
         migrateLegacyResearchReferences(next, resolvedBefore);
+        next.references.push(...bundledReferencesFor({ ...next, prompts: [added] }));
 
         const capturedState = view.state;
         await saveCollegeSetup({ documentId: target.documentId, tabId: target.tabId }, next);
@@ -819,6 +826,26 @@ export function createCollegeCapabilities(
             linkedAbort.cleanup();
             if (runningResearch === operation) runningResearch = null;
         }
+    }
+
+    async function acceptBundledGuidance(expectedSetup: CollegeSetup): Promise<void> {
+        assertCurrent();
+        assertTabOperationReady();
+        if (!currentStateMatchesTarget() || session.signal.aborted) {
+            throw new Error(STALE_SESSION_MESSAGE);
+        }
+        const stored = collegeState.setup;
+        if (!stored) throw new Error(STALE_SESSION_MESSAGE);
+        const effective = effectiveCurrentSetup(stored);
+        if (serializeCollegeSetup(effective) !== serializeCollegeSetup(expectedSetup)) {
+            throw new Error(
+                "The College setup changed. Review bundled guidance again before applying it.",
+            );
+        }
+        const preview = previewBundledGuidance(effective);
+        const next = archiveCollegePrompts(stored, effective);
+        next.references = preview.references;
+        await saveCollegeSetup({ documentId: target.documentId, tabId: target.tabId }, next);
     }
 
     async function acceptResearch(
@@ -956,5 +983,6 @@ export function createCollegeCapabilities(
         request,
         research,
         acceptResearch,
+        acceptBundledGuidance,
     });
 }

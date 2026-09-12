@@ -3,6 +3,7 @@
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { tick, untrack } from "svelte";
+import BundledGuidance from "./BundledGuidance.svelte";
 import { isCollegeReferenceCurrent } from "./researchModel";
 import SchoolResearch from "./SchoolResearch.svelte";
 import { type CollegeSetup, collegeSetupSchema } from "./model";
@@ -166,7 +167,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
         {@const setup = view.setup}
         {#each view.sections as section, index (section.prompt.id)}
             {@const prompt = section.prompt}
-            {@const sources = setup.references.filter(ref => ref.research?.promptIds.includes(prompt.id) && view.effectiveSetup && isCollegeReferenceCurrent(ref, view.effectiveSetup))}
+            {@const sources = setup.references.filter(ref => (ref.research?.promptIds ?? ref.bundle?.promptIds)?.includes(prompt.id) && view.effectiveSetup && isCollegeReferenceCurrent(ref, view.effectiveSetup))}
             <section class="space-y-2" aria-label={prompt.label || "Your prompt"}>
                 <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <h2 class="font-semibold">{setup.kind === "supplemental" ? `Prompt ${index + 1}` : prompt.label || "Your prompt"}</h2>
@@ -176,7 +177,7 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 </div>
                 {#if !prompt.constraints.some(c => c.unit !== "other")}<span class="text-xs text-black/60 tabular-nums" aria-label="Essay length">{section.wordCount} words · no limit</span>{/if}
                 <p class="whitespace-pre-wrap leading-relaxed">{prompt.text}</p>
-                {#if sources.length}<details><summary class="text-xs text-black/60">Research for this prompt ({sources.length})</summary>{#each sources as source (source.id)}<p class="text-xs mt-2">{source.summary} <a class="source-link" href={source.url} onclick={(event) => { event.preventDefault(); void openUrl(source.url); }}>{source.publisher}</a></p>{/each}</details>{/if}
+                {#if sources.length}<details><summary class="text-xs text-black/60">Guidance for this prompt ({sources.length})</summary>{#each sources as source (source.id)}<p class="text-xs mt-2">{source.summary} <a class="source-link" href={source.url} onclick={(event) => { event.preventDefault(); void openUrl(source.url); }}>{source.publisher}</a></p>{/each}</details>{/if}
                 {#if prompt.sourceUrl}<a class="source-link" href={prompt.sourceUrl} onclick={(event) => { event.preventDefault(); void openUrl(prompt.sourceUrl); }}>{setup.kind === "supplemental" ? "View prompt source" : "View official prompt source"}<span aria-hidden="true"> ↗</span></a>{/if}
             </section>
         {/each}
@@ -188,6 +189,9 @@ async function update(setup: CollegeSetup | null): Promise<void> {
             <button class="link" onclick={() => start()}>Create another essay tab</button>
         </div>
         {#if view.aiEnabled && college}
+            {#if setup.kind !== "supplemental" && view.effectiveSetup}
+                {#key `${targetKey}:${active}`}<BundledGuidance {college} setup={view.effectiveSetup} saving={busy || view.saving} />{/key}
+            {/if}
             <SchoolResearch {college} view={{...view, setup: view.effectiveSetup}} />
         {/if}
         <details class="border-t border-black/10 pt-3">
@@ -197,7 +201,8 @@ async function update(setup: CollegeSetup | null): Promise<void> {
                 <div class="space-y-3">
                     {#each setup.references as ref (ref.id)}
                         <div class="source-card">
-                            {#if ref.research && view.effectiveSetup && !isCollegeReferenceCurrent(ref, view.effectiveSetup)}<p class="text-amber-900 mb-2">Prompt missing or changed. Saved for recovery; excluded from AI context.</p>{/if}
+                            {#if (ref.research || ref.bundle) && view.effectiveSetup && !isCollegeReferenceCurrent(ref, view.effectiveSetup)}<p class="text-amber-900 mb-2">Prompt missing or changed. Saved for recovery; excluded from AI context.</p>{/if}
+                            {#if ref.bundle}<p class="text-black/60 mb-1">Bundled guidance</p>{/if}
                             {#if ref.url}<a class="source-link font-medium" href={ref.url} onclick={(event) => { event.preventDefault(); void openUrl(ref.url); }}>{ref.publisher}<span aria-hidden="true"> ↗</span></a>{:else}<p class="font-medium">{ref.publisher}</p>{/if}
                             <p class="leading-relaxed mt-1">{ref.summary}</p>
                             <p class="text-black/50 mt-2">Checked {ref.checkedDate}{ref.cycle ? ` · ${ref.cycle}` : ""}</p>

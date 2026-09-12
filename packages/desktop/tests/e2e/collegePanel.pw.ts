@@ -2,6 +2,54 @@ import { type Page, expect, test } from "@playwright/test";
 import { QuilliumPage } from "./QuilliumPage";
 
 const panel = (page: Page) => page.locator('[data-panel-id="college"]');
+
+test("bundled guidance saves offline and updates only after preview acceptance", async ({
+    page,
+}) => {
+    const q = new QuilliumPage(page, { apiKey: null });
+    await q.init();
+    await openCollege(page);
+    await panel(page).getByRole("checkbox", { name: /PIQ 1/ }).check();
+    await panel(page).getByRole("button", { name: "Create essay tab", exact: true }).click();
+    await expect.poll(() => q.cmText()).toContain("Describe an example of your leadership");
+    await openCollege(page);
+    await expect(
+        panel(page).getByRole("button", { name: "Research additional sources" }),
+    ).toBeVisible();
+    const tabId = await page.getByRole("tab", { name: /PIQ 1/ }).getAttribute("data-tab-id");
+    const key = `mock-college-setup:doc-test-1:${tabId}`;
+    const original = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key);
+    expect(original.references.filter((ref: { bundle?: unknown }) => ref.bundle)).toHaveLength(3);
+    expect(original.references[0].bundle.promptIds).toEqual([original.prompts[0].id]);
+    await panel(page).getByRole("button", { name: "Check for updated guidance" }).click();
+    await expect(
+        panel(page).getByText("Your saved guidance is up to date with this version of Quillium."),
+    ).toBeVisible();
+    await page.evaluate((key) => {
+        const saved = JSON.parse(localStorage.getItem(key)!);
+        saved.references[0].summary = "Previously accepted guidance.";
+        saved.references[0].bundle.version = "older";
+        localStorage.setItem(key, JSON.stringify(saved));
+    }, key);
+    await page.reload();
+    await openCollege(page);
+    await panel(page).getByRole("button", { name: "Check for updated guidance" }).click();
+    await expect(panel(page).getByText("Saved: Previously accepted guidance.")).toBeVisible();
+    expect(
+        await page.evaluate(
+            (key) => JSON.parse(localStorage.getItem(key)!).references[0].summary,
+            key,
+        ),
+    ).toBe("Previously accepted guidance.");
+    await page.screenshot({ path: "/tmp/quillium-bundled-guidance.png", animations: "disabled" });
+    await panel(page).getByRole("button", { name: "Apply guidance update" }).click();
+    await expect(panel(page).getByText("Bundled guidance saved to this tab.")).toBeVisible();
+    expect(
+        await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).references, key),
+    ).toEqual(original.references);
+    q.expectNoPageErrors();
+});
+
 async function openCollege(page: Page): Promise<void> {
     if (await panel(page).isVisible()) return;
     if (!(await page.locator("#ai-tab-college").count())) {

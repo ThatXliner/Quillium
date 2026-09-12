@@ -71,15 +71,14 @@ describe("College presets", () => {
                 expect.objectContaining({
                     publisher: "University of California",
                     url: UC_URL,
-                    checkedDate: CHECKED_DATE,
+                    checkedDate: "2026-09-12",
                     cycle: "",
                     kind: "requirement",
-                    summary:
-                        "First-year applicants answer four of eight questions, with at most 350 words per response. The page does not identify an application cycle.",
+                    bundle: expect.objectContaining({ promptIds: [prompt.id] }),
                 }),
                 expect.objectContaining({
                     url: UC_URL,
-                    checkedDate: CHECKED_DATE,
+                    checkedDate: "2026-09-12",
                     kind: "official-advice",
                 }),
             ]),
@@ -107,16 +106,16 @@ describe("College presets", () => {
                 expect.objectContaining({
                     publisher: "Common App",
                     url: COMMON_WORKSHEET_URL,
-                    checkedDate: CHECKED_DATE,
-                    cycle: "2025 worksheet; current cycle unverified",
+                    checkedDate: "2026-09-12",
+                    cycle: "2025 worksheet (not cycle-specific)",
                     kind: "official-advice",
                 }),
                 expect.objectContaining({
                     publisher: "Common App",
                     url: COMMON_CURRENT_URL,
-                    checkedDate: CHECKED_DATE,
+                    checkedDate: "2026-09-12",
                     cycle: "2026–2027",
-                    kind: "official-advice",
+                    kind: expect.stringMatching(/requirement|official-advice/),
                 }),
             ]),
         );

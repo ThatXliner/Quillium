@@ -5,6 +5,11 @@ for the selected tab's prompts. It is optional and requires AI features, a
 configured model, and the native desktop app. Saved setup and accepted sources
 remain local when AI is disabled.
 
+UC PIQ and Personal statement setups already include local, source-linked
+[bundled guidance](college-applications.md#setup-and-guidance). Their live action
+is labeled **Research additional sources**. Checking for bundled guidance updates
+is local and does not require a model or make a network request.
+
 ## Review before and after research
 
 The writer reviews the institution and campus, cycle (or unknown), program,
