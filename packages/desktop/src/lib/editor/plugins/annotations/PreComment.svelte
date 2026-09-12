@@ -110,12 +110,16 @@ function addComment() {
         has_selection: !!selectedText,
         comment_length: commentText.length,
     });
+    // The dispatch below changes this annotation from pending to active,
+    // which immediately clears the pendingComment derived value. Capture
+    // everything needed after dispatch before making that state transition.
+    const annotationId = pendingComment.id;
     const { from, to } = pendingComment.selection.main;
     view.dispatch(
         view.state.update({
             effects: [
                 updateThread.of({
-                    annotationId: pendingComment.id,
+                    annotationId,
                     newThread: [
                         ...pendingComment.thread,
                         {
@@ -131,7 +135,7 @@ function addComment() {
             selection: { anchor: from, head: to },
         }),
     );
-    clearDraft(pendingComment.id);
+    clearDraft(annotationId);
 }
 
 function dismissComposer() {
@@ -145,12 +149,13 @@ function dismissComposer() {
  */
 function cancelComment() {
     if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
+    const annotationId = pendingComment.id;
     view.dispatch(
         view.state.update({
             effects: [removeAnnotation.of(pendingComment)],
         }),
     );
-    clearDraft(pendingComment.id);
+    clearDraft(annotationId);
 }
 </script>
 

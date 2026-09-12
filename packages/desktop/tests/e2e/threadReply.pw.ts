@@ -1,5 +1,5 @@
 /**
- * E2E tests for the Thread reply send button.
+ * E2E tests for comment submission, cancellation, and thread replies.
  *
  * Regression: the Send button was impossible to click because
  * `sendActive` required `isFocused && hasText`. Clicking the
@@ -11,11 +11,9 @@ import { type Page, expect, test } from "@playwright/test";
 import { installTauriMock } from "./utils";
 
 /**
- * Type some text, select it, create a comment with a message,
- * then click on the comment card to activate it (showing the
- * reply input). Returns a locator for the annotation card.
+ * Select a passage and open the new-comment composer.
  */
-async function setupCommentWithReply(page: Page) {
+async function setupPendingComment(page: Page) {
     const editor = page.locator("#editor-document .cm-content");
     await editor.click();
     await page.keyboard.type("hello world");
@@ -28,8 +26,13 @@ async function setupCommentWithReply(page: Page) {
     // The PreComment composer should appear — type a comment and submit
     const preComment = page.locator("textarea[placeholder='Add a comment…']");
     await expect(preComment).toBeVisible({ timeout: 5000 });
+    return preComment;
+}
+
+async function setupCommentWithReply(page: Page) {
+    const preComment = await setupPendingComment(page);
     await preComment.fill("This needs work");
-    await page.keyboard.press("ControlOrMeta+Enter");
+    await preComment.press("Meta+Enter");
 
     // The comment card with Thread should now be visible. Scope to the
     // annotation card so a bare text=Comment doesn't match the AI context
@@ -39,8 +42,12 @@ async function setupCommentWithReply(page: Page) {
     return commentCard;
 }
 
-test.describe("thread reply send button", () => {
+test.describe("comment composers", () => {
+    let pageErrors: string[];
+
     test.beforeEach(async ({ page }) => {
+        pageErrors = [];
+        page.on("pageerror", (error) => pageErrors.push(error.message));
         await installTauriMock(page);
         await page.goto("/");
         // Match the editor-mount budget the QuilliumPage harness uses; the
@@ -48,6 +55,41 @@ test.describe("thread reply send button", () => {
         await expect(page.locator("#editor-document .cm-content")).toBeVisible({
             timeout: 20_000,
         });
+    });
+
+    test.afterEach(() => {
+        // Submission can save the comment before throwing during draft cleanup.
+        // Merely checking that the comment appeared would miss that crash.
+        expect(pageErrors).toEqual([]);
+    });
+
+    test("Command+Enter submits a new comment and clears its reply draft", async ({ page }) => {
+        await setupCommentWithReply(page);
+        const replyBox = page.getByPlaceholder("Reply…");
+        await expect(page.getByText("This needs work", { exact: true })).toBeVisible();
+        await expect(replyBox).toHaveValue("");
+
+        await replyBox.fill("Keyboard reply");
+        await replyBox.press("Meta+Enter");
+        await expect(page.getByText("Keyboard reply", { exact: true })).toBeVisible();
+        await expect(replyBox).toHaveValue("");
+    });
+
+    test("cancel clears the pending comment draft without a crash", async ({ page }) => {
+        const preComment = await setupPendingComment(page);
+        await preComment.fill("Discard this draft");
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(preComment).toHaveCount(0);
+        await expect(page.locator(".annotation-card")).toHaveCount(0);
+
+        // Undo restores the annotation; its canceled composer text stays cleared.
+        await page.locator("#editor-document .cm-content").click();
+        await page.keyboard.press("ControlOrMeta+z");
+        await expect(preComment).toBeVisible();
+        await expect(preComment).toHaveValue("");
+        await page.keyboard.press("Escape");
+        await page.keyboard.press("ControlOrMeta+Shift+z");
+        await expect(preComment).toHaveCount(0);
     });
 
     test("clicking Send button submits reply text", async ({ page }) => {
