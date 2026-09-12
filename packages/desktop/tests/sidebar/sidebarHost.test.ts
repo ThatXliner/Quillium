@@ -261,7 +261,7 @@ describe("Sidebar panel host", () => {
         expect(firstSession).not.toBeNull();
         expect(panelProbe.mountCount).toBe(1);
 
-        await fireEvent.click(ui.getByRole("button", { name: "Close" }));
+        await fireEvent.click(ui.getByRole("button", { name: "Collapse sidebar" }));
         await waitFor(() => expect(firstSession?.signal.aborted).toBe(true));
         expect(panelProbe.mountCount).toBe(1);
         expect(panelProbe.unmountCount).toBe(0);
@@ -295,7 +295,7 @@ describe("Sidebar panel host", () => {
         const firstSession = panelProbe.updates.at(-1)?.session;
         expect(firstSession).not.toBeNull();
 
-        await fireEvent.click(ui.getByRole("button", { name: "Close" }));
+        await fireEvent.click(ui.getByRole("button", { name: "Collapse sidebar" }));
         await waitFor(() => expect(firstSession?.signal.aborted).toBe(true));
         expect(panelProbe.unmountCount).toBe(1);
         expect(ui.container.querySelector('[data-panel-id="active-only"]')).not.toBeInTheDocument();
@@ -439,7 +439,7 @@ describe("Sidebar panel host", () => {
             false,
         );
 
-        await fireEvent.click(ui.getByRole("button", { name: "Close" }));
+        await fireEvent.click(ui.getByRole("button", { name: "Collapse sidebar" }));
         expect(hasInertAncestor(collapsed)).toBe(false);
         expect(hasInertAncestor(expanded)).toBe(true);
         expect(hasInertAncestor(ui.container.querySelector('[data-panel-id="local"]')!)).toBe(true);

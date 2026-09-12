@@ -158,7 +158,7 @@ test.describe("conversation history", () => {
 
         await expect(q.conversationRows).toHaveCount(2);
         await q.chatPanel.getByRole("button", { name: "Close history", exact: true }).click();
-        await q.chatPanel.getByRole("button", { name: "New chat", exact: true }).click();
+        await q.chatPanel.getByRole("button", { name: "New", exact: true }).click();
         await q.openConversationHistory();
         await expect(q.conversationRows).toHaveCount(3);
         await expect(q.conversationRow("Opening scene")).toBeVisible();
@@ -238,12 +238,19 @@ test("keeps discussions in the sidebar and opens a focused modal", async ({ page
     await q.init();
     await q.openChat();
     const recent = page.getByRole("list", { name: "Recent conversations" });
-    await expect(recent.getByRole("button", { name: "Opening scene" })).toBeVisible();
+    await expect(
+        recent.getByRole("button", { name: "Opening scene", exact: true }),
+    ).toBeVisible();
+    await expect(recent.getByRole("button", { name: "Manage Opening scene" })).toBeVisible();
+    await q.chatPanel.getByRole("button", { name: "Toggle discussions" }).click();
+    await expect(recent).toBeHidden();
+    await q.chatPanel.getByRole("button", { name: "Toggle discussions" }).click();
+    await expect(recent).toBeVisible();
     await expect
         .poll(async () => Math.round((await q.aiSidebar.boundingBox())?.width ?? 0))
         .toBe(320);
     await q.captureScreenshot("/tmp/quillium-discussions-sidebar.png");
-    await recent.getByRole("button", { name: "Opening scene" }).click();
+    await recent.getByRole("button", { name: "Opening scene", exact: true }).click();
     const modal = page.locator("dialog.discussion-modal");
     await expect(modal).toBeVisible();
     await expect(q.chatInput).toBeEnabled();

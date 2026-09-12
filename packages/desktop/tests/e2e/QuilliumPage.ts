@@ -1209,7 +1209,9 @@ export class QuilliumPage {
         if (await close.isVisible()) await close.click();
         await this.openChat();
         if (!(await this.conversationHistory.isVisible().catch(() => false))) {
-            await this.chatPanel.getByRole("button", { name: "History", exact: true }).click();
+            await this.chatPanel
+                .getByRole("button", { name: "Manage all discussions", exact: true })
+                .click();
         }
         await expect(this.conversationHistory).toBeVisible({ timeout: 10_000 });
     }
@@ -1261,10 +1263,13 @@ export class QuilliumPage {
     /** Assert the history browser controls are visible in the current viewport. */
     async expectConversationHistoryControlsVisible(): Promise<void> {
         await expect(
-            this.chatPanel.getByRole("button", { name: "History", exact: true }),
+            this.chatPanel.getByRole("button", {
+                name: "Manage all discussions",
+                exact: true,
+            }),
         ).toBeVisible();
         await expect(
-            this.chatPanel.getByRole("button", { name: "New chat", exact: true }),
+            this.chatPanel.getByRole("button", { name: "New", exact: true }),
         ).toBeVisible();
     }
 

@@ -242,7 +242,7 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).not.toContainText("Find missing context");
         await expect(q.aiSidebar).not.toContainText("Make punchy");
         await expect(q.aiSidebar.getByRole("button", { name: "Actions" })).toBeVisible();
-        await expect(q.aiSidebar.getByRole("button", { name: "New chat" })).toBeVisible();
+        await expect(q.aiSidebar.getByRole("button", { name: "New" })).toBeVisible();
     });
 
     test("custom chip settings link opens quick actions", async ({ page }) => {

@@ -1,17 +1,17 @@
 <!-- Sidebar.svelte — Built-in sidebar navigation, sizing, and panel lifecycle. -->
 <script lang="ts">
-import { collegeActivation, useCollegeActivationEffects } from "$lib/college/activation.svelte";
-import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
-import { createCollegeCapabilities } from "$lib/college/capabilities";
 import ContextInfoButton from "$lib/ai/ContextInfoButton.svelte";
 import {
     aiProcessing,
-    getEffectiveDocumentContext,
     ensureApiKeyLoaded,
+    getEffectiveDocumentContext,
     hasApiKey,
     stopAllAi,
     useDocumentContextEffects,
 } from "$lib/ai/settings.svelte";
+import { collegeActivation, useCollegeActivationEffects } from "$lib/college/activation.svelte";
+import { createCollegeCapabilities } from "$lib/college/capabilities";
+import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
@@ -26,27 +26,27 @@ import {
     activeAnnotation,
     annotations,
     currentDocumentId,
+    currentDocumentTitle,
     currentDraftId,
+    currentDraftLabel,
     currentTabId,
     currentTabLabel,
-    currentDraftLabel,
-    currentDocumentTitle,
     documentContent,
     editorView,
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
 import { ResizeHandles, RestoreSizeButton } from "@quillium/share";
-import { SquareIcon, XIcon } from "lucide-svelte";
+import { PanelLeftCloseIcon, SquareIcon } from "lucide-svelte";
 import { onDestroy, tick, untrack } from "svelte";
 import { derived, get } from "svelte/store";
 
-import { editorialContextView } from "$lib/ai/editorialTarget";
-import { annotationField } from "$lib/editor/plugins/annotations";
-import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildAiContextPacket } from "$lib/ai/context";
+import { editorialContextView } from "$lib/ai/editorialTarget";
 import { PanelResizeController } from "$lib/ai/panelResize.svelte";
+import { annotationField } from "$lib/editor/plugins/annotations";
+import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 
 useDocumentContextEffects();
 useCollegeEffects(stopAllAi);
@@ -590,10 +590,11 @@ function handleKeydown(e: KeyboardEvent) {
       {/each}
       <button
         onclick={() => closePanel(true)}
-        aria-label="Close"
+        aria-label="Collapse sidebar"
+        title="Collapse sidebar"
         class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
       >
-        <XIcon size={14} />
+        <PanelLeftCloseIcon size={14} />
       </button>
     </div>
 
