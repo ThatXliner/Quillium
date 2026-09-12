@@ -29,11 +29,9 @@ Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
 provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
-import CollegeInvitation from "$lib/college/CollegeInvitation.svelte";
-import { getActiveCollegeSetup, updateActiveCollegeSetup, collegeState } from "$lib/college/state.svelte";
-import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
-import CollegeContext from "$lib/college/CollegeContext.svelte";
+import McpConnection from "$lib/ai/McpConnection.svelte";
 import ModelGuideModal from "$lib/ai/ModelGuideModal.svelte";
+import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
 import {
     disconnectOpenAI,
     getStoredOpenAISession,
@@ -54,6 +52,9 @@ import {
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
+import CollegeContext from "$lib/college/CollegeContext.svelte";
+import CollegeInvitation from "$lib/college/CollegeInvitation.svelte";
+import { collegeState, getActiveCollegeSetup, updateActiveCollegeSetup } from "$lib/college/state.svelte";
 import posthog, { captureException } from "$lib/posthog";
 import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import HelpModal from "$lib/ui/HelpModal.svelte";
@@ -505,6 +506,10 @@ async function changeEditorialPreference(key: keyof EditorialPreferences, value:
             </div>
             <CollegeInvitation {onCollegeSetup} />
         </div>
+    </div>
+
+    <div>
+        <McpConnection />
     </div>
 
     <!-- Provider -->

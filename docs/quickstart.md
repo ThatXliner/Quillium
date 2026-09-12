@@ -48,6 +48,10 @@ Configure AI connections in the app's AI settings. API-key connections use the
 OS keychain; adding `OPENAI_API_KEY` to the frontend environment is not the setup
 path. AI is optional for editing and annotation work.
 
+To use Quillium from a local MCP client, open AI Settings and choose **Add MCP**.
+Follow the Codex or Claude Desktop steps; other clients can use the generic JSON.
+The local connection is read-only and can access every non-trashed document.
+
 ## Launch the desktop app
 
 ```bash

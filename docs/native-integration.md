@@ -2,6 +2,24 @@
 
 Tauri provides native desktop capabilities: app menu, keychain, auto-updater, file dialogs, and PDF export.
 
+## Local MCP server
+
+The desktop executable also runs a read-only MCP server when a local AI client launches it with
+`--mcp --data-dir <Quillium app data directory>`. AI Settings provides a copy-ready stdio
+configuration with the installed executable and resolved data directory, directly below the College
+invitation and above provider settings.
+
+The server exposes two tools:
+
+| Tool | Purpose |
+|------|---------|
+| `list_documents` | List metadata for non-trashed local documents |
+| `read_document` | Read the indexed current plain text for one document |
+
+This interface is intentionally read-only. MCP clients do not write SQLite events or snapshots;
+future edit tools must enter through the editor's CodeMirror transaction and StateEffect path so
+undo, annotation mapping, nested-editor authority, and persistence remain intact.
+
 ## Native App Menu
 
 `lib.rs` builds a native menu with six submenus:

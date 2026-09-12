@@ -2,6 +2,7 @@ mod app_log;
 pub mod db;
 pub mod embeddings;
 mod keychain;
+pub mod mcp;
 mod oauth;
 mod pdf_export;
 mod school_research;
@@ -52,12 +53,37 @@ use oauth::await_openai_oauth_callback;
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
 use school_research::{school_research_cancel, school_research_fetch};
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpConnectionInfo {
+    configuration: String,
+}
+
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
 /// Handle to the on-device semantic search index (see src/embeddings.rs).
 pub struct SemanticState(pub std::sync::Arc<embeddings::SemanticIndex>);
 
 pub struct OpenWindows(pub std::sync::Arc<Mutex<std::collections::HashMap<String, String>>>);
+
+#[tauri::command]
+fn cmd_mcp_connection_info(app: tauri::AppHandle) -> Result<McpConnectionInfo, String> {
+    let executable = std::env::current_exe().map_err(|problem| problem.to_string())?;
+    let data_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|problem| problem.to_string())?;
+    let configuration = serde_json::to_string_pretty(&serde_json::json!({
+        "mcpServers": {
+            "quillium": {
+                "command": executable,
+                "args": ["--mcp", "--data-dir", data_dir]
+            }
+        }
+    }))
+    .map_err(|problem| problem.to_string())?;
+    Ok(McpConnectionInfo { configuration })
+}
 
 // ── AI state commands ────────────────────────────────────────────
 
@@ -1498,6 +1524,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cmd_mcp_connection_info,
             cmd_reset_db,
             cmd_load_ai_conversation,
             cmd_save_ai_conversation,
