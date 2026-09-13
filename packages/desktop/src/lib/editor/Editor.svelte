@@ -1,5 +1,6 @@
 <script lang="ts">
 import { logAppEvent } from "$lib/appLog";
+import { connectMcpEditor } from "$lib/ai/mcpConnection";
 import { researchFingerprint } from "$lib/college/researchModel";
 import type { PassageLink } from "@quillium/share";
 import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
@@ -501,6 +502,7 @@ export async function reload(): Promise<void> {
 }
 
 onMount(() => {
+    const disconnectMcp = connectMcpEditor(() => loader.isReady());
     const unsubscribe = currentDocumentId.subscribe((id) => {
         deregisterOpenDoc(windowLabel).catch(console.error);
         if (id) registerOpenDoc(id, windowLabel).catch(console.error);
@@ -508,6 +510,7 @@ onMount(() => {
     loader.start(showSample);
 
     return () => {
+        disconnectMcp();
         unsubscribe();
         loader.dispose();
         view?.destroy();

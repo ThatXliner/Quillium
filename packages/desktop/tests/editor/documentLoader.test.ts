@@ -109,6 +109,22 @@ afterEach(() => {
 });
 
 describe("DocumentLoader", () => {
+    it("withholds live context until a load commits and while switching targets", async () => {
+        expect(loader.isReady()).toBe(false);
+        await loader.load({ documentId: "doc-1" });
+        expect(loader.isReady()).toBe(true);
+        const pending = deferred<LoadResult>();
+        db.loadDocumentState.mockReturnValue(pending.promise);
+        const loading = loader.load({ documentId: "doc-1" });
+        expect(loader.isReady()).toBe(false);
+        pending.resolve(saved("fresh"));
+        await loading;
+        expect(loader.isReady()).toBe(true);
+        currentTabId.set("another-tab");
+        expect(loader.isReady()).toBe(false);
+        loader.dispose();
+        expect(loader.isReady()).toBe(false);
+    });
     it("does no database work until mounted and seeds checkpoint bookkeeping on bootstrap", async () => {
         expect(db.getDocumentMeta).not.toHaveBeenCalled();
         loader.start(false);

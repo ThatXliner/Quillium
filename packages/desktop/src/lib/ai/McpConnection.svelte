@@ -99,7 +99,7 @@ async function copyConfiguration(text = configuration): Promise<void> {
 
             <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
                 <div class="rounded-xl border border-black/[0.06] bg-black/[0.025] px-3.5 py-3">
-                    <p class="text-[12px] leading-relaxed text-black/55">Quillium runs a private MCP server on this computer. Connected apps can read every non-trashed document, but cannot edit or delete your writing.</p>
+                    <p class="text-[12px] leading-relaxed text-black/55">Connected apps can read your live draft, selection, revision versions, annotations, and writing brief, plus saved documents. They can add undoable comments, suggestions, and revisions. Keep Quillium open and ask your assistant to use get_editor_context. After updating Quillium, restart your AI app’s MCP connection to load the new tools.</p>
                 </div>
 
                 <div class="flex gap-1 rounded-xl bg-black/5 p-1" aria-label="Choose your AI app">

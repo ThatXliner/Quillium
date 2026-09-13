@@ -4,21 +4,49 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 
 ## Local MCP server
 
-The desktop executable also runs a read-only MCP server when a local AI client launches it with
+The desktop executable also runs a local MCP server when a local AI client launches it with
 `--mcp --data-dir <Quillium app data directory>`. AI Settings provides a copy-ready stdio
 configuration with the installed executable and resolved data directory, directly below the College
 invitation and above provider settings.
 
-The server exposes two tools:
+The server exposes four tools:
 
 | Tool | Purpose |
 |------|---------|
+| `get_editor_context` | Read the running editor's active draft, unsaved text, selection, nested branch, annotations, brief and editorial preferences |
+| `apply_editorial_action` | Add a guarded, undoable comment, suggestion or revision to that captured context |
 | `list_documents` | List metadata for non-trashed local documents |
-| `read_document` | Read the indexed current plain text for one document |
+| `read_document` | Read saved Library index text, **not** the active draft |
 
-This interface is intentionally read-only. MCP clients do not write SQLite events or snapshots;
-future edit tools must enter through the editor's CodeMirror transaction and StateEffect path so
-undo, annotation mapping, nested-editor authority, and persistence remain intact.
+For current writing, clients must call `get_editor_context` rather than infer the active draft
+from Library sort order. Read again when the writer changes text or asks for an update. Context
+is captured on demand, not cached on disk. The response distinguishes the active editing surface
+(`text`, selection offsets, branch path) from the whole draft (`rootText`) and includes annotation
+threads and revision alternatives. Context IDs expire after five minutes and after an action.
+
+`surface` identifies the top open revision, comment, or suggestion-diff modal and reports the
+entire modal stack. Revision modals register their actual editor independently of inline cards
+and keyboard focus. A mounting modal returns an explicit loading error instead of falling back
+to unrelated root text. `revisionPath` includes each ancestor's thread, surrounding prose, active
+version ID and all alternative texts. Nested annotations remain available in serialized context,
+including inactive versions. Comment/diff modal actions are scoped to their anchored passage.
+Closing or changing a modal invalidates its captured action context. Two-level integration tests
+exercise real nested controllers and verify that feedback propagates into root state and root undo.
+
+Live calls require an open, loaded draft. A loopback listener with a per-launch random token
+forwards requests to the last active editor window and accepts replies only from that window.
+The endpoint file `mcp-live.json` lives beside the database (owner-only on Unix); it contains no
+prose. Connections have timeouts and bounded messages. This is a local same-user integration,
+not a sandbox against other programs running as the writer. No network-facing MCP endpoint is exposed.
+
+The frontend uses `getActiveEditorialView` and `applyEditorialAction`, the same nested-editor
+identity and CodeMirror command gateway as the sidebar. Context-bound actions reject changed prose,
+drafts, branches, locked editors, ambiguous matches and targets outside the captured selection.
+Suggestions and revisions preserve the writer's current prose. MCP clients never write SQLite
+events or snapshots. Ordinary undo, persistence, provenance and collaboration paths remain in charge.
+Conversations and model execution stay in the external AI client; scheduled AutoAI is unchanged.
+
+After updating Quillium, restart the client's MCP connection to load the new tool definitions.
 
 ## Native App Menu
 

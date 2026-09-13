@@ -50,7 +50,10 @@ path. AI is optional for editing and annotation work.
 
 To use Quillium from a local MCP client, open AI Settings and choose **Add MCP**.
 Follow the Codex or Claude Desktop steps; other clients can use the generic JSON.
-The local connection is read-only and can access every non-trashed document.
+Keep Quillium open and ask the client to use `get_editor_context` for your active draft,
+selection and unsaved changes. Connected clients can read saved documents and add undoable
+comments, suggestions and revisions to the live draft. Restart the client's MCP connection
+after updating Quillium so it discovers new tools.
 
 ## Launch the desktop app
 

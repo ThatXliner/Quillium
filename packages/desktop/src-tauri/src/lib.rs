@@ -3,6 +3,7 @@ pub mod db;
 pub mod embeddings;
 mod keychain;
 pub mod mcp;
+pub mod mcp_live;
 mod oauth;
 mod pdf_export;
 mod school_research;
@@ -69,10 +70,10 @@ pub struct OpenWindows(pub std::sync::Arc<Mutex<std::collections::HashMap<String
 #[tauri::command]
 fn cmd_mcp_connection_info(app: tauri::AppHandle) -> Result<McpConnectionInfo, String> {
     let executable = std::env::current_exe().map_err(|problem| problem.to_string())?;
-    let data_dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|problem| problem.to_string())?;
+    let data_dir = match std::env::var("QUILLIUM_DATA_DIR") {
+        Ok(directory) => std::path::PathBuf::from(directory),
+        Err(_) => app.path().app_local_data_dir().map_err(|problem| problem.to_string())?,
+    };
     let configuration = serde_json::to_string_pretty(&serde_json::json!({
         "mcpServers": {
             "quillium": {
@@ -1472,6 +1473,9 @@ pub fn run() {
                     .expect("failed to resolve app local data dir"),
             };
             std::fs::create_dir_all(&db_path).expect("failed to create app data dir");
+            if let Err(error) = mcp_live::start(app.handle().clone(), &db_path) {
+                eprintln!("[mcp] live bridge unavailable: {error}");
+            }
             let db_file = db_path.join("quillium.db");
             let conn = open_db(&db_file).expect("failed to open database");
             let db_details =
@@ -1525,6 +1529,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             cmd_mcp_connection_info,
+            mcp_live::cmd_mcp_editor_ready,
+            mcp_live::cmd_mcp_reply,
             cmd_reset_db,
             cmd_load_ai_conversation,
             cmd_save_ai_conversation,

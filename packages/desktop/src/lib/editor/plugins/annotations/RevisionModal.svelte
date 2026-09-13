@@ -1,4 +1,5 @@
 <script lang="ts">
+import { registerMcpModalView } from "$lib/ai/mcpContext";
 /**
  * RevisionModal.svelte — Full-screen modal that hosts a nested
  * CodeMirror editor for a single revision version.
@@ -332,9 +333,11 @@ const controller = new NestedEditorController(
     historyView,
 );
 
+let unregisterMcpModal: (() => void) | undefined;
 function createEditor(version: VersionState, versionIndex?: number) {
     if (!editorHost || controller.editor) return;
     controller.create(editorHost, version, versionIndex ?? 0);
+    if (controller.editor) unregisterMcpModal = registerMcpModalView(view, revisionId, controller.editor);
 }
 
 function moveCursorToEnd(activeEditor: EditorView) {
@@ -347,6 +350,8 @@ function moveCursorToEnd(activeEditor: EditorView) {
 }
 
 function destroyEditor() {
+    unregisterMcpModal?.();
+    unregisterMcpModal = undefined;
     controller.destroy();
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;

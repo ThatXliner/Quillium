@@ -88,6 +88,14 @@ export class DocumentLoader {
         await flushPersistence();
     }
 
+    /** Live integrations must not pair a newly selected identity with the previous editor state. */
+    isReady(): boolean {
+        return !this.#disposed && this.#generation === this.#committedGeneration &&
+            this.#committedDocument?.documentId === get(currentDocumentId) &&
+            this.#committedTabId === get(currentTabId) &&
+            this.#committedDocument?.draftId === get(currentDraftId);
+    }
+
     #selectDocument(id: string): void {
         this.#selectingDocument = true;
         currentDocumentId.set(id);
