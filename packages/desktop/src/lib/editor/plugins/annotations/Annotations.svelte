@@ -345,8 +345,6 @@ const visibleAnnotations = $derived(
           ),
 );
 
-const visibleAnnotationIds = $derived(visibleAnnotations.map((annotation) => annotation.id));
-
 // Dense floating columns keep their scroll geometry, but only nearby cards
 // need the full component tree. Keep focused cards and unfinished message edits
 // mounted; reply drafts already live outside the component tree.
@@ -997,7 +995,8 @@ onDestroy(() => annotationColumnDom.destroy());
         {/if}
     {/snippet}
 
-    {#snippet floatingCard(i: number)}
+    {#snippet floatingCard(c: GenericAnnotation)}
+        {@const i = c.id}
         {@const isActive = resolvedActiveAnnotation?.id === i}
         {@const isPendingComment = pendingComment?.id === i}
         {@const mounted = !windowCards || nearbyCards.has(i) || editingCards.has(i) || focusedCard === i || isActive || isPendingComment}
@@ -1020,7 +1019,7 @@ onDestroy(() => annotationColumnDom.destroy());
             style:transition={ANNOTATION_CARD_TOP_TRANSITION}
             onclick={(e) => {
                 if (isInteractiveTarget(e.target)) return;
-                if (!isActive) activateAnnotation(resolvedAnnotations[i]);
+                if (!isActive) activateAnnotation(c);
             }}
             role="group"
             aria-label="Annotation card"
@@ -1029,10 +1028,10 @@ onDestroy(() => annotationColumnDom.destroy());
                 type="button"
                 class="sr-only"
                 aria-label="Focus annotation"
-                onclick={() => activateAnnotation(resolvedAnnotations[i])}
+                onclick={() => activateAnnotation(c)}
             ></button>
             {#if mounted}
-                {@render cardContent(resolvedAnnotations[i], i, isActive, isPendingComment)}
+                {@render cardContent(c, i, isActive, isPendingComment)}
             {/if}
             {#if alertingPendingId === i}
                 <div
@@ -1048,9 +1047,9 @@ onDestroy(() => annotationColumnDom.destroy());
              columns symmetrically via the shared panel width). -->
         <div class="annotation-scroll-container" bind:this={scrollContainerLeft}>
             <div class="annotation-scroll-inner">
-                {#each visibleAnnotationIds as id (id)}
-                    {#if cardSide[id] !== "right"}
-                        {@render floatingCard(id)}
+                {#each visibleAnnotations as annotation (annotation.id)}
+                    {#if cardSide[annotation.id] !== "right"}
+                        {@render floatingCard(annotation)}
                     {/if}
                 {/each}
             </div>
@@ -1079,9 +1078,9 @@ onDestroy(() => annotationColumnDom.destroy());
                 {/if}
             </div>
             <div class="annotation-scroll-inner">
-                {#each visibleAnnotationIds as id (id)}
-                    {#if renderMode === "single" || cardSide[id] === "right"}
-                        {@render floatingCard(id)}
+                {#each visibleAnnotations as annotation (annotation.id)}
+                    {#if renderMode === "single" || cardSide[annotation.id] === "right"}
+                        {@render floatingCard(annotation)}
                     {/if}
                 {/each}
             </div>
