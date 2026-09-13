@@ -117,6 +117,49 @@ test("annotation panel previews a drag and saves only on release", async ({ page
 // ── AI sidebar ──────────────────────────────────────────────────────────────
 
 test.describe("AI sidebar", () => {
+    test("keeps the composer visible while starter content scrolls", async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await page.addInitScript(() => {
+            localStorage.setItem("mock-writer-brief:doc-test-1", "Preserve the narrator's voice and keep the ending understated.");
+        });
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            initialDoc: "A draft with enough context to revise. ".repeat(60),
+            settings: { aiEnabled: true, collapseContextSummary: false },
+        });
+        await q.init();
+        for (const height of [700, 464]) {
+            await page.setViewportSize({ width: 1440, height });
+            for (const mode of ["revise", "feedback", "chat"]) {
+                await page.locator(`#ai-tab-${mode}`).click();
+                const panel = page.locator(`[data-panel-id="${mode}"]`);
+                const input = panel.locator('input[name="message"]');
+                const submit = panel.locator('button[type="submit"]');
+                await input.fill("Help me with this passage");
+                await expect(submit).toBeInViewport({ ratio: 1 });
+                await expect(input).toBeInViewport({ ratio: 1 });
+                // Check clipping by the panel as well as the browser viewport.
+                await expect.poll(async () => {
+                    const bounds = await panel.boundingBox();
+                    const button = await submit.boundingBox();
+                    return !!bounds && !!button && button.y + button.height <= bounds.y + bounds.height;
+                }).toBe(true);
+                const before = await input.boundingBox();
+                const body = panel.locator("[data-conversation-body]");
+                await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+                if (height === 464) {
+                    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+                }
+                await expect(input).toHaveValue("Help me with this passage");
+                expect((await input.boundingBox())?.y).toBeCloseTo(before!.y, 0);
+                await body.evaluate((element) => { element.scrollTop = 0; });
+                await q.aiSidebar.screenshot({ path: `test-results/sidebar-${mode}-${height}.png` });
+                await q.aiSidebar.getByRole("button", { name: "Collapse sidebar" }).click();
+            }
+        }
+        q.expectNoPageErrors();
+    });
+
     test("opens chat panel via button", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",

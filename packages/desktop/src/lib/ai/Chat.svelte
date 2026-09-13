@@ -151,17 +151,23 @@ async function handleSubmit(event: Event) {
 }
 </script>
 
-<div class="flex flex-col h-full">
+<div class="flex min-h-0 flex-1 flex-col">
+    <div class="min-h-0 flex-1 overflow-y-auto" data-conversation-body>
     {#if conversations}
         <ConversationHistory {conversations} mode="chat" onopen={(opener) => { reviewOpener = opener; reviewing = true; }} />
     {/if}
 
+    {#if !reviewing}{@render transcript()}{/if}
+    </div>
     {#if reviewing}
         <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            <div class="min-h-0 flex-1 overflow-y-auto">
             {@render transcript()}
+            </div>
+            {@render composer()}
         </DiscussionModal>
     {:else}
-        {@render transcript()}
+        {@render composer()}
     {/if}
 </div>
 
@@ -183,7 +189,7 @@ async function handleSubmit(event: Event) {
     {/if}
 
     <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+    <div class="p-3 sm:p-4 space-y-3">
         {#each chat.messages as message (message.id)}
             <div class="space-y-0.5" data-conversation-message={message.id}>
             {#each message.parts as part, partIndex (partIndex)}
@@ -260,9 +266,11 @@ async function handleSubmit(event: Event) {
             </div>
         {/if}
     </div>
+{/snippet}
 
+{#snippet composer()}
     <!-- Input form -->
-    <div class="border-t border-black/10 p-3 bg-white/30">
+    <div class="shrink-0 border-t border-black/10 p-3 bg-white/30">
         <CustomQuickActions
             prompts={customChatPrompts}
             disabled={isBusy || !$documentContent}
