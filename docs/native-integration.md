@@ -272,8 +272,8 @@ Frontend export helpers:
 | Text + annotations | `.txt` | Text + JSON after `---` |
 | JSON | `.json` | Structured object with title, timestamp, text, annotations |
 | Markdown | `.md` | Text with annotations as footnotes |
-| Word | `.docx` | Selected revision text, without annotations |
-| Word + Annotations | `.docx` | Selected revision text and anchored comment threads |
+| Word (Beta) | `.docx` | Selected revision text, without annotations |
+| Word + Annotations (Beta) | `.docx` | Selected revision text and anchored comment threads |
 | PDF | `.pdf` | Document body only |
 | PDF + Annotations | `.pdf` | PDF with expanded annotation cards |
 

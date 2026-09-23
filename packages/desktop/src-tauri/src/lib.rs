@@ -1334,9 +1334,9 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .item(&MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)").build(app)?)
         .item(&MenuItemBuilder::with_id("export-json", "JSON (.json)").build(app)?)
         .item(&MenuItemBuilder::with_id("export-md", "Markdown (.md)").build(app)?)
-        .item(&MenuItemBuilder::with_id("export-docx", "Word (.docx)").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-docx", "Word (.docx) — Beta").build(app)?)
         .item(
-            &MenuItemBuilder::with_id("export-docx-annotations", "Word + Annotations (.docx)")
+            &MenuItemBuilder::with_id("export-docx-annotations", "Word + Annotations (.docx) — Beta")
                 .build(app)?,
         )
         .item(&MenuItemBuilder::with_id("export-pdf", "PDF (.pdf)").build(app)?)
