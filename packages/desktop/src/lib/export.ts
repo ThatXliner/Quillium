@@ -30,8 +30,19 @@ import {
 import posthog from "./posthog";
 import { currentDocumentTitle } from "./stores";
 
-export type ExportFormat = "txt" | "json" | "md" | "txt+json" | "pdf" | "pdf+annotations";
-type TextExportFormat = Exclude<ExportFormat, "pdf" | "pdf+annotations">;
+export type ExportFormat =
+    | "txt"
+    | "json"
+    | "md"
+    | "txt+json"
+    | "pdf"
+    | "pdf+annotations"
+    | "docx"
+    | "docx+annotations";
+type TextExportFormat = Exclude<
+    ExportFormat,
+    "pdf" | "pdf+annotations" | "docx" | "docx+annotations"
+>;
 
 type PdfAnnotationCardKind = "comment" | "suggestion" | "revision" | "version";
 type PdfAnnotationCard = {
@@ -104,6 +115,15 @@ async function savePdfWithDialog(payload: PdfExportPayload, defaultName: string)
         saved,
     });
     return saved;
+}
+
+async function saveDocxWithDialog(bytes: Uint8Array, defaultName: string): Promise<boolean> {
+    return invoke<boolean>("cmd_export_bytes_with_dialog", {
+        bytes: Array.from(bytes),
+        defaultName,
+        extension: "docx",
+        filterName: "Word",
+    });
 }
 
 export function sanitizeFilename(title: string): string {
@@ -372,6 +392,8 @@ const fileExtensions: Record<ExportFormat, string> = {
     "txt+json": "txt",
     pdf: "pdf",
     "pdf+annotations": "pdf",
+    docx: "docx",
+    "docx+annotations": "docx",
 };
 
 function buildContent(state: EditorState, format: TextExportFormat, title: string): string {
@@ -407,17 +429,26 @@ async function exportState(
         chars: state.doc.length,
         ...logProps,
     });
-    const saved =
-        format === "pdf" || format === "pdf+annotations"
-            ? await savePdfWithDialog(
-                  buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
-                  `${safeTitle}.${fileExtensions[format]}`,
-              )
-            : await saveWithDialog(
-                  buildContent(state, format, rawTitle),
-                  `${safeTitle}.${fileExtensions[format]}`,
-                  fileExtensions[format],
-              );
+    let saved: boolean;
+    if (format === "pdf" || format === "pdf+annotations") {
+        saved = await savePdfWithDialog(
+            buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
+            `${safeTitle}.${fileExtensions[format]}`,
+        );
+    } else if (format === "docx" || format === "docx+annotations") {
+        const { buildDocxProjection, renderDocx } = await import("./docxExport");
+        const projection = buildDocxProjection(state, format === "docx+annotations");
+        saved = await saveDocxWithDialog(
+            await renderDocx(projection, rawTitle),
+            `${safeTitle}.docx`,
+        );
+    } else {
+        saved = await saveWithDialog(
+            buildContent(state, format, rawTitle),
+            `${safeTitle}.${fileExtensions[format]}`,
+            fileExtensions[format],
+        );
+    }
     if (saved) {
         posthog.capture(
             "document_exported",
