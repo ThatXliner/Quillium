@@ -85,6 +85,17 @@ describe("Word export", () => {
         expect(extended).toContain("paraIdParent");
     });
 
+    it("keeps line breaks in comment messages and suggestion alternatives", async () => {
+        harness = EditorHarness.create("Alpha beta");
+        harness.addSuggestion(0, 5, [{ text: "First" }, { text: "Second" }]);
+        const commentId = harness.addComment(6, 10);
+        harness.addThreadMessage(commentId, "Line one\nLine two", "Alice");
+        const bytes = await renderDocx(buildDocxProjection(harness.view.state, true), "Test");
+        const comments = await part(bytes, "word/comments.xml");
+        expect(comments).toMatch(/First<\/w:t>.*<w:p>.*Second/s);
+        expect(comments).toMatch(/Line one<\/w:t>.*<w:p>.*Line two/s);
+    });
+
     it("exports the selected revision after a version switch", async () => {
         harness = EditorHarness.create("Hello world");
         const id = harness.addRevision(0, 5, [{ doc: "Hello" }, { doc: "Hi" }]);

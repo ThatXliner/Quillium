@@ -119,7 +119,7 @@ function wordComments(comments: DocxComment[]): ICommentOptions[] {
             id: comment.id,
             author: first?.author || "Quillium",
             date: first ? new Date(first.time) : undefined,
-            children: [new Paragraph(content)],
+            children: content.split(/\r\n|\r|\n/).map((line) => new Paragraph(line)),
         });
         for (const reply of replies) {
             result.push({
@@ -127,7 +127,7 @@ function wordComments(comments: DocxComment[]): ICommentOptions[] {
                 parentId: comment.id,
                 author: reply.author || "Quillium",
                 date: new Date(reply.time),
-                children: [new Paragraph(reply.message)],
+                children: reply.message.split(/\r\n|\r|\n/).map((line) => new Paragraph(line)),
             });
         }
     }
