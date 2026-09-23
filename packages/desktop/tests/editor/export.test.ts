@@ -12,6 +12,7 @@ let savedPath: string;
 let invokedTextPath: string;
 let invokedPdfPath: string;
 let invokedPdfPayload: unknown;
+let invokedDocxBytes: number[];
 let mockedDrafts: DraftMeta[];
 let mockedLoadResult: LoadResult;
 
@@ -48,6 +49,7 @@ vi.mock("@tauri-apps/api/core", () => ({
                 defaultName?: string;
                 content?: string;
                 payload?: unknown;
+                bytes?: number[];
             },
         ) => {
             if (command === "cmd_export_text_with_dialog") {
@@ -62,6 +64,11 @@ vi.mock("@tauri-apps/api/core", () => ({
                 invokedPdfPayload = args?.payload;
                 return true;
             }
+            if (command === "cmd_export_bytes_with_dialog") {
+                savedPath = args?.defaultName ?? "";
+                invokedDocxBytes = args?.bytes ?? [];
+                return true;
+            }
         },
     ),
 }));
@@ -72,6 +79,7 @@ beforeEach(() => {
     invokedTextPath = "";
     invokedPdfPath = "";
     invokedPdfPayload = null;
+    invokedDocxBytes = [];
     mockedDrafts = [
         {
             id: "draft-1",
@@ -100,6 +108,19 @@ afterEach(() => {
 });
 
 describe("exportDocument", () => {
+    it("writes a Word file through the native binary save dialog", async () => {
+        h = EditorHarness.create("Hello world");
+        const id = h.addComment(0, 5);
+        h.addThreadMessage(id, "Keep this", "Alice");
+
+        expect(await exportDocument(h.view, "docx+annotations")).toBe(true);
+        expect(savedPath).toBe("Test Document.docx");
+        expect(invokedDocxBytes.slice(0, 2)).toEqual([80, 75]);
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+            "cmd_export_bytes_with_dialog",
+            expect.objectContaining({ defaultName: "Test Document.docx", extension: "docx" }),
+        );
+    });
     describe("plain text export", () => {
         it("exports document text as .txt", async () => {
             h = EditorHarness.create("Hello world");

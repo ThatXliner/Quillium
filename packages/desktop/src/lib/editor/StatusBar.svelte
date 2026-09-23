@@ -70,6 +70,12 @@ const exportItems: { format: ExportFormat; label: string; hint: string }[] = [
     { format: "json", label: "JSON", hint: "Structured text + annotations (.json)" },
     { format: "md", label: "Markdown", hint: "Text with annotations as footnotes (.md)" },
     { format: "pdf", label: "PDF", hint: "Formatted document (.pdf)" },
+    { format: "docx", label: "Word", hint: "Document text only (.docx)" },
+    {
+        format: "docx+annotations",
+        label: "Word + Annotations",
+        hint: "Selected revisions and anchored comments (.docx)",
+    },
     {
         format: "pdf+annotations",
         label: "PDF + Annotations",
