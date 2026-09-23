@@ -80,6 +80,13 @@ describe("Word export", () => {
         expect((body.match(/w:commentRangeStart/g) ?? []).length).toBe(2);
         expect((body.match(/w:commentRangeEnd/g) ?? []).length).toBe(2);
         expect(body).toMatch(/<w:r><w:commentReference w:id="0"\/><\/w:r>/);
+        const commentIds = [...comments.matchAll(/<w:comment w:id="(\d+)"/g)].map(
+            (match) => match[1],
+        );
+        expect(commentIds).toHaveLength(3);
+        for (const id of commentIds) {
+            expect(body).toContain(`<w:commentReference w:id="${id}"/>`);
+        }
         expect(comments).toContain("Reply");
         expect(comments).toContain('w:author="Bob"');
         expect(extended).toContain("paraIdParent");
@@ -116,7 +123,10 @@ describe("Word export", () => {
                         id: 0,
                         from: 3,
                         to: 3,
-                        messages: [{ author: "Alice", message: "Insertion point", time: 1000 }],
+                        messages: [
+                            { author: "Alice", message: "Insertion point", time: 1000 },
+                            { author: "Bob", message: "Reply", time: 1001 },
+                        ],
                     },
                 ],
             },
@@ -125,7 +135,8 @@ describe("Word export", () => {
         const body = await part(bytes, "word/document.xml");
         expect(body).toContain("commentRangeStart");
         expect(body).toContain("commentRangeEnd");
-        expect(body).toContain("commentReference");
+        expect(body).toContain('<w:commentReference w:id="0"/>');
+        expect(body).toContain('<w:commentReference w:id="1"/>');
     });
 
     it("omits all annotation markup for body-only export", async () => {

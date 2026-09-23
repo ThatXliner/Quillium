@@ -109,21 +109,27 @@ export function buildDocxProjection(
     return { text, comments };
 }
 
-function wordComments(comments: DocxComment[]): ICommentOptions[] {
+function wordComments(comments: DocxComment[]): {
+    children: ICommentOptions[];
+    replyIds: Map<number, number[]>;
+} {
     let nextId = comments.length;
-    const result: ICommentOptions[] = [];
+    const children: ICommentOptions[] = [];
+    const replyIds = new Map<number, number[]>();
     for (const comment of comments) {
         const [first, ...replies] = comment.messages;
         const content = [comment.heading, first?.message].filter(Boolean).join("\n\n");
-        result.push({
+        children.push({
             id: comment.id,
             author: first?.author || "Quillium",
             date: first ? new Date(first.time) : undefined,
             children: content.split(/\r\n|\r|\n/).map((line) => new Paragraph(line)),
         });
         for (const reply of replies) {
-            result.push({
-                id: nextId++,
+            const id = nextId++;
+            replyIds.set(comment.id, [...(replyIds.get(comment.id) ?? []), id]);
+            children.push({
+                id,
                 parentId: comment.id,
                 author: reply.author || "Quillium",
                 date: new Date(reply.time),
@@ -131,15 +137,19 @@ function wordComments(comments: DocxComment[]): ICommentOptions[] {
             });
         }
     }
-    return result;
+    return { children, replyIds };
 }
 
 /** Split at every anchor boundary while preserving the source's exact newline positions. */
-function bodyParagraphs(projection: DocxProjection): Paragraph[] {
+function bodyParagraphs(projection: DocxProjection, replyIds: Map<number, number[]>): Paragraph[] {
     const { text, comments } = projection;
     const lines = text.split("\n");
     const paragraphs: Paragraph[] = [];
     let start = 0;
+    const referenceRuns = (id: number): TextRun[] =>
+        [id, ...(replyIds.get(id) ?? [])].map(
+            (referenceId) => new TextRun({ children: [new CommentReference(referenceId)] }),
+        );
 
     for (const line of lines) {
         const end = start + line.length;
@@ -156,18 +166,12 @@ function bodyParagraphs(projection: DocxProjection): Paragraph[] {
             for (const comment of comments.filter(
                 (item) => item.to === position && item.from < item.to,
             )) {
-                children.push(
-                    new CommentRangeEnd(comment.id),
-                    new TextRun({ children: [new CommentReference(comment.id)] }),
-                );
+                children.push(new CommentRangeEnd(comment.id), ...referenceRuns(comment.id));
             }
             for (const comment of comments.filter((item) => item.from === position)) {
                 children.push(new CommentRangeStart(comment.id));
                 if (comment.from === comment.to) {
-                    children.push(
-                        new CommentRangeEnd(comment.id),
-                        new TextRun({ children: [new CommentReference(comment.id)] }),
-                    );
+                    children.push(new CommentRangeEnd(comment.id), ...referenceRuns(comment.id));
                 }
             }
             if (i + 1 < sorted.length && sorted[i + 1] > position) {
@@ -181,12 +185,11 @@ function bodyParagraphs(projection: DocxProjection): Paragraph[] {
 }
 
 export async function renderDocx(projection: DocxProjection, title: string): Promise<Uint8Array> {
+    const comments = wordComments(projection.comments);
     const document = new Document({
         title,
-        sections: [{ children: bodyParagraphs(projection) }],
-        comments: projection.comments.length
-            ? { children: wordComments(projection.comments) }
-            : undefined,
+        sections: [{ children: bodyParagraphs(projection, comments.replyIds) }],
+        comments: projection.comments.length ? { children: comments.children } : undefined,
     });
     return new Uint8Array(await Packer.toArrayBuffer(document));
 }
