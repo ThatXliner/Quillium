@@ -85,7 +85,7 @@ and `active_draft:{tab_id}` persist the user's position.
 
 **Nothing structural is ever destroyed.** Tab and draft deletion is a soft
 delete (`deleted_at`); the rows, their events, and their snapshots all
-survive. Deletion offers an Undo toast, and the version history's
+survive. Deletion offers an Undo toast and session keyboard undo/redo, and the version history's
 unified timeline can restore any deleted tab or draft later.
 Every structural operation appends a `doc_events` row (#160: "version
 history is document-wide — one linear audit log tracks everything").
@@ -144,6 +144,19 @@ The orphan/cascade choice is a modal (`DraftDeleteModal.svelte`); a childless
 draft skips it. The editor switches off any draft about to vanish first, so it
 never points at a hidden draft (for cascade, it lands on a draft *outside* the
 deleted subtree).
+
+### Keyboard undo and redo
+
+`Cmd/Ctrl-Z` restores the most recent draft or tab deletion, including cascade and
+orphan operations. `Cmd-Shift-Z` / `Ctrl-Y` redo it. The Undo toast consumes the same
+entry, so it cannot restore an already-undone deletion twice. The current surviving
+draft stays selected; structural undo also works when that draft is locked.
+
+Newer content edits undo before the deletion. Switching drafts starts a new boundary
+against the selected draft's content history. Text inputs retain native undo, and
+Live Rooms retain Yjs keyboard undo. Deletion entries last for the open editor session;
+after leaving it or changing documents, use Version History to restore deletions.
+See [the session undo decision](adr/0012-session-undo-for-deletions.md).
 
 ## Locking
 

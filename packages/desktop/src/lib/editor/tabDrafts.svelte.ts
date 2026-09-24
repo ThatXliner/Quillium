@@ -36,10 +36,11 @@ import {
 import type { DraftMeta, TabMeta } from "$lib/db/types";
 import { goToHistory } from "$lib/navigation";
 import posthog, { captureException } from "$lib/posthog";
-import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
+import { currentDocumentId, currentDraftId, currentTabId, editorView } from "$lib/stores";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { collectSubtree, hasLiveChildren } from "./draftTree";
+import { StructureHistory, type StructureHistoryEntry } from "./structureHistory";
 
 export type TabDraftControllerDeps = {
     /** Load a draft of the current document into the live editor view. */
@@ -51,6 +52,17 @@ export type TabDraftControllerDeps = {
 };
 
 export class TabDraftController {
+    readonly history = new StructureHistory(
+        () => ({
+            documentId: get(currentDocumentId),
+            view: get(editorView),
+            draftId: get(currentDraftId),
+        }),
+        (error) => {
+            console.error("[tabDrafts] undo/redo failed", error);
+            toast.error("Could not undo or redo. Please try again.");
+        },
+    );
     tabs = $state<TabMeta[]>([]);
     tabDrafts = $state<DraftMeta[]>([]);
     forking = $state(false);
@@ -164,6 +176,7 @@ export class TabDraftController {
         if (!docId) return;
         const tab = await createTab(docId, `Tab ${this.tabs.length + 1}`);
         this.tabs = [...this.tabs, tab];
+        this.history.clearRedo();
         posthog.capture("tab_created");
         await this.handleTabSelect(tab.id);
     }
@@ -194,12 +207,14 @@ export class TabDraftController {
         }
         if (accepted.length === 0 || get(currentDocumentId) !== documentId) return;
         this.tabs = [...this.tabs, ...accepted];
+        this.history.clearRedo();
         if (selectFirst) await this.handleTabSelect(accepted[0].id);
     }
 
     async handleTabRename(tabId: string, label: string) {
         await renameTab(tabId, label).catch(console.error);
         this.tabs = this.tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
+        this.history.clearRedo();
         posthog.capture("tab_renamed");
     }
 
@@ -214,6 +229,7 @@ export class TabDraftController {
             .filter((t): t is TabMeta => t !== undefined);
         try {
             await reorderTabs(docId, orderedIds);
+            this.history.clearRedo();
             posthog.capture("tab_reordered");
         } catch (e) {
             console.error("[Editor] reorder tabs failed", e);
@@ -222,6 +238,8 @@ export class TabDraftController {
     }
 
     async handleTabDelete(tabId: string) {
+        const documentId = get(currentDocumentId);
+        if (!documentId) return;
         if (this.tabs.length <= 1) return;
         const tab = this.tabs.find((t) => t.id === tabId);
         await this.#deps.flushPendingPersist();
@@ -239,17 +257,35 @@ export class TabDraftController {
             currentTabId.set(null); // force handleTabSelect to run for the neighbour
             if (next) await this.handleTabSelect(next.id);
         }
+        const entry: StructureHistoryEntry = {
+            undo: async () => {
+                await restoreTab(tabId);
+                const tabs = await listTabs(documentId);
+                if (get(currentDocumentId) === documentId) this.tabs = tabs;
+                posthog.capture("tab_restored");
+            },
+            redo: async () => {
+                await this.#deps.flushPendingPersist();
+                await deleteTab(tabId);
+                if (get(currentDocumentId) !== documentId) return;
+                const tabs = await listTabs(documentId);
+                if (get(currentDocumentId) !== documentId) return;
+                this.tabs = tabs;
+                if (get(currentTabId) === tabId) {
+                    currentTabId.set(null);
+                    if (this.tabs[0]) await this.handleTabSelect(this.tabs[0].id);
+                }
+            },
+        };
+        this.history.record(documentId, entry);
         // Soft delete: the tab and all its drafts survive in the DB and can
         // come back from here or from the document's version history.
         toast(`Deleted tab “${tab?.label ?? "Tab"}”`, {
             duration: 8000,
             action: {
                 label: "Undo",
-                onClick: async () => {
-                    await restoreTab(tabId).catch(console.error);
-                    const docId = get(currentDocumentId);
-                    if (docId) this.tabs = await listTabs(docId);
-                    posthog.capture("tab_restored");
+                onClick: () => {
+                    void this.history.undo(entry);
                 },
             },
             cancel: {
@@ -286,6 +322,7 @@ export class TabDraftController {
             const stateJson = await this.#deps.seedStateJson(sourceId);
             const next = await iterateDraft(sourceId, `v${this.tabDrafts.length}`, stateJson);
             this.tabDrafts = await listTabDrafts(tabId);
+            this.history.clearRedo();
             posthog.capture("draft_iterated");
             await this.#deps.switchToDraft(tabId, next.id);
         } catch (e) {
@@ -310,6 +347,7 @@ export class TabDraftController {
             const stateJson = await this.#deps.seedStateJson(sourceId);
             const branch = await branchDraft(sourceId, "new take", stateJson);
             this.tabDrafts = await listTabDrafts(tabId);
+            this.history.clearRedo();
             posthog.capture("draft_branched");
             await this.#deps.switchToDraft(tabId, branch.id);
         } catch (e) {
@@ -323,6 +361,7 @@ export class TabDraftController {
     async handleDraftRename(draftId: string, label: string) {
         await renameDraft(draftId, label).catch(console.error);
         this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, label } : d));
+        this.history.clearRedo();
     }
 
     async handleDraftDelete(draftId: string) {
@@ -359,12 +398,16 @@ export class TabDraftController {
     }
 
     /** Soft-deletes a childless draft (or its subtree root) and offers Undo. */
-    async #performDraftDelete(draftId: string, doomed: string[], mode: "leaf" | "cascade") {
+    async #performDraftDelete(draftId: string, targets: string[], mode: "leaf" | "cascade") {
+        let doomed = targets;
+        const documentId = get(currentDocumentId);
+        const tabId = get(currentTabId);
+        if (!documentId || !tabId) return;
         const draft = this.tabDrafts.find((d) => d.id === draftId);
         if (!(await this.#ensureEditorOffDeleted(doomed))) return;
         try {
             if (mode === "cascade") {
-                await cascadeDeleteDraft(draftId);
+                doomed = await cascadeDeleteDraft(draftId);
             } else {
                 await deleteDraft(draftId);
             }
@@ -374,19 +417,37 @@ export class TabDraftController {
         }
         await this.refreshDraftsAndCurrentLock();
         posthog.capture("draft_deleted", { mode });
+        const entry: StructureHistoryEntry = {
+            undo: async () => {
+                // Restore parents before descendants; stop on failure so retry
+                // never silently skips a missing parent.
+                for (const id of doomed) await restoreDraft(id);
+                if (get(currentDocumentId) === documentId && get(currentTabId) === tabId) {
+                    await this.refreshDraftsAndCurrentLock();
+                }
+                posthog.capture("draft_restored");
+            },
+            redo: async () => {
+                if (get(currentTabId) === tabId && !(await this.#ensureEditorOffDeleted(doomed))) {
+                    throw new Error("Cannot delete the last draft");
+                }
+                await this.#deps.flushPendingPersist();
+                if (mode === "cascade") doomed = await cascadeDeleteDraft(draftId);
+                else await deleteDraft(draftId);
+                if (get(currentDocumentId) === documentId && get(currentTabId) === tabId) {
+                    await this.refreshDraftsAndCurrentLock();
+                }
+            },
+        };
+        this.history.record(documentId, entry);
         // Soft delete: each draft's text and history survive in the DB, so Undo
         // restores the whole set (root + any cascaded descendants).
         toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
             duration: 8000,
             action: {
                 label: "Undo",
-                onClick: async () => {
-                    // Restore parents before children so links land on live rows.
-                    for (const id of doomed) {
-                        await restoreDraft(id).catch(console.error);
-                    }
-                    await this.refreshDraftsAndCurrentLock();
-                    posthog.capture("draft_restored");
+                onClick: () => {
+                    void this.history.undo(entry);
                 },
             },
         });
@@ -401,6 +462,9 @@ export class TabDraftController {
 
     /** Orphan branch of the delete prompt: keep the children, re-attaching them. */
     async handleDeleteOrphan(draftId: string) {
+        const documentId = get(currentDocumentId);
+        const tabId = get(currentTabId);
+        if (!documentId || !tabId) return;
         this.pendingDelete = null;
         const draft = this.tabDrafts.find((d) => d.id === draftId);
         // Only the draft itself vanishes; its children survive re-attached.
@@ -414,21 +478,38 @@ export class TabDraftController {
         }
         await this.refreshDraftsAndCurrentLock();
         posthog.capture("draft_deleted", { mode: "orphan" });
+        const entry: StructureHistoryEntry = {
+            undo: async () => {
+                await restoreDraft(draftId);
+                for (const r of rewrites) {
+                    await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom);
+                }
+                if (get(currentDocumentId) === documentId && get(currentTabId) === tabId) {
+                    await this.refreshDraftsAndCurrentLock();
+                }
+                posthog.capture("draft_restored");
+            },
+            redo: async () => {
+                if (
+                    get(currentTabId) === tabId &&
+                    !(await this.#ensureEditorOffDeleted([draftId]))
+                ) {
+                    throw new Error("Cannot delete the last draft");
+                }
+                await this.#deps.flushPendingPersist();
+                rewrites = await orphanAndDeleteDraft(draftId);
+                if (get(currentDocumentId) === documentId && get(currentTabId) === tabId) {
+                    await this.refreshDraftsAndCurrentLock();
+                }
+            },
+        };
+        this.history.record(documentId, entry);
         toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
             duration: 8000,
             action: {
                 label: "Undo",
-                onClick: async () => {
-                    // Restore the parent first, then re-point each moved child back
-                    // at it (reversing the orphan rewrite).
-                    await restoreDraft(draftId).catch(console.error);
-                    for (const r of rewrites) {
-                        await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom).catch(
-                            console.error,
-                        );
-                    }
-                    await this.refreshDraftsAndCurrentLock();
-                    posthog.capture("draft_restored");
+                onClick: () => {
+                    void this.history.undo(entry);
                 },
             },
             cancel: {
@@ -448,11 +529,14 @@ export class TabDraftController {
     async refreshDraftsAndCurrentLock() {
         const tabId = get(currentTabId);
         if (!tabId) return;
+        const documentId = get(currentDocumentId);
         const current = get(currentDraftId);
         const wasLocked = this.lockedOf(current);
-        this.tabDrafts = await listTabDrafts(tabId);
+        const drafts = await listTabDrafts(tabId);
+        if (get(currentDocumentId) !== documentId || get(currentTabId) !== tabId) return;
+        this.tabDrafts = drafts;
         const nowLocked = this.lockedOf(current);
-        if (current && nowLocked !== wasLocked) {
+        if (current && current === get(currentDraftId) && nowLocked !== wasLocked) {
             await this.#deps.switchToDraft(tabId, current);
         }
     }
@@ -461,6 +545,7 @@ export class TabDraftController {
     async handleDraftToggleLock(draftId: string, locked: boolean) {
         await setDraftLocked(draftId, locked).catch(console.error);
         this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
+        this.history.clearRedo();
         posthog.capture(locked ? "draft_locked" : "draft_unlocked");
         if (draftId === get(currentDraftId)) {
             const tabId = get(currentTabId);
