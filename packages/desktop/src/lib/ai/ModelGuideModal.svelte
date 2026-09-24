@@ -29,9 +29,9 @@ type Recommendation = {
 
 const RECOMMENDATIONS: Recommendation[] = [
     {
-        provider: "Anthropic (Claude Opus 4.6)",
-        tag: "Best for prose",
-        desc: "Opus 4.6 is our pick for drafting and nuanced editing. Newer Claude releases are stronger at coding and agentic work, but often produce more literal, structured prose. Opus is expensive, so it is best reserved for writing where voice matters.",
+        provider: "Anthropic (Claude Opus 5.5)",
+        tag: "Recommended",
+        desc: "Claude Opus 5.5 is our recommended model for drafting and nuanced editing, especially when voice and careful prose matter.",
     },
     {
         provider: "DeepSeek (V4 Flash)",

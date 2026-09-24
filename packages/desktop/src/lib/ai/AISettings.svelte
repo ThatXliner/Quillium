@@ -99,19 +99,19 @@ const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; descriptio
     ],
     anthropic: [
         {
+            id: "claude-opus-5-5",
+            label: "Claude Opus 5.5",
+            description: "Newest; early reports are very positive",
+        },
+        {
             id: "claude-opus-4-6",
             label: "Claude Opus 4.6",
-            description: "Best for prose and nuanced editing",
+            description: "Proven Claude choice for prose",
         },
         {
             id: "claude-sonnet-4-6",
             label: "Claude Sonnet 4.6",
-            description: "Fast and capable",
-        },
-        {
-            id: "claude-haiku-4-5-20251001",
-            label: "Claude Haiku 4.5",
-            description: "Fastest, most compact",
+            description: "Opus-style writing at lower cost",
         },
     ],
     google: [

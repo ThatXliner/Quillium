@@ -67,7 +67,7 @@ export function usesHostedSchoolResearch(provider: Provider, modelId: string): b
         case "openai":
             return /^gpt-5(?:$|[.-])/.test(id);
         case "anthropic":
-            return /^claude-(?:(?:3-(?:5|7)|4)(?:$|[-.])|(?:opus|sonnet|haiku)-4(?:$|[-.]))/.test(
+            return /^claude-(?:(?:3-(?:5|7)|4)(?:$|[-.])|(?:opus|sonnet|haiku)-4(?:$|[-.])|opus-5(?:$|[-.]))/.test(
                 id,
             );
         case "google":

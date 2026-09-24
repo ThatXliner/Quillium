@@ -493,15 +493,13 @@ the settings UI tells users to review OpenAI's terms and privacy policy.
 | Provider | Curated models |
 |----------|----------------|
 | OpenAI | `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra` |
-| Anthropic | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001` |
+| Anthropic | `claude-opus-5-5`, `claude-opus-4-6`, `claude-sonnet-4-6` |
 | Google | `gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-3-flash-preview` |
 | DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
 
-Quillium deliberately curates for writing behavior rather than always selecting
-the newest benchmark leader. Current recommendations are Claude Opus 4.6 for
-prose, DeepSeek V4 Flash for value, and OpenAI GPT-5.6 Sol or Luna depending on
-whether quality or economy matters more. The model guide in AI Settings explains
-this policy.
+Quillium recommends Claude Opus 5.5 for prose, DeepSeek V4 Flash for value, and
+OpenAI GPT-5.6 Sol or Luna depending on whether quality or economy matters more.
+The model guide in AI Settings explains this policy.
 
 Every API-key provider also offers **Use a custom model ID**. Quillium passes
 that string directly to the selected provider SDK. OpenAI-compatible endpoints
