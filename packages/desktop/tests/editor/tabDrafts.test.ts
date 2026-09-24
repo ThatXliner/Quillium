@@ -41,7 +41,9 @@ vi.mock("$lib/posthog", () => ({
     default: { capture: vi.fn() },
     captureException: vi.fn(),
 }));
-vi.mock("svelte-sonner", () => ({ toast: vi.fn() }));
+vi.mock("svelte-sonner", () => ({
+    toast: Object.assign(vi.fn(), { dismiss: vi.fn(), error: vi.fn() }),
+}));
 
 function tab(id: string, position: number): TabMeta {
     return {
@@ -386,6 +388,22 @@ describe("draft and tab deletion history", () => {
         spy.mockRestore();
     });
 
+    it("keeps a successful deletion undoable when refreshing its panel fails", async () => {
+        const { controller, removed } = setupDeletion();
+        db.listTabDrafts.mockRejectedValueOnce(new Error("refresh failed"));
+        await controller.handleDraftDelete(removed.id).catch(() => {});
+        expect(await controller.history.undo()).toBe(true);
+        expect(db.restoreDraft).toHaveBeenCalledWith(removed.id);
+    });
+
+    it("does not delete the active draft when switching to its survivor was cancelled", async () => {
+        const { controller, removed, switchToDraft } = setupDeletion();
+        currentDraftId.set(removed.id);
+        switchToDraft.mockImplementationOnce(async () => {});
+        await controller.handleDraftDelete(removed.id);
+        expect(db.deleteDraft).not.toHaveBeenCalled();
+    });
+
     it("restores multiple deletions in reverse order", async () => {
         const { controller, removed } = setupDeletion();
         await controller.handleDraftDelete(removed.id);
@@ -393,6 +411,42 @@ describe("draft and tab deletion history", () => {
         await controller.history.undo();
         await controller.history.undo();
         expect(db.restoreDraft.mock.calls.map(([id]) => id)).toEqual(["another-take", removed.id]);
+    });
+
+    it("does not delete an active tab when its survivor draft load was cancelled", async () => {
+        const { controller, switchToDraft } = setupDeletion();
+        db.listTabDrafts.mockResolvedValue([draft("other-draft", "tab-other")]);
+        db.getActiveDraft.mockResolvedValue("other-draft");
+        switchToDraft.mockImplementationOnce(async () => {});
+        await controller.handleTabDelete("tab-initial");
+        expect(db.deleteTab).not.toHaveBeenCalled();
+    });
+
+    it("does not offer a stale deletion toast after navigating to another document", async () => {
+        const { controller, removed } = setupDeletion();
+        const { toast } = await import("svelte-sonner");
+        const deletion = deferred<void>();
+        db.deleteDraft.mockReturnValueOnce(deletion.promise);
+        const pending = controller.handleDraftDelete(removed.id);
+        await vi.waitFor(() => expect(db.deleteDraft).toHaveBeenCalled());
+        currentDocumentId.set("another-document");
+        deletion.resolve();
+        await pending;
+        expect(toast).not.toHaveBeenCalled();
+        expect(await controller.history.undo()).toBe(false);
+    });
+
+    it("does not retry a successful tab restore when refreshing the tab list fails", async () => {
+        const { controller } = setupDeletion();
+        db.deleteTab.mockResolvedValue(undefined);
+        db.restoreTab.mockResolvedValue(undefined);
+        db.listTabs.mockRejectedValueOnce(new Error("refresh failed"));
+        await controller.handleTabDelete("tab-other");
+        await controller.history.undo();
+        expect(await controller.history.undo()).toBe(false);
+        expect(db.restoreTab).toHaveBeenCalledOnce();
+        await controller.history.redo();
+        expect(db.deleteTab).toHaveBeenCalledTimes(2);
     });
 
     it("also undoes and redoes closing a tab", async () => {

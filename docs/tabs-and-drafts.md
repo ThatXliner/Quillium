@@ -150,10 +150,12 @@ deleted subtree).
 `Cmd/Ctrl-Z` restores the most recent draft or tab deletion, including cascade and
 orphan operations. `Cmd-Shift-Z` / `Ctrl-Y` redo it. The Undo toast consumes the same
 entry, so it cannot restore an already-undone deletion twice. The current surviving
-draft stays selected; structural undo also works when that draft is locked.
+draft stays selected; structural undo also works when that draft is locked. Only
+the latest deletion toast is kept, so older restores cannot bypass deletion order.
 
 Newer content edits undo before the deletion. Switching drafts starts a new boundary
-against the selected draft's content history. Text inputs retain native undo, and
+against the selected draft's content history. Relocking a parent during restore
+preserves its text undo and redo. Text inputs retain native undo, and
 Live Rooms retain Yjs keyboard undo. Deletion entries last for the open editor session;
 after leaving it or changing documents, use Version History to restore deletions.
 See [the session undo decision](adr/0012-session-undo-for-deletions.md).

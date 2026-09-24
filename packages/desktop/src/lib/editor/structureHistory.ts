@@ -20,6 +20,10 @@ export class StructureHistory {
     #documentId: string | null = null;
     #busy = false;
     #draftId: string | null = null;
+    #lastDepth = 0;
+    #session = 0;
+    #redoGeneration = 0;
+    #disposed = false;
 
     constructor(
         private readonly context: () => {
@@ -34,8 +38,9 @@ export class StructureHistory {
         const { documentId } = this.context();
         if (documentId === this.#documentId) return;
         this.#documentId = documentId;
+        this.#session++;
         this.#done = [];
-        this.#undone = [];
+        this.clearRedo();
     }
 
     #depth(): number {
@@ -48,34 +53,53 @@ export class StructureHistory {
     }
 
     clearRedo(): void {
+        this.#redoGeneration++;
         this.#undone = [];
+    }
+
+    dispose(): void {
+        this.#disposed = true;
+        this.#session++;
+        this.#done = [];
+        this.clearRedo();
     }
 
     record(documentId: string, entry: StructureHistoryEntry): void {
         this.#syncDocument();
-        if (documentId !== this.#documentId) return;
+        if (this.#disposed || documentId !== this.#documentId) return;
         entry.depth = this.#depth();
+        this.#lastDepth = entry.depth;
         this.#done.push(entry);
-        this.#undone = [];
+        this.clearRedo();
         this.#isolate();
     }
 
     /** Called after a draft load, including a lock-state reload. */
     loaded(): void {
         this.#syncDocument();
-        // Lock refreshes reload the same draft and must preserve the existing
-        // boundaries between typing and structural operations.
         const { draftId } = this.context();
-        if (draftId !== this.#draftId) {
-            this.#draftId = draftId;
-            for (const entry of [...this.#done, ...this.#undone]) entry.depth = this.#depth();
+        const depth = this.#depth();
+        for (const entry of [...this.#done, ...this.#undone]) {
+            // Reconstructed same-draft history may be empty (session-only
+            // history policy). Never retain an unreachable pre-load depth.
+            entry.depth =
+                draftId === this.#draftId
+                    ? Math.max(0, (entry.depth ?? 0) + depth - this.#lastDepth)
+                    : depth;
         }
+        const view = this.context().view;
+        const reachableDepth = depth + (view ? redoDepth(view.state) : 0);
+        for (const entry of [...this.#done, ...this.#undone]) {
+            entry.depth = Math.min(entry.depth ?? 0, reachableDepth);
+        }
+        this.#draftId = draftId;
+        this.#lastDepth = depth;
         this.#isolate();
     }
 
     observe(update: ViewUpdate): void {
         this.#syncDocument();
-        if (this.#busy) return;
+        this.#lastDepth = undoDepth(update.state);
         for (const tr of update.transactions) {
             if (tr.isUserEvent("undo") || tr.isUserEvent("redo")) continue;
             const before = undoDepth(tr.startState);
@@ -100,7 +124,7 @@ export class StructureHistory {
                         redoDepth(tr.state) !== redoDepth(tr.startState)),
             )
         )
-            this.#undone = [];
+            this.clearRedo();
     }
 
     async undo(entry?: StructureHistoryEntry): Promise<boolean> {
@@ -114,21 +138,23 @@ export class StructureHistory {
     async #run(redo: boolean, requested?: StructureHistoryEntry): Promise<boolean> {
         this.#syncDocument();
         const source = redo ? this.#undone : this.#done;
-        const destination = redo ? this.#done : this.#undone;
         const entry = requested ?? source.at(-1);
-        if (!entry || !source.includes(entry)) return false;
+        // An old toast must not restore a child ahead of its deleted parent.
+        if (this.#disposed || !entry || entry !== source.at(-1)) return false;
         if (this.#busy) return true;
-        const documentId = this.#documentId;
+        const session = this.#session;
+        const redoGeneration = this.#redoGeneration;
         this.#busy = true;
         try {
             await (redo ? entry.redo() : entry.undo());
             // Navigation during IPC must not insert an old document's entry
             // into the new document's history.
             this.#syncDocument();
-            if (documentId !== this.#documentId) return true;
+            if (session !== this.#session || this.#disposed) return true;
             source.splice(source.indexOf(entry), 1);
             entry.depth = this.#depth();
-            destination.push(entry);
+            if (redo) this.#done.push(entry);
+            else if (redoGeneration === this.#redoGeneration) this.#undone.push(entry);
             this.#isolate();
         } catch (error) {
             this.onError(error); // Keep the entry available for retry.
@@ -173,6 +199,9 @@ export class StructureHistory {
         const handle = (event: KeyboardEvent) => this.handleKeydown(event);
         // Capture precedes both CodeMirror and the button-focus fallback.
         window.addEventListener("keydown", handle, true);
-        return () => window.removeEventListener("keydown", handle, true);
+        return () => {
+            window.removeEventListener("keydown", handle, true);
+            this.dispose();
+        };
     }
 }

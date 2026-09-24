@@ -21,7 +21,7 @@ import {
     currentTabId,
     editorView,
 } from "$lib/stores";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import {
@@ -49,7 +49,18 @@ export class DocumentLoader {
         switchToDraft: (tabId, draftId) => this.switchToDraft(tabId, draftId),
         flushPendingPersist: () => this.flush(),
         seedStateJson: (draftId) => this.seedStateJson(draftId),
+        updateCurrentDraftLock: (draftId, locked) => {
+            const view = get(editorView);
+            if (!view || !this.isReady() || this.#committedDocument?.draftId !== draftId)
+                return false;
+            if (this.#draftLock.get(view.state) === undefined) return false;
+            view.dispatch({
+                effects: this.#draftLock.reconfigure(EditorState.readOnly.of(locked)),
+            });
+            return true;
+        },
     });
+    readonly #draftLock = new Compartment();
     #generation = 0;
     #committedGeneration = -1;
     #committedTabId: string | null = null;
@@ -90,10 +101,13 @@ export class DocumentLoader {
 
     /** Live integrations must not pair a newly selected identity with the previous editor state. */
     isReady(): boolean {
-        return !this.#disposed && this.#generation === this.#committedGeneration &&
+        return (
+            !this.#disposed &&
+            this.#generation === this.#committedGeneration &&
             this.#committedDocument?.documentId === get(currentDocumentId) &&
             this.#committedTabId === get(currentTabId) &&
-            this.#committedDocument?.draftId === get(currentDraftId);
+            this.#committedDocument?.draftId === get(currentDraftId)
+        );
     }
 
     #selectDocument(id: string): void {
@@ -114,7 +128,7 @@ export class DocumentLoader {
     #buildState(loaded: LoadResult, readOnly: boolean, persistHistory: boolean): EditorState {
         return reconstructState(loaded.snapshotStateJson, loaded.eventsSince, [
             getExtensions({ ...this.#options, persistHistory }),
-            EditorState.readOnly.of(readOnly),
+            this.#draftLock.of(EditorState.readOnly.of(readOnly)),
         ]);
     }
 

@@ -224,3 +224,89 @@ it("keeps the deletion boundary after CodeMirror trims old history", async () =>
     key();
     await vi.waitFor(() => expect(entry.undo).toHaveBeenCalledOnce());
 });
+
+it("restores a deletion after the same draft reloads with fresh content history", async () => {
+    const { structural, entry } = setup();
+    await structural.undo();
+    view.dispatch({ changes: { from: 5, insert: "!" } });
+    structural.record("doc", entry);
+    entry.undo.mockClear();
+    view.setState(
+        EditorState.create({
+            doc: "hello!",
+            extensions: [history(), keymap.of(historyKeymap), EditorState.readOnly.of(true)],
+        }),
+    );
+    structural.loaded();
+    key();
+    await vi.waitFor(() => expect(entry.undo).toHaveBeenCalledOnce(), { timeout: 100 });
+});
+
+it("invalidates toast callbacks when the editor session is disposed", async () => {
+    const { structural, entry } = setup();
+    unlisten?.();
+    expect(await structural.undo(entry)).toBe(false);
+    expect(entry.undo).not.toHaveBeenCalled();
+});
+
+it("does not resurrect redo when typing occurs during a pending restore", async () => {
+    const { structural, entry } = setup();
+    let finish!: () => void;
+    entry.undo.mockImplementation(
+        () =>
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    const pending = structural.undo();
+    view.dispatch({ changes: { from: 5, insert: "!" } });
+    finish();
+    await pending;
+    expect(await structural.redo()).toBe(false);
+});
+
+it("does not recreate a disposed session when a pending restore completes", async () => {
+    const { structural, entry } = setup();
+    let finish!: () => void;
+    entry.undo.mockImplementation(
+        () =>
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    const pending = structural.undo();
+    unlisten?.();
+    finish();
+    await pending;
+    expect(await structural.redo()).toBe(false);
+});
+
+it("does not run an older toast out of structural order", async () => {
+    const { structural, entry } = setup();
+    const latest = {
+        undo: vi.fn().mockResolvedValue(undefined),
+        redo: vi.fn().mockResolvedValue(undefined),
+    };
+    structural.record("doc", latest);
+    expect(await structural.undo(entry)).toBe(false);
+    expect(entry.undo).not.toHaveBeenCalled();
+    await structural.undo();
+    await structural.undo(entry);
+    expect(latest.undo).toHaveBeenCalledOnce();
+    expect(entry.undo).toHaveBeenCalledOnce();
+});
+
+it("keeps structural redo reachable when a reload drops content redo", async () => {
+    const { structural, entry } = setup();
+    await structural.undo();
+    view.dispatch({ changes: { from: 5, insert: "!" } });
+    structural.record("doc", entry);
+    await structural.undo();
+    key(); // undo the older prose
+    view.setState(
+        EditorState.create({ doc: "hello", extensions: [history(), keymap.of(historyKeymap)] }),
+    );
+    structural.loaded();
+    key(view.contentDOM, true);
+    await vi.waitFor(() => expect(entry.redo).toHaveBeenCalledOnce());
+});
