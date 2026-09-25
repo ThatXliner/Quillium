@@ -5,6 +5,7 @@ import Features from "$lib/components/Features.svelte";
 import Footer from "$lib/components/Footer.svelte";
 import Hero from "$lib/components/Hero.svelte";
 import Hero3DV2 from "$lib/components/Hero3DV2.svelte";
+import ImageParallaxHero from "$lib/components/ImageParallaxHero.svelte";
 import Nav from "$lib/components/Nav.svelte";
 import NotAiStatement from "$lib/components/NotAiStatement.svelte";
 import VideoOrCarousel from "$lib/components/VideoOrCarousel.svelte";
@@ -14,40 +15,30 @@ import { onMount, tick } from "svelte";
 
 // The marketing demo (YouTube video id) shown above the feature list.
 const HERO_VIDEO_ID: string = "YKsJSmKGITA";
+const DESKTOP_HERO_EXPERIMENT = "desktop-hero-artwork-v1";
+const DESKTOP_HERO_STORAGE_KEY = "quillium:desktop-hero-variant";
+
+type DesktopHeroVariant = "airplane" | "quill";
 
 let { data } = $props();
 
-// Single landing layout (the hero-layout A/B test ended 2026-06-13; PostHog
-// experiment 376508 stopped, flag `hero-layout` kept only as a dormant QA
-// override). The page is now one fixed composition that diverges by device:
-//   DESKTOP: Hero3DV2 scroll-driven flight (the "airplane" intro) → the
-//     marketing video (VideoOrCarousel, → Showcase carousel on spotty links) →
-//     Features → Download.
+// The desktop hero is a stable 50/50 experiment:
+//   QUILL: ImageParallaxHero layered cinematic intro.
+//   AIRPLANE: Hero3DV2 scroll-driven flight.
 //   MOBILE: the plain static Hero (logo + headline + CTA) → Features → Download.
-//     No flight (the 520vh sticky scene is desktop-pointer territory) and NO
-//     video — watching a video embed on mobile is a poor experience, so the
-//     static hero takes its place.
+//     It does not enter the experiment and skips the marketing video.
 // The landing page is prerendered, so it cannot know the visitor's viewport at
-// build time. Render the current desktop hero first; defaulting to the legacy
-// mobile hero made its feather layout flash on every desktop visit before
-// hydration could read the viewport width.
+// build time. Render the quill control first, then synchronously restore the
+// browser's persisted assignment during hydration.
 let isMobile = $state(false);
+let desktopHeroVariant = $state<DesktopHeroVariant>("quill");
 
-// Desktop gets the flight + video; mobile gets the static hero and skips both.
-// The flight already carries its own finale download CTA, but we still render
-// the standalone Download section at the very bottom so there's a closing
-// call-to-action after the feature list for everyone.
-let showFlight = $derived(!isMobile);
+let showDesktopHero = $derived(!isMobile);
 
-// isMobile resolves on the client and swaps the desktop (flight + video) and
-// mobile (static hero) paths, which changes the DOM *after* SSR. Re-run the
-// reveal animations once the new DOM has flushed so freshly-rendered `.reveal`
-// sections (the static Hero's copy, Features, etc.) fade in instead of staying
-// stuck at opacity:0. initReveal() is idempotent.
+// Device and experiment assignment can both swap the prerendered hero after
+// hydration. Re-run reveal animations after the resulting DOM has flushed.
 $effect(() => {
-    // Read showFlight so the effect re-runs when the layout flips; JSON.stringify
-    // keeps the read from being dead-code-eliminated.
-    JSON.stringify([showFlight]);
+    JSON.stringify([showDesktopHero, desktopHeroVariant]);
     tick().then(() => initReveal());
 });
 
@@ -58,9 +49,55 @@ onMount(() => {
 
     const mql = matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
     isMobile = mql.matches;
-    mql.addEventListener("change", (e) => {
-        isMobile = e.matches;
-    });
+    let exposureCaptured = false;
+
+    const activateDesktopExperiment = (): void => {
+        if (isMobile || exposureCaptured) return;
+
+        const requestedVariant = new URLSearchParams(location.search).get("hero");
+        const qaVariant: DesktopHeroVariant | undefined =
+            requestedVariant === "airplane" || requestedVariant === "quill"
+                ? requestedVariant
+                : undefined;
+        let assignmentSource: "new" | "persisted" | "query" = "persisted";
+        let assignedVariant = qaVariant;
+
+        if (qaVariant) {
+            assignmentSource = "query";
+        } else {
+            try {
+                const storedVariant = localStorage.getItem(DESKTOP_HERO_STORAGE_KEY);
+                if (storedVariant === "airplane" || storedVariant === "quill") {
+                    assignedVariant = storedVariant;
+                } else {
+                    assignedVariant = Math.random() < 0.5 ? "quill" : "airplane";
+                    assignmentSource = "new";
+                    localStorage.setItem(DESKTOP_HERO_STORAGE_KEY, assignedVariant);
+                }
+            } catch {
+                assignedVariant = Math.random() < 0.5 ? "quill" : "airplane";
+                assignmentSource = "new";
+            }
+        }
+
+        desktopHeroVariant = assignedVariant ?? "quill";
+        posthog.register({ desktop_hero_variant: desktopHeroVariant });
+        posthog.capture("desktop_hero_experiment_exposed", {
+            experiment: DESKTOP_HERO_EXPERIMENT,
+            variant: desktopHeroVariant,
+            assignment_source: assignmentSource,
+            qa_override: assignmentSource === "query",
+        });
+        exposureCaptured = true;
+    };
+
+    activateDesktopExperiment();
+
+    const onViewportChange = (event: MediaQueryListEvent): void => {
+        isMobile = event.matches;
+        activateDesktopExperiment();
+    };
+    mql.addEventListener("change", onViewportChange);
 
     // Smooth scroll for anchor links
     for (const link of document.querySelectorAll('a[href^="#"]')) {
@@ -74,6 +111,11 @@ onMount(() => {
             }
         });
     }
+
+    return () => {
+        mql.removeEventListener("change", onViewportChange);
+        posthog.unregister("desktop_hero_variant");
+    };
 });
 </script>
 
@@ -151,10 +193,14 @@ onMount(() => {
 
 <Nav />
 <main>
-	<!-- 1. Top hero, by device: desktop gets the scroll-driven paper-plane flight,
-	     mobile gets the plain static hero. -->
-	{#if showFlight}
-		<Hero3DV2 release={data.release} />
+	<!-- 1. Top hero: desktop enters the persisted quill-vs-airplane experiment;
+	     mobile keeps the lightweight static hero and is excluded. -->
+	{#if showDesktopHero}
+		{#if desktopHeroVariant === "airplane"}
+			<Hero3DV2 release={data.release} />
+		{:else}
+			<ImageParallaxHero release={data.release} />
+		{/if}
 	{:else}
 		<Hero release={data.release} />
 	{/if}
@@ -167,10 +213,9 @@ onMount(() => {
 	     4. Then for both: the feature list, then the closing Download CTA.
 	     A divider precedes any section that follows another. -->
 	<div class="post-hero">
-		<div class="warm-divider section-divider"></div>
 		<NotAiStatement />
 
-		{#if showFlight}
+		{#if showDesktopHero}
 			<div class="warm-divider section-divider"></div>
 			<VideoOrCarousel videoId={HERO_VIDEO_ID} location="hero-video" />
 		{/if}
