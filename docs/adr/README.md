@@ -16,3 +16,4 @@ of phase-local markers; the files here are the canonical architecture decisions.
 10. [Keep public Web Preview identity document-keyed](./0010-document-keyed-web-preview.md)
 
 11. [Preserve AI conversation paths independently of prose](./0011-distinct-ai-conversations.md)
+12. [Keep deletion undo in the editor session](./0012-session-undo-for-deletions.md)

@@ -29,6 +29,15 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-U` | Toggle underline (HTML) |
 | `Mod-Shift-R` | Trigger manual AutoAI review |
 
+Undo and redo also work while a writing-surface button or annotation modal control
+has focus, including immediately after deleting a version or collapsing a revision.
+They use the root editor's installed history handler, including Live Room history.
+Text fields (such as version labels and comment drafts) keep their native undo.
+
+Draft and tab deletions also support session keyboard undo/redo. Newer text edits
+undo first; the Undo toast and shortcut share one restore entry. See
+[tabs and drafts](tabs-and-drafts.md#keyboard-undo-and-redo) for scope.
+
 ## Native App Menu Accelerators
 
 | Key | Action |
