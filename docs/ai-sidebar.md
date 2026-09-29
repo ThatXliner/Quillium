@@ -14,7 +14,7 @@ the writing characterizer.
 
 ```mermaid
 flowchart LR
-    UI["Chat, Feedback, Revise, or another AI surface"]
+    UI["Chat writing actions or another AI surface"]
     Snapshot["Snapshot draft, selection, annotations, brief, and settings"]
     Context["Build a budgeted context packet"]
     Transport["Choose provider and model"]
@@ -45,7 +45,7 @@ to supply replacement prose. Under Author-first, a diagnosis does not authorize 
 rewrite; the writer must explicitly request wording or invoke a permitted rewrite
 task. Feedback remains diagnostic for every stance and voice setting, including
 selected passages: neither its chat text nor its comment fields should contain
-replacement prose. Requests for replacement text belong in Revise. These are model
+replacement prose. The Suggest revisions action enables replacement proposals for that turn. These are model
 instructions; tool permissions separately enforce which annotations can be created.
 
 Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
@@ -85,7 +85,7 @@ component through the same loops; it does not require another rendering branch i
 the host. Settings uses the utility placement. The `ai_sidebar_opened` analytics
 event and `ai-sidebar` DOM IDs remain unchanged for compatibility.
 
-When AI is disabled, Chat, Feedback, Revise, Context, Readers, AI Settings, and
+When AI is disabled, Chat, Context, Readers, AI Settings, and
 College are hidden through their `requiresAi` metadata. Contributions without
 that dependency remain available. The host hides its chrome when no panels are
 eligible. College additionally requires a saved opt-in for the active document,
@@ -94,10 +94,10 @@ and AI enabled, College opens without credentials. Context, Readers, and Setting
 model credentials; generating a
 Context brief still requires an enabled model connection. Opening Context or
 Readers does not load credentials; Settings retains its explicit connection and
-credential controls. Chat, Feedback, and Revise retain their credential-to-Settings
+credential controls. Chat retains its credential-to-Settings
 navigation.
 
-The five eager AI writing panels retain their mounted state while collapsed or
+The three eager AI writing panels retain their mounted state while collapsed or
 another panel is selected; College
 and Settings mount only while active. Hiding a panel ends its host session but
 does not erase saved writing context. Disabling its AI prerequisite, removing its contribution, or adding its ID to `disabledPanelIds`
@@ -141,7 +141,7 @@ The foundation supplies declarative built-in rendering, local panels, navigation
 mount/disposal rules, target-scoped read sessions, and per-panel render failure
 containment. Existing AI actions retain their validated gateways. The [College applications consumer](college-applications.md) adds a narrow
 host adapter for tab setup persistence, snapshot reads, panel navigation, and
-three fixed Chat/Feedback actions. Other namespaced capabilities should be added
+three fixed Chat writing actions. Other namespaced capabilities should be added
 only with concrete consumers. Registration is not a security sandbox for
 untrusted executable code. External loading, compatibility, isolation, consent,
 updates, removal, and a marketplace remain deferred.
@@ -158,7 +158,7 @@ migration or deletion occurs. School-specific review must distinguish which
 responses are read together; reuse between schools is not inherently a problem.
 The College consumer persists independent tab briefs and offers explicit school
 research. Its overlap action is registered through the small
-`ai/feedbackActions.ts` contribution interface. Feedback renders eligible
+`ai/feedbackActions.ts` contribution interface. Chat’s Writing actions menu renders eligible
 contributions; the College plugin owns its essay picker, school scope, and
 comparison logic. Results use ordinary Feedback comments with validated supporting
 passage links. Persistent application grouping and multi-document discovery remain
@@ -169,7 +169,7 @@ intended prose-development scope.
 
 | #84 criterion | Status |
 |---|---|
-| Preserve six built-in panels | Implemented; existing sidebar browser regressions pass. |
+| Preserve built-in capabilities | Chat now unifies the former Chat/Feedback/Revise panels; Context, Readers, and Settings remain separate. |
 | Add an icon and panel without rendering branches | Implemented; test-only contributions exercise the real host. |
 | Local operations without credentials | Implemented while AI is enabled; browser tests edit Context and Readers without credential loading or provider traffic. |
 | Activation, hiding, disable/re-enable, focus, errors, cancellation | Implemented for built-in contributions and host sessions; async handlers own their error reporting. |
@@ -184,24 +184,32 @@ intended prose-development scope.
 
 | Tab | Key | Component | Purpose |
 |-----|-----|-----------|---------|
-| Chat | 1 | `Chat.svelte` | General writing conversation |
-| Feedback | 2 | `Feedback.svelte` | Big-picture editorial feedback and passage annotations |
-| Revise | 3 | `Revise.svelte` | Local comments, suggestions, and reversible revisions |
+| Chat | 1 | `Chat.svelte` | Unified discussion, feedback, and revision requests |
 | Context | 4 | `DocumentContext.svelte` | Writer-provided brief sent with AI requests |
 | Readers | 5 | `Readers.svelte` | Reader-persona configuration |
 | Settings | 6 | `AISettings.svelte` | Provider, connection, model, and credential configuration |
 
 ### Chat
 
-- Chat, Feedback, and Revise each keep distinct, durable conversations. New chat
-  preserves the previous discussion. History browses the current document within
-  the selected mode, including discussions from its other drafts.
-- Search matches titles and stored messages. Conversations can be renamed,
-  archived, restored, or explicitly deleted. Archive hides a conversation from
-  the default list and makes it read-only until restored.
-- The sidebar shows three recent discussions. Selecting one opens a centered
-  modal for reading and continuing it. History opens a separate modal with
-  search and lifecycle controls. Escape closes the modal and keeps the sidebar open.
+- One Chat panel keeps durable discussions across all writing actions. History
+  searches the document's discussions, including those created by the old Feedback
+  and Revise panels. Existing conversation IDs, original drafts, and messages stay intact.
+- History rows show a title, latest text preview, draft, and last activity. Active
+  and Archived views are separate, with an optional current-draft filter. Rename,
+  Archive/Restore, and Delete live in each row's overflow menu. Deletion requires
+  an inline confirmation. Search matches titles and all stored message text.
+- Opening history resumes the discussion in the sidebar. Expand discussion opens
+  a larger modal with the same messages and composer; Escape returns to the sidebar.
+- The multiline composer sends on Enter and inserts a newline on Shift+Enter.
+  Typing remains available during a response, while duplicate sends are blocked.
+  Stop cancels generation. Scrolling follows responses only while near the bottom;
+  Latest response returns to the end after reading earlier messages.
+- Send is conversational. Give feedback sends the entered request (or a useful
+  default) with comment-only permissions. Suggest revisions sends it with permission
+  to propose comments, suggestions, and reversible revisions. These actions apply
+  to one turn; the following Send returns to conversation. No mode change or new
+  discussion is required. Writing actions contains all contextual recipes, saved
+  custom actions, reader review opt-in, and eligible College actions.
 - Tool activity uses plain language in transcript order. “Comment added” requires
   a successful editor action, not merely a provider response. Rejected actions
   show “Couldn't add comment”; interrupted actions are labeled as interrupted.
@@ -215,10 +223,11 @@ intended prose-development scope.
   saved decisions.
 - Offers context-aware action cards based on selection, draft length, brief, and
   open annotations.
-- Does not expose annotation-creation tools; its response is conversational text.
+- Ordinary Send does not expose annotation-creation tools. Explicit writing actions
+  choose the task and tool permissions for that request.
 - Failed requests show recovery guidance, including signing in again when a
   ChatGPT connection is expired or invalid. Chat permits another send after a
-  failure; only submitted and streaming requests disable the composer.
+  failure; active requests disable sending but leave the composer editable.
 - Streaming failures retain their original error and provider/model context in
   Help → App Logs before being converted to a user-facing message.
 - The Reverse outline recipe lists each paragraph or section's current job and
@@ -226,13 +235,18 @@ intended prose-development scope.
 - When an active revision is in context, Compare versions gives a read-only
   account of meaning, voice, pacing, emphasis, and reader-effect tradeoffs.
 
-Message actions use compact branch, edit, retry, and context icons with tooltips
+Message actions use compact copy, branch, edit, retry, and context icons with tooltips
 and accessible names. The context icon toggles the saved turn context.
 
 ### Conversation identity and alternative paths
 
-Each conversation has a stable ID, a mode, a title, creation/update timestamps,
-and its original document and draft association. The draft label is captured
+Each conversation has a stable ID, a legacy mode field, a title, creation/update timestamps,
+and its original document and draft association. The stored mode no longer
+partitions Chat history. New discussions use `chat`; existing rows and branches of legacy discussions
+retain their mode.
+New user messages record `editorialTurn` metadata so edit/retry preserve the
+original recipe and exact word target. Legacy messages fall back to the original
+discussion mode when edited/retried; new follow-ups default to conversation. The draft label is captured
 when the conversation is created. Reopening shows that association; the next
 turn uses the source draft's **current** writing context. A discussion opened
 from another draft is readable, but sending requires opening its original draft.
@@ -263,33 +277,21 @@ new panels use conversation IDs. The history table retains draft IDs after a
 draft is deleted, while document deletion still cascades. Message updates never
 recreate a deleted conversation.
 
-### Feedback
+### Feedback and revision actions
 
-- Focuses on structure, voice, argument, scope, pacing, and style.
-- Uses `createComment` for a small number of high-impact passage observations.
-- Does not create rewrites during broad review. The writer can move to Revise or
-  ask for a targeted rewrite afterward.
-- Standard Feedback requests leave tool use optional, and a strong draft may
-  receive no annotations. Persona fan-out requests require one or more
-  annotation tools or the transport-only `noAction` tool; their generated text
-  is not shown in the panel. See [Reader Personas](./reader-personas.md).
-- Includes user-defined Feedback quick actions from general app settings.
-- Can fan out through enabled reader personas when Feedback's persona toggle is on.
+Give feedback reviews structure, voice, argument, pacing, and style, and may add
+high-impact anchored comments. It does not supply replacement prose. Suggest
+revisions may propose local suggestions or coherent passage alternatives while
+preserving the original text. Exact compression remains a revision-only recipe
+with an explicit word target. All use the same conversation and target guards.
 
-### Revise
-
-- Works on a writer-requested passage while preserving intent and voice.
-- Uses `createSuggestion` for local replacements, `createRevision` for coherent
-  passage alternatives, and `createComment` when diagnosis or a question should
-  precede rewriting.
-- Does not require a minimum number of changes. With a selection, every target
-  must remain inside that captured selection.
-- A selection of at least eight words offers an exact-compression recipe. Its
-  target is 75 percent of the current selection, rounded down. The turn can only
-  create one reversible revision, must cover the complete captured selection,
-  and is rejected unless every proposed alternative meets the exact count.
-- Includes user-defined Revise quick actions from general app settings.
-- Can fan out through enabled reader personas when Revise's persona toggle is on.
+Reader review is an explicit opt-in in Writing actions, off when the panel mounts.
+When enabled readers exist, feedback/revision requests fan out to those readers;
+exact compression still uses one stream. The request is saved before fan-out, and
+an application status message is saved afterward in the same conversation. Reader
+notes remain annotations, not synthesized assistant prose. Application status
+messages do not offer a model retry action. No enabled readers means one normal
+chat response. College review entry points open this same Chat panel.
 
 ### Context
 
@@ -340,9 +342,9 @@ wording cannot expand a turn's permissions.
 | Conversation | Chat | None |
 | Reverse outline | Chat | None |
 | Compare versions | Chat | None |
-| Global review | Feedback | Comment |
-| Local rewrite | Revise | Comment, suggestion, revision |
-| Exact compression | Revise | Revision only |
+| Global review | Chat: Give feedback | Comment |
+| Local rewrite | Chat: Suggest revisions | Comment, suggestion, revision |
+| Exact compression | Chat: Writing actions | Revision only |
 
 An unsupported panel/task pair falls back to the text-only conversation policy.
 Exact compression also requires a positive whole-word target and a live selection
@@ -586,8 +588,8 @@ availability.
 
 ## Parallel Personas and Document Safety
 
-Feedback and Revise default to one stream. If personas are enabled for that
-specific mode, `runMultiPersonaStreams()` starts one stream per enabled persona
+Feedback and revision actions default to one stream. If the writer opts into
+reader review in Chat’s Writing actions, `runMultiPersonaStreams()` starts one stream per enabled persona
 with `Promise.all()`.
 
 The fan-out path snapshots the document ID, tab ID, draft ID, nested branch path,

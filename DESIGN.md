@@ -77,9 +77,10 @@ Root-level modals (`stackIndex === 0`) watch `$annotationsStore` (which reflects
 
 AI is an editorial collaborator, not the owner of the draft. The writer's text
 remains canonical until the writer applies a suggestion or chooses a revision
-version. Chat and structural recipes stay conversational. Feedback can add
-anchored comments, while Revise can propose comments, suggestions, or reversible
-revision branches. A valid AI turn may produce no document action.
+version. Ordinary chat and structural recipes stay conversational. Within the same
+discussion, Give feedback can add anchored comments, while Suggest revisions can
+propose comments, suggestions, or reversible revision branches. Action permissions
+apply to one request, not to the whole conversation. A valid AI turn may produce no document action.
 
 Every turn has an explicit task and capability set. Prompt wording, reader
 personas, saved decisions, and device-local editorial preferences can shape the

@@ -40,12 +40,8 @@ remain unconfigured for unrelated development.
 | `ai_sidebar_opened` | User opens sidebar | `sidebar/Sidebar.svelte` |
 | `ai_message_sent` | Any AI request dispatched | `chatFactory.ts` |
 | `ai_chat_message_sent` | Chat message sent | `Chat.svelte` |
-| `ai_chat_quick_prompt_used` | Chat quick prompt used | `Chat.svelte` |
-| `ai_context_action_used` | Context-aware action card used | `Chat.svelte`, `Feedback.svelte`, `Revise.svelte` |
-| `ai_feedback_requested` | Feedback requested | `Feedback.svelte` |
-| `ai_feedback_quick_prompt_used` | Feedback quick prompt used | `Feedback.svelte` |
-| `ai_revise_requested` | Revision triggered | `Revise.svelte` |
-| `ai_revise_quick_prompt_used` | Revise quick prompt used | `Revise.svelte` |
+| `ai_feedback_requested` | Feedback requested | `Chat.svelte` |
+| `ai_revise_requested` | Revision triggered | `Chat.svelte` |
 | `context_generated` | Document context generated | `clientStreams.ts` |
 | `context_cleared` | Context cleared | `DocumentContext.svelte` |
 | `editorial_decision_saved` | Writer saves a document editorial decision | `DocumentContext.svelte` |
@@ -102,7 +98,6 @@ remain unconfigured for unrelated development.
 | `reader_persona_created` | Custom persona created | `Readers.svelte` |
 | `reader_persona_removed` | Custom persona deleted | `Readers.svelte` |
 | `reader_persona_review_completed` | Persona finishes feedback | `chatFactory.ts` |
-| `persona_mode_toggled` | Feedback/Revise persona mode toggled | `Feedback.svelte`, `Revise.svelte` |
 
 ## AutoAI
 

@@ -3,18 +3,14 @@
 import AISettings from "$lib/ai/AISettings.svelte";
 import Chat from "$lib/ai/Chat.svelte";
 import DocumentContext from "$lib/ai/DocumentContext.svelte";
-import Feedback from "$lib/ai/Feedback.svelte";
 import Readers from "$lib/ai/Readers.svelte";
-import Revise from "$lib/ai/Revise.svelte";
 import CollegePanel from "$lib/college/CollegePanel.svelte";
 import {
     CompassIcon,
     GraduationCapIcon,
     MessageCircleIcon,
-    PenLineIcon,
     SettingsIcon,
     UsersIcon,
-    ZapIcon,
 } from "lucide-svelte";
 import { type SidebarPanelContribution, createSidebarPanels } from "./panels";
 
@@ -32,49 +28,12 @@ const builtInPanelContributions: SidebarPanelContribution[] = [
         hoverClass: "hover:text-blue-600",
         requiresModel: true,
         requiresAi: true,
-        preferredHeight: 600,
+        preferredHeight: 650,
+        preferredWidth: 400,
         contentClass: "flex flex-col",
         mount: "eager",
         contextMode: "chat",
         contextRingClass: "focus:ring-blue-500",
-    },
-    {
-        id: "feedback",
-        component: Feedback,
-        icon: ZapIcon,
-        label: "Feedback",
-        title: "Get Feedback",
-        order: 2,
-        shortcutKey: "2",
-        placement: "main",
-        activeClass: "text-green-600 bg-white/60",
-        hoverClass: "hover:text-green-600",
-        requiresModel: true,
-        requiresAi: true,
-        preferredHeight: 600,
-        contentClass: "flex flex-col",
-        mount: "eager",
-        contextMode: "feedback",
-        contextRingClass: "focus:ring-green-500",
-    },
-    {
-        id: "revise",
-        component: Revise,
-        icon: PenLineIcon,
-        label: "Revise",
-        title: "Revise & Rewrite",
-        order: 3,
-        shortcutKey: "3",
-        placement: "main",
-        activeClass: "text-purple-600 bg-white/60",
-        hoverClass: "hover:text-purple-600",
-        requiresModel: true,
-        requiresAi: true,
-        preferredHeight: 600,
-        contentClass: "flex flex-col",
-        mount: "eager",
-        contextMode: "revise",
-        contextRingClass: "focus:ring-purple-500",
     },
     {
         id: "context",

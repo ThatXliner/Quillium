@@ -119,6 +119,7 @@ test.describe("conversation history", () => {
         await q.searchConversations("");
 
         const firstRow = q.conversationRow("Opening scene");
+        await firstRow.locator("summary").click();
         await firstRow.getByRole("button", { name: "Rename", exact: true }).click();
         const title = firstRow.getByRole("textbox", { name: "Conversation title" });
         await title.fill("Renamed opening discussion");
@@ -126,22 +127,25 @@ test.describe("conversation history", () => {
         await expect(q.conversationRow("Renamed opening discussion")).toBeVisible();
 
         const renamedRow = q.conversationRow("Renamed opening discussion");
+        await renamedRow.locator("summary").click();
         await renamedRow.getByRole("button", { name: "Archive", exact: true }).click();
         await expect(q.conversationRows).toHaveCount(1);
         await expect(q.conversationRow("Ending image")).toBeVisible();
 
         await q.showArchivedConversations();
         await expect(q.conversationRow("Renamed opening discussion")).toBeVisible();
+        await q.conversationRow("Renamed opening discussion").locator("summary").click();
         await q
             .conversationRow("Renamed opening discussion")
             .getByRole("button", { name: "Restore", exact: true })
             .click();
         await expect(q.conversationRow("Renamed opening discussion")).toBeHidden();
 
-        await q.chatPanel.getByRole("checkbox", { name: "Archived conversations" }).uncheck();
+        await q.chatPanel.getByRole("button", { name: "Active", exact: true }).click();
         await expect(q.conversationRows).toHaveCount(2);
 
         const restoredRow = q.conversationRow("Renamed opening discussion");
+        await restoredRow.locator("summary").click();
         await restoredRow.getByRole("button", { name: "Delete", exact: true }).click();
         await restoredRow.getByRole("button", { name: "Delete permanently", exact: true }).click();
         await expect(q.conversationRow("Renamed opening discussion")).toBeHidden();
@@ -158,7 +162,7 @@ test.describe("conversation history", () => {
 
         await expect(q.conversationRows).toHaveCount(2);
         await q.chatPanel.getByRole("button", { name: "Close history", exact: true }).click();
-        await q.chatPanel.getByRole("button", { name: "New", exact: true }).click();
+        await q.chatPanel.getByRole("button", { name: "New discussion", exact: true }).click();
         await q.openConversationHistory();
         await expect(q.conversationRows).toHaveCount(3);
         await expect(q.conversationRow("Opening scene")).toBeVisible();
@@ -237,20 +241,10 @@ test("keeps discussions in the sidebar and opens a focused modal", async ({ page
     const q = newPageObject(page);
     await q.init();
     await q.openChat();
-    const recent = page.getByRole("list", { name: "Recent conversations" });
-    await expect(
-        recent.getByRole("button", { name: "Opening scene", exact: true }),
-    ).toBeVisible();
-    await expect(recent.getByRole("button", { name: "Manage Opening scene" })).toBeVisible();
-    await q.chatPanel.getByRole("button", { name: "Toggle discussions" }).click();
-    await expect(recent).toBeHidden();
-    await q.chatPanel.getByRole("button", { name: "Toggle discussions" }).click();
-    await expect(recent).toBeVisible();
-    await expect
-        .poll(async () => Math.round((await q.aiSidebar.boundingBox())?.width ?? 0))
-        .toBe(320);
+    await q.openConversation("Opening scene");
+    await expect(q.conversationMessage("How does the opening land?")).toBeVisible();
     await q.captureScreenshot("/tmp/quillium-discussions-sidebar.png");
-    await recent.getByRole("button", { name: "Opening scene", exact: true }).click();
+    await q.chatPanel.getByRole("button", { name: "Expand discussion" }).click();
     const modal = page.locator("dialog.discussion-modal");
     await expect(modal).toBeVisible();
     await expect(q.chatInput).toBeEnabled();
@@ -262,7 +256,7 @@ test("keeps discussions in the sidebar and opens a focused modal", async ({ page
     await page.keyboard.press("Escape");
     await expect(modal).toHaveCount(0);
     await expect(q.chatPanel).toBeVisible();
-    await expect(recent).toBeVisible();
+    await expect(q.chatPanel.getByRole("button", { name: "Expand discussion" })).toBeFocused();
 });
 
 test("edits a user message into a provider-backed new path", async ({ page }) => {
@@ -460,11 +454,11 @@ for (const outcome of ["applied", "skipped"] as const) {
             await route.fulfill({ status: 200, contentType: "text/event-stream", body });
         });
         await q.init();
-        await page.locator("#ai-tab-feedback").click();
-        const panel = page.locator('[data-panel-id="feedback"]');
-        const input = panel.locator('input[name="message"]');
+        await page.locator("#ai-tab-chat").click();
+        const panel = page.locator('[data-panel-id="chat"]');
+        const input = panel.locator('textarea[name="message"]');
         await input.fill("Help me make the opening more specific.");
-        await input.press("Enter");
+        await panel.getByRole("button", { name: "Give feedback", exact: true }).click();
         const tool = panel.locator('[data-tool-call="stream-comment"]');
         const expectedLabel = outcome === "applied" ? "Comment added" : "Couldn't add comment";
         await expect(tool).toContainText(expectedLabel, { timeout: 15000 });
@@ -485,16 +479,14 @@ for (const outcome of ["applied", "skipped"] as const) {
                 ),
             )
             .toBe(true);
-        const saved = (await q.mockConversations()).find((row) => row.mode === "feedback")!;
+        const saved = (await q.mockConversations()).find((row) => row.mode === "chat")!;
         const savedMessages = JSON.parse(saved.messagesJson);
         expect(
             savedMessages.find((message: { role: string }) => message.role === "assistant").metadata
                 .toolApplications["stream-comment"].status,
         ).toBe(outcome);
-        await panel
-            .getByRole("list", { name: "Recent conversations" })
-            .getByRole("button", { name: saved.title, exact: true })
-            .click();
+        await q.openConversation(saved.title);
+        await panel.getByRole("button", { name: "Expand discussion" }).click();
         await expect(page.getByRole("dialog", { name: saved.title })).toBeVisible();
         await expect(tool).toContainText(expectedLabel);
         if (outcome === "applied") await q.captureScreenshot("/tmp/quillium-tool-activity.png");
@@ -504,15 +496,13 @@ for (const outcome of ["applied", "skipped"] as const) {
         await page.keyboard.up("Meta");
         await page.reload();
         await expect(q.editor).toBeVisible({ timeout: 20000 });
-        await page.locator("#ai-tab-feedback").click();
-        await panel
-            .getByRole("list", { name: "Recent conversations" })
-            .getByRole("button", { name: saved.title, exact: true })
-            .click();
+        await page.locator("#ai-tab-chat").click();
+        await q.openConversation(saved.title);
+        await panel.getByRole("button", { name: "Expand discussion" }).click();
         await expect(tool).toContainText(expectedLabel);
         if (outcome === "applied") {
             await input.fill("Look for another place to improve.");
-            await input.press("Enter");
+            await panel.getByRole("button", { name: "Give feedback", exact: true }).click();
             await expect(tool).toHaveCount(2);
             await expect(tool.last()).toContainText("Couldn't add comment");
             await expect(tool.first()).toContainText("Comment added");
@@ -537,9 +527,8 @@ test("discussion modal fits a small window and restores keyboard focus", async (
     const q = newPageObject(page);
     await q.init();
     await q.openChat();
-    const opener = page
-        .getByRole("list", { name: "Recent conversations" })
-        .getByRole("button", { name: "Opening scene", exact: true });
+    await q.openConversation("Opening scene");
+    const opener = q.chatPanel.getByRole("button", { name: "Expand discussion", exact: true });
     await opener.click();
     const dialog = page.getByRole("dialog", { name: "Opening scene", exact: true });
     await expect(dialog).toBeVisible();
@@ -555,4 +544,117 @@ test("discussion modal fits a small window and restores keyboard focus", async (
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(opener).toBeFocused();
+});
+
+test("continues legacy modes in one discussion with per-request actions and multiline input", async ({
+    page,
+}) => {
+    const q = new QuilliumPage(page, {
+        apiKey: "test-key",
+        initialDoc: "Morning light pooled on the kitchen tiles.",
+        conversations: conversationFixtures.map((item, index) => ({
+            ...item,
+            mode: index === 0 ? "feedback" : "revise",
+        })),
+    });
+    await q.mockDeepSeekProvider("A useful response.");
+    const requests: Array<{ messages: unknown[]; tools?: Array<{ function: { name: string } }> }> =
+        [];
+    page.on("request", (request) => {
+        if (request.url() === "https://api.deepseek.com/chat/completions")
+            requests.push(request.postDataJSON());
+    });
+    await q.init();
+    await q.openConversation("Opening scene");
+    await expect(page.locator("#ai-tab-feedback, #ai-tab-revise")).toHaveCount(0);
+    await q.chatInput.fill("What does the opening promise?");
+    await q.chatInput.press("Shift+Enter");
+    await q.chatInput.pressSequentially("Consider the reader.");
+    await expect(q.chatInput).toHaveValue("What does the opening promise?\nConsider the reader.");
+    await q.chatInput.press("Enter");
+    await expect(q.conversationMessage("A useful response.")).toBeVisible();
+    await expect(q.chatPanel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
+    await q.chatInput.fill("Add a note about the stakes.");
+    await q.chatPanel.getByRole("button", { name: "Give feedback", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    await expect(
+        q.chatPanel.getByRole("button", { name: "Suggest revisions", exact: true }),
+    ).toBeEnabled();
+    await q.chatInput.fill("Offer another opening.");
+    await q.chatPanel.getByRole("button", { name: "Suggest revisions", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(3);
+    await expect(
+        q.chatPanel.getByRole("button", { name: "Give feedback", exact: true }),
+    ).toBeEnabled();
+    await q.chatInput.fill("Why that choice?");
+    await q.chatInput.press("Enter");
+    await expect.poll(() => requests.length).toBe(4);
+    const tools = requests.map((request) =>
+        (request.tools ?? [])
+            .map((tool) => tool.function.name)
+            .filter((name) => name.startsWith("create")),
+    );
+    expect(tools).toEqual([
+        [],
+        ["createComment"],
+        ["createComment", "createSuggestion", "createRevision"],
+        [],
+    ]);
+    await expect
+        .poll(async () => {
+            const rows = await q.mockConversations();
+            return JSON.parse(rows.find((row) => row.id === "conversation-a")!.messagesJson).length;
+        })
+        .toBe(12);
+    expect(await q.mockConversations()).toHaveLength(2);
+    await page.reload();
+    await expect(q.editor).toBeVisible();
+    await q.openConversation("Opening scene");
+    await expect(q.conversationMessage("Why that choice?")).toBeVisible();
+    await q.openConversationHistory();
+    await q.captureScreenshot("/tmp/quillium-unified-history.png");
+    q.expectNoPageErrors();
+});
+
+test("writing actions preserve an unsent message", async ({ page }) => {
+    const q = newPageObject(page);
+    await q.mockDeepSeekProvider();
+    await q.init();
+    await q.openChat();
+    await q.chatInput.fill("I am still composing this question.");
+    await q.chatPanel.getByText("Writing actions", { exact: true }).click();
+    await q.chatPanel.getByRole("button", { name: /Reverse outline/ }).click();
+    await expect(q.conversationMessage("Alternative answer")).toBeVisible();
+    await expect(q.chatInput).toHaveValue("I am still composing this question.");
+    await q.chatInput.press("Enter");
+    await expect(q.chatInput).toHaveValue("");
+    await expect(q.conversationMessage("I am still composing this question.")).toBeVisible();
+});
+
+test("expanded discussions display save failures and retain the unsent question", async ({
+    page,
+}) => {
+    const q = newPageObject(page);
+    await q.init();
+    await q.openConversation("Opening scene");
+    await q.chatPanel.getByRole("button", { name: "Expand discussion" }).click();
+    await page.evaluate(() => {
+        const bridge = (
+            window as unknown as {
+                __TAURI_INTERNALS__: {
+                    invoke: (command: string, args?: unknown) => Promise<unknown>;
+                };
+            }
+        ).__TAURI_INTERNALS__;
+        const invoke = bridge.invoke;
+        bridge.invoke = (command, args) =>
+            command === "cmd_save_ai_conversation_messages"
+                ? Promise.reject(new Error("Disk full"))
+                : invoke(command, args);
+    });
+    await q.chatInput.fill("What about the stakes?");
+    await q.chatInput.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Opening scene", exact: true });
+    await expect(dialog.getByRole("alert")).toContainText("Disk full");
+    await expect(q.chatInput).toHaveValue("What about the stakes?");
 });

@@ -84,7 +84,14 @@ const TASK_ACTION_LIMITS: Record<EditorialTask, readonly EditorialAction[]> = {
 };
 
 const PANEL_TASKS: Record<EditorialPanelMode, readonly EditorialTask[]> = {
-    chat: ["conversation", "reverse-outline", "branch-comparison"],
+    chat: [
+        "conversation",
+        "reverse-outline",
+        "branch-comparison",
+        "global-review",
+        "local-rewrite",
+        "exact-compression",
+    ],
     feedback: ["global-review"],
     revise: ["local-rewrite", "exact-compression"],
     dictionary: ["dictionary"],
@@ -146,7 +153,7 @@ function taskPrompt(
         case "global-review":
             return `Task: review structure, argument, scope, pacing, voice, and the reader's experience.
 
-${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passage-level concerns that meet the configured feedback density. Do not create rewrites during a broad review. This is feedback only, even when the writer focuses on one passage or asks for a rewrite. Do not supply replacement words, sentences, paragraphs, or sample rewrites in conversational text or comment fields. Quote existing wording only as evidence; describe the concern, its reader effect, and a direction or question for the writer. If replacement text is requested, direct the writer to Revise without providing it here. This boundary applies regardless of stance or voice preferences. A strong draft may need no comments.${
+${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passage-level concerns that meet the configured feedback density. Do not create rewrites during a broad review. This is feedback only, even when the writer focuses on one passage or asks for a rewrite. Do not supply replacement words, sentences, paragraphs, or sample rewrites in conversational text or comment fields. Quote existing wording only as evidence; describe the concern, its reader effect, and a direction or question for the writer. If replacement text is requested, invite the writer to use Suggest revisions for their next message without providing it here. This boundary applies regardless of stance or voice preferences. A strong draft may need no comments.${
                 hasSelection
                     ? " The writer selected a passage, so make it the focus while considering its role in the larger draft."
                     : " Review the whole included draft."

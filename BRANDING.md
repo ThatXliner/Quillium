@@ -86,7 +86,7 @@ is not an accent, it's the foundation.
 
 #### Primary — Blue
 
-Used for interactive elements, primary actions, and the Chat AI mode.
+Used for interactive elements, primary actions, and the unified Chat panel.
 Blue = conversation, connection, action.
 
 | Token | Value | Usage |
@@ -98,7 +98,7 @@ Blue = conversation, connection, action.
 
 #### Feedback / AI Green
 
-Used for the Feedback AI mode and suggestion highlights. Green = growth,
+Used for feedback actions and suggestion highlights. Green = growth,
 validation, constructive input.
 
 | Token | Value | Usage |
@@ -110,7 +110,7 @@ validation, constructive input.
 
 #### Revision / AI Purple
 
-Used for the Revise mode. Purple = transformation, craft, editing intent.
+Used for revision actions. Purple = transformation, craft, editing intent.
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -120,7 +120,7 @@ Used for the Revise mode. Purple = transformation, craft, editing intent.
 #### Comment / Annotation Yellow
 
 Used for comment annotations — the one color that maps to a human action
-(not an AI mode).
+(not an AI writing action).
 
 | Token | Value | Usage |
 |-------|-------|-------|

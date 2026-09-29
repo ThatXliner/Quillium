@@ -1,6 +1,6 @@
 <!-- ConversationMessageActions.svelte — Preserve an existing path before branching, editing, or retrying. -->
 <script lang="ts">
-import { GitBranch, Pencil, RotateCcw, Info } from "lucide-svelte";
+import { GitBranch, Pencil, RotateCcw, Info, Copy, Check } from "lucide-svelte";
 import type { UIMessage } from "ai";
 import type { createAiChat } from "./chatFactory";
 let {
@@ -13,6 +13,13 @@ let {
     disabled?: boolean;
 } = $props();
 let editing = $state(false);
+let copied = $state(false);
+async function copyMessage() {
+    try {
+        await navigator.clipboard.writeText(message.parts.filter(part => part.type === "text").map(part => part.text).join("\n"));
+        copied = true;
+    } catch { error = "Could not copy this message."; }
+}
 let showContext = $state(false);
 let text = $state("");
 let error = $state("");
@@ -44,10 +51,11 @@ async function act(action: () => Promise<unknown>) {
 </script>
 <div class="text-xs text-black/60 space-y-1" data-message-id={message.id}>
     <div class="flex gap-1 {message.role === 'user' ? 'justify-end' : 'justify-start'}">
+        <button class="message-action" aria-label={copied ? "Copied" : "Copy message"} title={copied ? "Copied" : "Copy message"} onclick={copyMessage}>{#if copied}<Check size={14} />{:else}<Copy size={14} />{/if}</button>
         <button class="message-action" aria-label="Branch here" title="Branch here" {disabled} onclick={() => act(() => conversations.branch(message.id))}><GitBranch size={14} aria-hidden="true" /></button>
         {#if message.role === "user"}
             <button class="message-action" aria-label="Edit as new path" title="Edit as new path" disabled={disabled || !conversations.canSend} onclick={() => { text = message.parts.filter((part) => part.type === "text").map((part) => part.text).join("\n"); editing = true; }}><Pencil size={14} aria-hidden="true" /></button>
-        {:else if message.role === "assistant"}
+        {:else if message.role === "assistant" && !(message.metadata as { applicationMessage?: boolean } | undefined)?.applicationMessage}
             <button class="message-action" aria-label="Retry as new path" title="Retry as new path" disabled={disabled || !conversations.canSend} onclick={() => act(() => conversations.retry(message.id))}><RotateCcw size={14} aria-hidden="true" /></button>
         {/if}
         {#if provenance}
@@ -76,7 +84,7 @@ async function act(action: () => Promise<unknown>) {
 </div>
 
 <style>
-.message-action { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 9999px; color: rgb(0 0 0 / 30%); transition: background-color 150ms, color 150ms; }
+.message-action { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 9999px; color: rgb(0 0 0 / 55%); transition: background-color 150ms, color 150ms; }
 .message-action:hover:not(:disabled), .message-action:focus-visible { background: rgb(255 255 255 / 50%); color: rgb(0 0 0 / 85%); }
 .message-action:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 .message-action:disabled { opacity: 0.4; cursor: not-allowed; }

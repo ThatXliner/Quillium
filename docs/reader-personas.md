@@ -72,7 +72,7 @@ Readers edits update the saved setup; device defaults remain untouched. There is
 no preview acknowledgment or separate context-confirmation screen. Pausing or
 removing setup returns to device defaults. Legacy saved setups containing
 multiple prompts remain readable until explicit replacement, with no automatic
-migration or deletion. Feedback still displays and requires explicit fan-out
+migration or deletion. Chat still displays and requires explicit fan-out
 opt-in.
 
 ## Settings Persistence
@@ -87,7 +87,7 @@ Stored in localStorage under `"quillium-readers-settings"`. On load, saved state
 ```mermaid
 sequenceDiagram
     participant User
-    participant Feedback as Feedback.svelte
+    participant Feedback as Chat.svelte
     participant Factory as chatFactory.ts
     participant AI as AI Provider
 
@@ -135,19 +135,18 @@ creates an annotation. Feedback personas can create comments; Revise personas
 can create comments, suggestions, and revisions. The global AI stop control
 cancels every persona stream through the shared abort signal.
 
-## Per-Mode Opt-In
+## Reader review opt-in
 
-Personas are gated by a per-mode toggle so the cost is opt-in and explicit (issue #259).
+Chat’s Writing actions contains an explicit reader review checkbox, off when the
+panel mounts. Enabling it routes Give feedback and Suggest revisions through the
+enabled readers, with one request per reader. Ordinary Send and exact compression
+remain single-stream. The Readers panel selects which readers participate. With
+none enabled, a writing action falls back to a normal response.
 
-| Where | Detail |
-|-------|--------|
-| State | `personaModes: { feedback: boolean; revise: boolean }` in `src/lib/ai/settings.svelte.ts` |
-| Default | Both `false` (plain single-stream by default) |
-| Persistence | localStorage key `"quillium-ai-persona-modes"` |
-| Setter | `setPersonasForMode(mode, enabled)` — persists + updates the rune |
-| UI | A switch in the **Feedback** and **Revise** tab headers; each mode remembers its own choice |
-
-The per-persona toggles in the Readers tab still select *which* personas run, but they only take effect once the mode toggle is ON. Chat mode does not use personas.
+The request and an application status message are saved in the same discussion;
+reader notes are attached to the draft. The legacy per-mode preference storage is
+retained for compatibility with College setup, but Chat's explicit checkbox owns
+whether this interactive fan-out runs.
 
 ## UI (Readers.svelte)
 
@@ -163,8 +162,8 @@ Layout:
 
 ## Integration Points
 
-- **Feedback.svelte / Revise.svelte**: Gate sends on `personaModes[mode]`, then route through the persona check; render the per-mode toggle
-- **ai/settings.svelte.ts**: Owns `personaModes` and `setPersonasForMode()`
+- **Chat.svelte**: Owns the explicit reader review opt-in and unified composer
+- **conversationController.svelte.ts**: Saves reader requests and application status messages
 - **chatFactory.ts**: `runMultiPersonaStreams()` handles parallel execution
 - **context.ts / annotationContext.ts**: Build the same budgeted, annotation-aware
   context used by ordinary Feedback and Revise requests

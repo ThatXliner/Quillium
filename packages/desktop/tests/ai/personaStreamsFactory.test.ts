@@ -125,6 +125,35 @@ describe("runMultiPersonaStreams", () => {
         view.destroy();
     });
 
+    it("strips historical tool activity from a unified discussion before reader fan-out", async () => {
+        const streamFn = vi.fn(async (_options: StreamOpts) => streamWithChunk({ type: "finish" }));
+        const messages: StreamOpts["messages"] = [
+            {
+                id: "previous",
+                role: "assistant",
+                parts: [
+                    { type: "text", text: "An earlier observation." },
+                    {
+                        type: "dynamic-tool",
+                        toolName: "createComment",
+                        toolCallId: "old-call",
+                        state: "output-available",
+                        input: { targetText: "fragment", comment: "Old note" },
+                        output: { ok: true },
+                    },
+                ],
+            },
+        ];
+        await runMultiPersonaStreams({ personas, streamFn, messages, mode: "feedback" });
+        expect(streamFn).toHaveBeenCalledTimes(2);
+        for (const [options] of streamFn.mock.calls) {
+            expect(options.messages[0].parts).toEqual([
+                { type: "text", text: "An earlier observation." },
+            ]);
+        }
+        expect(messages[0].parts).toHaveLength(2);
+    });
+
     it.each(["feedback", "revise"] as const)(
         "uses annotation-only %s streams and skips noAction before dispatch",
         async (mode) => {

@@ -176,12 +176,16 @@ describe("editorial stream policy", () => {
         expect(request.system).toContain("return only tool calls");
     });
 
-    it("falls back to text-only when a task belongs to another panel", async () => {
+    it("allows an explicit revision request in the unified conversation", async () => {
         await streamChat({ ...baseOptions, editorialTask: "local-rewrite" });
 
         const request = mocks.streamText.mock.calls[0][0];
-        expect(request.tools).toBeUndefined();
-        expect(request.system).toContain("discuss the writer's question");
+        expect(Object.keys(request.tools)).toEqual([
+            "createComment",
+            "createSuggestion",
+            "createRevision",
+        ]);
+        expect(request.system).toContain("help revise the writer's requested passage");
     });
 
     it.each([

@@ -784,9 +784,9 @@ export function createCollegeCapabilities(
             throw new Error("Write some draft text before requesting College feedback.");
         }
 
-        // Navigation is synchronous so the eager chat/feedback listeners are
+        // Navigation is synchronous so the eager Chat listener is
         // mounted before the action event is delivered.
-        openPanel(action === "plan" ? "chat" : "feedback");
+        openPanel("chat");
         appEventBus.emit({
             type: "college-action",
             action,

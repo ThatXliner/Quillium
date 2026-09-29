@@ -70,8 +70,6 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 | Key | Tab |
 |-----|-----|
 | `1` | Chat |
-| `2` | Feedback |
-| `3` | Revise |
 | `4` | Context |
 | `5` | Readers |
 | `6` | Settings |

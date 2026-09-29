@@ -1,6 +1,6 @@
 <!--
     QuickActionsSection.svelte — Settings (advanced, AI-dependent): custom
-    quick-action chips per AI panel.
+    writing actions in the unified Chat panel.
 
     `selectedPanel` is bindable because the modal's scroll-to-setting deep link
     ("quick-actions:feedback") selects a panel from outside.
@@ -51,8 +51,8 @@ function removeQuickAction(index: number) {
 <!-- Panel selector -->
 <div class="setting-row">
     <div class="setting-meta">
-        <div class="setting-title">Panel</div>
-        <div class="setting-desc">Add chips to a specific AI panel</div>
+        <div class="setting-title">Action type</div>
+        <div class="setting-desc">All actions appear in Chat. Choose what this request can do.</div>
     </div>
     <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
         {#each (["revise", "feedback", "chat"] as const) as panel}
@@ -64,7 +64,7 @@ function removeQuickAction(index: number) {
                     {selectedPanel === panel
                         ? 'bg-blue-500 text-white'
                         : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
-            >{panel}</button>
+            >{panel === "chat" ? "Discuss" : panel === "feedback" ? "Feedback" : "Revisions"}</button>
         {/each}
     </div>
 </div>
@@ -89,7 +89,7 @@ function removeQuickAction(index: number) {
         {/each}
     </div>
 {:else}
-    <div class="text-[11px] text-black/30 px-0.5 mb-2">No custom chips for this panel yet.</div>
+    <div class="text-[11px] text-black/30 px-0.5 mb-2">No custom actions of this type yet.</div>
 {/if}
 
 <!-- Add new chip form -->

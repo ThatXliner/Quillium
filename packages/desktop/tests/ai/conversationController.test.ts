@@ -390,7 +390,9 @@ describe("conversation controller", () => {
                 }),
             }),
         );
-        expect(chat.regenerate).toHaveBeenCalledWith({});
+        expect(chat.regenerate).toHaveBeenCalledWith({
+            body: { editorialTask: "conversation", exactWordCount: undefined },
+        });
         expect(chat.sendMessage).toHaveBeenCalledTimes(1);
         expect(source.messagesJson).toBe(JSON.stringify(sourceMessages));
     });
@@ -422,5 +424,124 @@ describe("conversation controller", () => {
             textMessage("a", "assistant", "before tool"),
         ]);
         expect(historical[1].parts).toHaveLength(2);
+    });
+});
+
+describe("unified discussions", () => {
+    it("opens legacy feedback and revision discussions without changing their identity", async () => {
+        const oldFeedback = conversation(
+            "feedback-history",
+            [textMessage("u1", "user", "Review the opening")],
+            { mode: "feedback" },
+        );
+        const oldRevision = conversation(
+            "revise-history",
+            [textMessage("u2", "user", "Tighten the opening")],
+            { mode: "revise", updatedAt: 3 },
+        );
+        db.listConversations.mockResolvedValue([oldFeedback, oldRevision]);
+        const chat = makeChat();
+        const controller = await startController(chat);
+        expect(controller.conversations.current?.id).toBe("revise-history");
+        await controller.open("feedback-history");
+        await controller.sendMessage("Why?", { task: "conversation" });
+        expect(controller.conversations.current?.id).toBe("feedback-history");
+        expect(db.createConversation).not.toHaveBeenCalled();
+        expect(db.saveConversationMessages).toHaveBeenCalledWith(
+            "feedback-history",
+            expect.stringContaining('"task":"conversation"'),
+        );
+        await controller.rename("revise-history", "A tighter opening");
+        expect(db.renameConversation).toHaveBeenCalledWith("revise-history", "A tighter opening");
+    });
+
+    it("keeps per-turn permissions and exact word counts when retrying a mixed discussion", async () => {
+        const prompt = textMessage("u1", "user", "Compress this");
+        prompt.metadata = { editorialTurn: { task: "exact-compression", exactWordCount: 42 } };
+        db.listConversations.mockResolvedValue([
+            conversation("mixed", [prompt, textMessage("a1", "assistant", "Options")]),
+        ]);
+        const chat = makeChat();
+        const controller = await startController(chat);
+        await controller.retry("a1");
+        expect(chat.regenerate).toHaveBeenCalledWith({
+            body: { editorialTask: "exact-compression", exactWordCount: 42 },
+        });
+    });
+
+    it("uses a legacy discussion's original task for retry but not for a new follow-up", async () => {
+        db.listConversations.mockResolvedValue([
+            conversation(
+                "old",
+                [textMessage("u1", "user", "Review it"), textMessage("a1", "assistant", "Notes")],
+                { mode: "feedback" },
+            ),
+        ]);
+        const chat = makeChat();
+        const controller = await startController(chat);
+        await controller.retry("a1");
+        expect(chat.regenerate).toHaveBeenCalledWith({
+            body: { editorialTask: "global-review", exactWordCount: undefined },
+        });
+        await controller.sendMessage("Tell me more");
+        expect(
+            chat.messages.find((message) => message.role === "user" && message.id !== "u1")
+                ?.metadata,
+        ).toMatchObject({ editorialTurn: { task: "conversation" } });
+    });
+});
+
+describe("reader review durability", () => {
+    it("persists the request before running and retains the application result in the same discussion", async () => {
+        const chat = makeChat();
+        const controller = await startController(chat);
+        const action = vi.fn(async () => {
+            expect(db.saveConversationMessages).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.stringContaining("Review from each reader"),
+            );
+            expect(controller.conversations.canSend).toBe(false);
+            return "Reader review ended.";
+        });
+        await controller.conversations.runAction(
+            "Review from each reader",
+            { task: "global-review" },
+            action,
+        );
+        expect(action).toHaveBeenCalledOnce();
+        expect(chat.sendMessage).not.toHaveBeenCalled();
+        expect(chat.messages.at(-1)).toMatchObject({ metadata: { applicationMessage: true } });
+        expect(db.saveConversationMessages.mock.calls.at(-1)?.[1]).toContain(
+            "Reader review ended.",
+        );
+    });
+
+    it("does not start reader requests when saving the prompt fails", async () => {
+        const controller = await startController(makeChat());
+        db.saveConversationMessages.mockRejectedValue(new Error("disk full"));
+        const action = vi.fn(async () => "Finished");
+        await expect(
+            controller.conversations.runAction("Review", { task: "global-review" }, action),
+        ).rejects.toThrow("disk full");
+        expect(action).not.toHaveBeenCalled();
+        db.saveConversationMessages.mockResolvedValue(undefined);
+    });
+});
+
+it("retains legacy task defaults across branching and retrying", async () => {
+    db.listConversations.mockResolvedValue([
+        conversation(
+            "legacy",
+            [textMessage("u1", "user", "Review"), textMessage("a1", "assistant", "Notes")],
+            { mode: "feedback" },
+        ),
+    ]);
+    const chat = makeChat();
+    const controller = await startController(chat);
+    await controller.branch("a1");
+    expect(controller.conversations.current?.mode).toBe("feedback");
+    await controller.retry("a1");
+    expect(chat.regenerate).toHaveBeenCalledWith({
+        body: { editorialTask: "global-review", exactWordCount: undefined },
     });
 });

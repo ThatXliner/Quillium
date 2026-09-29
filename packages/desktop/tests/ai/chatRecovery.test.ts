@@ -17,13 +17,24 @@ vi.mock("$lib/ai/chatFactory", () => ({
 }));
 vi.mock("$lib/ai/settings.svelte", () => ({
     aiSettings: { provider: "openai-oauth" },
+    getEffectiveDocumentContext: () => ({ freeform: "" }),
 }));
 
 beforeEach(() => {
+    vi.stubGlobal(
+        "ResizeObserver",
+        class {
+            observe() {}
+            disconnect() {}
+        },
+    );
     mocks.chat.status = "error";
     mocks.sendMessage.mockClear();
 });
-afterEach(cleanup);
+afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+});
 
 describe("Chat error recovery", () => {
     it("explains expired authorization and permits another message", async () => {
@@ -35,14 +46,15 @@ describe("Chat error recovery", () => {
         const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
         expect(send.disabled).toBe(false);
         await fireEvent.submit(input.closest("form")!);
-        expect(mocks.sendMessage).toHaveBeenCalledWith("Try this again");
+        expect(mocks.sendMessage).toHaveBeenCalledWith("Try this again", undefined);
     });
 
     it.each(["submitted", "streaming"])("blocks duplicate sends while %s", async (status) => {
         mocks.chat.status = status;
         const screen = render(Chat, { active: true, session: null });
         const input = screen.getByRole("textbox") as HTMLInputElement;
-        expect(input.disabled).toBe(true);
+        expect(input.disabled).toBe(false);
+        expect(screen.getByRole("button", { name: "Stop response" })).toBeTruthy();
         await fireEvent.input(input, { target: { value: "Duplicate" } });
         await fireEvent.submit(input.closest("form")!);
         expect(mocks.sendMessage).not.toHaveBeenCalled();

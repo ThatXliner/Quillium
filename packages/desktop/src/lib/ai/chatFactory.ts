@@ -23,8 +23,7 @@ import { toast } from "svelte-sonner";
 /**
  * Chat factory — wires AI streaming to the Svelte Chat class.
  *
- * This file is the glue between the UI chat components (Chat.svelte,
- * Feedback.svelte, Revise.svelte) and the streaming functions in
+ * This file connects Chat.svelte and its writing actions to the streaming functions in
  * `clientStreams.ts`. It has three responsibilities:
  *
  * 1. **Transport creation** (`makeTransport`) — builds a
@@ -403,7 +402,7 @@ export async function runMultiPersonaStreams({
               })
             : undefined;
         const stream = await streamFn({
-            messages: JSON.parse(JSON.stringify(messages)) as UIMessage[],
+            messages: sanitizeOutboundMessages(messages),
             documentContent: documentContentAtStart,
             selectedText: selectedTextAtStart,
             selectedTextRange: selectedTextRangeAtStart,
