@@ -53,12 +53,14 @@ test("inspect accepted AI wording and writer edits in authorship playback", asyn
         "My words. AI phrase. pasted",
     );
     await page.getByRole("checkbox", { name: "Show text origin" }).check();
-    await expect(page.locator(".provenance-preview .cm-text-origin-ai")).toHaveText("AI ");
+    await expect(page.locator(".provenance-preview .cm-text-origin-ai")).toHaveText(["AI ", "."]);
     await expect(page.locator(".provenance-preview .cm-text-origin-edited-ai")).toHaveText(
         "phrase",
     );
     await expect(page.locator(".provenance-preview .cm-text-origin-unknown")).toHaveText(" pasted");
-    await expect(page.getByRole("status")).not.toContainText("Text origin is unavailable");
+    await expect(
+        page.getByText("Text origin is unavailable for this history. No wording has been labeled."),
+    ).toHaveCount(0);
     await page.screenshot({ path: "/tmp/quillium-text-origin.png", fullPage: true });
     await page.getByRole("checkbox", { name: "Show text origin" }).uncheck();
     await expect(page.locator(".provenance-preview .cm-text-origin-ai")).toHaveCount(0);
