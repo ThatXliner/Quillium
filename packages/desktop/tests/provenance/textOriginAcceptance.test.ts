@@ -10,7 +10,13 @@ import {
     removeAnnotation,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, makeVersion } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersion,
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
 import { buildTextOrigin } from "$lib/provenance/textOrigin";
 import { history, redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
@@ -143,5 +149,94 @@ it("restores human wording when selecting an untouched human revision version", 
         expect(buildTextOrigin(events, "Original").spans[0].origin).toBe("human");
     } finally {
         view.destroy();
+    }
+});
+
+it("preserves accepted AI suggestion origin through nested parent dispatch", () => {
+    const events: EventRecord[] = [];
+    const parent = new EditorView({
+        state: EditorState.create({
+            doc: "Hello world",
+            extensions: [
+                persistHistoryFacet.of(true),
+                persistentHistoryExtension,
+                history(),
+                annotations(),
+                EditorView.updateListener.of((update) => {
+                    const payload = buildEventPayload(update);
+                    if (payload)
+                        events.push({
+                            id: events.length,
+                            createdAt: events.length,
+                            eventType: payload.type,
+                            payload: JSON.stringify(payload),
+                        });
+                }),
+            ],
+        }),
+        parent: document.body,
+    });
+    const version = makeVersion({ doc: "Hello world", provenance: "human" });
+    const revision = {
+        ...createNewAnnotation(
+            parent.state.field(annotationField),
+            EditorSelection.single(0, 11),
+            "revision",
+        ),
+        activeVersionId: version.id,
+        versions: [version],
+    };
+    parent.dispatch({ effects: addAnnotation.of(revision) });
+    const nested = new EditorView({
+        state: EditorState.create({
+            doc: "Hello world",
+            extensions: [
+                annotations(),
+                EditorView.updateListener.of((update) => {
+                    translateAndDispatch(update, parent, revision.id);
+                }),
+            ],
+        }),
+        parent: document.body,
+    });
+    try {
+        const suggestion = {
+            ...createNewAnnotation(
+                nested.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "suggestion",
+            ),
+            replacements: [{ text: "Hi" }],
+            aiProvenance: {
+                requestId: "nested-request",
+                task: "local-rewrite" as const,
+                provider: "openai",
+                model: "test",
+                createdAt: 1,
+            },
+        };
+        nested.dispatch({ effects: addAnnotation.of(suggestion) });
+        nested.dispatch(applySuggestion(nested.state, suggestion.id, 0));
+        expect(buildTextOrigin(events, "Hello world")).toEqual({
+            text: "Hi world",
+            spans: [
+                { from: 0, to: 2, origin: "ai" },
+                { from: 2, to: 8, origin: "unknown" },
+            ],
+        });
+        const updated = parent.state.field(annotationField)[revision.id];
+        expect(isAnnotationOfType(updated, "revision") && activeVersion(updated).provenance).toBe(
+            "mixed",
+        );
+        expect(JSON.parse(events.at(-1)!.payload).provenance.aiGenerations).toEqual([
+            suggestion.aiProvenance,
+        ]);
+        undo(parent);
+        expect(buildTextOrigin(events, "Hello world").text).toBe("Hello world");
+        redo(parent);
+        expect(buildTextOrigin(events, "Hello world").spans[0].origin).toBe("ai");
+    } finally {
+        nested.destroy();
+        parent.destroy();
     }
 });

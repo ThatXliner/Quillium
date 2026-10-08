@@ -162,8 +162,8 @@ recorded undo or redo. Missing history (including snapshot prefixes), external
 pastes, legacy restores, and unrecorded moves cannot establish AI wording origin.
 A replacement intersecting recorded AI wording is labeled writer edits to AI
 wording; this describes edit lineage, not a threshold for ownership of an idea.
-Pure deletion does not relabel surviving words. Text newly typed beside AI wording
-is writer wording. A mixed revision version may provide only coarse provenance.
+Pure deletion does not relabel surviving words. External drag-and-drop is unknown. Text newly typed beside AI wording
+is writer wording. A mixed revision version may provide only coarse provenance. Nested acceptance now forwards its AI request metadata through parent dispatch; older nested events that lack a source signal remain unknown.
 
 No additional stored state or migration is needed: reopening reconstructs origin
 from the draft's existing event log. Reconstruction failure or disagreement with

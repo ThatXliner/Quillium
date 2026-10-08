@@ -35,7 +35,7 @@ import { createAwarenessExtension } from "$lib/collab/awareness";
 import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { redo, undo } from "@codemirror/commands";
+import { isolateHistory, redo, undo } from "@codemirror/commands";
 import {
     EditorSelection,
     EditorState,
@@ -52,6 +52,7 @@ import { get } from "svelte/store";
 import {
     _nestedEditRevision,
     _updateRevisionVersionState,
+    aiEditProvenance,
     annotationField,
     nestedEditorEdit,
     revisionProvenance,
@@ -607,7 +608,21 @@ export function translateAndDispatch(
     // during these dispatches, so the parent cursor move is invisible.
     const effects: StateEffect<unknown>[] = [_nestedEditRevision.of(revisionId)];
     const currentVersion = activeVersion(rev);
-    const humanEditProvenance = provenanceAfterHumanEdit(currentVersion);
+    const sourceAiGenerations = update.transactions
+        .filter((transaction) => transaction.docChanged)
+        .flatMap((transaction) => transaction.annotation(aiEditProvenance) ?? []);
+    const allAiChanges = update.transactions
+        .filter((transaction) => transaction.docChanged)
+        .every((transaction) => (transaction.annotation(aiEditProvenance)?.length ?? 0) > 0);
+    const replacesWholeVersion =
+        parentChanges.length === 1 &&
+        parentChanges[0].from === offset &&
+        parentChanges[0].to === rev.selection.main.to;
+    const editProvenance = sourceAiGenerations.length
+        ? allAiChanges && replacesWholeVersion
+            ? "ai"
+            : "mixed"
+        : provenanceAfterHumanEdit(currentVersion);
     if (versionUpdate) {
         effects.push(
             _updateRevisionVersionState.of({
@@ -615,7 +630,10 @@ export function translateAndDispatch(
                 versionId: versionUpdate.versionId,
                 versionState: {
                     ...versionUpdate.versionState,
-                    provenance: humanEditProvenance,
+                    provenance: editProvenance,
+                    ...(sourceAiGenerations.length
+                        ? { aiProvenance: sourceAiGenerations.at(-1) }
+                        : {}),
                 },
             }),
         );
@@ -631,7 +649,10 @@ export function translateAndDispatch(
                     // Keeping the pre-edit doc here makes the reactive parent →
                     // nested sync immediately undo every inline keystroke.
                     doc: update.state.doc.toString(),
-                    provenance: humanEditProvenance,
+                    provenance: editProvenance,
+                    ...(sourceAiGenerations.length
+                        ? { aiProvenance: sourceAiGenerations.at(-1) }
+                        : {}),
                 },
             }),
         );
@@ -641,15 +662,24 @@ export function translateAndDispatch(
         .map((transaction) => transaction.annotation(Transaction.userEvent))
         .find((event) => event !== undefined);
 
+    // Accepting a suggestion is a distinct undo step even in a nested viewport.
+    const sourceIsolation = update.transactions
+        .map((transaction) => transaction.annotation(isolateHistory))
+        .find((isolation) => isolation !== undefined);
+
     parentView.dispatch({
         changes: parentChanges,
         selection: EditorSelection.cursor(offset),
         effects,
         annotations: [
             nestedEditorEdit.of(revisionId),
-            revisionProvenance.of(humanEditProvenance),
+            revisionProvenance.of(
+                allAiChanges && sourceAiGenerations.length ? "ai" : editProvenance,
+            ),
+            ...(sourceAiGenerations.length ? [aiEditProvenance.of(sourceAiGenerations)] : []),
             Transaction.addToHistory.of(true),
             ...(userEvent ? [Transaction.userEvent.of(userEvent)] : []),
+            ...(sourceIsolation ? [isolateHistory.of(sourceIsolation)] : []),
         ],
     });
     return true;

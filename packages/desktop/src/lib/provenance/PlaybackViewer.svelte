@@ -308,7 +308,17 @@ $effect(() => {
     ];
     const state = reconstructState(baselineStateJson, slice, liveExtensions);
 
-    previewView = new EditorView({ state, parent: previewEl });
+    previewView = new EditorView({
+        state,
+        parent: previewEl,
+        // Read-only state stops typing, but custom commands can still dispatch.
+        // Permit inspection selections while refusing all preview mutations.
+        dispatchTransactions(transactions, view) {
+            if (transactions.every((tr) => !tr.docChanged && tr.effects.length === 0)) {
+                view.update(transactions);
+            }
+        },
+    });
     // Tint color follows the current origin.
     previewView.dom.style.setProperty("--provenance-mark", currentStyle.mark);
 

@@ -47,6 +47,18 @@ function transaction(
 }
 
 describe("surviving text origin", () => {
+    it("keeps externally dropped wording unknown, including a drop into an AI version", () => {
+        const dropped = transaction(0, 0, 0, "external wording");
+        dropped.annotations.userEvent = "input.drop";
+        dropped.annotations.nestedEditorEdit = 0;
+        dropped.annotations.revisionProvenance = "mixed";
+        expect(buildTextOrigin([trace(dropped)]).spans[0].origin).toBe("unknown");
+        const legacy = edit(0, 0, "external wording", "type");
+        const payload = JSON.parse(legacy.payload);
+        payload.provenance.userEvent = "input.drop";
+        legacy.payload = JSON.stringify(payload);
+        expect(buildTextOrigin([legacy]).spans[0].origin).toBe("unknown");
+    });
     it("maps surviving AI wording and writer replacements independently", () => {
         const result = buildTextOrigin([
             edit(0, 0, "hello world", "ai-revision"),

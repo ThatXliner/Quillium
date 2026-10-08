@@ -21,6 +21,7 @@ function initial(text: string): TextOriginState {
 }
 
 function originOf(provenance?: Provenance): TextOrigin {
+    if (provenance?.userEvent === "input.drop") return "unknown";
     switch (provenance?.origin) {
         case "ai-revision":
             return "ai";
@@ -87,11 +88,35 @@ function apply(
 }
 
 function traceOrigin(annotations: TransactionReplayAnnotations): TextOrigin {
-    if (annotations.userEvent === "input.paste" || annotations.userEvent === "input.restore")
+    if (
+        annotations.userEvent === "input.paste" ||
+        annotations.userEvent === "input.restore" ||
+        annotations.userEvent === "input.drop"
+    )
+        return "unknown";
+    // Older nested acceptance events omitted their source AI annotations.
+    // Without a typing signal or source metadata, the nested marker alone
+    // cannot establish who authored the inserted wording.
+    if (
+        annotations.nestedEditorEdit !== undefined &&
+        !annotations.revisionInternalEdit &&
+        !annotations.userEvent &&
+        !annotations.aiGenerations?.length
+    )
         return "unknown";
     // Typing inside an AI version authors only the inserted text, not the whole version.
-    if (!annotations.revisionInternalEdit && annotations.userEvent?.startsWith("input.type"))
+    if (
+        !annotations.revisionInternalEdit &&
+        !annotations.aiGenerations?.length &&
+        annotations.userEvent?.startsWith("input.type")
+    )
         return "human";
+    if (
+        annotations.aiGenerations?.length &&
+        annotations.revisionProvenance === "mixed" &&
+        annotations.nestedEditorEdit !== undefined
+    )
+        return "unknown";
     return originOf({
         origin: classifyOrigin({
             userEvent: annotations.userEvent,
