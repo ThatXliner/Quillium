@@ -34,7 +34,12 @@ function originOf(provenance?: Provenance): TextOrigin {
     }
 }
 
-function apply(state: TextOriginState, changes: ChangeSpec[], origin: TextOrigin): TextOriginState {
+function apply(
+    state: TextOriginState,
+    changes: ChangeSpec[],
+    origin: TextOrigin,
+    authoredReplacement = true,
+): TextOriginState {
     const spans: OriginSpan[] = [];
     const parts: string[] = [];
     let cursor = 0;
@@ -71,7 +76,10 @@ function apply(state: TextOriginState, changes: ChangeSpec[], origin: TextOrigin
                 span.to > change.from &&
                 (span.origin === "ai" || span.origin === "edited-ai"),
         );
-        append(change.insert, origin === "human" && replacesAi ? "edited-ai" : origin);
+        append(
+            change.insert,
+            origin === "human" && authoredReplacement && replacesAi ? "edited-ai" : origin,
+        );
         cursor = change.to;
     }
     retain(cursor, state.text.length);
@@ -118,6 +126,7 @@ export function buildTextOrigin(events: EventRecord[], baselineText = ""): TextO
                     state,
                     changes,
                     entry.kind === "transaction" ? traceOrigin(transaction.annotations) : "unknown",
+                    transaction.annotations.revisionInternalEdit !== true,
                 );
                 if (entry.kind === "undo" || entry.kind === "redo") {
                     const source = entry.kind === "undo" ? done : undone;
@@ -159,6 +168,7 @@ export function buildTextOrigin(events: EventRecord[], baselineText = ""): TextO
                 state,
                 payload.type === "doc_change" ? payload.changes : payload.docChanges,
                 originOf(payload.provenance),
+                payload.provenance?.origin !== "human-revision",
             );
             done.length = undone.length = 0;
         }
