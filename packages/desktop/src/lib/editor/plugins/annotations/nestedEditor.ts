@@ -613,7 +613,14 @@ export function translateAndDispatch(
         .flatMap((transaction) => transaction.annotation(aiEditProvenance) ?? []);
     const allAiChanges = update.transactions
         .filter((transaction) => transaction.docChanged)
-        .every((transaction) => (transaction.annotation(aiEditProvenance)?.length ?? 0) > 0);
+        .every((transaction) => {
+            const origin = transaction.annotation(revisionProvenance);
+            return (
+                (transaction.annotation(aiEditProvenance)?.length ?? 0) > 0 &&
+                origin !== "mixed" &&
+                origin !== "human"
+            );
+        });
     const replacesWholeVersion =
         parentChanges.length === 1 &&
         parentChanges[0].from === offset &&

@@ -21,7 +21,7 @@ function initial(text: string): TextOriginState {
 }
 
 function originOf(provenance?: Provenance): TextOrigin {
-    if (provenance?.userEvent === "input.drop") return "unknown";
+    if (provenance?.userEvent?.startsWith("input.drop")) return "unknown";
     switch (provenance?.origin) {
         case "ai-revision":
             return "ai";
@@ -91,7 +91,7 @@ function traceOrigin(annotations: TransactionReplayAnnotations): TextOrigin {
     if (
         annotations.userEvent === "input.paste" ||
         annotations.userEvent === "input.restore" ||
-        annotations.userEvent === "input.drop"
+        annotations.userEvent?.startsWith("input.drop")
     )
         return "unknown";
     // Older nested acceptance events omitted their source AI annotations.

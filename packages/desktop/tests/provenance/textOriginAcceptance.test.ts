@@ -231,10 +231,101 @@ it("preserves accepted AI suggestion origin through nested parent dispatch", () 
         expect(JSON.parse(events.at(-1)!.payload).provenance.aiGenerations).toEqual([
             suggestion.aiProvenance,
         ]);
+        nested.dispatch({
+            changes: { from: 8, insert: "!" },
+            annotations: Transaction.userEvent.of("input.type"),
+        });
+        undo(parent);
+        expect(buildTextOrigin(events, "Hello world").text).toBe("Hi world");
+        expect(buildTextOrigin(events, "Hello world").spans[0].origin).toBe("ai");
         undo(parent);
         expect(buildTextOrigin(events, "Hello world").text).toBe("Hello world");
         redo(parent);
         expect(buildTextOrigin(events, "Hello world").spans[0].origin).toBe("ai");
+    } finally {
+        nested.destroy();
+        parent.destroy();
+    }
+});
+
+it("does not upgrade mixed AI wording when selecting a nested revision version", () => {
+    const events: EventRecord[] = [];
+    const parent = new EditorView({
+        state: EditorState.create({
+            doc: "Original",
+            extensions: [
+                persistHistoryFacet.of(true),
+                persistentHistoryExtension,
+                history(),
+                annotations(),
+                EditorView.updateListener.of((update) => {
+                    const payload = buildEventPayload(update);
+                    if (payload)
+                        events.push({
+                            id: events.length,
+                            createdAt: events.length,
+                            eventType: payload.type,
+                            payload: JSON.stringify(payload),
+                        });
+                }),
+            ],
+        }),
+        parent: document.body,
+    });
+    const outerVersion = makeVersion({ doc: "Original", provenance: "human" });
+    const outer = {
+        ...createNewAnnotation(
+            parent.state.field(annotationField),
+            EditorSelection.single(0, 8),
+            "revision",
+        ),
+        activeVersionId: outerVersion.id,
+        versions: [outerVersion],
+    };
+    parent.dispatch({ effects: addAnnotation.of(outer) });
+    const nested = new EditorView({
+        state: EditorState.create({
+            doc: "Original",
+            extensions: [
+                annotations(),
+                EditorView.updateListener.of((update) => {
+                    translateAndDispatch(update, parent, outer.id);
+                }),
+            ],
+        }),
+        parent: document.body,
+    });
+    try {
+        const original = makeVersion({ doc: "Original", provenance: "human" });
+        const mixed = makeVersion({
+            doc: "AI with writer edits",
+            provenance: "mixed",
+            aiProvenance: {
+                requestId: "mixed-request",
+                task: "local-rewrite" as const,
+                provider: "openai",
+                model: "test",
+                createdAt: 1,
+            },
+        });
+        const inner = {
+            ...createNewAnnotation(
+                nested.state.field(annotationField),
+                EditorSelection.single(0, 8),
+                "revision",
+            ),
+            activeVersionId: original.id,
+            versions: [original, mixed],
+        };
+        nested.dispatch({ effects: addAnnotation.of(inner) });
+        nested.dispatch(setActiveRevisionVersion(nested.state, inner.id, mixed.id));
+        const result = buildTextOrigin(events, "Original");
+        expect(result.text).toBe("AI with writer edits");
+        expect(result.spans.some((span) => span.origin === "ai")).toBe(false);
+        const updated = parent.state.field(annotationField)[outer.id];
+        expect(isAnnotationOfType(updated, "revision") && activeVersion(updated).provenance).toBe(
+            "mixed",
+        );
     } finally {
         nested.destroy();
         parent.destroy();
