@@ -13,7 +13,7 @@ import posthog from "posthog-js";
 import { onMount, tick } from "svelte";
 
 // The marketing demo (YouTube video id) shown above the feature list.
-const HERO_VIDEO_ID: string = "YKsJSmKGITA";
+const HERO_VIDEO_ID: string = "-ext0rEauYM";
 
 let { data } = $props();
 
