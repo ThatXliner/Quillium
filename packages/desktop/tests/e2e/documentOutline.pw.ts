@@ -7,6 +7,7 @@ test("outline navigates, refreshes after edits and undo, and closes at narrow wi
     await q.init();
     await page.getByRole("button", { name: "Show document outline", exact: true }).click();
     const outline = page.getByRole("navigation", { name: "Document outline" });
+    await expect(page.getByLabel("Draft tree", { exact: true })).toBeVisible();
     await expect(outline).toBeVisible();
     await outline.getByRole("button", { name: "Ending", exact: true }).click();
     await expect(outline.getByRole("button", { name: "Ending", exact: true })).toHaveAttribute("aria-current", "location");
@@ -17,6 +18,7 @@ test("outline navigates, refreshes after edits and undo, and closes at narrow wi
     await expect(outline.getByRole("button", { name: "Ending", exact: true })).toBeVisible();
     await page.screenshot({ path: "/tmp/quillium-outline-desktop.png" });
     await page.setViewportSize({ width: 768, height: 900 });
+    await expect(page.getByLabel("Draft tree", { exact: true })).toBeVisible();
     await expect(outline).toBeVisible();
     await page.screenshot({ path: "/tmp/quillium-outline-narrow.png" });
     await outline.getByRole("button", { name: "Hide document outline" }).click();

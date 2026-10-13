@@ -47,8 +47,9 @@ jobs. See [persistence](persistence.md) for the durable path.
 ## Document outline
 
 The outline button at the editor’s upper left shows headings from the active
-draft. The panel shares the drafts panel’s space on wide windows and overlays
-the document on narrower windows; closing it restores the drafts panel.
+draft. The outline sits below the drafts panel in the same scrollable column
+on wide windows. On narrower windows, the column overlays the document while
+the outline is open. Both panels remain available together.
 Heading levels determine indentation. Selecting a heading dispatches a
 CodeMirror selection and scroll effect, then returns focus to the editor.
 

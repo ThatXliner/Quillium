@@ -580,25 +580,15 @@ onMount(() => {
         />
     </div>
 
-    <!-- Draft tree for the active tab — hugs the document's left edge,
-         hidden on viewports too narrow to fit beside it. -->
-    {#if showOutline}
-        <div class="focus-chrome sticky top-36 z-40 h-0 pointer-events-none min-[1281px]:top-24" class:focus-chrome-visible={focusControlsVisible}>
-            <div class="outline-panel pointer-events-auto absolute w-60">
-                <DocumentOutline headings={outlineHeadings} cursor={outlineCursor}
-                    onselect={jumpToHeading} onclose={() => { updateSettings({ showDocumentOutline: false }); }} />
-            </div>
-        </div>
-    {/if}
-    {#if drafts.tabDrafts.length > 0 && !showOutline}
+    <!-- Drafts and outline share a column without replacing each other. -->
+    {#if drafts.tabDrafts.length > 0 || showOutline}
         <div
-            class="focus-chrome sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden"
+            class="focus-chrome sticky top-36 z-30 h-0 pointer-events-none min-[1281px]:top-24 {showOutline ? '' : 'max-[1280px]:hidden'}"
             class:focus-chrome-visible={focusControlsVisible}
         >
             <div
                 data-annotation-occluder
-                class="pointer-events-auto absolute"
-                style="right: calc(50% + 408px + 1rem)"
+                class="outline-panel pointer-events-auto absolute"
                 style:width="{effectiveDraftPanelWidth}px"
             >
                 <div class="draft-panel-resize-controls" class:is-resizing={resizingDraftPanel}>
@@ -637,16 +627,25 @@ onMount(() => {
                         {/if}
                     </button>
                 </div>
-                <DraftTreePanel
-                    drafts={drafts.tabDrafts}
-                    activeDraftId={$currentDraftId}
-                    ondraftselect={(id) => drafts.handleDraftSelect(id)}
-                    ondraftiterate={(id) => drafts.handleDraftIterate(id)}
-                    ondraftbranch={(id) => drafts.handleDraftBranch(id)}
-                    ondraftrename={(id, label) => drafts.handleDraftRename(id, label)}
-                    ondraftdelete={(id) => drafts.handleDraftDelete(id)}
-                    ontogglelock={(id, locked) => drafts.handleDraftToggleLock(id, locked)}
-                />
+                <div class="max-h-[calc(100vh-11rem)] space-y-3 overflow-y-auto">
+                    {#if drafts.tabDrafts.length > 0}
+                        <DraftTreePanel
+                            drafts={drafts.tabDrafts}
+                            activeDraftId={$currentDraftId}
+                            ondraftselect={(id) => drafts.handleDraftSelect(id)}
+                            ondraftiterate={(id) => drafts.handleDraftIterate(id)}
+                            ondraftbranch={(id) => drafts.handleDraftBranch(id)}
+                            ondraftrename={(id, label) => drafts.handleDraftRename(id, label)}
+                            ondraftdelete={(id) => drafts.handleDraftDelete(id)}
+                            ontogglelock={(id, locked) => drafts.handleDraftToggleLock(id, locked)}
+                        />
+                    {/if}
+                    {#if showOutline}
+                        <DocumentOutline headings={outlineHeadings} cursor={outlineCursor}
+                            onselect={jumpToHeading}
+                            onclose={() => { updateSettings({ showDocumentOutline: false }); }} />
+                    {/if}
+                </div>
             </div>
         </div>
     {/if}
@@ -792,7 +791,7 @@ onMount(() => {
 <style>
     .outline-panel { right: calc(50% + 408px + 1rem); }
     @media (max-width: 1280px) {
-        .outline-panel { left: 0.75rem; right: auto; max-width: calc(100vw - 1.5rem); }
+        .outline-panel { left: 4.75rem; right: auto; max-width: calc(100vw - 5.5rem); }
     }
 
     .focus-chrome {
