@@ -72,6 +72,7 @@ export type AppSettings = {
     grammarDialect: "american" | "british" | "australian";
     annotationPanelWidth: number;
     draftPanelWidth: number;
+    showDocumentOutline: boolean;
     readonlyShareAutoUpdate: boolean;
     readonlyShareAutoUpdateDebounceMs: number;
     /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
@@ -121,6 +122,7 @@ const DEFAULTS: AppSettings = {
     grammarDialect: "american",
     annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH,
     draftPanelWidth: DRAFT_PANEL_DEFAULT_WIDTH,
+    showDocumentOutline: false,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     persistUndoHistoryForNewDocuments: false,
@@ -153,6 +155,7 @@ function loadSettings(fallback: AppSettings = DEFAULTS): AppSettings {
 
 function normalizeSettings(settings: AppSettings): AppSettings {
     const merged = { ...settings };
+    merged.showDocumentOutline = merged.showDocumentOutline === true;
     merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
     merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
         merged.readonlyShareAutoUpdateDebounceMs,

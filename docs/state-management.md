@@ -44,6 +44,21 @@ The separate persistence listener in
 The UI bridge and save queue react to the same editor updates but do different
 jobs. See [persistence](persistence.md) for the durable path.
 
+## Document outline
+
+The outline button at the editor’s upper left shows headings from the active
+draft. The panel shares the drafts panel’s space on wide windows and overlays
+the document on narrower windows; closing it restores the drafts panel.
+Heading levels determine indentation. Selecting a heading dispatches a
+CodeMirror selection and scroll effect, then returns focus to the editor.
+
+[DocumentOutline.svelte](../packages/desktop/src/lib/editor/DocumentOutline.svelte)
+receives heading labels and positions parsed from the `documentContent` mirror
+only while the panel is open. Edits, undo, version changes, and draft loads
+refresh that mirror. Cursor position comes from the editor bridge and marks the
+current section. Outline visibility is saved in app settings between sessions; heading data
+is derived UI state and does not edit or persist the draft.
+
 ## Store ownership
 
 | Value | Written by | Use it for |

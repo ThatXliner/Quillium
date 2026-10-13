@@ -35,6 +35,7 @@ Missing, malformed, or unavailable storage defaults to session-only undo.
 | `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
 | `aiEnabled` | boolean | `false` | AI features active; local sidebar panels remain available |
 | `showShortcutHints` | boolean | `true` | Keyboard hints in panel |
+| `showDocumentOutline` | boolean | `false` | Remember outline panel visibility between sessions |
 | `showWordCount` | boolean | `true` | Word count in status bar |
 | `wordCountDisplayMode` | enum | `"both"` | Words, chars, or both |
 | `autoVersionOnRevisionCreate` | boolean | `true` | Auto-add version when creating revision |

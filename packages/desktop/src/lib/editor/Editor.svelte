@@ -63,6 +63,7 @@ import {
     CopyIcon,
     GitBranchIcon,
     LockIcon,
+    ListTreeIcon,
     Maximize2Icon,
     MessageSquareIcon,
     Minimize2Icon,
@@ -70,6 +71,8 @@ import {
     ScissorsIcon,
 } from "lucide-svelte";
 import { DocumentLoader } from "./documentLoader";
+import DocumentOutline from "./DocumentOutline.svelte";
+import { getDocumentOutline } from "./documentOutline";
 import DocumentTabs from "./DocumentTabs.svelte";
 import DocumentTitleBar from "./DocumentTitleBar.svelte";
 import DraftDeleteModal from "./DraftDeleteModal.svelte";
@@ -106,6 +109,19 @@ const windowLabel = getCurrentWebviewWindow().label;
 
 // ── Local UI state ──────────────────────────────────────────────
 let element = $state<HTMLDivElement>();
+let showOutline = $derived(appSettings.showDocumentOutline);
+let outlineHeadings = $derived(showOutline ? getDocumentOutline($documentContent) : []);
+let outlineCursor = $state(0);
+
+function jumpToHeading(from: number): void {
+    const view = $editorView;
+    if (!view) return;
+    view.dispatch({
+        selection: { anchor: from },
+        effects: EditorView.scrollIntoView(from, { y: "start", yMargin: 100 }),
+    });
+    view.focus();
+}
 let viewportWidth = $state(typeof window === "undefined" ? 1280 : window.innerWidth);
 let resizingDraftPanel = $state(false);
 let draftPanelDragStartWidth = 0;
@@ -378,6 +394,7 @@ function computeWritingStats(doc: string, selText: string) {
 function syncStoresToEditorState(state: EditorState, previous?: EditorState) {
     const docChanged = !previous || state.doc !== previous.doc;
     const selectionChanged = !previous || !state.selection.eq(previous.selection);
+    if (docChanged || selectionChanged) outlineCursor = state.selection.main.head;
     const nextAnnotations = state.field(annotationField);
     const annotationsChanged = !previous || nextAnnotations !== previous.field(annotationField);
     const nextGroups = state.field(versionGroupField);
@@ -541,6 +558,13 @@ onMount(() => {
     >
         <div class="pointer-events-auto">
             <DocumentTitleBar bind:this={titleBar} />
+            <button type="button" aria-label={showOutline ? "Hide document outline" : "Show document outline"}
+                aria-expanded={showOutline} aria-controls="document-outline"
+                title={showOutline ? "Hide document outline" : "Show document outline"}
+                class="absolute left-3 top-0 rounded-full border border-white/30 bg-gray-300/70 p-2 text-black/70 shadow-lg backdrop-blur-md hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-blue-500"
+                onclick={() => { updateSettings({ showDocumentOutline: !showOutline }); }}>
+                <ListTreeIcon size={18} />
+            </button>
         </div>
     </div>
 
@@ -558,7 +582,15 @@ onMount(() => {
 
     <!-- Draft tree for the active tab — hugs the document's left edge,
          hidden on viewports too narrow to fit beside it. -->
-    {#if drafts.tabDrafts.length > 0}
+    {#if showOutline}
+        <div class="focus-chrome sticky top-36 z-40 h-0 pointer-events-none min-[1281px]:top-24" class:focus-chrome-visible={focusControlsVisible}>
+            <div class="outline-panel pointer-events-auto absolute w-60">
+                <DocumentOutline headings={outlineHeadings} cursor={outlineCursor}
+                    onselect={jumpToHeading} onclose={() => { updateSettings({ showDocumentOutline: false }); }} />
+            </div>
+        </div>
+    {/if}
+    {#if drafts.tabDrafts.length > 0 && !showOutline}
         <div
             class="focus-chrome sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden"
             class:focus-chrome-visible={focusControlsVisible}
@@ -758,6 +790,11 @@ onMount(() => {
 </div>
 
 <style>
+    .outline-panel { right: calc(50% + 408px + 1rem); }
+    @media (max-width: 1280px) {
+        .outline-panel { left: 0.75rem; right: auto; max-width: calc(100vw - 1.5rem); }
+    }
+
     .focus-chrome {
         transition:
             opacity 240ms ease,
