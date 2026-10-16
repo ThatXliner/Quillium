@@ -2,20 +2,20 @@
     TimelinePanel.svelte — The document-wide history timeline (right rail).
 
     One linear, chronological stream interleaving content snapshots (across every
-    draft) with structural events, grouped by date. Both snapshot and activity
-    rows are selectable coordinates; snapshot rows are additionally label-
-    editable. There is exactly one restore path — the parent's top-bar "Restore
-    to here" CTA acting on the selected coordinate — so rows carry no inline
-    restore action.
+    draft) with structural events, grouped into collapsible calendar-day and
+    hour sections. Both snapshot and activity rows are selectable coordinates;
+    snapshot rows are additionally label-editable. There is exactly one restore
+    path — the parent's top-bar "Restore to here" CTA acting on the selected
+    coordinate — so rows carry no inline restore action.
 
     Props:
-      groups          — date-grouped TimelineItem[] (from timeline.ts)
+      groups          — day- and hour-grouped TimelineItem[] (from timeline.ts)
       selectedId      — id of the selected TimelineItem, or null
       onselect        — (item) select a coordinate
       onlabel         — (snapshotId, label) commit a snapshot label
 -->
 <script lang="ts">
-import { PencilIcon } from "lucide-svelte";
+import { ChevronDown, ChevronRight, PencilIcon } from "lucide-svelte";
 import {
     type TimelineGroup,
     type TimelineItem,
@@ -38,6 +38,64 @@ const {
 
 let editingLabelId = $state<number | null>(null);
 let editingLabelText = $state("");
+let initializedFolds = $state(false);
+let collapsedDays = $state<Set<string>>(new Set());
+let collapsedHours = $state<Set<string>>(new Set());
+
+$effect(() => {
+    if (initializedFolds || groups.length === 0) return;
+
+    // Keep the newest writing session immediately visible while making a long
+    // history calm to scan. Each older day opens with only its newest hour shown.
+    collapsedDays = new Set(groups.slice(1).map((group) => group.key));
+    collapsedHours = new Set(
+        groups.flatMap((group) => group.hours.slice(1).map((hour) => hour.key)),
+    );
+    initializedFolds = true;
+});
+
+$effect(() => {
+    if (!selectedId) return;
+
+    for (const group of groups) {
+        const hour = group.hours.find((candidate) =>
+            candidate.items.some((item) => item.id === selectedId),
+        );
+        if (!hour) continue;
+
+        if (collapsedDays.has(group.key)) {
+            const next = new Set(collapsedDays);
+            next.delete(group.key);
+            collapsedDays = next;
+        }
+        if (collapsedHours.has(hour.key)) {
+            const next = new Set(collapsedHours);
+            next.delete(hour.key);
+            collapsedHours = next;
+        }
+        break;
+    }
+});
+
+function toggleDay(key: string) {
+    const next = new Set(collapsedDays);
+    if (!next.delete(key)) next.add(key);
+    collapsedDays = next;
+}
+
+function toggleHour(key: string) {
+    const next = new Set(collapsedHours);
+    if (!next.delete(key)) next.add(key);
+    collapsedHours = next;
+}
+
+function versionCount(group: TimelineGroup): number {
+    return group.hours.reduce((count, hour) => count + hour.items.length, 0);
+}
+
+function countLabel(count: number): string {
+    return `${count} ${count === 1 ? "version" : "versions"}`;
+}
 
 function startEdit(snapshotId: number, current: string) {
     editingLabelId = snapshotId;
@@ -51,13 +109,63 @@ function commitEdit(snapshotId: number) {
 </script>
 
 <div role="list" aria-label="History timeline">
-    {#each groups as group (group.heading)}
-        <div class="px-4 pt-4 pb-1">
-            <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wide">
+    {#each groups as group (group.key)}
+        {@const dayCollapsed = collapsedDays.has(group.key)}
+        {@const dayPanelId = `history-day-${group.key}`}
+        <button
+            type="button"
+            aria-expanded={!dayCollapsed}
+            aria-controls={dayPanelId}
+            onclick={() => toggleDay(group.key)}
+            class="w-full px-4 pt-4 pb-2 flex items-center gap-2 text-left group/day
+                   hover:bg-black/[0.02] transition-colors"
+        >
+            {#if dayCollapsed}
+                <ChevronRight size={13} class="text-black/25 group-hover/day:text-black/45" />
+            {:else}
+                <ChevronDown size={13} class="text-black/25 group-hover/day:text-black/45" />
+            {/if}
+            <span class="text-[11px] font-semibold text-black/45 uppercase tracking-wide">
                 {group.heading}
             </span>
-        </div>
-        {#each group.items as item (item.id)}
+            <span class="ml-auto text-[10px] text-black/25 normal-case tracking-normal">
+                {countLabel(versionCount(group))}
+            </span>
+        </button>
+
+        {#if !dayCollapsed}
+            <div id={dayPanelId}>
+                {#each group.hours as hour (hour.key)}
+                    {@const hourCollapsed = collapsedHours.has(hour.key)}
+                    {@const hourPanelId = `history-hour-${hour.key}`}
+                    <button
+                        type="button"
+                        aria-expanded={!hourCollapsed}
+                        aria-controls={hourPanelId}
+                        onclick={() => toggleHour(hour.key)}
+                        class="w-full pl-7 pr-4 py-1.5 flex items-center gap-2 text-left
+                               hover:bg-black/[0.02] transition-colors group/hour"
+                    >
+                        {#if hourCollapsed}
+                            <ChevronRight
+                                size={12}
+                                class="text-black/20 group-hover/hour:text-black/40"
+                            />
+                        {:else}
+                            <ChevronDown
+                                size={12}
+                                class="text-black/20 group-hover/hour:text-black/40"
+                            />
+                        {/if}
+                        <span class="text-xs font-medium text-black/45">{hour.heading}</span>
+                        <span class="ml-auto text-[10px] text-black/25">
+                            {countLabel(hour.items.length)}
+                        </span>
+                    </button>
+
+                    {#if !hourCollapsed}
+                        <div id={hourPanelId}>
+                            {#each hour.items as item (item.id)}
             {#if item.kind === "snapshot"}
                 {@const snapshot = item.snapshot}
                 {@const isSelected = selectedId === item.id}
@@ -72,7 +180,7 @@ function commitEdit(snapshotId: number) {
                             onselect(item);
                         }
                     }}
-                    class="w-full text-left px-4 py-2.5 flex items-start gap-3 cursor-pointer
+                    class="w-full text-left pl-9 pr-4 py-2.5 flex items-start gap-3 cursor-pointer
                            transition-colors
                            {isSelected
                                ? 'bg-blue-50 border-r-2 border-blue-500'
@@ -154,7 +262,7 @@ function commitEdit(snapshotId: number) {
                             onselect(item);
                         }
                     }}
-                    class="w-full text-left px-4 py-2.5 flex items-start gap-3 cursor-pointer
+                    class="w-full text-left pl-9 pr-4 py-2.5 flex items-start gap-3 cursor-pointer
                            transition-colors
                            {isSelected
                                ? 'bg-blue-50 border-r-2 border-blue-500'
@@ -167,6 +275,11 @@ function commitEdit(snapshotId: number) {
                     </div>
                 </div>
             {/if}
-        {/each}
+                            {/each}
+                        </div>
+                    {/if}
+                {/each}
+            </div>
+        {/if}
     {/each}
 </div>
