@@ -46,10 +46,11 @@ jobs. See [persistence](persistence.md) for the durable path.
 
 ## Document outline
 
-The outline button at the editor’s upper left shows headings from the active
+The Outline header in the editor’s left column expands headings from the active
 draft. The outline sits below the drafts panel in the same scrollable column
-on wide windows. On narrower windows, the column overlays the document while
-the outline is open. Both panels remain available together.
+on wide windows. On narrower windows, the column overlays the document. Each
+panel has a disclosure header that stays visible when collapsed. Drafts and
+outline expand independently; both preferences are saved between sessions.
 Heading levels determine indentation. Selecting a heading dispatches a
 CodeMirror selection and scroll effect, then returns focus to the editor.
 
@@ -57,8 +58,10 @@ CodeMirror selection and scroll effect, then returns focus to the editor.
 receives heading labels and positions parsed from the `documentContent` mirror
 only while the panel is open. Edits, undo, version changes, and draft loads
 refresh that mirror. Cursor position comes from the editor bridge and marks the
-current section. Outline visibility is saved in app settings between sessions; heading data
-is derived UI state and does not edit or persist the draft.
+current section. `showDrafts` and `showDocumentOutline` in app settings control
+the expanded states. Both panels use `NavigationPanel.svelte` for the same
+surface, header, and keyboard-accessible disclosure. Heading data is derived UI
+state and does not edit or persist the draft.
 
 ## Store ownership
 

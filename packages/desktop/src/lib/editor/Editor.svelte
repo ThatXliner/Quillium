@@ -63,7 +63,6 @@ import {
     CopyIcon,
     GitBranchIcon,
     LockIcon,
-    ListTreeIcon,
     Maximize2Icon,
     MessageSquareIcon,
     Minimize2Icon,
@@ -558,13 +557,6 @@ onMount(() => {
     >
         <div class="pointer-events-auto">
             <DocumentTitleBar bind:this={titleBar} />
-            <button type="button" aria-label={showOutline ? "Hide document outline" : "Show document outline"}
-                aria-expanded={showOutline} aria-controls="document-outline"
-                title={showOutline ? "Hide document outline" : "Show document outline"}
-                class="absolute left-3 top-0 rounded-full border border-white/30 bg-gray-300/70 p-2 text-black/70 shadow-lg backdrop-blur-md hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-blue-500"
-                onclick={() => { updateSettings({ showDocumentOutline: !showOutline }); }}>
-                <ListTreeIcon size={18} />
-            </button>
         </div>
     </div>
 
@@ -583,7 +575,7 @@ onMount(() => {
     <!-- Drafts and outline share a column without replacing each other. -->
     {#if drafts.tabDrafts.length > 0 || showOutline}
         <div
-            class="focus-chrome sticky top-36 z-30 h-0 pointer-events-none min-[1281px]:top-24 {showOutline ? '' : 'max-[1280px]:hidden'}"
+            class="focus-chrome sticky top-36 z-30 h-0 pointer-events-none min-[1281px]:top-24"
             class:focus-chrome-visible={focusControlsVisible}
         >
             <div
@@ -627,9 +619,11 @@ onMount(() => {
                         {/if}
                     </button>
                 </div>
-                <div class="max-h-[calc(100vh-11rem)] space-y-3 overflow-y-auto">
+                <div class="max-h-[calc(100vh-11rem)] space-y-3 overflow-y-auto -m-2 p-2">
                     {#if drafts.tabDrafts.length > 0}
                         <DraftTreePanel
+                            expanded={appSettings.showDrafts}
+                            ontoggle={() => updateSettings({ showDrafts: !appSettings.showDrafts })}
                             drafts={drafts.tabDrafts}
                             activeDraftId={$currentDraftId}
                             ondraftselect={(id) => drafts.handleDraftSelect(id)}
@@ -640,11 +634,13 @@ onMount(() => {
                             ontogglelock={(id, locked) => drafts.handleDraftToggleLock(id, locked)}
                         />
                     {/if}
-                    {#if showOutline}
-                        <DocumentOutline headings={outlineHeadings} cursor={outlineCursor}
-                            onselect={jumpToHeading}
-                            onclose={() => { updateSettings({ showDocumentOutline: false }); }} />
-                    {/if}
+                    <DocumentOutline
+                        headings={outlineHeadings}
+                        cursor={outlineCursor}
+                        onselect={jumpToHeading}
+                        expanded={showOutline}
+                        ontoggle={() => updateSettings({ showDocumentOutline: !showOutline })}
+                    />
                 </div>
             </div>
         </div>

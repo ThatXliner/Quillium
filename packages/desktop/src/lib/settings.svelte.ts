@@ -73,6 +73,7 @@ export type AppSettings = {
     annotationPanelWidth: number;
     draftPanelWidth: number;
     showDocumentOutline: boolean;
+    showDrafts: boolean;
     readonlyShareAutoUpdate: boolean;
     readonlyShareAutoUpdateDebounceMs: number;
     /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
@@ -123,6 +124,7 @@ const DEFAULTS: AppSettings = {
     annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH,
     draftPanelWidth: DRAFT_PANEL_DEFAULT_WIDTH,
     showDocumentOutline: false,
+    showDrafts: true,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     persistUndoHistoryForNewDocuments: false,
@@ -155,6 +157,7 @@ function loadSettings(fallback: AppSettings = DEFAULTS): AppSettings {
 
 function normalizeSettings(settings: AppSettings): AppSettings {
     const merged = { ...settings };
+    merged.showDrafts = merged.showDrafts !== false;
     merged.showDocumentOutline = merged.showDocumentOutline === true;
     merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
     merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
