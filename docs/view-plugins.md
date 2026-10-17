@@ -18,6 +18,9 @@ Builds `DecorationSet`s for all annotation types on every `selectionSet`, `docCh
 | `cm-suggestion` / `cm-suggestion-active` | Suggestion annotation |
 
 Inactive revisions use a thin, muted purple underline that returns to full strength on hover.
+Each nested revision in the displayed version adds another underline beneath its own passage
+(two lines for a child, three for a grandchild). The shared decoration builder projects these
+version-local ranges into the containing editor; comments and inactive versions add no lines.
 Touch devices keep the full underline; active revisions retain their purple background.
 The shared read-only renderer follows the same treatment, and legacy preview buttons also reveal
 the underline on keyboard focus. Empty-revision markers remain visible.

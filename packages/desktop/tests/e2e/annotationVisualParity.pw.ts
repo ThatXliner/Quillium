@@ -172,7 +172,7 @@ async function expectDesktopFixtureReady(
     await expect(qp.editor).toContainText(VISUAL_FIXTURE.targets.start);
     await expect(page.locator("[data-annotation-card]")).toHaveCount(expectedCardCount);
     if (expectedCardCount > 0) {
-        await expect(page.locator('[data-annotation-id="102"]')).toBeAttached();
+        await expect(mainAnnotationCard(page, VISUAL_FIXTURE.ids.rootRevision)).toBeAttached();
         await expect
             .poll(() =>
                 qp.annotationCards.evaluateAll((cards) =>
@@ -450,6 +450,53 @@ test("inactive revisions recede, reveal on hover, and retain active styling", as
     qp.expectNoPageErrors();
 });
 
+test("revision underlines show nesting depth across wrapped text", async ({ page }, testInfo) => {
+    await preparePage(page, "light", VIEWPORTS[0]);
+    const qp = new QuilliumPage(page, fixtureOptions());
+    qp.capturePageErrors();
+    await qp.init();
+    await expectDesktopFixtureReady(page, qp);
+    await scrollDesktopToAnchor(page, "middle");
+    await page.mouse.move(0, 0);
+    const nested = page.locator('#editor-document [data-revision-depth="2"]');
+    const deepest = page.locator('#editor-document [data-revision-depth="3"]');
+    await expect(nested.first()).toBeVisible();
+    await expect(deepest.first()).toBeVisible();
+    await expect(deepest.first()).toContainText("the brass bell");
+    await expect(nested.first()).toHaveCSS("text-underline-offset", "6px");
+    await expect(deepest.first()).toHaveCSS("text-underline-offset", "9px");
+    await expect(deepest.first()).toHaveCSS("text-decoration-color", "rgba(168, 85, 247, 0.35)");
+    const passage = await page.locator("#editor-document .cm-revision").first().boundingBox();
+    expect(passage).not.toBeNull();
+    await testInfo.attach("nested-underlines", {
+        body: await page.screenshot({
+            ...SCREENSHOT_OPTIONS,
+            clip: {
+                x: passage!.x,
+                y: passage!.y - 4,
+                width: passage!.width,
+                height: passage!.height + 18,
+            },
+            path: testInfo.outputPath("nested-underlines.png"),
+        }),
+        contentType: "image/png",
+    });
+    await deepest.first().hover();
+    await expect(deepest.first()).toHaveCSS("text-decoration-color", "rgb(168, 85, 247)");
+    const card = mainAnnotationCard(page, VISUAL_FIXTURE.ids.rootRevision);
+    await card.getByRole("button", { name: /^Direct account/ }).click();
+    await expect(nested).toHaveCount(0);
+    await expect(deepest).toHaveCount(0);
+    await qp.editor.focus();
+    await qp.undo();
+    await expect(deepest.first()).toBeAttached();
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(deepest).toHaveCount(0);
+    await card.getByRole("button", { name: /^Layered memory/ }).click();
+    await expect(deepest.first()).toBeAttached();
+    qp.expectNoPageErrors();
+});
+
 test.describe("touch revision decorations", () => {
     test.use({ hasTouch: true, isMobile: true });
 
@@ -511,6 +558,9 @@ for (const viewport of VIEWPORTS) {
             // Narrow previews virtualize this passage until their anchor is selected below.
             if (viewport.name === "wide") {
                 const inactiveRevision = page.locator(".version-preview .cm-revision").first();
+                await expect(
+                    page.locator('.version-preview [data-revision-depth="3"]').first(),
+                ).toHaveCSS("text-underline-offset", "9px");
                 await page.mouse.move(0, 0);
                 await expect(inactiveRevision).toHaveCSS("text-decoration-thickness", "1px");
                 await inactiveRevision.hover();

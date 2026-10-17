@@ -75,7 +75,11 @@ import {
     WidgetType,
     keymap,
 } from "@codemirror/view";
-import { buildRevisionAtomicRanges, getPersonaDots } from "@quillium/share/core";
+import {
+    buildRevisionAtomicRanges,
+    getNestedRevisionDecorations,
+    getPersonaDots,
+} from "@quillium/share/core";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
 import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "$lib/editor/diff";
@@ -510,6 +514,7 @@ const annotationDecorations = EditorView.decorations.compute(
         RangeSet.join([
             _getAnnotationDecorations(state, "comment", "cm-comment"),
             _getAnnotationDecorations(state, "revision", "cm-revision"),
+            getNestedRevisionDecorations(state.field(annotationField)),
             _getEmptyRevisionMarkers(state),
             _getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
             getPersonaDots(state.field(annotationField), readersSettings.personas),
