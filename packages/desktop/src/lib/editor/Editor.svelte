@@ -445,6 +445,7 @@ function trackKeyboardActions(update: ViewUpdate) {
 const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
         syncStoresToEditorState(update.state, update.startState);
+        loader.drafts.history.observe(update);
         trackKeyboardActions(update);
     },
 };
@@ -462,6 +463,7 @@ const loader = new DocumentLoader(getExtensionOptions, ({ state }) => {
         });
     }
     syncStoresToEditorState(state);
+    loader.drafts.history.loaded();
 });
 let nameVersionTarget = $state<ReturnType<DocumentLoader["namedVersionTarget"]>>();
 $effect(() =>
@@ -519,6 +521,7 @@ export async function reload(): Promise<void> {
 }
 
 onMount(() => {
+    const disconnectHistory = drafts.history.listen();
     const disconnectMcp = connectMcpEditor(() => loader.isReady());
     const unsubscribe = currentDocumentId.subscribe((id) => {
         deregisterOpenDoc(windowLabel).catch(console.error);
@@ -528,6 +531,7 @@ onMount(() => {
 
     return () => {
         disconnectMcp();
+        disconnectHistory();
         unsubscribe();
         loader.dispose();
         view?.destroy();

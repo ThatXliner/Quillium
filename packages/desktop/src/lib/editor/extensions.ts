@@ -47,6 +47,7 @@ import {
     highlightSpecialChars,
     keymap,
 } from "@codemirror/view";
+import { editorHistoryShortcuts } from "./historyShortcuts";
 import { dictionaryExtension } from "./dictionaryPlugin";
 import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
@@ -144,6 +145,7 @@ export const getExtensions = (options?: ListenerOptions) => {
         ...(withHistory
             ? [
                   persistentHistoryStateExtension,
+                  editorHistoryShortcuts,
                   historyCompartment.of([
                       persistentHistoryRuntimeExtension,
                       history({ newGroupDelay: 250 }),

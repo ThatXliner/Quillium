@@ -14,8 +14,9 @@ import {
     lastSavedAt,
     saveStatus,
 } from "$lib/stores";
+import { redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +35,7 @@ const db = vi.hoisted(() => ({
     getActiveDraft: vi.fn(),
     createTab: vi.fn(),
     setActiveTab: vi.fn(),
+    setDraftLocked: vi.fn(),
 }));
 const persistence = vi.hoisted(() => ({
     flushPersistence: vi.fn(),
@@ -51,7 +53,9 @@ vi.mock("$lib/posthog", () => ({
     captureException: vi.fn(),
 }));
 vi.mock("$lib/navigation", () => ({ goToHistory: vi.fn() }));
-vi.mock("svelte-sonner", () => ({ toast: vi.fn() }));
+vi.mock("svelte-sonner", () => ({
+    toast: Object.assign(vi.fn(), { dismiss: vi.fn(), error: vi.fn() }),
+}));
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -404,4 +408,39 @@ describe("named version targets", () => {
         pending.resolve();
         await navigation;
     });
+});
+
+it("updates a committed draft lock without losing session undo or redo", async () => {
+    db.getDocumentMeta.mockResolvedValue(metadata("doc-1", false));
+    db.setDraftLocked.mockResolvedValue(undefined);
+    const previousView = get(editorView);
+    const view = new EditorView({ parent: document.body });
+    editorView.set(view);
+    loader.dispose();
+    loader = new DocumentLoader({}, (result) => view.setState(result.state));
+    try {
+        await loader.load({ documentId: "doc-1" });
+        const before = view.state.doc.toString();
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " after" } });
+        expect(undoDepth(view.state)).toBe(1);
+        await loader.drafts.handleDraftToggleLock("draft-1", true);
+        expect(view.state.readOnly).toBe(true);
+        expect(undoDepth(view.state)).toBe(1);
+        await loader.drafts.handleDraftToggleLock("draft-1", false);
+        expect(undo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe(before);
+        expect(redoDepth(view.state)).toBe(1);
+        db.listTabDrafts.mockResolvedValue([draft("draft-1", true)]);
+        await loader.drafts.refreshDraftsAndCurrentLock();
+        expect(view.state.readOnly).toBe(true);
+        expect(redoDepth(view.state)).toBe(1);
+        db.listTabDrafts.mockResolvedValue([draft("draft-1", false)]);
+        await loader.drafts.refreshDraftsAndCurrentLock();
+        expect(redo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe(`${before} after`);
+        expect(db.loadDocumentState).toHaveBeenCalledOnce();
+    } finally {
+        editorView.set(previousView);
+        view.destroy();
+    }
 });
