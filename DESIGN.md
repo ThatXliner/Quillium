@@ -16,7 +16,7 @@ Inline and modal are functionally identical for history and sync. The only diffe
 
 Cmd-Z anywhere—main document, inline editor, modal—walks back through one shared history. Typing in a nested editor, switching versions, creating versions: all one timeline. Closing the modal doesn't lose undo history. There is no "modal-only undo."
 
-From the user's perspective it just works like normal undo, except some steps happen to affect text inside a revision.
+Consecutive typing in the same revision groups into one undo step. Moving between a revision and surrounding text, or between revision targets, starts another step. Emptying a revision or typing into an empty revision is a separate step so undo can restore its exact boundary.
 
 ## Version navigation
 

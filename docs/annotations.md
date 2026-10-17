@@ -279,7 +279,15 @@ event's inverse `ChangeSet`. Its `map` function rebases that snapshot through
 later `addToHistory: false` document changes, while a transaction extender places
 an `isolateHistory("after")` boundary on edits whose positional inverse must not
 be joined to the next change. Revision-system builders use full isolation at
-their public action boundary. Every live annotation also has a private persisted
+their public action boundary. Consecutive nested typing uses version-state
+inverses rather than exact snapshots, so grouped events remain safe to rebase.
+Moving between nested revision targets and surrounding document text starts a
+new undo step; empty/non-empty transitions are fully isolated. The persisted
+`annotationHistoryScope` field preserves these grouping boundaries across
+snapshots and replay. Older saved histories with incompatible restore transforms
+are discarded on load, while the document and annotations remain intact.
+
+Every live annotation also has a private persisted
 `_historyId` lineage token. Numeric display IDs may be reused after removal, so
 the token prevents an older undo entry from modifying a different annotation
 that later received the same ID, type, and range. Legacy annotations receive a

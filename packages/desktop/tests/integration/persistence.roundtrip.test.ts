@@ -9,6 +9,7 @@ import {
 } from "$lib/editor/persistentHistory";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
+    _nestedEditRevision,
     addAnnotation,
     annotationField,
     nestedEditorEdit,
@@ -28,7 +29,13 @@ import {
 } from "$lib/editor/plugins/annotations/versionGroupField";
 import { reconstructState } from "$lib/editor/replay";
 import { history, isolateHistory, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
-import { Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import {
+    ChangeSet,
+    Compartment,
+    EditorSelection,
+    EditorState,
+    Transaction,
+} from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -327,6 +334,81 @@ describe("persistence round-trip integration", () => {
         );
         expect(legacyRestored.field(annotationField)[comment.id]).toBeDefined();
         expect(undoDepth(legacyRestored)).toBe(0);
+    });
+
+    it("preserves nested typing boundaries after restoring a snapshot", () => {
+        view = createView("aa");
+        const version = makeVersion({ doc: "a" });
+        const revision = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(1, 2),
+                "revision",
+            ),
+            activeVersionId: version.id,
+            versions: [version],
+        };
+        view.dispatch({ effects: addAnnotation.of(revision) });
+        view.dispatch({
+            changes: { from: 1, insert: "a" },
+            effects: _nestedEditRevision.of(revision.id),
+            annotations: [Transaction.time.of(1000), Transaction.userEvent.of("input.type")],
+        });
+        const saved = view.state.toJSON(savedFields);
+        const restored = EditorState.fromJSON(
+            saved,
+            { extensions: [persistentHistoryExtension, history(), annotationExtensions()] },
+            savedFields,
+        );
+        const parent = document.createElement("div");
+        document.body.appendChild(parent);
+        restoredView = new EditorView({ state: restored, parent });
+        restoredView.dispatch({
+            changes: { from: 0, to: 1 },
+            annotations: [Transaction.time.of(1100), Transaction.userEvent.of("delete.backward")],
+        });
+        expect(restoredView.state.doc.toString()).toBe("aa");
+        expect(undo(restoredView)).toBe(true);
+        expect(restoredView.state.doc.toString()).toBe("aaa");
+        expect(undo(restoredView)).toBe(true);
+        expect(restoredView.state.doc.toString()).toBe("aa");
+        expect(restoredView.state.field(annotationField)[revision.id].selection.main.from).toBe(1);
+        expect(restoredView.state.field(annotationField)[revision.id].selection.main.to).toBe(2);
+    });
+
+    it("discards an older grouped history snapshot with an incompatible restore transform", () => {
+        view = createView("hello");
+        const comment = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "comment",
+            ),
+            thread: [{ author: "Writer", message: "Keep this", time: 1 }],
+        };
+        view.dispatch({ effects: addAnnotation.of(comment) });
+        view.dispatch({ changes: { from: 0, to: 1 } });
+        const saved = structuredClone(view.state.toJSON(savedFields));
+        const historyJson = saved.historyField as {
+            effects: { done: Array<Array<{ type: string; value: { undoChanges: unknown } }>> };
+        };
+        const restore = historyJson.effects.done
+            .flat()
+            .find((effect) => effect.type === "annotation.restore");
+        expect(restore).toBeDefined();
+        restore!.value.undoChanges = ChangeSet.empty(2).toJSON();
+        const restored = EditorState.fromJSON(
+            saved,
+            {
+                extensions: [persistentHistoryExtension, history(), annotationExtensions()],
+            },
+            savedFields,
+        );
+        expect(restored.doc.toString()).toBe("ello");
+        expect(restored.field(annotationField)[comment.id]).toEqual(
+            view.state.field(annotationField)[comment.id],
+        );
+        expect(undoDepth(restored)).toBe(0);
     });
 
     it("keeps in-session undo but erases it from session-only snapshots", () => {

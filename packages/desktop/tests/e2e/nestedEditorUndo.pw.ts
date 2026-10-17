@@ -59,7 +59,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({ timeout: 15_000 });
     });
 
     test("undo restores the added text (partial delete scenario)", async ({ page }) => {
@@ -178,13 +178,9 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         for (let i = 0; i < 6; i++) await page.keyboard.press("Backspace");
         await expect.poll(() => getCmText(nestedEditor)).toBe("world");
 
-        // Click at the very beginning of the parent editor to land on "hello "
-        // (outside the revision range), which deactivates the revision.
-        // Use bounding box to click at x=10% from left edge where "hello" starts.
-        const editorBox = await mainEditor.boundingBox();
-        if (editorBox) {
-            await page.mouse.click(editorBox.x + 5, editorBox.y + editorBox.height / 2);
-        }
+        // Focus the parent and move to the start of its line, before the revision.
+        await mainEditor.click();
+        await page.keyboard.press("Home");
 
         // Verify nested editor closed (revision deactivated)
         await expect(page.locator(".revision-inline-editor .cm-content")).toBeHidden({

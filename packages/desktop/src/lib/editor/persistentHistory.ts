@@ -26,6 +26,7 @@ import {
 } from "$lib/editor/plugins/annotations/versionGroupField";
 import { historyField } from "@codemirror/commands";
 import {
+    ChangeSet,
     type EditorSelection,
     type EditorState,
     type Extension,
@@ -256,6 +257,22 @@ function hydrateBranch(
     }
     for (let index = 0; index < events.length; index++) {
         events[index].effects = serialized[index].map(requireDeserializedEffect);
+        const changes = events[index].changes;
+        if (changes instanceof ChangeSet) {
+            // Older grouped snapshots may retain a shorter undo transform.
+            // Validate rebasing now so loading fails closed before a later edit crashes.
+            for (const effect of serialized[index]) {
+                if (
+                    effect.type === "annotation.restore" &&
+                    isRecord(effect.value) &&
+                    ChangeSet.fromJSON(effect.value.undoChanges).length !== changes.length
+                ) {
+                    throw new Error(
+                        "Persisted annotation restore does not match its history event",
+                    );
+                }
+            }
+        }
     }
 }
 

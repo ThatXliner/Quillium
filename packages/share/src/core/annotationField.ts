@@ -1840,7 +1840,7 @@ function needsRestoreHistoryIsolation(transaction: Transaction): boolean {
     return false;
 }
 
-function collapsesNestedHistoryTarget(transaction: Transaction): boolean {
+function changesNestedEmptyState(transaction: Transaction): boolean {
     if (!transaction.docChanged) return false;
     if (transaction.annotation(Transaction.addToHistory) === false) return false;
     if (transaction.annotation(isolateHistory) !== undefined) return false;
@@ -1856,21 +1856,46 @@ function collapsesNestedHistoryTarget(transaction: Transaction): boolean {
             !!newTarget &&
             isAnnotationOfType(oldTarget, "revision") &&
             isAnnotationOfType(newTarget, "revision") &&
-            !oldTarget.selection.main.empty &&
-            newTarget.selection.main.empty
+            oldTarget.selection.main.empty !== newTarget.selection.main.empty
         );
     });
 }
 
+// Scope changes are undo boundaries; typing within the same revision still groups.
+export const annotationHistoryScope = StateField.define<ReadonlySet<number> | null>({
+    create: () => null,
+    update(scope, transaction) {
+        if (!transaction.docChanged || transaction.annotation(Transaction.addToHistory) === false) {
+            return scope;
+        }
+        return transaction.isUserEvent("undo") || transaction.isUserEvent("redo")
+            ? null
+            : nestedRevisionTargetIds(transaction);
+    },
+    toJSON: (scope) => (scope === null ? null : [...scope]),
+    fromJSON: (value) =>
+        Array.isArray(value) && value.every(Number.isSafeInteger) ? new Set(value) : null,
+});
+
 const isolateRestoreHistory = EditorState.transactionExtender.of((transaction) => {
-    if (collapsesNestedHistoryTarget(transaction)) {
-        // Once the nested target is empty, a joined neighboring parent edit
-        // erases the only anchor from which its original range can be rebuilt.
+    if (changesNestedEmptyState(transaction)) {
+        // Empty/non-empty transitions need an exact range snapshot whose undo
+        // transform must remain separate from neighboring history events.
         return { annotations: isolateHistory.of("full") };
     }
-    return needsRestoreHistoryIsolation(transaction)
-        ? { annotations: isolateHistory.of("after") }
-        : null;
+    const isolateAfter = needsRestoreHistoryIsolation(transaction);
+    const previousScope = transaction.startState.field(annotationHistoryScope);
+    if (
+        transaction.docChanged &&
+        transaction.annotation(Transaction.addToHistory) !== false &&
+        transaction.annotation(isolateHistory) === undefined &&
+        !transaction.isUserEvent("undo") &&
+        !transaction.isUserEvent("redo") &&
+        (previousScope === null || !isEqual(previousScope, nestedRevisionTargetIds(transaction)))
+    ) {
+        return { annotations: isolateHistory.of(isolateAfter ? "full" : "before") };
+    }
+    return isolateAfter ? { annotations: isolateHistory.of("after") } : null;
 });
 
 const invertAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
@@ -2190,8 +2215,8 @@ const invertAnnotationFieldEffects = invertedEffects.of((transaction: Transactio
             // would be the forward one. Keep the marker so redo retains nested
             // semantics, and store the active version state when no explicit
             // version-state effect already does so. This reconstructs the
-            // target's exact range from its own text length when CodeMirror
-            // joins the nested edit with an adjacent parent-document change.
+            // target's range from its text length when consecutive nested edits
+            // are grouped into one history event.
             effects.push(_nestedEditRevision.of(effect.value));
             const oldAnnotation = oldAnnotations[effect.value];
             if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
@@ -2219,12 +2244,14 @@ const invertAnnotationFieldEffects = invertedEffects.of((transaction: Transactio
             }
             if (!alreadyRestoresAnnotation) {
                 const updatedAnnotation = transaction.state.field(annotationField)[effect.value];
-                if (updatedAnnotation && isAnnotationOfType(updatedAnnotation, "revision")) {
-                    // A following parent edit may join this nested edit into the
-                    // same CodeMirror event. The marker can rebuild the nested
-                    // text boundary, but it cannot distinguish that boundary
-                    // from a parent insertion/deletion on the same side. Carry
-                    // the exact pre/post range so the joined undo remains lossless.
+                if (
+                    updatedAnnotation &&
+                    isAnnotationOfType(updatedAnnotation, "revision") &&
+                    oldAnnotation.selection.main.empty !== updatedAnnotation.selection.main.empty
+                ) {
+                    // Only isolated empty/non-empty transitions need a snapshot.
+                    // Grouped typing uses the marker and version inverse: an older
+                    // snapshot's ChangeSet cannot describe the combined history event.
                     effects.push(restoreAnnotation(oldAnnotation, updatedAnnotation, false));
                 }
             }
@@ -2242,4 +2269,8 @@ const invertAnnotationFieldEffects = invertedEffects.of((transaction: Transactio
     return effects;
 });
 
-export const invertedAnnotationFieldEffects = [isolateRestoreHistory, invertAnnotationFieldEffects];
+export const invertedAnnotationFieldEffects = [
+    annotationHistoryScope,
+    isolateRestoreHistory,
+    invertAnnotationFieldEffects,
+];
