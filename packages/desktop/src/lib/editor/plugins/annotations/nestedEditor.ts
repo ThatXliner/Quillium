@@ -389,7 +389,13 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 : []),
             {
                 key: "Mod-y",
-                mac: "Mod-Shift-z",
+                run() {
+                    return redo(parentView);
+                },
+                preventDefault: true,
+            },
+            {
+                key: "Mod-Shift-z",
                 run() {
                     return redo(parentView);
                 },

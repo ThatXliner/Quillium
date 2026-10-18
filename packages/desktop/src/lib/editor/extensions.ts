@@ -102,6 +102,7 @@ const editorKeymap: KeyBinding[] = [
           ]
         : []),
     ...historyKeymap,
+    { key: "Mod-y", run: redo },
     ...completionKeymap,
     indentWithTab,
     {
