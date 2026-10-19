@@ -19,6 +19,7 @@
       ontogglelock   — (draftId, locked) set the soft lock manually
 -->
 <script lang="ts">
+import NavigationPanel from "./NavigationPanel.svelte";
 import type { DraftMeta } from "$lib/db/types";
 import { ChevronsDownIcon, GitBranchIcon, LockIcon, LockOpenIcon, Trash2Icon } from "lucide-svelte";
 import { hasLiveChildren, isDeletableDraft, isRunHead, layoutDraftRows } from "./draftTree";
@@ -32,6 +33,8 @@ type DraftMutationCallbacks = {
 };
 
 type Props = {
+    expanded?: boolean;
+    ontoggle?: () => void;
     drafts: DraftMeta[];
     activeDraftId: string | null;
     highlightedDraftId?: string | null;
@@ -42,6 +45,8 @@ type Props = {
 );
 
 const {
+    expanded = true,
+    ontoggle,
     drafts,
     activeDraftId,
     readOnly = false,
@@ -87,21 +92,14 @@ function commitRename(draftId: string) {
 }
 </script>
 
-<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
-     inner clips its contents to the same radius. Keep the panel surface opaque: it
-     deliberately overlaps the annotation lane, and translucent glass lets annotation
-     colors bleed through even though the panel is in the correct stacking layer. -->
 <div
-    class="w-full rounded-lg shadow-md"
+    class="w-full"
     aria-label="Draft tree"
     data-component="draft-tree-panel"
     data-read-only={readOnly}
 >
-<div class="overflow-hidden rounded-lg bg-gray-100 py-2 px-1.5 select-none">
-    <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-black/35">
-        <GitBranchIcon size={12} />
-        <span>Drafts</span>
-    </div>
+<NavigationPanel label="Drafts" {expanded} {ontoggle}>
+    {#snippet icon()}<GitBranchIcon size={12} />{/snippet}
 
     {#each rows as row (row.draft.id)}
         {@const isActive = row.draft.id === activeDraftId}
@@ -280,5 +278,5 @@ function commitRename(draftId: string) {
         </div>
     {/each}
     <span id="draft-timeline-target" class="sr-only">Timeline target</span>
-</div>
+</NavigationPanel>
 </div>

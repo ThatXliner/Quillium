@@ -568,6 +568,14 @@ onMount(() => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "pdf");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-docx", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "docx");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-docx-annotations", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "docx+annotations");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:export-pdf-annotations", () => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "pdf+annotations");

@@ -22,7 +22,7 @@ import {
     saveConversationMessages,
 } from "./conversationStore";
 import type { Conversation } from "./conversationStore";
-import type { EditorialTurn } from "./editorialPolicy";
+import { type EditorialTurn, resolveEditorialTask } from "./editorialPolicy";
 
 export type PersistentConversationMode = "chat" | "feedback" | "revise";
 
@@ -217,6 +217,18 @@ function textFromMessage(message: UIMessage | undefined): string {
         .join("\n");
 }
 
+/** Old discussions keep their original recipe for edit/retry; new turns record their own. */
+function turnForMessage(source: Conversation, message?: UIMessage): EditorialTurn {
+    const metadata = message?.metadata as { editorialTurn?: EditorialTurn } | undefined;
+    const saved = metadata?.editorialTurn;
+    return {
+        task: resolveEditorialTask("chat", saved?.task ?? resolveEditorialTask(source.mode)),
+        ...(typeof saved?.exactWordCount === "number"
+            ? { exactWordCount: saved.exactWordCount }
+            : {}),
+    };
+}
+
 /**
  * Create the persistent controller around an existing AI SDK Chat instance.
  * The controller is intentionally independent of Svelte components; callers
@@ -365,7 +377,7 @@ export function createConversationController({
         if (normalized.documentId !== documentId) {
             throw new Error("Conversation belongs to another document.");
         }
-        if (normalized.mode !== mode) {
+        if (mode !== "chat" && normalized.mode !== mode) {
             throw new Error("Conversation belongs to another AI mode.");
         }
         return normalized;
@@ -426,7 +438,9 @@ export function createConversationController({
             candidate = state.items
                 .filter(
                     (item) =>
-                        item.mode === mode && !item.archived && item.draftId === scope.draftId,
+                        (mode === "chat" || item.mode === mode) &&
+                        !item.archived &&
+                        item.draftId === scope.draftId,
                 )
                 .sort((left, right) => right.updatedAt - left.updatedAt)[0];
             let messages: UIMessage[] = [];
@@ -548,7 +562,8 @@ export function createConversationController({
         if (conversation.documentId !== get(currentDocumentId)) {
             throw new Error("Conversation belongs to another document.");
         }
-        if (conversation.mode !== mode) throw new Error("Conversation belongs to another AI mode.");
+        if (mode !== "chat" && conversation.mode !== mode)
+            throw new Error("Conversation belongs to another AI mode.");
         return conversation;
     }
 
@@ -635,7 +650,7 @@ export function createConversationController({
                     id: newId(chat),
                     documentId: source.documentId,
                     draftId: source.draftId,
-                    mode,
+                    mode: source.mode,
                     title: `${source.title} ${titleSuffix}`.slice(0, 200),
                     messagesJson: serializeMessages(messages),
                     sourceConversationId: source.id,
@@ -668,7 +683,11 @@ export function createConversationController({
         );
     }
 
-    async function runSend(text: string, turn?: EditorialTurn): Promise<void> {
+    async function runSend(
+        text: string,
+        turn?: EditorialTurn,
+        action?: () => Promise<string>,
+    ): Promise<void> {
         const trimmed = text.trim();
         if (!trimmed) throw new Error("Message cannot be empty.");
         const originScope = scopeNow();
@@ -683,6 +702,7 @@ export function createConversationController({
             undefined,
             writingContextMetadata(originScope, trimmed, provider.provider, provider.model),
         );
+        metadata.editorialTurn = turn ?? { task: resolveEditorialTask(mode) };
         let persistedPrompt = false;
         let providerStarted = false;
         let operationError: unknown;
@@ -754,23 +774,38 @@ export function createConversationController({
                 throw new Error("Writing target changed before sending.");
             }
 
-            providerStarted = true;
-            const send = chat.sendMessage as unknown as (
-                message: { text: string; messageId: string; metadata?: unknown },
-                options?: ChatRequestOptions,
-            ) => Promise<void>;
-            await send(
-                { text: trimmed, messageId: userMessage.id, metadata },
-                {
-                    body: {
-                        ...(turn?.task ? { editorialTask: turn.task } : {}),
-                        ...(turn?.exactWordCount === undefined
-                            ? {}
-                            : { exactWordCount: turn.exactWordCount }),
+            if (action) {
+                // Reader fan-out produces annotations, not an SDK chat stream. Persist
+                // its request and application status in the same discussion lifecycle.
+                const result = await action();
+                chat.messages = [
+                    ...chat.messages,
+                    {
+                        id: newId(chat),
+                        role: "assistant",
+                        parts: [{ type: "text", text: result }],
+                        metadata: { applicationMessage: true },
                     },
-                },
-            );
-            if (chat.status === "error") throw chat.error ?? new Error("AI request failed.");
+                ];
+            } else {
+                providerStarted = true;
+                const send = chat.sendMessage as unknown as (
+                    message: { text: string; messageId: string; metadata?: unknown },
+                    options?: ChatRequestOptions,
+                ) => Promise<void>;
+                await send(
+                    { text: trimmed, messageId: userMessage.id, metadata },
+                    {
+                        body: {
+                            ...(turn?.task ? { editorialTask: turn.task } : {}),
+                            ...(turn?.exactWordCount === undefined
+                                ? {}
+                                : { exactWordCount: turn.exactWordCount }),
+                        },
+                    },
+                );
+                if (chat.status === "error") throw chat.error ?? new Error("AI request failed.");
+            }
         } catch (error) {
             operationError = error;
         } finally {
@@ -788,7 +823,7 @@ export function createConversationController({
         if (operationError) throw operationError;
     }
 
-    async function runRetry(): Promise<void> {
+    async function runRetry(turn: EditorialTurn): Promise<void> {
         const originScope = scopeNow();
         if (!hasActiveScope(originScope))
             throw new Error("Open a draft before retrying a response.");
@@ -808,7 +843,9 @@ export function createConversationController({
                 throw new Error("This chat cannot regenerate a response.");
             }
             providerStarted = true;
-            await chat.regenerate({});
+            await chat.regenerate({
+                body: { editorialTask: turn.task, exactWordCount: turn.exactWordCount },
+            });
             if (chat.status === "error") throw chat.error ?? new Error("AI request failed.");
         } catch (error) {
             operationError = error;
@@ -834,6 +871,7 @@ export function createConversationController({
         if (index < 0 || chat.messages[index].role !== "user") {
             throw new Error("Only user messages can be edited.");
         }
+        const chatMessage = chat.messages[index];
         const created = await createDerivedConversation(
             source,
             chat.messages.slice(0, index),
@@ -841,7 +879,7 @@ export function createConversationController({
             "(edit)",
         );
         if (!created) return;
-        await trackSend(runSend(text));
+        await trackSend(runSend(text, turnForMessage(source, chatMessage)));
     }
 
     async function retry(messageId: string): Promise<void> {
@@ -874,7 +912,7 @@ export function createConversationController({
         }
         const created = await createDerivedConversation(source, prefix, messageId, "(retry)");
         if (!created) return;
-        await trackSend(runRetry());
+        await trackSend(runRetry(turnForMessage(source, prefix.at(-1))));
     }
 
     function trackSend(promise: Promise<void>): Promise<void> {
@@ -886,6 +924,14 @@ export function createConversationController({
 
     function sendMessage(text: string, turn?: EditorialTurn): Promise<void> {
         return trackSend(runSend(text, turn));
+    }
+
+    function runAction(
+        text: string,
+        turn: EditorialTurn,
+        action: () => Promise<string>,
+    ): Promise<void> {
+        return trackSend(runSend(text, turn, action));
     }
 
     function subscribe(): () => void {
@@ -934,6 +980,7 @@ export function createConversationController({
         get canSend(): boolean {
             return canSendNow();
         },
+        runAction,
         refresh,
         open,
         newConversation,

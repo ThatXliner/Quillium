@@ -149,7 +149,7 @@ export class QuilliumPage {
         return this.page.locator("#ai-sidebar [data-panel-id='chat']");
     }
     get chatInput(): Locator {
-        return this.chatPanel.locator('input[name="message"]');
+        return this.chatPanel.locator('textarea[name="message"]');
     }
     get conversationHistory(): Locator {
         return this.page.getByRole("list", { name: "Conversation history" });
@@ -1210,7 +1210,7 @@ export class QuilliumPage {
         await this.openChat();
         if (!(await this.conversationHistory.isVisible().catch(() => false))) {
             await this.chatPanel
-                .getByRole("button", { name: "Manage all discussions", exact: true })
+                .getByRole("button", { name: "History", exact: true })
                 .click();
         }
         await expect(this.conversationHistory).toBeVisible({ timeout: 10_000 });
@@ -1240,11 +1240,9 @@ export class QuilliumPage {
 
     /** Toggle the archived conversation filter. */
     async showArchivedConversations(): Promise<void> {
-        const checkbox = this.chatPanel.getByRole("checkbox", {
-            name: "Archived conversations",
-        });
-        await checkbox.check();
-        await expect(checkbox).toBeChecked();
+        const archived = this.chatPanel.getByRole("button", { name: "Archived", exact: true });
+        await archived.click();
+        await expect(archived).toHaveAttribute("aria-pressed", "true");
     }
 
     /** Search the open conversation history by title or message text. */
@@ -1264,12 +1262,12 @@ export class QuilliumPage {
     async expectConversationHistoryControlsVisible(): Promise<void> {
         await expect(
             this.chatPanel.getByRole("button", {
-                name: "Manage all discussions",
+                name: "History",
                 exact: true,
             }),
         ).toBeVisible();
         await expect(
-            this.chatPanel.getByRole("button", { name: "New", exact: true }),
+            this.chatPanel.getByRole("button", { name: "New discussion", exact: true }),
         ).toBeVisible();
     }
 

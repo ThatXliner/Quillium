@@ -14,7 +14,8 @@
 .cm-comment-active .cm-comment {
     background-color: #fcbc05;
 }
-.cm-revision {
+.cm-revision,
+.cm-revision-nested {
     text-decoration: underline;
     text-decoration-color: rgb(168 85 247 / 35%);
     text-decoration-thickness: 1px;
@@ -22,13 +23,15 @@
 }
 /* Reveal the full mark on pointer hover; touch keeps a discoverable underline. */
 @media (hover: hover) {
-    .cm-revision:hover {
+    .cm-revision:hover,
+    .cm-revision:hover .cm-revision-nested {
         text-decoration-color: #a855f7;
         text-decoration-thickness: 2px;
     }
 }
 @media (hover: none) {
-    .cm-revision {
+    .cm-revision,
+    .cm-revision-nested {
         text-decoration-color: #a855f7;
         text-decoration-thickness: 2px;
     }
@@ -37,6 +40,12 @@
 .cm-revision-active {
     background-color: #d8b4fe;
     text-decoration: none;
+}
+/* The fill marks the active root; nested depth keeps its stacked lines in a deeper purple. */
+.cm-revision-active .cm-revision-nested {
+    text-decoration: underline;
+    text-decoration-color: #7e22ce;
+    text-decoration-thickness: 1px;
 }
 .cm-suggestion {
     text-decoration: underline;

@@ -1,8 +1,79 @@
 import { EditorSelection } from "@codemirror/state";
 import { Decoration, type DecorationSet } from "@codemirror/view";
 import { describe, expect, it } from "vitest";
-import { buildRevisionAtomicRanges, getPersonaDots } from "../src/core/annotationDecorations";
-import { type Annotations, createNewAnnotation, makeVersion } from "../src/core/models";
+import {
+    buildRevisionAtomicRanges,
+    getNestedRevisionDecorations,
+    getPersonaDots,
+} from "../src/core/annotationDecorations";
+import {
+    type Annotation,
+    type Annotations,
+    createNewAnnotation,
+    makeVersion,
+} from "../src/core/models";
+
+function revision(from: number, to: number, children: Annotations = {}): Annotation<"revision"> {
+    const version = makeVersion({ doc: "x".repeat(to - from) });
+    Object.assign(version, {
+        annotationField: Object.fromEntries(
+            Object.entries(children).map(([id, annotation]) => [
+                id,
+                { ...annotation, selection: annotation.selection.toJSON() },
+            ]),
+        ),
+    });
+    return {
+        ...createNewAnnotation({}, EditorSelection.single(from, to), "revision"),
+        versions: [version],
+        activeVersionId: version.id,
+    };
+}
+
+describe("nested revision underlines", () => {
+    it("projects only nested revision ranges, with one line per depth and editor-scoped IDs", () => {
+        const comment = createNewAnnotation({}, EditorSelection.single(0, 2), "comment");
+        const root = revision(10, 30, {
+            0: revision(2, 12, { 0: revision(3, 7) }),
+            1: comment,
+            2: revision(14, 18),
+            3: revision(18, 18),
+        });
+        expect(
+            ranges(getNestedRevisionDecorations({ 0: root })).map(({ from, to, value }) => [
+                from,
+                to,
+                value.spec.attributes["data-revision-depth"],
+                value.spec.attributes.style,
+            ]),
+        ).toEqual([
+            [12, 22, "2", "text-underline-offset: 6px"],
+            [15, 19, "3", "text-underline-offset: 9px"],
+            [24, 28, "2", "text-underline-offset: 6px"],
+        ]);
+    });
+
+    it("follows stable active version IDs and leaves inactive branches unmarked", () => {
+        const root = revision(0, 10, { 0: revision(1, 9) });
+        const plain = makeVersion({ doc: "x".repeat(10) });
+        root.versions.unshift(plain);
+        expect(getNestedRevisionDecorations({ 0: root }).size).toBe(1);
+        root.activeVersionId = plain.id;
+        expect(getNestedRevisionDecorations({ 0: root }).size).toBe(0);
+    });
+
+    it("ignores malformed or out-of-bounds nested data without hiding valid siblings", () => {
+        const root = revision(5, 15, {
+            0: revision(1, 4),
+            1: revision(8, 12),
+        });
+        expect(
+            ranges(getNestedRevisionDecorations({ 0: root })).map(({ from, to }) => [from, to]),
+        ).toEqual([[6, 9]]);
+        Object.assign(root.versions[0], { annotationField: { bad: {} } });
+        expect(getNestedRevisionDecorations({ 0: root }).size).toBe(0);
+    });
+});
 
 function ranges(set: DecorationSet): Array<{ from: number; to: number; value: Decoration }> {
     const result = [];

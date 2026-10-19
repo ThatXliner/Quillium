@@ -50,4 +50,8 @@ export {
     versionText,
 } from "./models";
 
-export { buildRevisionAtomicRanges, getPersonaDots } from "./annotationDecorations";
+export {
+    buildRevisionAtomicRanges,
+    getNestedRevisionDecorations,
+    getPersonaDots,
+} from "./annotationDecorations";

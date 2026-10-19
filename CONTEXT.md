@@ -178,7 +178,8 @@ they choose an update.
 _Avoid_: Cached research
 
 **Conversation**:
-A saved Chat, Feedback, or Revise discussion with its own identity and original
+A saved AI discussion that can include conversation, feedback, and revision
+requests, with its own identity and original
 draft association. A conversation branch copies a message prefix into another
 conversation and records its origin. It does not branch the draft or change prose.
 _Avoid_: Draft history, revision version

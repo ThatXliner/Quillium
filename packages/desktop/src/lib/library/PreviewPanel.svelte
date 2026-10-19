@@ -370,6 +370,8 @@ function handleDeletePermanent() {
                                     { format: "json" as ExportFormat, label: "JSON (.json)" },
                                     { format: "md" as ExportFormat, label: "Markdown (.md)" },
                                     { format: "pdf" as ExportFormat, label: "PDF (.pdf)" },
+                                    { format: "docx" as ExportFormat, label: "Word (.docx) — Beta" },
+                                    { format: "docx+annotations" as ExportFormat, label: "Word + Annotations (.docx) — Beta" },
                                     { format: "pdf+annotations" as ExportFormat, label: "PDF + Annotations (.pdf)" },
                                 ] as item, i}
                                     <button

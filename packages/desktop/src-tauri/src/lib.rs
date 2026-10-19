@@ -1035,6 +1035,35 @@ async fn cmd_export_text_with_dialog(
 }
 
 #[tauri::command]
+async fn cmd_export_bytes_with_dialog(
+    window: tauri::Window,
+    default_name: String,
+    extension: String,
+    filter_name: String,
+    bytes: Vec<u8>,
+) -> Result<bool, String> {
+    let Some(path) = selected_export_path(&window, default_name, filter_name, extension)? else {
+        return Ok(false);
+    };
+    fs::write(&path, &bytes).map_err(|err| {
+        let details = serde_json::json!({
+            "path": path.display().to_string(),
+            "error": err.to_string(),
+        })
+        .to_string();
+        let _ = app_log::log_event(
+            &window.app_handle().clone(),
+            "error",
+            "export",
+            "binary export failed",
+            Some(&details),
+        );
+        err.to_string()
+    })?;
+    Ok(true)
+}
+
+#[tauri::command]
 async fn cmd_export_pdf_with_dialog(
     window: tauri::Window,
     default_name: String,
@@ -1305,6 +1334,11 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .item(&MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)").build(app)?)
         .item(&MenuItemBuilder::with_id("export-json", "JSON (.json)").build(app)?)
         .item(&MenuItemBuilder::with_id("export-md", "Markdown (.md)").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-docx", "Word (.docx) — Beta").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("export-docx-annotations", "Word + Annotations (.docx) — Beta")
+                .build(app)?,
+        )
         .item(&MenuItemBuilder::with_id("export-pdf", "PDF (.pdf)").build(app)?)
         .item(
             &MenuItemBuilder::with_id("export-pdf-annotations", "PDF + Annotations (.pdf)")
@@ -1409,6 +1443,8 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             | "export-txt-json"
             | "export-json"
             | "export-md"
+            | "export-docx"
+            | "export-docx-annotations"
             | "export-pdf"
             | "export-pdf-annotations" => {
                 // Route to the focused window, falling back to main. This way
@@ -1555,6 +1591,7 @@ pub fn run() {
             cmd_export_pdf,
             cmd_export_text,
             cmd_export_text_with_dialog,
+            cmd_export_bytes_with_dialog,
             cmd_export_pdf_with_dialog,
             cmd_log_app_event,
             cmd_read_app_log,

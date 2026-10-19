@@ -22,6 +22,8 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 
 | Key | Action |
 |-----|--------|
+| `Mod-Z` | Undo |
+| `Mod-Shift-Z` / `Mod-Y` | Redo (including Command-Y on macOS) |
 | `Mod-Shift-S` | Name this version |
 | `Mod-D` | Open dictionary popover (single word selected) |
 | `Mod-B` | Toggle bold (markdown) |
@@ -79,8 +81,6 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 | Key | Tab |
 |-----|-----|
 | `1` | Chat |
-| `2` | Feedback |
-| `3` | Revise |
 | `4` | Context |
 | `5` | Readers |
 | `6` | Settings |

@@ -71,7 +71,8 @@ test.describe("Draft panel", () => {
         // Enter the rail away from its center, where the hover button appears.
         await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + 4);
         await expect(expand).toBeVisible();
-        const panelBox = await panel.boundingBox();
+        // The shared resize rail ends at the outline, including its collapsed header.
+        const panelBox = await page.getByRole("navigation", { name: "Document outline" }).boundingBox();
         const expandBox = await expand.boundingBox();
         expect(panelBox).not.toBeNull();
         expect(expandBox).not.toBeNull();

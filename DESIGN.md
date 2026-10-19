@@ -16,7 +16,7 @@ Inline and modal are functionally identical for history and sync. The only diffe
 
 Cmd-Z anywhere—main document, inline editor, modal—walks back through one shared history. Typing in a nested editor, switching versions, creating versions: all one timeline. Closing the modal doesn't lose undo history. There is no "modal-only undo."
 
-From the user's perspective it just works like normal undo, except some steps happen to affect text inside a revision.
+Consecutive typing in the same revision groups into one undo step. Moving between a revision and surrounding text, or between revision targets, starts another step. Emptying a revision or typing into an empty revision is a separate step so undo can restore its exact boundary.
 
 ## Version navigation
 
@@ -77,9 +77,10 @@ Root-level modals (`stackIndex === 0`) watch `$annotationsStore` (which reflects
 
 AI is an editorial collaborator, not the owner of the draft. The writer's text
 remains canonical until the writer applies a suggestion or chooses a revision
-version. Chat and structural recipes stay conversational. Feedback can add
-anchored comments, while Revise can propose comments, suggestions, or reversible
-revision branches. A valid AI turn may produce no document action.
+version. Ordinary chat and structural recipes stay conversational. Within the same
+discussion, Give feedback can add anchored comments, while Suggest revisions can
+propose comments, suggestions, or reversible revision branches. Action permissions
+apply to one request, not to the whole conversation. A valid AI turn may produce no document action.
 
 Every turn has an explicit task and capability set. Prompt wording, reader
 personas, saved decisions, and device-local editorial preferences can shape the

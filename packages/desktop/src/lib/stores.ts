@@ -104,7 +104,7 @@ export const activeAnnotation = writable<GenericAnnotation | undefined>();
 /**
  * Full document text, synced on every editor transaction.
  * Written by: Editor.svelte updateListener.
- * Read by: AI sidebar (Chat.svelte, Feedback.svelte, Revise.svelte)
+ * Read by: AI sidebar (Chat.svelte)
  *          to include document context in AI prompts.
  */
 export const documentContent = writable<string>("");

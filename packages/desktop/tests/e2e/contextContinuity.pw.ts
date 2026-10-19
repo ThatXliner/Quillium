@@ -30,12 +30,12 @@ function responseStream(id: string, text?: string, call?: { name: string; input:
         .join("");
 }
 
-const feedback = (page: Page) => page.locator('[data-panel-id="feedback"]');
+const feedback = (page: Page) => page.locator('[data-panel-id="chat"]');
 
 async function sendFeedback(page: Page, text: string): Promise<void> {
-    if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-feedback").click();
-    await feedback(page).getByPlaceholder("Ask for specific feedback...").fill(text);
-    await feedback(page).getByRole("button", { name: "Send", exact: true }).click();
+    if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
+    await feedback(page).getByRole("textbox", { name: "Message", exact: true }).fill(text);
+    await feedback(page).getByRole("button", { name: "Give feedback", exact: true }).click();
 }
 
 test("Feedback reconsiders draft edits and the latest annotation qualification without pasted context", async ({
@@ -104,8 +104,14 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
         await route.fulfill({ contentType: "text/event-stream", body: output });
     });
     await q.init();
-    await page.locator("#ai-tab-feedback").click();
+    await page.locator("#ai-tab-chat").click();
     await expect(feedback(page)).toBeVisible();
+    await feedback(page)
+        .locator("details")
+        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
+        .evaluate((el) => {
+            (el as HTMLDetailsElement).open = true;
+        });
     await expect(feedback(page).locator("[data-next-turn-context]")).toContainText(
         "Changes are noted when you send",
     );
@@ -188,7 +194,13 @@ test("next-turn preview follows the focused nested editor and returns to the dra
     await q.editor.getByText("A revision passage.", { exact: true }).click();
     await expect(q.inlineEditor).toBeVisible();
     await q.inlineEditor.click();
-    await page.locator("#ai-tab-feedback").click();
+    await page.locator("#ai-tab-chat").click();
+    await feedback(page)
+        .locator("details")
+        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
+        .evaluate((el) => {
+            (el as HTMLDetailsElement).open = true;
+        });
     await expect(feedback(page).locator("[data-next-turn-context]")).toContainText(
         "focused revision version",
     );
@@ -196,8 +208,15 @@ test("next-turn preview follows the focused nested editor and returns to the dra
     await expect(page.getByRole("dialog", { name: "AI context details" })).toContainText(
         "Next turn: focused revision version",
     );
+    await q.aiSidebar.getByRole("button", { name: "Collapse sidebar" }).click();
     await q.editor.click({ position: { x: 20, y: 8 } });
-    if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-feedback").click();
+    if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
+    await feedback(page)
+        .locator("details")
+        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
+        .evaluate((el) => {
+            (el as HTMLDetailsElement).open = true;
+        });
     await expect(feedback(page).locator("[data-next-turn-context]")).toContainText("current draft");
     q.expectNoPageErrors();
 });
@@ -250,6 +269,7 @@ test("a retrieval roundtrip rejects a nested-editor switch instead of reading a 
             (item: { type: string }) => item.type === "function_call_output",
         );
         if (results.length === 0) {
+            await q.aiSidebar.getByRole("button", { name: "Collapse sidebar" }).click();
             await q.editor.getByText("A revision passage.", { exact: true }).click();
             await q.inlineEditor.click();
             await route.fulfill({
@@ -276,10 +296,10 @@ test("a retrieval roundtrip rejects a nested-editor switch instead of reading a 
         }
     });
     await q.init();
-    await page.locator("#ai-tab-feedback").click();
+    await page.locator("#ai-tab-chat").click();
     await sendFeedback(page, "Reconsider the discussion.");
     await expect.poll(() => roundtrip).toBe(true);
-    if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-feedback").click();
+    if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
     await expect(feedback(page)).toContainText("The focused editor changed during this turn");
     await expect(q.inlineEditor).toHaveText("A revision passage.");
     q.expectNoPageErrors();

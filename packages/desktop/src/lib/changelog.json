@@ -1,4 +1,8 @@
 {
+  "0.25": {
+    "date": "2026-10-17",
+    "content": "Find your way around longer drafts with the new **document outline**. Add headings, then click a section in the outline to jump straight to it. Drafts and Outline can stay open together, and Quillium remembers which panels you leave expanded.\n\n![The document outline with a selected section and nested headings](/changelog/0.25.png)\n\n**Nested revisions** are easier to spot in your writing. Purple underlines now stack beneath nested passages: two lines for a revision inside another, three for the next level. The lines follow the version you are viewing.\n\nYou can now export to **Word (Beta)**, either as a clean document or with annotations as anchored Word comments. The export uses your selected revision text, so you can share a readable draft with its notes attached."
+  },
   "0.24": {
     "date": "2026-08-15",
     "content": "Revision drafts are now easier to tell apart. When two neighboring versions contain the **same writing**—even if their Markdown formatting differs—Quillium marks the duplicate with a quiet dot beside its version label.\n\nIf you try to continue from an identical draft, Quillium now **checks before creating another one**. You can continue immediately, hide the warning for an hour, or turn it off until you re-enable it under **Settings → Editor**."

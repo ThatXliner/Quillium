@@ -46,7 +46,7 @@ describe("compileEditorialPolicy", () => {
         expect(policy.systemPrompt).toContain("even when the writer focuses on one passage");
         expect(policy.systemPrompt).toContain("in conversational text or comment fields");
         expect(policy.systemPrompt).toContain(
-            "direct the writer to Revise without providing it here",
+            "invite the writer to use Suggest revisions for their next message without providing it here",
         );
         expect(policy.systemPrompt).toContain("regardless of stance or voice preferences");
     });
@@ -153,8 +153,11 @@ describe("compileEditorialPolicy", () => {
         expect(policy.systemPrompt).toContain("application preserves the original");
     });
 
-    it("does not allow a per-turn task to escalate another panel", () => {
-        expect(resolveEditorialTask("chat", "local-rewrite")).toBe("conversation");
+    it("allows explicit writing actions in unified chat and keeps other task limits", () => {
+        expect(resolveEditorialTask("chat", "local-rewrite")).toBe("local-rewrite");
+        expect(resolveEditorialTask("chat", "global-review")).toBe("global-review");
+        expect(resolveEditorialTask("chat")).toBe("conversation");
+        expect(resolveEditorialTask("chat", "background-review")).toBe("conversation");
         expect(resolveEditorialTask("feedback", "exact-compression")).toBe("conversation");
         expect(resolveEditorialTask("revise", "exact-compression")).toBe("exact-compression");
     });

@@ -61,6 +61,7 @@ import {
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
 import { versionGroupField } from "./plugins/annotations";
+import { annotationHistoryScope } from "./plugins/annotations/annotationField";
 import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
@@ -68,6 +69,7 @@ import { richMarkdownExtension } from "./richMarkdown";
 // StateEffects, keeping cross-restart undo lossless for annotations and versions.
 export const savedFields = {
     historyField: persistentHistoryField,
+    annotationHistoryScope,
     annotationField,
     versionGroupField,
 };
@@ -101,6 +103,7 @@ const editorKeymap: KeyBinding[] = [
           ]
         : []),
     ...historyKeymap,
+    { key: "Mod-y", run: redo },
     ...completionKeymap,
     indentWithTab,
     {

@@ -70,7 +70,13 @@ test("College overlap is an editable Feedback action that creates linked, undoab
     });
     await q.init();
     await expect(page.locator("#ai-tab-college")).toHaveCount(0);
-    await page.locator("#ai-tab-feedback").click();
+    await page.locator("#ai-tab-chat").click();
+    await page
+        .locator("details")
+        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
+        .evaluate((el) => {
+            (el as HTMLDetailsElement).open = true;
+        });
     await expect(
         page.getByRole("button", { name: "Check overlap with other essays", exact: true }),
     ).toHaveCount(0);
@@ -86,11 +92,20 @@ test("College overlap is an editable Feedback action that creates linked, undoab
     await expect(page.getByRole("tab", { name: /PIQ 1/ })).toBeVisible();
     const firstHeading = await q.cmText();
     await q.typeInEditor(`${firstHeading}\n${prose}`);
+    const recoveryBanner = page.getByRole("button", { name: "Dismiss error banner" });
+    if (await recoveryBanner.isVisible()) await recoveryBanner.click();
+
     await page
         .getByRole("toolbar", { name: "Sidebar panels" })
         .last()
-        .getByRole("button", { name: "Feedback (⌘⇧2)", exact: true })
+        .getByRole("button", { name: "Chat (⌘⇧1)", exact: true })
         .click();
+    await page
+        .locator("details")
+        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
+        .evaluate((el) => {
+            (el as HTMLDetailsElement).open = true;
+        });
     const action = page.getByRole("button", {
         name: "Check overlap with other essays",
         exact: true,

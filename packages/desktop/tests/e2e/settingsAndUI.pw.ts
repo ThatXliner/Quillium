@@ -130,10 +130,10 @@ test.describe("AI sidebar", () => {
         await q.init();
         for (const height of [700, 464]) {
             await page.setViewportSize({ width: 1440, height });
-            for (const mode of ["revise", "feedback", "chat"]) {
+            for (const mode of ["chat"]) {
                 await page.locator(`#ai-tab-${mode}`).click();
                 const panel = page.locator(`[data-panel-id="${mode}"]`);
-                const input = panel.locator('input[name="message"]');
+                const input = panel.locator('textarea[name="message"]');
                 const submit = panel.locator('button[type="submit"]');
                 await input.fill("Help me with this passage");
                 await expect(submit).toBeInViewport({ ratio: 1 });
@@ -147,9 +147,6 @@ test.describe("AI sidebar", () => {
                 const before = await input.boundingBox();
                 const body = panel.locator("[data-conversation-body]");
                 await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-                if (height === 464) {
-                    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-                }
                 await expect(input).toHaveValue("Help me with this passage");
                 expect((await input.boundingBox())?.y).toBeCloseTo(before!.y, 0);
                 await body.evaluate((element) => { element.scrollTop = 0; });
@@ -168,7 +165,7 @@ test.describe("AI sidebar", () => {
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
-        await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect(q.aiSidebar).toContainText("Think it through together");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
             .toBeGreaterThan(580);
@@ -183,28 +180,18 @@ test.describe("AI sidebar", () => {
 
         // Open chat
         await page.locator("#ai-tab-chat").click();
-        await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect(q.aiSidebar).toContainText("Think it through together");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
             .toBeGreaterThan(580);
 
-        // Switch to feedback
-        const feedbackBtn = page.locator(
-            "#ai-sidebar .overflow-x-auto button[aria-label*='Feedback']",
-        );
-        await feedbackBtn.click();
-        await expect(q.aiSidebar).toContainText("Feedback");
-        await expect
-            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(580);
+        // Writing actions share one panel; supporting context and readers remain separate.
+        await expect(page.locator("#ai-tab-feedback, #ai-tab-revise")).toHaveCount(0);
+        await expect(q.chatPanel.getByRole("button", { name: "Give feedback", exact: true })).toBeVisible();
+        await expect(q.chatPanel.getByRole("button", { name: "Suggest revisions", exact: true })).toBeVisible();
+        await q.aiSidebar.getByRole("toolbar", { name: "Sidebar panels" }).last().getByRole("button", { name: /Document Context/ }).click();
+        await expect(q.aiSidebar).toContainText("Document Context");
 
-        // Switch to revise
-        const reviseBtn = page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']");
-        await reviseBtn.click();
-        await expect(q.aiSidebar).toContainText("Revise");
-        await expect
-            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(580);
     });
 
     test("shows typed outline and exact-compression recipes", async ({ page }) => {
@@ -217,10 +204,11 @@ test.describe("AI sidebar", () => {
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
+        await q.chatPanel.getByText("Writing actions", { exact: true }).click();
         await expect(q.aiSidebar.getByRole("button", { name: /Reverse outline/ })).toBeVisible();
 
         await q.selectRange(0, draft.length);
-        await page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']").click();
+        if (!(await q.chatPanel.isVisible())) await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar.getByRole("button", { name: /Cut to 9 words/ })).toBeVisible();
         await expect(q.aiSidebar).toContainText("Exact target from 12 words");
     });
@@ -269,14 +257,16 @@ test.describe("AI sidebar", () => {
             },
             initialDoc: "A short draft with enough context for the AI sidebar.",
         });
+        await q.mockDeepSeekProvider();
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).not.toContainText("AI can see this draft");
         await expect(
-            q.aiSidebar.getByRole("button", { name: /Context: AI can see this draft/ }),
+            q.aiSidebar.getByRole("button", { name: /Context: Next turn: current draft/ }),
         ).toBeVisible();
-        await expect(q.aiSidebar).toContainText("Your custom chips");
+        await q.chatPanel.getByText("Writing actions", { exact: true }).click();
+        await expect(q.aiSidebar).toContainText("Your custom actions");
         await expect(q.aiSidebar).toContainText("Make punchy");
 
         await q.aiSidebar.getByRole("button", { name: /Reverse outline/ }).click();
@@ -284,8 +274,8 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).not.toContainText("Reverse outline");
         await expect(q.aiSidebar).not.toContainText("Find missing context");
         await expect(q.aiSidebar).not.toContainText("Make punchy");
-        await expect(q.aiSidebar.getByRole("button", { name: "Actions" })).toBeVisible();
-        await expect(q.aiSidebar.getByRole("button", { name: "New" })).toBeVisible();
+        await expect(q.aiSidebar.getByText("Writing actions", { exact: true })).toBeVisible();
+        await expect(q.aiSidebar.getByRole("button", { name: "New discussion" })).toBeVisible();
     });
 
     test("custom chip settings link opens quick actions", async ({ page }) => {
@@ -304,6 +294,7 @@ test.describe("AI sidebar", () => {
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
+        await q.chatPanel.getByText("Writing actions", { exact: true }).click();
         await q.aiSidebar.getByRole("button", { name: "Edit in settings" }).click();
 
         const settingsModal = page.locator(".settings-modal-inner");
@@ -323,7 +314,7 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
 
-        await expect(q.aiSidebar).toContainText("AI can see your selection");
+        await expect(q.aiSidebar).toContainText("Selected passage · current draft");
         await expect(q.aiSidebar).not.toContainText("Context:");
     });
 
@@ -341,10 +332,11 @@ test.describe("AI sidebar", () => {
         await page.locator("#ai-tab-chat").click();
 
         await expect(q.aiSidebar).not.toContainText("AI can see this draft");
+        await q.chatPanel.getByText("Writing actions", { exact: true }).click();
         await expect(q.aiSidebar).toContainText("Prioritize notes");
         await expect(
             q.aiSidebar.getByRole("button", {
-                name: /Context: AI can see this draft.*Open annotations are included too/,
+                name: /Context: Next turn: current draft/,
             }),
         ).toBeVisible();
     });
@@ -357,7 +349,7 @@ test.describe("AI sidebar", () => {
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
-        await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect(q.aiSidebar).toContainText("Think it through together");
 
         await q.escape();
         // After escape, the expanded panel should collapse

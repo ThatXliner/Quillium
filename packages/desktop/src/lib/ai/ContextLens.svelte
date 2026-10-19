@@ -36,11 +36,9 @@ import {
 } from "./context";
 
 const {
-    mode,
     disabled = false,
     onAction,
 }: {
-    mode: "chat" | "feedback" | "revise";
     disabled?: boolean;
     onAction: (action: ContextAction) => void | Promise<void>;
 } = $props();
@@ -89,7 +87,7 @@ const annotationContext = $derived(
 
 const packet = $derived(
     buildAiContextPacket({
-        mode,
+        mode: "chat",
         documentContent: contextText,
         selectedText: contextSelectedText,
         selectedTextRange: contextRange,
@@ -97,7 +95,17 @@ const packet = $derived(
         annotationContext,
     }),
 );
-const actions = $derived(getContextAwareActions(mode, packet));
+const actions = $derived([
+    ...getContextAwareActions("chat", packet),
+    ...getContextAwareActions("feedback", packet).map((action) => ({
+        ...action,
+        turn: action.turn ?? { task: "global-review" as const },
+    })),
+    ...getContextAwareActions("revise", packet).map((action) => ({
+        ...action,
+        turn: action.turn ?? { task: "local-rewrite" as const },
+    })),
+]);
 let actionHelpTab = $state<string | null>(null);
 const activeSources = $derived(packet.sources.filter((source) => source.active));
 // Card is shown when the packet warrants a summary AND the writer hasn't
@@ -110,38 +118,6 @@ const showContextSummary = $derived(
 function hideContextSummary() {
     updateSettings({ collapseContextSummary: true });
 }
-
-const theme = $derived(
-    mode === "feedback"
-        ? {
-              text: "text-green-800",
-              subtext: "text-green-700/65",
-              border: "border-green-200/70",
-              bg: "bg-green-50/70",
-              hover: "hover:bg-green-50",
-              icon: "bg-green-100 text-green-700",
-              ring: "focus:ring-green-500",
-          }
-        : mode === "revise"
-          ? {
-                text: "text-purple-800",
-                subtext: "text-purple-700/65",
-                border: "border-purple-200/70",
-                bg: "bg-purple-50/70",
-                hover: "hover:bg-purple-50",
-                icon: "bg-purple-100 text-purple-700",
-                ring: "focus:ring-purple-500",
-            }
-          : {
-                text: "text-blue-800",
-                subtext: "text-blue-700/65",
-                border: "border-blue-200/70",
-                bg: "bg-blue-50/70",
-                hover: "hover:bg-blue-50",
-                icon: "bg-blue-100 text-blue-700",
-                ring: "focus:ring-blue-500",
-            },
-);
 
 const ScopeIcon = $derived(packet.scope === "selection" ? ScanTextIcon : BookOpenIcon);
 
@@ -162,14 +138,14 @@ function sourceIcon(id: string) {
         Earlier responses describe the writing as it was then.
     </p>
     {#if showContextSummary}
-        <div class="rounded-lg border {theme.border} {theme.bg} p-2.5">
+        <div class="rounded-lg border border-blue-200/70 bg-blue-50/70 p-2.5">
             <div class="flex items-start gap-2">
-                <div class="mt-0.5 shrink-0 rounded-md p-1.5 {theme.icon}">
+                <div class="mt-0.5 shrink-0 rounded-md p-1.5 bg-blue-100 text-blue-700">
                     <ScopeIcon size={14} />
                 </div>
                 <div class="min-w-0 flex-1">
-                    <div class="text-xs font-semibold {theme.text}">{contextScopeLabel(packet)}</div>
-                    <div class="text-[10px] leading-snug {theme.subtext}">
+                    <div class="text-xs font-semibold text-blue-800">{contextScopeLabel(packet)}</div>
+                    <div class="text-[10px] leading-snug text-blue-700/65">
                         {contextScopeDetail(packet)}
                     </div>
                 </div>
@@ -179,8 +155,8 @@ function sourceIcon(id: string) {
                     aria-label="Hide context summary (collapse into the info icon)"
                     title="Hide — collapse into the info icon"
                     class="-mt-0.5 -mr-0.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5
-                        text-[10px] font-medium {theme.subtext} hover:bg-white/60
-                        focus:outline-none focus:ring-2 {theme.ring} transition-colors"
+                        text-[10px] font-medium text-blue-700/65 hover:bg-white/60
+                        focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                 >
                     <EyeOffIcon size={11} />
                     Hide
@@ -213,8 +189,8 @@ function sourceIcon(id: string) {
                     onclick={() => onAction(action)}
                     {disabled}
                     class="group min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left transition-all
-                        disabled:opacity-45 disabled:cursor-not-allowed {theme.hover}
-                        focus:outline-none focus:ring-2 {theme.ring}"
+                        disabled:opacity-45 disabled:cursor-not-allowed hover:bg-blue-50
+                        focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                     <div class="flex items-center gap-2">
                         <div class="min-w-0 flex-1">
@@ -235,14 +211,10 @@ function sourceIcon(id: string) {
 
 {#if actionHelpTab}
     <HelpModal
-        title={mode === "chat" ? "Chat actions" : mode === "feedback" ? "Feedback actions" : "Revision actions"}
+        title="Writing actions"
         tabs={actions.map(getActionHelpTab)}
         initialTab={actionHelpTab}
-        footer={mode === "chat"
-            ? "The answer appears in chat. Your draft and annotations stay unchanged."
-            : mode === "feedback"
-              ? "Feedback appears in the panel and may add comments anchored to your writing. Your draft's wording stays unchanged."
-              : "AI proposes edits for you to review. You choose which changes to accept."}
+        footer="Discuss your writing, add feedback, or request revisions in the same conversation. You choose which wording changes to accept."
         onclose={() => (actionHelpTab = null)}
     />
 {/if}

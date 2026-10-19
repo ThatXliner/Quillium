@@ -31,6 +31,7 @@ import { filter, flatMap } from "lodash-es";
 import {
     type PersonaColor,
     buildRevisionAtomicRanges,
+    getNestedRevisionDecorations,
     getPersonaDots,
 } from "./annotationDecorations";
 import { annotationField } from "./annotationField";
@@ -101,6 +102,7 @@ const annotationDecorations = EditorView.decorations.compute(
         RangeSet.join([
             getAnnotationDecorations(state, "comment", "cm-comment"),
             getAnnotationDecorations(state, "revision", "cm-revision"),
+            getNestedRevisionDecorations(state.field(annotationField)),
             getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
             getPersonaDots(state.field(annotationField), state.facet(personaColorsFacet)),
         ]),

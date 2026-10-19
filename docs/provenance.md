@@ -142,3 +142,32 @@ formats use the shared native save dialog helpers from `src/lib/export.ts`.
 - `tests/provenance/classify.test.ts` covers origin classification.
 - `tests/provenance/report.test.ts` covers buckets, idle splitting, paste flags,
   legacy handling, and AI-assist counts.
+
+## Surviving wording (text origin)
+
+Enable **Show text origin** in Authorship Playback to inspect all surviving wording
+at the selected point in the draft history, including the finished draft shown on
+open. This remains behind the existing authorship feature gate.
+
+The view marks writer wording, wording inserted by Quillium AI, writer replacements
+of AI wording, and unknown origin with labeled, distinct underline patterns. An
+AI suggestion does not affect wording provenance until accepted; rejecting a
+suggestion changes no prose. Chosen AI revision versions are also classified using
+recorded version provenance. This is a private writing aid, not an AI detector or
+an authorship score.
+
+`textOrigin.ts` maps surviving spans through exact recorded transaction changes.
+It reconstructs recorded undo groups when their before/after text agrees with the
+recorded undo or redo. Missing history (including snapshot prefixes), external
+pastes, legacy restores, and unrecorded moves cannot establish AI wording origin.
+A replacement intersecting recorded AI wording is labeled writer edits to AI
+wording; this describes edit lineage, not a threshold for ownership of an idea.
+Pure deletion does not relabel surviving words. External drag-and-drop is unknown. Text newly typed beside AI wording
+is writer wording. A mixed revision version may provide only coarse provenance. Nested acceptance now forwards its AI request metadata through parent dispatch; older nested events that lack a source signal remain unknown.
+
+No additional stored state or migration is needed: reopening reconstructs origin
+from the draft's existing event log. Reconstruction failure or disagreement with
+the canonical document replay suppresses the overlay and shows an unavailable
+message. This first implementation is a read-only inspection view; a live overlay
+in the root and nested editors and origin-preserving clipboard moves remain future
+work for #388.

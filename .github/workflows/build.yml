@@ -1,4 +1,5 @@
 name: Build Release
+run-name: ${{ github.event_name == 'push' && format('Dispatch {0}', github.ref_name) || format('Release {0}', inputs.release_tag) }}
 
 on:
   push:
@@ -6,10 +7,87 @@ on:
       - "v*"
       # TestFlight-only MAS builds. These skip the public desktop release jobs.
       - "mas-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build
+        required: true
+        type: string
+      release_sha:
+        description: Exact commit referenced by the release tag
+        required: true
+        type: string
+      validate_only:
+        description: Validate the release identity without building or publishing
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 jobs:
+  dispatch-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Run release on the default branch cache scope
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: 'build.yml',
+              ref: context.payload.repository.default_branch,
+              inputs: {
+                release_tag: context.ref.replace('refs/tags/', ''),
+                release_sha: context.sha,
+                validate_only: 'false',
+              },
+            });
+            await core.summary.addRaw(
+              `Dispatch accepted for ${context.ref}. This job does not wait for the release.\n\n` +
+              `[Follow release runs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/build.yml?query=event%3Aworkflow_dispatch)`,
+            ).write();
+
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Validate release identity before using signing secrets
+        id: release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const defaultRef = `refs/heads/${context.payload.repository.default_branch}`;
+            if (context.ref !== defaultRef) {
+              throw new Error('Release execution must use the default branch');
+            }
+            const { release_tag: tag, release_sha: sha } = context.payload.inputs;
+            if (typeof tag !== 'string' || !/^(?:mas-)?v[0-9A-Za-z._+-]+$/.test(tag)) {
+              throw new Error('A valid v* or mas-v* release tag is required');
+            }
+            if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
+              throw new Error('A full lowercase commit SHA is required');
+            }
+            const { data: commit } = await github.rest.repos.getCommit({
+              ...context.repo,
+              ref: `refs/tags/${tag}`,
+            });
+            if (commit.sha !== sha) {
+              throw new Error('Release tag does not reference the expected commit');
+            }
+            core.setOutput('tag', tag);
+            core.setOutput('sha', sha);
+
   build-tauri:
-    if: ${{ !startsWith(github.ref_name, 'mas-') }}
+    needs: prepare-release
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.validate_only && !startsWith(needs.prepare-release.outputs.tag, 'mas-') }}
     permissions:
       contents: write
     strategy:
@@ -34,11 +112,14 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     env:
+      RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-release.outputs.sha }}
 
       - name: install dependencies (ubuntu only)
         if: startsWith(matrix.platform, 'ubuntu') # This must match the platform values defined above.
@@ -68,7 +149,8 @@ jobs:
         with:
           workspaces: "packages/desktop/src-tauri -> target"
           cache-on-failure: true
-          prefix-key: "v1"
+          prefix-key: "v2-release"
+          shared-key: "desktop"
 
       - name: Install frontend dependencies
         run: bun ci
@@ -121,7 +203,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: packages/desktop
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "Quillium v__VERSION__"
           releaseBody: "See the assets to download and install this version."
           releaseDraft: false
@@ -160,7 +242,7 @@ jobs:
           UPDATER_VERSION=$(/usr/libexec/PlistBuddy \
             -c 'Print :CFBundleShortVersionString' \
             "$UPDATER_APP/Contents/Info.plist")
-          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          EXPECTED_VERSION="${RELEASE_TAG#v}"
           if [ "$UPDATER_VERSION" != "$EXPECTED_VERSION" ]; then
             echo "::error::Updater contains $UPDATER_VERSION, expected $EXPECTED_VERSION"
             exit 1
@@ -183,12 +265,16 @@ jobs:
             -x "$UPDATER_VERIFY_DIR/update.minisig"
 
   build-mas:
+    needs: prepare-release
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.validate_only }}
     runs-on: macos-latest
     permissions:
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare-release.outputs.sha }}
 
       - uses: oven-sh/setup-bun@v2
 
@@ -212,7 +298,8 @@ jobs:
         with:
           workspaces: "packages/desktop/src-tauri -> target"
           cache-on-failure: true
-          prefix-key: "v1-mas"
+          prefix-key: "v2-release"
+          shared-key: "desktop"
 
       - name: Install frontend dependencies
         run: bun ci
@@ -311,9 +398,11 @@ jobs:
             --apiIssuer "$APPLE_API_KEY_ISSUER"
 
   publish-release:
-    needs: build-tauri
+    env:
+      RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+    needs: [prepare-release, build-tauri]
     # Never copy a partial or unverified release into the public repository.
-    if: ${{ !startsWith(github.ref_name, 'mas-') && needs.build-tauri.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.validate_only && !startsWith(needs.prepare-release.outputs.tag, 'mas-') && needs.build-tauri.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -323,8 +412,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir assets
-          gh release download ${{ github.ref_name }} \
-            --repo ${{ github.repository }} \
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             --dir assets || true
           echo "=== Downloaded assets ==="
           ls -la assets/
@@ -336,7 +425,7 @@ jobs:
 
       - name: Build latest.json
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
           BASE_URL="https://github.com/ThatXliner/quillium-releases/releases/download/$TAG"
@@ -409,14 +498,14 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_PAT }}
         run: |
           # Create the release in the public repo
-          gh release create ${{ github.ref_name }} \
+          gh release create "$RELEASE_TAG" \
             --repo ThatXliner/quillium-releases \
-            --title "Quillium ${{ github.ref_name }}" \
+            --title "Quillium $RELEASE_TAG" \
             --notes "See the assets to download and install this version." \
             || true
 
           # Upload all assets (--clobber to overwrite if re-running)
-          gh release upload ${{ github.ref_name }} \
+          gh release upload "$RELEASE_TAG" \
             --repo ThatXliner/quillium-releases \
             --clobber \
             assets/*

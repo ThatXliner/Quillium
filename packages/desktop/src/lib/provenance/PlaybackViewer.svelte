@@ -22,6 +22,7 @@ import { getExtensions } from "$lib/editor/extensions";
 import { reconstructState } from "$lib/editor/replay";
 import { goToEditor } from "$lib/navigation";
 import { type ProvenanceReport, generateProvenanceReport } from "$lib/provenance/report";
+import { type TextOrigin, buildTextOrigin } from "$lib/provenance/textOrigin";
 import { selectPlaybackBaseline } from "$lib/provenance/timeline";
 import { currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -134,6 +135,15 @@ let report = $state<ProvenanceReport | null>(null);
 let baselineStateJson = $state<string | null>(null);
 let usingSnapshotBaseline = $state(false);
 let loadError = $state(false);
+
+let showTextOrigin = $state(false);
+let originUnavailable = $state(false);
+const TEXT_ORIGINS: Record<TextOrigin, string> = {
+    human: "Writer wording",
+    ai: "Quillium AI wording",
+    "edited-ai": "Writer edits to AI wording",
+    unknown: "Unknown origin / pasted",
+};
 
 let position = $state(0); // number of events applied (0..events.length)
 let playing = $state(false);
@@ -265,7 +275,27 @@ $effect(() => {
     // Pass 1: reconstruct just to learn the inserted range of the current event
     // against the final document (positions depend on the rebuilt doc length).
     const probe = reconstructState(baselineStateJson, slice, probeExtensions);
-    const deco = currentEditDecorations(probe);
+    let deco = currentEditDecorations(probe);
+    originUnavailable = false;
+    if (showTextOrigin) {
+        try {
+            const baseline = reconstructState(baselineStateJson, [], probeExtensions).doc.toString();
+            const origin = buildTextOrigin(slice, baseline);
+            if (origin.text !== probe.doc.toString()) throw new Error("Origin preview differs from replay");
+            const builder = new RangeSetBuilder<Decoration>();
+            for (const span of origin.spans) {
+                builder.add(span.from, span.to, Decoration.mark({
+                    class: `cm-text-origin-${span.origin}`,
+                    attributes: { title: TEXT_ORIGINS[span.origin], "aria-label": TEXT_ORIGINS[span.origin] },
+                }));
+            }
+            deco = builder.finish();
+        } catch (error) {
+            console.warn("[textOrigin] Could not reconstruct wording lineage", error);
+            originUnavailable = true;
+            deco = Decoration.none;
+        }
+    }
 
     // Pass 2: rebuild the real state with the static decoration facet included
     // from the start, so the highlight and the editor's own annotation
@@ -278,7 +308,17 @@ $effect(() => {
     ];
     const state = reconstructState(baselineStateJson, slice, liveExtensions);
 
-    previewView = new EditorView({ state, parent: previewEl });
+    previewView = new EditorView({
+        state,
+        parent: previewEl,
+        // Read-only state stops typing, but custom commands can still dispatch.
+        // Permit inspection selections while refusing all preview mutations.
+        dispatchTransactions(transactions, view) {
+            if (transactions.every((tr) => !tr.docChanged && tr.effects.length === 0)) {
+                view.update(transactions);
+            }
+        },
+    });
     // Tint color follows the current origin.
     previewView.dom.style.setProperty("--provenance-mark", currentStyle.mark);
 
@@ -484,6 +524,23 @@ function handleKeydown(e: KeyboardEvent) {
         {/if}
     </div>
 
+    <div class="px-5 py-3 text-xs text-black/70 space-y-2">
+        <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" bind:checked={showTextOrigin} />
+            Show text origin
+        </label>
+        {#if showTextOrigin}
+            <p>Tracks wording added by accepted AI suggestions and chosen revisions. Pending suggestions do not change text origin. Pasted text has unknown origin.</p>
+            <div class="flex flex-wrap gap-4" aria-label="Text origin key">
+                {#each Object.entries(TEXT_ORIGINS) as [origin, label]}
+                    <span class="cm-text-origin-{origin}">{label}</span>
+                {/each}
+            </div>
+            <p>Writer edits highlights your replacements of AI wording; it does not measure how much an idea came from AI. Unrecorded moves and restored history may have unknown origin.</p>
+            {#if originUnavailable}<p role="status">Text origin is unavailable for this history. No wording has been labeled.</p>{/if}
+        {/if}
+    </div>
+
     <!-- Body -->
     <div class="flex flex-1 overflow-hidden flex-col">
         <!-- Document preview -->
@@ -513,7 +570,7 @@ function handleKeydown(e: KeyboardEvent) {
             {:else}
                 <div
                     class="provenance-preview w-[816px] min-h-full bg-white rounded-lg shadow-xl
-                           py-3 px-1 pointer-events-none select-none"
+                           py-3 px-1"
                     bind:this={previewEl}
                 ></div>
             {/if}
@@ -634,9 +691,10 @@ function handleKeydown(e: KeyboardEvent) {
     :global(.provenance-preview .cm-provenance-current-edit) {
         background-color: var(--provenance-mark, transparent);
     }
-    :global(.provenance-preview .cm-editor) {
-        pointer-events: none;
-    }
+    :global(.cm-text-origin-human) { text-decoration: underline solid #4b5563; text-underline-offset: 3px; }
+    :global(.cm-text-origin-ai) { background: #f3e8ff; text-decoration: underline double #7e22ce; text-underline-offset: 3px; }
+    :global(.cm-text-origin-edited-ai) { background: #faf5ff; text-decoration: underline dashed #7e22ce; text-underline-offset: 3px; }
+    :global(.cm-text-origin-unknown) { text-decoration: underline dotted #6b7280; text-underline-offset: 3px; }
     :global(.provenance-preview .cm-cursor) {
         display: none !important;
     }

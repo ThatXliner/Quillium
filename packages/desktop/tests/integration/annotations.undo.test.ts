@@ -87,8 +87,31 @@ afterEach(() => {
     view = undefined;
 });
 
-describe("joined nested and parent edits", () => {
-    it("restores the exact revision range when a parent-boundary delete joins a nested insert", () => {
+describe("nested typing history boundaries", () => {
+    it("rebases grouped nested typing over a non-history prefix", () => {
+        view = createView("a", 250);
+        const revisionId = addRevision(view, 0, 1, [{ doc: "a" }]);
+        for (let i = 0; i < 2; i++) {
+            view.dispatch({
+                changes: { from: 0, insert: "a" },
+                effects: [_nestedEditRevision.of(revisionId)],
+                annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
+            });
+        }
+        view.dispatch({
+            changes: { from: 0, insert: "prefix " },
+            annotations: Transaction.addToHistory.of(false),
+        });
+        expect(view.state.doc.toString()).toBe("prefix aaa");
+        expect(undo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe("prefix a");
+        expect(view.state.field(annotationField)[revisionId].selection.main.from).toBe(7);
+        expect(view.state.field(annotationField)[revisionId].selection.main.to).toBe(8);
+        expect(redo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe("prefix aaa");
+    });
+
+    it("separates a parent-boundary delete from preceding nested typing", () => {
         view = createView("aa", 250);
         const revisionId = addRevision(view, 1, 2, [{ doc: "a" }]);
 
@@ -100,6 +123,8 @@ describe("joined nested and parent edits", () => {
         view.dispatch({ changes: { from: 0, to: 1 } });
         expect(view.state.doc.toString()).toBe("aa");
 
+        expect(undo(view)).toBe(true);
+        expect(view.state.doc.toString()).toBe("aaa");
         expect(undo(view)).toBe(true);
         expect(view.state.doc.toString()).toBe("aa");
         const revision = view.state.field(annotationField)[revisionId];
