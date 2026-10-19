@@ -126,6 +126,56 @@ describe("joiner view hardening", () => {
         currentDraftId.set(null);
     });
 
+    it.each([
+        { type: "comment", key: "C", code: "KeyC", keyCode: 67, shiftKey: true, altKey: false },
+        { type: "revision", key: "k", code: "KeyK", keyCode: 75, shiftKey: false, altKey: true },
+        { type: "revision", key: "˚", code: "KeyK", keyCode: 75, shiftKey: false, altKey: true },
+    ] as const)(
+        "joiner $type shortcut ($key) creates and syncs an annotation",
+        async (shortcut) => {
+            const owner = track(makeProductionAnnotationPeer("owner", "hello world"));
+            const joiner = track(makeProductionAnnotationPeer("joiner", "", true));
+            currentDraftId.set(null);
+            isCollabJoiner.set(true);
+            await Promise.resolve();
+            trackDisconnect(connect(owner, joiner));
+            await flushAll(owner, joiner);
+
+            joiner.view.dispatch({ selection: EditorSelection.single(0, 5) });
+            joiner.view.focus();
+            const event = new KeyboardEvent("keydown", {
+                ...shortcut,
+                metaKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            joiner.view.contentDOM.dispatchEvent(event);
+            await flushAll(owner, joiner);
+
+            expect(event.defaultPrevented).toBe(true);
+            for (const peer of [joiner, owner]) {
+                const annotations = Object.values(peer.view.state.field(annotationField));
+                expect(annotations).toHaveLength(1);
+                expect(isAnnotationOfType(annotations[0], shortcut.type)).toBe(true);
+            }
+
+            joiner.undoManager!.undo();
+            await flushAll(owner, joiner);
+            for (const peer of [joiner, owner]) {
+                expect(Object.values(peer.view.state.field(annotationField))).toHaveLength(0);
+                expect(peer.view.state.doc.toString()).toBe("hello world");
+            }
+
+            joiner.undoManager!.redo();
+            await flushAll(owner, joiner);
+            for (const peer of [joiner, owner]) {
+                const annotations = Object.values(peer.view.state.field(annotationField));
+                expect(annotations).toHaveLength(1);
+                expect(isAnnotationOfType(annotations[0], shortcut.type)).toBe(true);
+            }
+        },
+    );
+
     it("no history field - joiner state.field(historyField, false) is undefined", async () => {
         const owner = track(makePeerWithAnnotationSync("owner", "hello"));
         const joiner = track(makeJoinerPeer("joiner"));

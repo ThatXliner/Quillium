@@ -299,6 +299,26 @@ test.describe("keyboard shortcuts", () => {
                 }),
             )
             .toEqual({ collapsed: true, insideInlineEditor: true });
+
+        const caret = page.locator(".revision-inline-editor .cm-cursor").first();
+        await expect(caret).toBeVisible();
+        await expect(caret).toHaveCSS("border-left-style", "solid");
+        expect((await caret.boundingBox())!.height).toBeGreaterThan(0);
+
+        // Typing must land at the visible caret and update the parent document.
+        await page.keyboard.type("Hi");
+        await expect.poll(() => q.cmText(q.inlineEditor)).toBe("Hi");
+        await q.expectEditorText("Hi world");
+        await q.undo();
+        await expect.poll(() => q.cmText(q.inlineEditor)).toBe("");
+        await q.expectEditorText(" world");
+        await q.redo();
+        await expect.poll(() => q.cmText(q.inlineEditor)).toBe("Hi");
+        await q.expectEditorText("Hi world");
+
+        await q.openRevisionModal();
+        await expect(q.modalEditor).toBeFocused();
+        await expect(page.locator(".revision-modal-editor .cm-cursor").first()).toBeVisible();
     });
 
     test("Escape closes AI sidebar", async ({ page }) => {
