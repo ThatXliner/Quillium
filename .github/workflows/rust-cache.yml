@@ -1,0 +1,35 @@
+name: Keep release Rust caches available
+
+on:
+  schedule:
+    - cron: "23 8 */5 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      # A real restore refreshes cache access without compiling or saving empty misses.
+      - name: Restore release dependencies
+        uses: swatinem/rust-cache@v2.9.1
+        with:
+          workspaces: "packages/desktop/src-tauri -> target"
+          prefix-key: "v2-release"
+          shared-key: "desktop"
+          save-if: false
