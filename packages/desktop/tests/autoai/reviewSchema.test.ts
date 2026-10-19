@@ -4,6 +4,49 @@ import { AutoAIReviewSchema, normalizeAutoAIReview } from "$lib/autoai/reviewSch
 import { describe, expect, it } from "vitest";
 
 describe("AutoAI review normalization", () => {
+    it("retains proposed cuts and exact whitespace in replacement text", () => {
+        const result = normalizeAutoAIReview(
+            AutoAIReviewSchema.parse({
+                annotations: [
+                    {
+                        type: "suggestion",
+                        targetText: "really ",
+                        replacement: "",
+                        rationale: "Cut filler",
+                    },
+                    {
+                        type: "revision",
+                        targetText: "very ",
+                        versionText: "",
+                        threadMessage: "Cut filler",
+                    },
+                    {
+                        type: "revision",
+                        targetText: "word",
+                        versionText: " word ",
+                        threadMessage: "Keep spacing",
+                        scope: "whole-passage",
+                    },
+                ],
+            }),
+        );
+        expect(result).toEqual([
+            { type: "suggestion", targetText: "really ", replacement: "", rationale: "Cut filler" },
+            {
+                type: "revision",
+                targetText: "very ",
+                versions: [{ label: "Alternative", text: "" }],
+                threadMessage: "Cut filler",
+            },
+            {
+                type: "revision",
+                targetText: "word",
+                versions: [{ label: "Alternative", text: " word " }],
+                threadMessage: "Keep spacing",
+                scope: "whole-passage",
+            },
+        ]);
+    });
     it("accepts canonical annotations without requiring fields from other variants", () => {
         const result = AutoAIReviewSchema.parse({
             annotations: [
@@ -73,4 +116,31 @@ describe("AutoAI review normalization", () => {
             { type: "comment", targetText: "good", comment: "Useful note" },
         ]);
     });
+});
+
+it("prefers nonempty aliases over unused blank fields without trimming wording", () => {
+    const result = normalizeAutoAIReview(
+        AutoAIReviewSchema.parse({
+            annotations: [
+                {
+                    type: "suggestion",
+                    targetText: "old",
+                    replacement: "",
+                    suggestedReplacement: " new ",
+                    rationale: "Clearer",
+                },
+                {
+                    type: "revision",
+                    targetText: "old",
+                    versionText: "",
+                    revisions: [" one ", "two"],
+                    threadMessage: "Alternatives",
+                },
+            ],
+        }),
+    );
+    expect(result).toMatchObject([
+        { replacement: " new " },
+        { versions: [{ text: " one " }, { text: "two" }] },
+    ]);
 });

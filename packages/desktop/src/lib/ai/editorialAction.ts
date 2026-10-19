@@ -30,27 +30,37 @@ import {
     validateEditorialActionTarget,
 } from "./editorialTarget";
 
-export type EditorialActionPayload =
-    | {
-          action: "comment";
-          targetText: string;
-          context?: string;
-          comment: string;
-      }
-    | {
-          action: "suggestion";
-          targetText: string;
-          context?: string;
-          replacements: Array<{ text: string; rationale?: string } | string>;
-          comment?: string;
-      }
-    | {
-          action: "revision";
-          targetText: string;
-          context?: string;
-          versions: Array<{ label: string; text: string }>;
-          threadMessage: string;
-      };
+export type EditorialEditScope = "focused" | "whole-passage";
+
+type EditorialActionTarget = {
+    targetRange?: AiTextRange;
+};
+
+export type EditorialActionPayload = EditorialActionTarget &
+    (
+        | {
+              action: "comment";
+              targetText: string;
+              context?: string;
+              comment: string;
+          }
+        | {
+              action: "suggestion";
+              targetText: string;
+              context?: string;
+              replacements: Array<{ text: string; rationale?: string } | string>;
+              comment?: string;
+              scope?: EditorialEditScope;
+          }
+        | {
+              action: "revision";
+              targetText: string;
+              context?: string;
+              versions: Array<{ label: string; text: string }>;
+              threadMessage: string;
+              scope?: EditorialEditScope;
+          }
+    );
 
 type TargetValidationFailure = Exclude<
     ReturnType<typeof validateEditorialActionTarget>,
@@ -65,7 +75,8 @@ export type EditorialActionFailureReason =
     | "exact-compression-target-mismatch"
     | "exact-word-count-mismatch"
     | "duplicate-concern"
-    | "annotation-conflict";
+    | "annotation-conflict"
+    | "unchanged-proposal";
 
 export type EditorialActionResult =
     | { ok: true; view: EditorView; selection: EditorSelection }
@@ -124,13 +135,26 @@ export function resolveExactEditorialRange({
     targetText,
     context,
     scope,
+    targetRange,
 }: {
     documentText: string;
     targetText: string;
     context?: string;
     scope?: AiTextRange;
+    targetRange?: AiTextRange;
 }): ExactRangeResolution {
     const effectiveScope = scope ?? { from: 0, to: documentText.length };
+    if (targetRange) {
+        const { from, to } = targetRange;
+        return Number.isInteger(from) &&
+            Number.isInteger(to) &&
+            from >= effectiveScope.from &&
+            to <= effectiveScope.to &&
+            from < to &&
+            documentText.slice(from, to) === targetText
+            ? { ok: true, range: { from, to } }
+            : { ok: false, reason: "target-not-found" };
+    }
     const candidates = exactRanges(documentText, targetText, effectiveScope);
     if (candidates.length === 0) return { ok: false, reason: "target-not-found" };
 
@@ -153,6 +177,86 @@ export function resolveExactEditorialRange({
     return candidates.length === 1
         ? { ok: true, range: candidates[0] }
         : { ok: false, reason: "target-ambiguous" };
+}
+
+/** Keep shared context outside alternatives without cutting through a word. */
+function focusedEditRange(source: string, alternatives: readonly string[]): AiTextRange {
+    let from = 0;
+    let to = source.length;
+    while (from < to && alternatives.every((text) => text[from] === source[from])) from++;
+    if (from > 0 && /[\uDC00-\uDFFF]/u.test(source[from] ?? "")) from--;
+    while (
+        from > 0 &&
+        /[\p{L}\p{N}\p{M}_]/u.test(source[from - 1]) &&
+        /[\p{L}\p{N}\p{M}_]/u.test(source[from] ?? "")
+    )
+        from--;
+    while (
+        to > from &&
+        alternatives.every(
+            (text) =>
+                text.length - (source.length - to) - 1 >= from &&
+                text[text.length - (source.length - to) - 1] === source[to - 1],
+        )
+    )
+        to--;
+    while (
+        to < source.length &&
+        /[\p{L}\p{N}\p{M}_]/u.test(source[to - 1] ?? "") &&
+        /[\p{L}\p{N}\p{M}_]/u.test(source[to])
+    )
+        to++;
+    if (to < source.length && /[\uDC00-\uDFFF]/u.test(source[to])) to++;
+    // An insertion retains an adjacent word so Original still contains source text.
+    if (from === to && from > 0) {
+        from--;
+        while (from > 0 && /\s/u.test(source[from])) from--;
+        while (from > 0 && !/\s/u.test(source[from - 1])) from--;
+    } else if (from === to && to < source.length) {
+        to++;
+        while (to < source.length && !/\s/u.test(source[to])) to++;
+    }
+    return { from, to };
+}
+
+function focusEditorialPayload(payload: EditorialActionPayload): {
+    payload: EditorialActionPayload;
+    offset: number;
+} {
+    if (payload.action === "comment" || payload.scope === "whole-passage") {
+        return { payload, offset: 0 };
+    }
+    const alternatives =
+        payload.action === "revision"
+            ? payload.versions.map((version) => version.text)
+            : payload.replacements.map((replacement) =>
+                  typeof replacement === "string" ? replacement : replacement.text,
+              );
+    const range = focusedEditRange(payload.targetText, alternatives);
+    const suffixLength = payload.targetText.length - range.to;
+    const trim = (text: string) => text.slice(range.from, text.length - suffixLength);
+    return {
+        offset: range.from,
+        payload:
+            payload.action === "revision"
+                ? {
+                      ...payload,
+                      targetText: payload.targetText.slice(range.from, range.to),
+                      versions: payload.versions.map((version) => ({
+                          ...version,
+                          text: trim(version.text),
+                      })),
+                  }
+                : {
+                      ...payload,
+                      targetText: payload.targetText.slice(range.from, range.to),
+                      replacements: payload.replacements.map((replacement) =>
+                          typeof replacement === "string"
+                              ? trim(replacement)
+                              : { ...replacement, text: trim(replacement.text) },
+                      ),
+                  },
+    };
 }
 
 function normalizeConcern(text: string): string {
@@ -268,7 +372,7 @@ export function applyEditorialAction({
     target,
     current,
     allowedActions,
-    payload,
+    payload: requestedPayload,
     provenance,
     author,
     constraints,
@@ -282,6 +386,7 @@ export function applyEditorialAction({
     author?: string;
     constraints?: EditorialActionConstraints;
 }): EditorialActionResult {
+    let payload = requestedPayload;
     const view = resolveEditorialTargetView(rootView, target);
     if (!view) return { ok: false, reason: "branch-changed" };
     if (view.state.readOnly) return { ok: false, reason: "read-only" };
@@ -301,12 +406,34 @@ export function applyEditorialAction({
         allowedActions,
     });
     if (!validation.ok) return validation;
+    if (payload.action === "revision") {
+        payload = {
+            ...payload,
+            versions: payload.versions.filter((version) => version.text !== payload.targetText),
+        };
+        if (payload.versions.length === 0) {
+            return { ok: false, reason: "unchanged-proposal" };
+        }
+    } else if (payload.action === "suggestion") {
+        payload = {
+            ...payload,
+            replacements: payload.replacements.filter(
+                (replacement) =>
+                    (typeof replacement === "string" ? replacement : replacement.text) !==
+                    payload.targetText,
+            ),
+        };
+        if (payload.replacements.length === 0) {
+            return { ok: false, reason: "unchanged-proposal" };
+        }
+    }
 
     const resolution = resolveExactEditorialRange({
         documentText,
         targetText: payload.targetText,
         context: payload.context,
         scope: selectedTextRange,
+        targetRange: payload.targetRange,
     });
     if (!resolution.ok) return resolution;
     if (
@@ -327,7 +454,15 @@ export function applyEditorialAction({
         return { ok: false, reason: "exact-word-count-mismatch" };
     }
 
-    const selection = EditorSelection.single(resolution.range.from, resolution.range.to);
+    const focused =
+        constraints?.exactWordCount === undefined
+            ? focusEditorialPayload(payload)
+            : { payload, offset: 0 };
+    payload = focused.payload;
+    const selection = EditorSelection.single(
+        resolution.range.from + focused.offset,
+        resolution.range.from + focused.offset + payload.targetText.length,
+    );
     const annotations = view.state.field(annotationField);
     if (isDuplicateEditorialConcern({ annotations, selection, payload })) {
         return { ok: false, reason: "duplicate-concern" };
@@ -368,6 +503,8 @@ export function applyEditorialAction({
 
 export function editorialActionFailureMessage(reason: EditorialActionFailureReason): string {
     switch (reason) {
+        case "unchanged-proposal":
+            return "The AI proposal repeated the original wording, so Quillium skipped it.";
         case "target-ambiguous":
             return "The AI target matched more than one passage, so Quillium skipped the annotation.";
         case "target-not-found":

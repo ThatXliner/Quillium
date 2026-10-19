@@ -44,6 +44,7 @@ Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors deleg
 | `syncFromParent(doc)` | Patches nested text from current parent authority |
 | `translateAndDispatch` helper | Maps nested edits to parent coordinates |
 | `needsVersionSwitch()` | Detects when to rebuild for new version |
+| `syncVersionFromParent()` | Refreshes current-version annotations in place, preserving focus and mapped selection |
 | `needsAnnotationRebuild()` | Detects when annotation blob changed |
 | `destroy()` | Cleanup, optional flush |
 
@@ -54,7 +55,10 @@ Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors deleg
 | `"flush"` | Serialize nested state to parent on destroy | Modal |
 | `"no-flush"` | Parent is source of truth via Phase 3 | Inline |
 
-The flush is believed to be redundant (translateAndDispatch syncs per-keystroke), kept as a safety net. Instrumented with PostHog `nested_editor_flush_to_parent_meaningful` to verify.
+Mutation writes sync immediately. Closing also retains the nested selection.
+Bookkeeping and destroy flushes skip a newer parent annotation blob so a stale
+editor cannot erase external edits. PostHog
+`nested_editor_flush_to_parent_meaningful` records meaningful destroy flushes.
 
 ### Parent Sync Edit Annotation
 
@@ -69,7 +73,10 @@ parent from becoming another parent edit or undo step.
 
 ## Inline Editor (Revision.svelte)
 
-Creates a `NestedEditorController` with `flushBehavior: "no-flush"`. Svelte `$effect` blocks watch `activeVersion?.doc` and call `controller.syncFromParent()`. Version switches trigger destroy + recreate.
+Creates a `NestedEditorController` with `flushBehavior: "no-flush"`. Svelte `$effect` blocks watch `activeVersion?.doc` and call `controller.syncFromParent()`. Version switches trigger destroy + recreate. External annotation changes within
+the same version use `syncVersionFromParent()` to retain the mounted editor,
+keyboard focus, and selection. The controller reads the current parent version
+rather than trusting a delayed reactive snapshot.
 
 ## Modal Editor (RevisionModal.svelte)
 

@@ -945,7 +945,7 @@ export function createAnnotation({
                       Transaction.addToHistory.of(true),
                       isolateHistory.of("full"),
                   ]
-                : Transaction.addToHistory.of(true),
+                : [Transaction.addToHistory.of(true), isolateHistory.of("full")],
         }),
     );
     if (creation.source === "human" && creation.type === "revision") {

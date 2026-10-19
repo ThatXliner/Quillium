@@ -34,7 +34,10 @@ import {
  *   - ../editor/plugins/annotations/models for CM types
  */
 import { EditorSelection } from "@codemirror/state";
-import { YjsAnnotationNodeSchema } from "@quillium/share/collab-contract/annotations";
+import {
+    YjsAnnotationNodeSchema,
+    YjsVersionNodeSchema,
+} from "@quillium/share/collab-contract/annotations";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
@@ -65,7 +68,7 @@ export function codeMirrorToYjsAnnotation(
     clientId: string,
     ydoc: Y.Doc,
     _options?: {
-        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+        nestedIdMapFor?: (annotations: Y.Map<unknown>) => AnnotationIdMap;
     },
 ): YjsAnnotationNode {
     const { startPos, endPos } = absoluteToRelative(ytext, annotation.selection);
@@ -77,6 +80,9 @@ export function codeMirrorToYjsAnnotation(
         node.set("status", annotation.status);
         node.set("startPos", startPos);
         node.set("endPos", endPos);
+        if (annotation.aiProvenance !== undefined) {
+            node.set("aiProvenance", annotation.aiProvenance);
+        }
 
         const thread = new Y.Array<ThreadMessage>();
         if (annotation.thread.length > 0) {
@@ -107,6 +113,12 @@ export function codeMirrorToYjsAnnotation(
                 }
                 versionNode.set("id", v.id);
                 versionNode.set("text", vtext);
+                if (v.provenance !== undefined) {
+                    versionNode.set("provenance", v.provenance);
+                }
+                if (v.aiProvenance !== undefined) {
+                    versionNode.set("aiProvenance", v.aiProvenance);
+                }
                 if (v.label !== undefined) {
                     versionNode.set("label", v.label);
                 }
@@ -145,7 +157,7 @@ export function yjsAnnotationToCodeMirror(
     ytext: Y.Text,
     numericId: number,
     options?: {
-        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+        nestedIdMapFor?: (annotations: Y.Map<unknown>) => AnnotationIdMap;
     },
 ): GenericAnnotation | null {
     const parsed = YjsAnnotationNodeSchema.safeParse(node);
@@ -168,7 +180,13 @@ export function yjsAnnotationToCodeMirror(
     }
 
     const type = data._type;
-    const base = { id: numericId, selection, thread, status };
+    const base = {
+        id: numericId,
+        selection,
+        thread,
+        status,
+        ...(data.aiProvenance ? { aiProvenance: data.aiProvenance } : {}),
+    };
 
     if (type === "comment") {
         return normalizeAnnotation({ ...base, _type: "comment" } as GenericAnnotation);
@@ -198,26 +216,30 @@ export function yjsAnnotationToCodeMirror(
     // Loose pre-normalization versions: legacy index-keyed rooms may have no
     // version ids yet. normalizeRevision() mints ids for those below, while
     // id-native rooms preserve the stable key/id.
-    const versions: Record<string, unknown>[] = keys.map((key) => {
-        const v = versionsMap.get(key) as Y.Map<unknown>;
-        const vtext = v.get("text");
-        const doc = vtext instanceof Y.Text ? vtext.toString() : "";
-        const label = v.get("label");
-        const versionId = versionIdForYjsKey(key, v);
-        const nestedAnnotations = v.get("annotations");
+    const versions: Record<string, unknown>[] = [];
+    for (const key of keys) {
+        const v = versionsMap.get(key);
+        const parsedVersion = YjsVersionNodeSchema.safeParse(v);
+        if (!parsedVersion.success) return null;
+        const { text: vtext, label, provenance, aiProvenance } = parsedVersion.data;
+        const doc = vtext.toString();
+        const versionId = versionIdForYjsKey(key, parsedVersion.data.id);
+        const nestedAnnotations = parsedVersion.data.annotations;
         const annotationField =
-            nestedAnnotations instanceof Y.Map && vtext instanceof Y.Text
+            nestedAnnotations instanceof Y.Map
                 ? yjsAnnotationMapToRawAnnotations(nestedAnnotations, ydoc, vtext, options)
                 : undefined;
-        return {
+        versions.push({
             ...(versionId !== undefined ? { id: versionId } : {}),
             doc,
-            ...(typeof label === "string" ? { label } : {}),
+            ...(label !== undefined ? { label } : {}),
+            ...(provenance !== undefined ? { provenance } : {}),
+            ...(aiProvenance !== undefined ? { aiProvenance } : {}),
             ...(annotationField && Object.keys(annotationField).length > 0
                 ? { annotationField }
                 : {}),
-        };
-    });
+        });
+    }
 
     const rawIndex =
         typeof node.get("activeVersionIndex") === "number"
@@ -277,9 +299,8 @@ function legacyVersionIndex(key: string): number | undefined {
     return Number.isInteger(parsed) && parsed >= 0 && String(parsed) === key ? parsed : undefined;
 }
 
-function versionIdForYjsKey(key: string, node: Y.Map<unknown>): string | undefined {
-    const nodeId = node.get("id");
-    if (typeof nodeId === "string" && nodeId.length > 0) return nodeId;
+function versionIdForYjsKey(key: string, nodeId: string | undefined): string | undefined {
+    if (nodeId) return nodeId;
     return legacyVersionIndex(key) === undefined ? key : undefined;
 }
 
@@ -313,7 +334,7 @@ export function syncRawAnnotationsToYjsMap(
     ydoc: Y.Doc,
     idMap: AnnotationIdMap,
     options?: {
-        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+        nestedIdMapFor?: (annotations: Y.Map<unknown>) => AnnotationIdMap;
     },
 ): void {
     const entries = rawAnnotations ? Object.entries(rawAnnotations) : [];
@@ -345,7 +366,7 @@ function syncIntegratedAnnotationSubtrees(
     clientId: string,
     ydoc: Y.Doc,
     options?: {
-        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+        nestedIdMapFor?: (annotations: Y.Map<unknown>) => AnnotationIdMap;
     },
 ): void {
     if (!isAnnotationOfType(annotation, "revision")) return;
@@ -379,17 +400,18 @@ function syncIntegratedAnnotationSubtrees(
 }
 
 function yjsAnnotationMapToRawAnnotations(
-    annotationsMap: Y.Map<YjsAnnotationNode>,
+    annotationsMap: Y.Map<unknown>,
     ydoc: Y.Doc,
     ytext: Y.Text,
     options?: {
-        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+        nestedIdMapFor?: (annotations: Y.Map<unknown>) => AnnotationIdMap;
     },
 ): RawAnnotations {
     const idMap = options?.nestedIdMapFor?.(annotationsMap) ?? new AnnotationIdMap();
     const raw: RawAnnotations = {};
 
     annotationsMap.forEach((node, yjsKey) => {
+        if (!(node instanceof Y.Map)) return;
         const cmId = idMap.getOrCreateCmId(yjsKey);
         const annotation = yjsAnnotationToCodeMirror(node, ydoc, ytext, cmId, options);
         if (!annotation) return;

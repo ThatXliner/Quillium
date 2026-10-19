@@ -70,7 +70,7 @@ const conservativenessPrompts: Record<AutoAIConservativeness, string> = {
         "Provide detailed feedback on structure, clarity, voice, pacing, word choice, and potential improvements. Be comprehensive but constructive.",
 };
 
-function buildSystemPrompt(preferences: EditorialPreferences): string {
+export function buildAutoAIReviewSystemPrompt(preferences: EditorialPreferences): string {
     const { conservativeness, annotationTypes } = autoAISettings;
     const policy = compileEditorialPolicy({
         task: "background-review",
@@ -87,8 +87,8 @@ Return structured feedback as JSON. Annotation types allowed for this request: $
 
 Use these fields:
 - comment: type, targetText, comment
-- suggestion: type, targetText, replacement, rationale
-- revision: type, targetText, versionLabel, versionText, threadMessage
+- suggestion: type, targetText, replacement, rationale, optional scope
+- revision: type, targetText, versionLabel, versionText, threadMessage, optional scope
 
 ${conservativenessPrompts[conservativeness]}
 
@@ -110,7 +110,7 @@ let reviewAbortController: AbortController | null = null;
 let unsubscribe: (() => void) | null = null;
 let unsubStopAi: (() => void) | null = null;
 
-function autoAIActionPayload(
+export function autoAIActionPayload(
     annotation: ReturnType<typeof normalizeAutoAIReview>[number],
 ): EditorialActionPayload {
     if (annotation.type === "comment") {
@@ -125,6 +125,7 @@ function autoAIActionPayload(
             action: "suggestion",
             targetText: annotation.targetText,
             replacements: [{ text: annotation.replacement, rationale: annotation.rationale }],
+            scope: annotation.scope,
         };
     }
     return {
@@ -132,6 +133,7 @@ function autoAIActionPayload(
         targetText: annotation.targetText,
         versions: annotation.versions,
         threadMessage: annotation.threadMessage,
+        scope: annotation.scope,
     };
 }
 
@@ -349,7 +351,7 @@ async function runReview(content: string, manual = false, generation = contentGe
         const { object } = await generateObject({
             model,
             schema: AutoAIReviewSchema,
-            system: buildSystemPrompt(editorialPreferencesAtStart),
+            system: buildAutoAIReviewSystemPrompt(editorialPreferencesAtStart),
             prompt: `Review this context packet. Only create annotations for exact targetText substrings that appear in the included document text.\n\n${contextPacketToPrompt(contextPacket)}`,
             abortSignal,
         });

@@ -1,3 +1,4 @@
+import { isolateHistory } from "@codemirror/commands";
 import { EditorSelection, type Extension, Prec } from "@codemirror/state";
 /**
  * yjsUndo.ts -- Per-user undo via Yjs UndoManager.
@@ -18,7 +19,7 @@ import { EditorSelection, type Extension, Prec } from "@codemirror/state";
  *   - Keymap intercepts Mod-z/Mod-Shift-z for undo/redo
  *   - Phase 02: paired ViewPlugin restores CM selection on undo/redo via stackItem.meta.
  */
-import { type EditorView, type KeyBinding, ViewPlugin, keymap } from "@codemirror/view";
+import { EditorView, type KeyBinding, ViewPlugin, type ViewUpdate, keymap } from "@codemirror/view";
 import * as Y from "yjs";
 
 type ArrayElement<T> = T extends Array<infer Element> ? Element : never;
@@ -52,7 +53,7 @@ export function createYjsUndoExtension<T = unknown>(
         captureTimeout: 500, // Merge rapid typing into single undo step
     });
 
-    const selectionRestorePlugin = ViewPlugin.fromClass(
+    const undoPlugin = ViewPlugin.fromClass(
         class {
             private added: (event: { stackItem: { meta: Map<unknown, unknown> } }) => void;
             private popped: (event: { stackItem: { meta: Map<unknown, unknown> } }) => void;
@@ -79,6 +80,17 @@ export function createYjsUndoExtension<T = unknown>(
                 };
                 undoManager.on("stack-item-added", this.added);
                 undoManager.on("stack-item-popped", this.popped);
+            }
+
+            update(update: ViewUpdate): void {
+                if (
+                    update.transactions.some((transaction) => {
+                        const boundary = transaction.annotation(isolateHistory);
+                        return boundary === "before" || boundary === "full";
+                    })
+                ) {
+                    undoManager.stopCapturing();
+                }
             }
 
             destroy() {
@@ -121,7 +133,20 @@ export function createYjsUndoExtension<T = unknown>(
         // Prec.highest so Yjs undo wins over CodeMirror's historyKeymap Mod-z —
         // otherwise CM history (which may contain pre-collab events) could run
         // first and replay stale text or semantic effects into the live document.
-        extension: [Prec.highest(keymap.of(undoKeymap)), selectionRestorePlugin],
+        extension: [
+            Prec.highest(keymap.of(undoKeymap)),
+            Prec.highest(undoPlugin),
+            EditorView.updateListener.of((update) => {
+                if (
+                    update.transactions.some((transaction) => {
+                        const boundary = transaction.annotation(isolateHistory);
+                        return boundary === "after" || boundary === "full";
+                    })
+                ) {
+                    undoManager.stopCapturing();
+                }
+            }),
+        ],
         undoManager,
     };
 }

@@ -535,8 +535,10 @@ reload.
 | `readAnnotationThread` | Chat, Feedback, Revise | Complete discussion content in bounded pages |
 | `readDraftContext` | Chat, Feedback, Revise | Captured draft or revision-version passages in bounded pages |
 
-Tool schemas require exact `targetText` and accept surrounding `context` to
-disambiguate repeated phrases. `editorialAction.ts` requires one unique exact
+Tool schemas require exact `targetText` and accept surrounding `context` or an
+explicit `targetRange` to disambiguate repeated phrases. Explicit offsets must
+match the source text and remain inside the request scope.
+`editorialAction.ts` requires one unique exact
 match inside the mapped request scope. It never turns repeated text into a
 multi-range annotation; an unresolved or ambiguous target produces a visible
 warning. The gateway also rejects read-only editors, incompatible annotation
@@ -553,6 +555,22 @@ the mapped text and causes the tool call to be rejected.
 It dispatches valid calls through the same CodeMirror annotation commands used
 by the rest of the app. Reader-persona tool calls attach the persona name as the
 annotation author but cannot expand the parent task's permissions.
+
+All wording actions use the same boundary policy, including Chat, Suggest
+revisions, reader review, AutoAI, and MCP. Independent edits use separate calls.
+The gateway trims shared unchanged text from the edges of replacement
+alternatives at word boundaries. It keeps adjacent source text for an insertion
+so the captured Original is not empty. Dependent edits stay together. An
+explicit `scope: "whole-passage"` retains the full target for a requested broad
+rewrite or a dependent alternative that needs it. Exact compression always
+retains the full selection. The gateway cannot infer whether edits in the
+middle of a proposal are independent; the model must make that choice before
+submitting its calls.
+
+Revision tools accept one or more proposed versions. The application captures
+Original automatically; models must not supply it again. An empty proposed
+version is a cut. AutoAI normalization preserves these cuts and all replacement
+whitespace verbatim.
 
 Bookmarks live only for the request. They are removed on completion or error,
 and persona batches remove their shared bookmark in a `finally` block. The field
@@ -585,6 +603,32 @@ builder and proves that:
 stateful ChatGPT OAuth provider across turns. These fixtures do not call remote
 models, so failures are deterministic and do not depend on credentials or network
 availability.
+
+`focusedRevision.live.test.ts` runs opt-in model evaluations against actual
+CodeMirror state. It checks sparse independent changes through Chat, Suggest
+revisions, reader review, and AutoAI, plus dependent agreement and exact
+compression. Each case reads the resulting annotations, preserves the active
+original, roundtrips the saved annotation state, and checks undo and redo.
+
+Run with a funded Google provider key in `GEMINI_API_KEY`:
+
+```bash
+QUILLIUM_LIVE_EDITORIAL_EVAL=1 bun run --cwd packages/desktop test:run tests/ai/focusedRevision.live.test.ts
+```
+
+Alternatively, use an authenticated Claude CLI subscription:
+
+```bash
+QUILLIUM_EVAL_CLAUDE=1 bun run --cwd packages/desktop test:run tests/ai/focusedRevision.live.test.ts
+```
+
+The Claude evaluation adapter replaces only the provider. It sends the actual
+application policy, context, and tool schemas to a real model, then feeds its
+generated calls through the AI SDK and editorial gateway. Claude's local tools
+and MCP servers are disabled during this evaluation. This verifies model
+decisions and editor behavior, but does not verify another provider's HTTP
+transport or native SQLite persistence. Set `QUILLIUM_EVAL_OUTPUT` to an absolute
+path to retain JSONL records of the generated calls and checks.
 
 ## Parallel Personas and Document Safety
 
