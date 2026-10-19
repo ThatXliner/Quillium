@@ -43,7 +43,7 @@ import {
     type StateEffect,
     Transaction,
 } from "@codemirror/state";
-import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import { type EditorView, type ViewUpdate, drawSelection, keymap } from "@codemirror/view";
 import {
     VERSION_PREVIEW_MAX_LENGTH,
     formatVersionPreviewText,
@@ -128,6 +128,8 @@ export function createNestedEditorState(
         // comment in the nested editor's non-persistent annotation field.
         makeParentUndoKeymap(historyView ?? parentView, revisionId),
         ...getExtensions({ persist: false, history: false, updateListener }),
+        // WebKit can focus an empty revision without painting its native caret.
+        drawSelection(),
         ...nestedAwareness,
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
