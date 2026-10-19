@@ -21,7 +21,7 @@ import {
     currentTabId,
     editorView,
 } from "$lib/stores";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import {
@@ -49,7 +49,24 @@ export class DocumentLoader {
         switchToDraft: (tabId, draftId) => this.switchToDraft(tabId, draftId),
         flushPendingPersist: () => this.flush(),
         seedStateJson: (draftId) => this.seedStateJson(draftId),
+        cancelPendingSelections: () => {
+            this.#generation++;
+            // The committed view remains valid while reserved target loads are cancelled.
+            this.#committedGeneration = this.#generation;
+        },
+        settleSelection: () => this.#settleSelection(),
+        updateCurrentDraftLock: (draftId, locked) => {
+            const view = get(editorView);
+            if (!view || !this.isReady() || this.#committedDocument?.draftId !== draftId)
+                return false;
+            if (this.#draftLock.get(view.state) === undefined) return false;
+            view.dispatch({
+                effects: this.#draftLock.reconfigure(EditorState.readOnly.of(locked)),
+            });
+            return true;
+        },
     });
+    readonly #draftLock = new Compartment();
     #generation = 0;
     #committedGeneration = -1;
     #committedTabId: string | null = null;
@@ -84,16 +101,32 @@ export class DocumentLoader {
         this.drafts.cancelPendingLoads();
     }
 
+    async #settleSelection(): Promise<void> {
+        // A pointer write already inside IPC must finish before deletion can proceed.
+        const write = this.#activeDraftWrite.then(async () => {
+            const tabId = get(currentTabId);
+            const draftId = get(currentDraftId);
+            if (!this.#disposed && tabId && draftId && this.drafts.canSelect(tabId, draftId)) {
+                await setActiveDraft(tabId, draftId);
+            }
+        });
+        this.#activeDraftWrite = write.catch(() => {});
+        await write;
+    }
+
     async flush(): Promise<void> {
         await flushPersistence();
     }
 
     /** Live integrations must not pair a newly selected identity with the previous editor state. */
     isReady(): boolean {
-        return !this.#disposed && this.#generation === this.#committedGeneration &&
+        return (
+            !this.#disposed &&
+            this.#generation === this.#committedGeneration &&
             this.#committedDocument?.documentId === get(currentDocumentId) &&
             this.#committedTabId === get(currentTabId) &&
-            this.#committedDocument?.draftId === get(currentDraftId);
+            this.#committedDocument?.draftId === get(currentDraftId)
+        );
     }
 
     #selectDocument(id: string): void {
@@ -114,7 +147,7 @@ export class DocumentLoader {
     #buildState(loaded: LoadResult, readOnly: boolean, persistHistory: boolean): EditorState {
         return reconstructState(loaded.snapshotStateJson, loaded.eventsSince, [
             getExtensions({ ...this.#options, persistHistory }),
-            EditorState.readOnly.of(readOnly),
+            this.#draftLock.of(EditorState.readOnly.of(readOnly)),
         ]);
     }
 
@@ -141,7 +174,8 @@ export class DocumentLoader {
         showSample?: boolean;
     } = {}): Promise<LoadedDocument | undefined> {
         let documentId = requestedId;
-        if (this.#disposed) return;
+        if (this.#disposed || (target && !this.drafts.canSelect(target.tabId, target.draftId)))
+            return;
         const generation = ++this.#generation;
         const requestedDocument = get(currentDocumentId);
         await this.flush();
@@ -184,15 +218,17 @@ export class DocumentLoader {
         if (target) {
             // Once queued, finish the same-tab UI commit even if a newer load starts.
             // If that newer load fails, the editor still matches the persisted pointer.
-            const write = this.#activeDraftWrite.then(() =>
-                setActiveDraft(target.tabId, target.draftId),
-            );
+            const write = this.#activeDraftWrite.then(async () => {
+                if (this.drafts.canSelect(target.tabId, target.draftId))
+                    await setActiveDraft(target.tabId, target.draftId);
+            });
             this.#activeDraftWrite = write.catch(() => {});
             await write;
             if (
                 this.#disposed ||
                 get(currentDocumentId) !== documentId ||
-                get(currentTabId) !== target.tabId
+                get(currentTabId) !== target.tabId ||
+                !this.drafts.canSelect(target.tabId, target.draftId)
             )
                 return;
         }
