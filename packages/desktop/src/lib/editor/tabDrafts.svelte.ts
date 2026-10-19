@@ -49,9 +49,13 @@ export type TabDraftControllerDeps = {
     flushPendingPersist: () => Promise<void>;
     /** Serialize a draft's current state to seed a new draft. */
     seedStateJson: (sourceDraftId: string) => Promise<string>;
+    cancelPendingSelections?: () => void;
+    settleSelection?: () => Promise<void>;
     /** Update a committed draft's lock without replacing its in-memory history. */
     updateCurrentDraftLock?: (draftId: string, locked: boolean) => boolean;
 };
+
+type DeletionTarget = { tabId: string; draftIds: ReadonlySet<string> | null };
 
 export class TabDraftController {
     readonly history = new StructureHistory(
@@ -64,6 +68,7 @@ export class TabDraftController {
             console.error("[tabDrafts] undo/redo failed", error);
             toast.error("Could not undo or redo. Please try again.");
         },
+        () => this.#dismissDeletionToast(),
     );
     tabs = $state<TabMeta[]>([]);
     tabDrafts = $state<DraftMeta[]>([]);
@@ -78,6 +83,67 @@ export class TabDraftController {
     #activeTabWrite: Promise<void> = Promise.resolve();
     #deletionToast: string | number | undefined;
     #disposed = false;
+    #deletionTarget: DeletionTarget | null = null;
+
+    canSelect(tabId: string, draftId?: string): boolean {
+        const target = this.#deletionTarget;
+        return (
+            !this.#disposed &&
+            (!target ||
+                target.tabId !== tabId ||
+                (target.draftIds !== null &&
+                    (draftId === undefined || !target.draftIds.has(draftId))))
+        );
+    }
+
+    #dismissDeletionToast(): void {
+        if (this.#deletionToast !== undefined) toast.dismiss(this.#deletionToast);
+        this.#deletionToast = undefined;
+    }
+
+    async #withDeletionTarget(
+        operation: () => Promise<void>,
+        target: DeletionTarget,
+    ): Promise<void> {
+        this.#deletionTarget = target;
+        this.#contextGeneration++;
+        this.#deps.cancelPendingSelections?.();
+        try {
+            await operation();
+        } finally {
+            this.#deletionTarget = null;
+        }
+    }
+
+    async #mutate(operation: () => Promise<void>, target?: DeletionTarget): Promise<void> {
+        await this.history.perform(() =>
+            target ? this.#withDeletionTarget(operation, target) : operation(),
+        );
+    }
+
+    #recordDeletion(
+        documentId: string,
+        operation: StructureHistoryEntry,
+        target: DeletionTarget,
+        label: string,
+        kind: "draft" | "tab" = "draft",
+    ): void {
+        const current = () => !this.#disposed && get(currentDocumentId) === documentId;
+        const entry: StructureHistoryEntry = {
+            undo: async () => {
+                await operation.undo();
+                if (!current()) return;
+                this.#dismissDeletionToast();
+                toast(`Restored ${kind} “${label}”`, { duration: 3000 });
+            },
+            redo: async () => {
+                await this.#withDeletionTarget(operation.redo, target);
+                if (current()) this.#showDeletionToast(`Deleted ${kind} “${label}”`, entry, kind);
+            },
+        };
+        this.history.record(documentId, entry);
+        this.#showDeletionToast(`Deleted ${kind} “${label}”`, entry, kind);
+    }
 
     #showDeletionToast(
         message: string,
@@ -85,7 +151,7 @@ export class TabDraftController {
         kind: "draft" | "tab" = "draft",
     ): void {
         if (this.#disposed) return;
-        if (this.#deletionToast !== undefined) toast.dismiss(this.#deletionToast);
+        this.#dismissDeletionToast();
         this.#deletionToast = toast(message, {
             duration: 8000,
             action: {
@@ -126,7 +192,7 @@ export class TabDraftController {
         this.#contextGeneration++;
         this.#disposed = true;
         this.history.dispose();
-        if (this.#deletionToast !== undefined) toast.dismiss(this.#deletionToast);
+        this.#dismissDeletionToast();
     }
 
     lockedOf(draftId: string | null): boolean {
@@ -138,7 +204,9 @@ export class TabDraftController {
     }
 
     #persistActiveTab(docId: string, tabId: string): Promise<void> {
-        const write = this.#activeTabWrite.then(() => setActiveTab(docId, tabId));
+        const write = this.#activeTabWrite.then(async () => {
+            if (this.canSelect(tabId)) await setActiveTab(docId, tabId);
+        });
         // A failed write is still returned to its caller, but must not poison
         // every later selection queued behind it.
         this.#activeTabWrite = write.catch(() => {});
@@ -190,7 +258,7 @@ export class TabDraftController {
 
     async handleTabSelect(tabId: string) {
         const docId = get(currentDocumentId);
-        if (!docId) return;
+        if (!docId || !this.canSelect(tabId)) return;
         const generation = ++this.#contextGeneration;
         await this.#deps.flushPendingPersist();
         if (!this.#isCurrentContext(generation, docId)) return;
@@ -207,7 +275,7 @@ export class TabDraftController {
             listTabDrafts(tabId),
             getActiveDraft(tabId),
         ]);
-        if (!this.#isCurrentContext(generation, docId)) return;
+        if (!this.#isCurrentContext(generation, docId) || !this.canSelect(tabId)) return;
         this.tabDrafts = drafts;
         const draft = drafts.find((d) => d.id === persisted) ?? drafts[0];
         currentTabId.set(tabId);
@@ -217,13 +285,15 @@ export class TabDraftController {
     }
 
     async handleTabCreate() {
-        const docId = get(currentDocumentId);
-        if (!docId) return;
-        const tab = await createTab(docId, `Tab ${this.tabs.length + 1}`);
-        this.tabs = [...this.tabs, tab];
-        this.history.clearRedo();
-        posthog.capture("tab_created");
-        await this.handleTabSelect(tab.id);
+        await this.#mutate(async () => {
+            const docId = get(currentDocumentId);
+            if (!docId) return;
+            const tab = await createTab(docId, `Tab ${this.tabs.length + 1}`);
+            this.tabs = [...this.tabs, tab];
+            this.history.clearRedo();
+            posthog.capture("tab_created");
+            await this.handleTabSelect(tab.id);
+        });
     }
 
     /**
@@ -236,50 +306,56 @@ export class TabDraftController {
         tabs: TabMeta[],
         selectFirst = true,
     ): Promise<void> {
-        if (!documentId || get(currentDocumentId) !== documentId) return;
-        const knownIds = new Set(this.tabs.map((tab) => tab.id));
-        const accepted: TabMeta[] = [];
-        for (const tab of tabs) {
-            if (
-                tab.documentId !== documentId ||
-                !tab.id ||
-                knownIds.has(tab.id) ||
-                accepted.some((existing) => existing.id === tab.id)
-            ) {
-                continue;
+        await this.#mutate(async () => {
+            if (!documentId || get(currentDocumentId) !== documentId) return;
+            const knownIds = new Set(this.tabs.map((tab) => tab.id));
+            const accepted: TabMeta[] = [];
+            for (const tab of tabs) {
+                if (
+                    tab.documentId !== documentId ||
+                    !tab.id ||
+                    knownIds.has(tab.id) ||
+                    accepted.some((existing) => existing.id === tab.id)
+                ) {
+                    continue;
+                }
+                accepted.push(tab);
             }
-            accepted.push(tab);
-        }
-        if (accepted.length === 0 || get(currentDocumentId) !== documentId) return;
-        this.tabs = [...this.tabs, ...accepted];
-        this.history.clearRedo();
-        if (selectFirst) await this.handleTabSelect(accepted[0].id);
+            if (accepted.length === 0 || get(currentDocumentId) !== documentId) return;
+            this.tabs = [...this.tabs, ...accepted];
+            this.history.clearRedo();
+            if (selectFirst) await this.handleTabSelect(accepted[0].id);
+        });
     }
 
     async handleTabRename(tabId: string, label: string) {
-        await renameTab(tabId, label).catch(console.error);
-        this.tabs = this.tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
-        this.history.clearRedo();
-        posthog.capture("tab_renamed");
+        await this.#mutate(async () => {
+            await renameTab(tabId, label).catch(console.error);
+            this.tabs = this.tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
+            this.history.clearRedo();
+            posthog.capture("tab_renamed");
+        });
     }
 
     async handleTabReorder(orderedIds: string[]) {
-        const docId = get(currentDocumentId);
-        if (!docId) return;
-        // Optimistically apply the new order, then persist. If persistence
-        // fails, reload from the DB so the bar reflects the true stored order.
-        const byId = new Map(this.tabs.map((t) => [t.id, t]));
-        this.tabs = orderedIds
-            .map((id) => byId.get(id))
-            .filter((t): t is TabMeta => t !== undefined);
-        try {
-            await reorderTabs(docId, orderedIds);
-            this.history.clearRedo();
-            posthog.capture("tab_reordered");
-        } catch (e) {
-            console.error("[Editor] reorder tabs failed", e);
-            this.tabs = await listTabs(docId);
-        }
+        await this.#mutate(async () => {
+            const docId = get(currentDocumentId);
+            if (!docId) return;
+            // Optimistically apply the new order, then persist. If persistence
+            // fails, reload from the DB so the bar reflects the true stored order.
+            const byId = new Map(this.tabs.map((t) => [t.id, t]));
+            this.tabs = orderedIds
+                .map((id) => byId.get(id))
+                .filter((t): t is TabMeta => t !== undefined);
+            try {
+                await reorderTabs(docId, orderedIds);
+                this.history.clearRedo();
+                posthog.capture("tab_reordered");
+            } catch (e) {
+                console.error("[Editor] reorder tabs failed", e);
+                this.tabs = await listTabs(docId);
+            }
+        });
     }
 
     async #ensureEditorOffTab(documentId: string, tabId: string): Promise<boolean> {
@@ -293,6 +369,16 @@ export class TabDraftController {
         } else {
             await this.#deps.flushPendingPersist();
         }
+        const write = this.#activeTabWrite.then(async () => {
+            if (this.#disposed || get(currentDocumentId) !== documentId) return;
+            if ((await getActiveTab(documentId)) !== tabId) return;
+            const currentTab = get(currentTabId);
+            if (currentTab && currentTab !== tabId && get(currentDocumentId) === documentId)
+                await setActiveTab(documentId, currentTab);
+        });
+        this.#activeTabWrite = write.catch(() => {});
+        await write;
+        await this.#deps.settleSelection?.();
         return (
             !this.#disposed && get(currentDocumentId) === documentId && get(currentTabId) !== tabId
         );
@@ -310,38 +396,48 @@ export class TabDraftController {
     }
 
     async handleTabDelete(tabId: string) {
-        const documentId = get(currentDocumentId);
-        if (!documentId || this.tabs.length <= 1) return;
-        const tab = this.tabs.find((t) => t.id === tabId);
-        if (!tab || !(await this.#ensureEditorOffTab(documentId, tabId))) return;
-        try {
-            await deleteTab(tabId);
-        } catch (e) {
-            console.error("[Editor] delete tab failed", e);
-            return;
-        }
-        if (this.#disposed || get(currentDocumentId) !== documentId) return;
-        this.tabs = this.tabs.filter((t) => t.id !== tabId);
-        posthog.capture("tab_deleted");
-        const entry: StructureHistoryEntry = {
-            undo: async () => {
-                await restoreTab(tabId);
-                await this.#refreshTabsAfterDeletion(documentId);
-                posthog.capture("tab_restored");
-            },
-            redo: async () => {
-                if (!(await this.#ensureEditorOffTab(documentId, tabId))) {
-                    throw new Error("Could not switch away from the deleted tab");
+        await this.#mutate(
+            async () => {
+                const documentId = get(currentDocumentId);
+                if (!documentId || this.tabs.length <= 1) return;
+                const tab = this.tabs.find((t) => t.id === tabId);
+                if (!tab || !(await this.#ensureEditorOffTab(documentId, tabId))) return;
+                try {
+                    await deleteTab(tabId);
+                } catch (e) {
+                    console.error("[Editor] delete tab failed", e);
+                    return;
                 }
-                await deleteTab(tabId);
-                if (!this.#disposed && get(currentDocumentId) === documentId) {
-                    this.tabs = this.tabs.filter((tab) => tab.id !== tabId);
-                }
-                await this.#refreshTabsAfterDeletion(documentId);
+                if (this.#disposed || get(currentDocumentId) !== documentId) return;
+                this.tabs = this.tabs.filter((t) => t.id !== tabId);
+                posthog.capture("tab_deleted");
+                const entry: StructureHistoryEntry = {
+                    undo: async () => {
+                        await restoreTab(tabId);
+                        await this.#refreshTabsAfterDeletion(documentId);
+                        posthog.capture("tab_restored");
+                    },
+                    redo: async () => {
+                        if (!(await this.#ensureEditorOffTab(documentId, tabId))) {
+                            throw new Error("Could not switch away from the deleted tab");
+                        }
+                        await deleteTab(tabId);
+                        if (!this.#disposed && get(currentDocumentId) === documentId) {
+                            this.tabs = this.tabs.filter((tab) => tab.id !== tabId);
+                        }
+                        await this.#refreshTabsAfterDeletion(documentId);
+                    },
+                };
+                this.#recordDeletion(
+                    documentId,
+                    entry,
+                    { tabId, draftIds: null },
+                    tab.label,
+                    "tab",
+                );
             },
-        };
-        this.history.record(documentId, entry);
-        this.#showDeletionToast(`Deleted tab “${tab.label}”`, entry, "tab");
+            { tabId, draftIds: null },
+        );
     }
 
     // ── Draft actions ───────────────────────────────────────────
@@ -349,8 +445,9 @@ export class TabDraftController {
     async handleDraftSelect(draftId: string) {
         if (draftId === get(currentDraftId)) return;
         const tabId = get(currentTabId);
-        if (!tabId) return;
+        if (!tabId || !this.canSelect(tabId, draftId)) return;
         await this.#deps.switchToDraft(tabId, draftId);
+        if (!this.canSelect(tabId, draftId) || get(currentDraftId) !== draftId) return;
         posthog.capture("draft_switched");
     }
 
@@ -360,23 +457,25 @@ export class TabDraftController {
      * stays editable.
      */
     async handleDraftIterate(sourceId: string) {
-        const tabId = get(currentTabId);
-        if (!tabId || this.forking) return;
-        this.forking = true;
-        try {
-            await this.#deps.flushPendingPersist();
-            const stateJson = await this.#deps.seedStateJson(sourceId);
-            const next = await iterateDraft(sourceId, `v${this.tabDrafts.length}`, stateJson);
-            this.tabDrafts = await listTabDrafts(tabId);
-            this.history.clearRedo();
-            posthog.capture("draft_iterated");
-            await this.#deps.switchToDraft(tabId, next.id);
-        } catch (e) {
-            console.error("[Editor] iterate draft failed", e);
-            captureException(e);
-        } finally {
-            this.forking = false;
-        }
+        await this.#mutate(async () => {
+            const tabId = get(currentTabId);
+            if (!tabId || this.forking) return;
+            this.forking = true;
+            try {
+                await this.#deps.flushPendingPersist();
+                const stateJson = await this.#deps.seedStateJson(sourceId);
+                const next = await iterateDraft(sourceId, `v${this.tabDrafts.length}`, stateJson);
+                this.tabDrafts = await listTabDrafts(tabId);
+                this.history.clearRedo();
+                posthog.capture("draft_iterated");
+                await this.#deps.switchToDraft(tabId, next.id);
+            } catch (e) {
+                console.error("[Editor] iterate draft failed", e);
+                captureException(e);
+            } finally {
+                this.forking = false;
+            }
+        });
     }
 
     /**
@@ -385,29 +484,33 @@ export class TabDraftController {
      * live explorations.
      */
     async handleDraftBranch(sourceId: string) {
-        const tabId = get(currentTabId);
-        if (!tabId || this.forking) return;
-        this.forking = true;
-        try {
-            await this.#deps.flushPendingPersist();
-            const stateJson = await this.#deps.seedStateJson(sourceId);
-            const branch = await branchDraft(sourceId, "new take", stateJson);
-            this.tabDrafts = await listTabDrafts(tabId);
-            this.history.clearRedo();
-            posthog.capture("draft_branched");
-            await this.#deps.switchToDraft(tabId, branch.id);
-        } catch (e) {
-            console.error("[Editor] branch draft failed", e);
-            captureException(e);
-        } finally {
-            this.forking = false;
-        }
+        await this.#mutate(async () => {
+            const tabId = get(currentTabId);
+            if (!tabId || this.forking) return;
+            this.forking = true;
+            try {
+                await this.#deps.flushPendingPersist();
+                const stateJson = await this.#deps.seedStateJson(sourceId);
+                const branch = await branchDraft(sourceId, "new take", stateJson);
+                this.tabDrafts = await listTabDrafts(tabId);
+                this.history.clearRedo();
+                posthog.capture("draft_branched");
+                await this.#deps.switchToDraft(tabId, branch.id);
+            } catch (e) {
+                console.error("[Editor] branch draft failed", e);
+                captureException(e);
+            } finally {
+                this.forking = false;
+            }
+        });
     }
 
     async handleDraftRename(draftId: string, label: string) {
-        await renameDraft(draftId, label).catch(console.error);
-        this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, label } : d));
-        this.history.clearRedo();
+        await this.#mutate(async () => {
+            await renameDraft(draftId, label).catch(console.error);
+            this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, label } : d));
+            this.history.clearRedo();
+        });
     }
 
     async handleDraftDelete(draftId: string) {
@@ -433,6 +536,7 @@ export class TabDraftController {
         const documentId = get(currentDocumentId);
         if (!doomed.includes(get(currentDraftId) ?? "")) {
             await this.#deps.flushPendingPersist();
+            await this.#deps.settleSelection?.();
             return (
                 !this.#disposed &&
                 get(currentDocumentId) === documentId &&
@@ -445,6 +549,7 @@ export class TabDraftController {
         const tabId = get(currentTabId);
         if (!tabId) return false;
         await this.#deps.switchToDraft(tabId, survivor.id);
+        await this.#deps.settleSelection?.();
         return (
             !this.#disposed &&
             get(currentDocumentId) === documentId &&
@@ -455,46 +560,58 @@ export class TabDraftController {
 
     /** Soft-deletes a childless draft (or its subtree root) and offers Undo. */
     async #performDraftDelete(draftId: string, targets: string[], mode: "leaf" | "cascade") {
-        let doomed = targets;
-        const documentId = get(currentDocumentId);
-        const tabId = get(currentTabId);
-        if (!documentId || !tabId) return;
-        const draft = this.tabDrafts.find((d) => d.id === draftId);
-        if (!(await this.#ensureEditorOffDeleted(doomed))) return;
-        try {
-            if (mode === "cascade") {
-                doomed = await cascadeDeleteDraft(draftId);
-            } else {
-                await deleteDraft(draftId);
-            }
-        } catch (e) {
-            console.error("[Editor] delete draft failed", e);
-            return;
-        }
-        if (this.#disposed || get(currentDocumentId) !== documentId) return;
-        posthog.capture("draft_deleted", { mode });
-        const entry: StructureHistoryEntry = {
-            undo: async () => {
-                // Restore parents before descendants; stop on failure so retry
-                // never silently skips a missing parent.
-                for (const id of doomed) await restoreDraft(id);
-                await this.#refreshAfterDeletion(documentId, tabId);
-                posthog.capture("draft_restored");
-            },
-            redo: async () => {
-                if (get(currentTabId) === tabId && !(await this.#ensureEditorOffDeleted(doomed))) {
-                    throw new Error("Cannot delete the last draft");
+        await this.#mutate(
+            async () => {
+                let doomed = targets;
+                const documentId = get(currentDocumentId);
+                const tabId = get(currentTabId);
+                if (!documentId || !tabId) return;
+                const draft = this.tabDrafts.find((d) => d.id === draftId);
+                if (!(await this.#ensureEditorOffDeleted(doomed))) return;
+                try {
+                    if (mode === "cascade") {
+                        doomed = await cascadeDeleteDraft(draftId);
+                    } else {
+                        await deleteDraft(draftId);
+                    }
+                } catch (e) {
+                    console.error("[Editor] delete draft failed", e);
+                    return;
                 }
-                if (get(currentDocumentId) !== documentId || this.#disposed)
-                    throw new Error("Document changed");
-                if (mode === "cascade") doomed = await cascadeDeleteDraft(draftId);
-                else await deleteDraft(draftId);
+                if (this.#disposed || get(currentDocumentId) !== documentId) return;
+                posthog.capture("draft_deleted", { mode });
+                const entry: StructureHistoryEntry = {
+                    undo: async () => {
+                        // Restore parents before descendants; stop on failure so retry
+                        // never silently skips a missing parent.
+                        for (const id of doomed) await restoreDraft(id);
+                        await this.#refreshAfterDeletion(documentId, tabId);
+                        posthog.capture("draft_restored");
+                    },
+                    redo: async () => {
+                        if (
+                            get(currentTabId) === tabId &&
+                            !(await this.#ensureEditorOffDeleted(doomed))
+                        ) {
+                            throw new Error("Cannot delete the last draft");
+                        }
+                        if (get(currentDocumentId) !== documentId || this.#disposed)
+                            throw new Error("Document changed");
+                        if (mode === "cascade") doomed = await cascadeDeleteDraft(draftId);
+                        else await deleteDraft(draftId);
+                        await this.#refreshAfterDeletion(documentId, tabId);
+                    },
+                };
+                this.#recordDeletion(
+                    documentId,
+                    entry,
+                    { tabId, draftIds: new Set(doomed) },
+                    draft?.label ?? "draft",
+                );
                 await this.#refreshAfterDeletion(documentId, tabId);
             },
-        };
-        this.history.record(documentId, entry);
-        this.#showDeletionToast(`Deleted draft “${draft?.label ?? "draft"}”`, entry);
-        await this.#refreshAfterDeletion(documentId, tabId);
+            { tabId: get(currentTabId) ?? "", draftIds: new Set(targets) },
+        );
     }
 
     /** Cascade branch of the delete prompt: remove the draft and its whole subtree. */
@@ -506,47 +623,55 @@ export class TabDraftController {
 
     /** Orphan branch of the delete prompt: keep the children, re-attaching them. */
     async handleDeleteOrphan(draftId: string) {
-        const documentId = get(currentDocumentId);
-        const tabId = get(currentTabId);
-        if (!documentId || !tabId) return;
-        this.pendingDelete = null;
-        const draft = this.tabDrafts.find((d) => d.id === draftId);
-        // Only the draft itself vanishes; its children survive re-attached.
-        if (!(await this.#ensureEditorOffDeleted([draftId]))) return;
-        let rewrites: Awaited<ReturnType<typeof orphanAndDeleteDraft>>;
-        try {
-            rewrites = await orphanAndDeleteDraft(draftId);
-        } catch (e) {
-            console.error("[Editor] orphan-delete draft failed", e);
-            return;
-        }
-        if (this.#disposed || get(currentDocumentId) !== documentId) return;
-        posthog.capture("draft_deleted", { mode: "orphan" });
-        const entry: StructureHistoryEntry = {
-            undo: async () => {
-                await restoreDraft(draftId);
-                for (const r of rewrites) {
-                    await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom);
+        await this.#mutate(
+            async () => {
+                const documentId = get(currentDocumentId);
+                const tabId = get(currentTabId);
+                if (!documentId || !tabId) return;
+                this.pendingDelete = null;
+                const draft = this.tabDrafts.find((d) => d.id === draftId);
+                if (!(await this.#ensureEditorOffDeleted([draftId]))) return;
+                let rewrites: Awaited<ReturnType<typeof orphanAndDeleteDraft>>;
+                try {
+                    rewrites = await orphanAndDeleteDraft(draftId);
+                } catch (e) {
+                    console.error("[Editor] orphan-delete draft failed", e);
+                    return;
                 }
+                if (this.#disposed || get(currentDocumentId) !== documentId) return;
+                posthog.capture("draft_deleted", { mode: "orphan" });
+                const entry: StructureHistoryEntry = {
+                    undo: async () => {
+                        await restoreDraft(draftId);
+                        for (const r of rewrites) {
+                            await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom);
+                        }
+                        await this.#refreshAfterDeletion(documentId, tabId);
+                        posthog.capture("draft_restored");
+                    },
+                    redo: async () => {
+                        if (
+                            get(currentTabId) === tabId &&
+                            !(await this.#ensureEditorOffDeleted([draftId]))
+                        ) {
+                            throw new Error("Cannot delete the last draft");
+                        }
+                        if (get(currentDocumentId) !== documentId || this.#disposed)
+                            throw new Error("Document changed");
+                        rewrites = await orphanAndDeleteDraft(draftId);
+                        await this.#refreshAfterDeletion(documentId, tabId);
+                    },
+                };
+                this.#recordDeletion(
+                    documentId,
+                    entry,
+                    { tabId, draftIds: new Set([draftId]) },
+                    draft?.label ?? "draft",
+                );
                 await this.#refreshAfterDeletion(documentId, tabId);
-                posthog.capture("draft_restored");
             },
-            redo: async () => {
-                if (
-                    get(currentTabId) === tabId &&
-                    !(await this.#ensureEditorOffDeleted([draftId]))
-                ) {
-                    throw new Error("Cannot delete the last draft");
-                }
-                if (get(currentDocumentId) !== documentId || this.#disposed)
-                    throw new Error("Document changed");
-                rewrites = await orphanAndDeleteDraft(draftId);
-                await this.#refreshAfterDeletion(documentId, tabId);
-            },
-        };
-        this.history.record(documentId, entry);
-        this.#showDeletionToast(`Deleted draft “${draft?.label ?? "draft"}”`, entry);
-        await this.#refreshAfterDeletion(documentId, tabId);
+            { tabId: get(currentTabId) ?? "", draftIds: new Set([draftId]) },
+        );
     }
 
     /**
@@ -572,15 +697,17 @@ export class TabDraftController {
 
     /** Toggles the soft lock and rebuilds the editor state's read-only flag. */
     async handleDraftToggleLock(draftId: string, locked: boolean) {
-        await setDraftLocked(draftId, locked).catch(console.error);
-        this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
-        this.history.clearRedo();
-        posthog.capture(locked ? "draft_locked" : "draft_unlocked");
-        if (draftId === get(currentDraftId)) {
-            const tabId = get(currentTabId);
-            if (tabId && !this.#deps.updateCurrentDraftLock?.(draftId, locked)) {
-                await this.#deps.switchToDraft(tabId, draftId);
+        await this.#mutate(async () => {
+            await setDraftLocked(draftId, locked).catch(console.error);
+            this.tabDrafts = this.tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
+            this.history.clearRedo();
+            posthog.capture(locked ? "draft_locked" : "draft_unlocked");
+            if (draftId === get(currentDraftId)) {
+                const tabId = get(currentTabId);
+                if (tabId && !this.#deps.updateCurrentDraftLock?.(draftId, locked)) {
+                    await this.#deps.switchToDraft(tabId, draftId);
+                }
             }
-        }
+        });
     }
 }

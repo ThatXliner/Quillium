@@ -36,6 +36,8 @@ const db = vi.hoisted(() => ({
     createTab: vi.fn(),
     setActiveTab: vi.fn(),
     setDraftLocked: vi.fn(),
+    deleteDraft: vi.fn(),
+    restoreDraft: vi.fn(),
 }));
 const persistence = vi.hoisted(() => ({
     flushPersistence: vi.fn(),
@@ -81,9 +83,12 @@ function draft(id: string, locked = false): DraftMeta {
 }
 let loader: DocumentLoader;
 let commits: LoadedDocument[];
+let testView: EditorView;
 
 beforeEach(() => {
     vi.resetAllMocks();
+    testView = new EditorView({ parent: document.body });
+    editorView.set(testView);
     currentDocumentId.set("doc-1");
     currentDocumentTitle.set("old title");
     currentTabId.set("tab-1");
@@ -107,6 +112,7 @@ beforeEach(() => {
 });
 afterEach(() => {
     loader.dispose();
+    testView.destroy();
     currentDocumentId.set(null);
     currentDraftId.set(null);
     currentTabId.set(null);
@@ -443,4 +449,78 @@ it("updates a committed draft lock without losing session undo or redo", async (
         editorView.set(previousView);
         view.destroy();
     }
+});
+
+it("rejects a target load started before its deletion even if the read finishes after deletion", async () => {
+    await loader.load({ documentId: "doc-1" });
+    const doomed = draft("doomed");
+    loader.drafts.tabDrafts = [draft("draft-1"), doomed];
+    db.deleteDraft.mockResolvedValue(undefined);
+    const delayed = deferred<LoadResult>();
+    db.loadDocumentState.mockImplementation((_id: string, draftId: string) =>
+        draftId === doomed.id ? delayed.promise : Promise.resolve(saved(draftId)),
+    );
+    const selecting = loader.switchToDraft("tab-1", doomed.id);
+    await vi.waitFor(() => expect(db.loadDocumentState).toHaveBeenCalledWith("doc-1", doomed.id));
+    await loader.drafts.handleDraftDelete(doomed.id);
+    delayed.resolve(saved("deleted prose"));
+    await selecting;
+    expect(get(currentDraftId)).toBe("draft-1");
+    expect(commits.map((result) => result.draftId)).toEqual(["draft-1"]);
+    expect(db.setActiveDraft).not.toHaveBeenCalledWith("tab-1", doomed.id);
+});
+
+it("repairs an already pending target pointer before deleting and never commits its state", async () => {
+    await loader.load({ documentId: "doc-1" });
+    const doomed = draft("doomed");
+    loader.drafts.tabDrafts = [draft("draft-1"), doomed];
+    const pointer = deferred<void>();
+    let activePointer = "draft-1";
+    db.setActiveDraft.mockImplementation(async (_tabId: string, draftId: string) => {
+        if (draftId === doomed.id) await pointer.promise;
+        activePointer = draftId;
+    });
+    db.deleteDraft.mockImplementation(async () => {
+        expect(activePointer).toBe("draft-1");
+        expect(get(currentDraftId)).toBe("draft-1");
+    });
+    const selecting = loader.switchToDraft("tab-1", doomed.id);
+    await vi.waitFor(() => expect(db.setActiveDraft).toHaveBeenCalledWith("tab-1", doomed.id));
+    const deleting = loader.drafts.handleDraftDelete(doomed.id);
+    await Promise.resolve();
+    expect(db.deleteDraft).not.toHaveBeenCalled();
+    pointer.resolve();
+    await Promise.all([selecting, deleting]);
+    expect(db.deleteDraft).toHaveBeenCalledOnce();
+    expect(activePointer).toBe("draft-1");
+    expect(get(currentDraftId)).toBe("draft-1");
+    expect(commits.map((result) => result.draftId)).toEqual(["draft-1"]);
+});
+
+it("keeps the newer survivor selection aligned while repairing an older reserved pointer", async () => {
+    await loader.load({ documentId: "doc-1" });
+    const doomed = draft("doomed");
+    const newer = draft("newer");
+    loader.drafts.tabDrafts = [draft("draft-1"), doomed, newer];
+    db.listTabDrafts.mockResolvedValue([draft("draft-1"), newer]);
+    const pointer = deferred<void>();
+    let activePointer = "draft-1";
+    db.setActiveDraft.mockImplementation(async (_tabId: string, draftId: string) => {
+        if (draftId === doomed.id) await pointer.promise;
+        activePointer = draftId;
+    });
+    db.deleteDraft.mockImplementation(async () => {
+        expect(activePointer).toBe(get(currentDraftId));
+        expect(activePointer).not.toBe(doomed.id);
+    });
+    const selectingDeleted = loader.switchToDraft("tab-1", doomed.id);
+    await vi.waitFor(() => expect(db.setActiveDraft).toHaveBeenCalledWith("tab-1", doomed.id));
+    const deleting = loader.drafts.handleDraftDelete(doomed.id);
+    const selectingSurvivor = loader.switchToDraft("tab-1", newer.id);
+    await vi.waitFor(() => expect(db.loadDocumentState).toHaveBeenCalledWith("doc-1", newer.id));
+    pointer.resolve();
+    await Promise.all([selectingDeleted, selectingSurvivor, deleting]);
+    expect(get(currentDraftId)).toBe(newer.id);
+    expect(activePointer).toBe(newer.id);
+    expect(db.deleteDraft).toHaveBeenCalledOnce();
 });

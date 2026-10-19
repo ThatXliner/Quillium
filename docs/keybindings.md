@@ -37,7 +37,8 @@ They use the root editor's installed history handler, including Live Room histor
 Text fields (such as version labels and comment drafts) keep their native undo.
 
 Draft and tab deletions also support session keyboard undo/redo. Newer text edits
-undo first; the Undo toast and shortcut share one restore entry. See
+undo first; browser `historyUndo` and `historyRedo` input events use the same boundary.
+The Undo toast and shortcut share one restore entry. See
 [tabs and drafts](tabs-and-drafts.md#keyboard-undo-and-redo) for scope.
 
 ## Native App Menu Accelerators

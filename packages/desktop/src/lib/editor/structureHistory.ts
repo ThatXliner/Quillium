@@ -7,18 +7,20 @@
 import { historyField, isolateHistory, redoDepth, undoDepth } from "@codemirror/commands";
 import { Transaction } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
+import { historyKeyDirection, historyTarget } from "./historyShortcuts";
 
 export type StructureHistoryEntry = {
-    undo: () => Promise<void>;
-    redo: () => Promise<void>;
-    depth?: number;
+    readonly undo: () => Promise<void>;
+    readonly redo: () => Promise<void>;
 };
 
+type HistoryBoundary = { entry: StructureHistoryEntry; depth: number };
+
 export class StructureHistory {
-    #done: StructureHistoryEntry[] = [];
-    #undone: StructureHistoryEntry[] = [];
+    #done: HistoryBoundary[] = [];
+    #undone: HistoryBoundary[] = [];
     #documentId: string | null = null;
-    #busy = false;
+    #operation: { session: number } | null = null;
     #draftId: string | null = null;
     #lastDepth = 0;
     #session = 0;
@@ -32,6 +34,7 @@ export class StructureHistory {
             view: EditorView | null;
         },
         private readonly onError: (error: unknown) => void,
+        private readonly onInvalidate: () => void = () => {},
     ) {}
 
     #syncDocument(): void {
@@ -40,6 +43,7 @@ export class StructureHistory {
         this.#documentId = documentId;
         this.#session++;
         this.#done = [];
+        this.onInvalidate();
         this.clearRedo();
     }
 
@@ -61,20 +65,20 @@ export class StructureHistory {
         this.#disposed = true;
         this.#session++;
         this.#done = [];
+        this.onInvalidate();
         this.clearRedo();
     }
 
     record(documentId: string, entry: StructureHistoryEntry): void {
         this.#syncDocument();
         if (this.#disposed || documentId !== this.#documentId) return;
-        entry.depth = this.#depth();
-        this.#lastDepth = entry.depth;
-        this.#done.push(entry);
+        const depth = this.#depth();
+        this.#lastDepth = depth;
+        this.#done.push({ entry, depth });
         this.clearRedo();
         this.#isolate();
     }
 
-    /** Called after a draft load, including a lock-state reload. */
     loaded(): void {
         this.#syncDocument();
         const { draftId } = this.context();
@@ -84,13 +88,13 @@ export class StructureHistory {
             // history policy). Never retain an unreachable pre-load depth.
             entry.depth =
                 draftId === this.#draftId
-                    ? Math.max(0, (entry.depth ?? 0) + depth - this.#lastDepth)
+                    ? Math.max(0, entry.depth + depth - this.#lastDepth)
                     : depth;
         }
         const view = this.context().view;
         const reachableDepth = depth + (view ? redoDepth(view.state) : 0);
         for (const entry of [...this.#done, ...this.#undone]) {
-            entry.depth = Math.min(entry.depth ?? 0, reachableDepth);
+            entry.depth = Math.min(entry.depth, reachableDepth);
         }
         this.#draftId = draftId;
         this.#lastDepth = depth;
@@ -109,7 +113,7 @@ export class StructureHistory {
                 // history limit. Keep the boundary relative to the retained stack.
                 const dropped = before + 1 - after;
                 for (const entry of [...this.#done, ...this.#undone]) {
-                    entry.depth = Math.max(0, (entry.depth ?? 0) - dropped);
+                    entry.depth = Math.max(0, entry.depth - dropped);
                 }
             }
         }
@@ -127,6 +131,19 @@ export class StructureHistory {
             this.clearRedo();
     }
 
+    async perform(operation: () => Promise<void>): Promise<boolean> {
+        this.#syncDocument();
+        if (this.#disposed || this.#operation) return false;
+        const owner = { session: this.#session };
+        this.#operation = owner;
+        try {
+            await operation();
+        } finally {
+            if (this.#operation === owner) this.#operation = null;
+        }
+        return true;
+    }
+
     async undo(entry?: StructureHistoryEntry): Promise<boolean> {
         return this.#run(false, entry);
     }
@@ -137,70 +154,70 @@ export class StructureHistory {
 
     async #run(redo: boolean, requested?: StructureHistoryEntry): Promise<boolean> {
         this.#syncDocument();
+        if (this.#operation) return true;
         const source = redo ? this.#undone : this.#done;
-        const entry = requested ?? source.at(-1);
+        const boundary = source.at(-1);
         // An old toast must not restore a child ahead of its deleted parent.
-        if (this.#disposed || !entry || entry !== source.at(-1)) return false;
-        if (this.#busy) return true;
-        const session = this.#session;
+        if (this.#disposed || !boundary || (requested && requested !== boundary.entry))
+            return false;
         const redoGeneration = this.#redoGeneration;
-        this.#busy = true;
+        const locked = this.context().view?.state.readOnly ?? false;
+        const owner = { session: this.#session };
+        this.#operation = owner;
         try {
-            await (redo ? entry.redo() : entry.undo());
-            // Navigation during IPC must not insert an old document's entry
-            // into the new document's history.
+            await (redo ? boundary.entry.redo() : boundary.entry.undo());
             this.#syncDocument();
-            if (session !== this.#session || this.#disposed) return true;
-            source.splice(source.indexOf(entry), 1);
-            entry.depth = this.#depth();
-            if (redo) this.#done.push(entry);
-            else if (redoGeneration === this.#redoGeneration) this.#undone.push(entry);
+            if (owner.session !== this.#session || this.#disposed) return true;
+            source.splice(source.indexOf(boundary), 1);
+            // Locked prose cannot undo to the boundary until it is unlocked.
+            if (!locked) boundary.depth = this.#depth();
+            if (redo) this.#done.push(boundary);
+            else if (redoGeneration === this.#redoGeneration) this.#undone.push(boundary);
             this.#isolate();
         } catch (error) {
-            this.onError(error); // Keep the entry available for retry.
+            this.onError(error);
         } finally {
-            this.#busy = false;
+            if (this.#operation === owner) this.#operation = null;
         }
         return true;
     }
 
-    handleKeydown(event: KeyboardEvent): void {
-        if (event.defaultPrevented || event.altKey || event.isComposing) return;
-        if (!(event.metaKey || event.ctrlKey)) return;
-        const key = event.key.toLowerCase();
-        if (key !== "z" && key !== "y") return;
-        const target = event.target;
-        if (target instanceof Element) {
-            const editor = target.closest(".cm-editor");
-            if (target.closest("input, textarea, select")) return;
-            if (!editor && target.closest('[contenteditable]:not([contenteditable="false"])'))
-                return;
-            const dialog = target.closest('dialog, [role="dialog"]');
-            if (dialog && !dialog.hasAttribute("data-editor-history")) return;
-            if (!editor && !dialog && target !== document.body && !target.closest(".editor-shell"))
-                return;
-        }
-        this.#syncDocument();
+    #request(event: Event, direction: "undo" | "redo"): void {
+        if (event.defaultPrevented) return;
         const view = this.context().view;
-        // A Live Room replaces CodeMirror history with Yjs. Its personal undo
-        // authority must keep these shortcuts; the explicit toast still works.
+        if (!historyTarget(event.target, view)) return;
+        // Live Rooms retain their installed Yjs authority.
         if (view && !view.state.field(historyField, false)) return;
-        const redo = key === "y" || event.shiftKey;
-        const entry = (redo ? this.#undone : this.#done).at(-1);
-        if (!entry) return;
-        // Newer typing belongs to CodeMirror until it reaches this boundary.
-        if (!this.#busy && this.#depth() !== entry.depth) return;
+        this.#syncDocument();
+        const boundary = (direction === "redo" ? this.#undone : this.#done).at(-1);
+        if (!this.#operation) {
+            if (!boundary || (!view?.state.readOnly && this.#depth() !== boundary.depth)) return;
+        }
         event.preventDefault();
         event.stopImmediatePropagation();
-        void (redo ? this.redo() : this.undo());
+        if (!this.#operation) void (direction === "redo" ? this.redo() : this.undo());
+    }
+
+    handleKeydown(event: KeyboardEvent): void {
+        const direction = historyKeyDirection(event);
+        if (direction) this.#request(event, direction);
+    }
+
+    handleBeforeinput(event: InputEvent): void {
+        if (event.isComposing) return;
+        if (event.inputType === "historyUndo") this.#request(event, "undo");
+        if (event.inputType === "historyRedo") this.#request(event, "redo");
     }
 
     listen(): () => void {
         const handle = (event: KeyboardEvent) => this.handleKeydown(event);
+        const beforeinput = (event: InputEvent) => this.handleBeforeinput(event);
         // Capture precedes both CodeMirror and the button-focus fallback.
         window.addEventListener("keydown", handle, true);
+        window.addEventListener("beforeinput", beforeinput, true);
         return () => {
             window.removeEventListener("keydown", handle, true);
+            window.removeEventListener("beforeinput", beforeinput, true);
             this.dispose();
         };
     }

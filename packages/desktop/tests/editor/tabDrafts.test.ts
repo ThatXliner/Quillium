@@ -256,8 +256,8 @@ it("restores a deleted draft with Cmd-Z after the toast is gone", async () => {
     db.restoreDraft.mockResolvedValue(undefined);
     await controller.handleDraftDelete(removed.id);
     const unlisten = controller.history.listen();
-    window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true }),
+    document.body.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }),
     );
     try {
         await vi.waitFor(() => expect(db.restoreDraft).toHaveBeenCalledWith(removed.id), {
@@ -288,6 +288,121 @@ describe("draft and tab deletion history", () => {
         db.listTabDrafts.mockResolvedValue([survivor]);
         return { controller, survivor, removed, switchToDraft };
     }
+
+    it("declines a new deletion and structural mutations until a pending redo finishes", async () => {
+        const { controller, removed } = setupDeletion();
+        await controller.handleDraftDelete(removed.id);
+        await controller.history.undo();
+        const pendingDelete = deferred<void>();
+        db.deleteDraft.mockReturnValueOnce(pendingDelete.promise);
+        const redo = controller.history.redo();
+        await vi.waitFor(() => expect(db.deleteDraft).toHaveBeenCalledTimes(2));
+        await controller.handleDraftDelete("newer");
+        await controller.handleDraftRename(removed.id, "changed");
+        await controller.handleDraftToggleLock(removed.id, true);
+        await controller.handleDraftBranch(removed.id);
+        expect(db.deleteDraft).toHaveBeenCalledTimes(2);
+        expect(db.renameDraft).not.toHaveBeenCalled();
+        expect(db.setDraftLocked).not.toHaveBeenCalled();
+        expect(db.branchDraft).not.toHaveBeenCalled();
+        pendingDelete.resolve();
+        await redo;
+        await controller.history.undo();
+        expect(db.restoreDraft.mock.calls.map(([id]) => id)).toEqual([removed.id, removed.id]);
+    });
+
+    it.each(["leaf", "cascade"])(
+        "rejects selection of a %s deletion target during IPC",
+        async (mode) => {
+            const { controller, removed, survivor, switchToDraft } = setupDeletion();
+            const child = { ...draft("child", "tab-initial"), parentDraftId: removed.id };
+            if (mode === "cascade") controller.tabDrafts = [survivor, removed, child];
+            const deletion = deferred<void>();
+            const cascade = deferred<string[]>();
+            if (mode === "leaf") db.deleteDraft.mockReturnValueOnce(deletion.promise);
+            else db.cascadeDeleteDraft.mockReturnValueOnce(cascade.promise);
+            const pending =
+                mode === "leaf"
+                    ? controller.handleDraftDelete(removed.id)
+                    : controller.handleDeleteCascade(removed.id);
+            await vi.waitFor(() =>
+                expect(mode === "leaf" ? db.deleteDraft : db.cascadeDeleteDraft).toHaveBeenCalled(),
+            );
+            await controller.handleDraftSelect(removed.id);
+            if (mode === "cascade") await controller.handleDraftSelect(child.id);
+            expect(switchToDraft).not.toHaveBeenCalled();
+            expect(get(currentDraftId)).toBe(survivor.id);
+            deletion.resolve();
+            cascade.resolve([removed.id, child.id]);
+            await pending;
+        },
+    );
+
+    it("rejects selecting a tab during its deletion IPC", async () => {
+        const { controller, switchToDraft } = setupDeletion();
+        const deletion = deferred<void>();
+        db.deleteTab.mockReturnValueOnce(deletion.promise);
+        const pending = controller.handleTabDelete("tab-other");
+        await vi.waitFor(() => expect(db.deleteTab).toHaveBeenCalled());
+        await controller.handleTabSelect("tab-other");
+        expect(switchToDraft).not.toHaveBeenCalled();
+        expect(get(currentTabId)).toBe("tab-initial");
+        deletion.resolve();
+        await pending;
+    });
+
+    it("preserves a newer safe tab selection while repairing a reserved tab pointer", async () => {
+        const { controller } = setupDeletion();
+        const newer = tab("newer-tab", 2);
+        const newerDraft = draft("newer-draft", newer.id);
+        controller.tabs = [...controller.tabs, newer];
+        const pointer = deferred<void>();
+        let activePointer = "tab-initial";
+        db.setActiveTab.mockImplementation(async (_documentId: string, tabId: string) => {
+            if (tabId === "tab-other") await pointer.promise;
+            activePointer = tabId;
+        });
+        db.getActiveTab.mockImplementation(async () => activePointer);
+        db.listTabDrafts.mockResolvedValue([newerDraft]);
+        db.getActiveDraft.mockResolvedValue(newerDraft.id);
+        db.deleteTab.mockImplementation(async () => {
+            expect(activePointer).not.toBe("tab-other");
+            expect(get(currentTabId)).not.toBe("tab-other");
+        });
+        const selectingDeleted = controller.handleTabSelect("tab-other");
+        await vi.waitFor(() => expect(db.setActiveTab).toHaveBeenCalledWith("doc-1", "tab-other"));
+        const deleting = controller.handleTabDelete("tab-other");
+        const selectingSurvivor = controller.handleTabSelect(newer.id);
+        await Promise.resolve();
+        pointer.resolve();
+        await Promise.all([selectingDeleted, deleting, selectingSurvivor]);
+        expect(activePointer).toBe(newer.id);
+        expect(get(currentTabId)).toBe(newer.id);
+        expect(db.deleteTab).toHaveBeenCalledOnce();
+    });
+
+    it("dismisses a deletion action on undo and offers it again after redo", async () => {
+        const { controller, removed } = setupDeletion();
+        const { toast } = await import("svelte-sonner");
+        vi.mocked(toast).mockReturnValueOnce("deletion-toast");
+        await controller.handleDraftDelete(removed.id);
+        expect(toast).toHaveBeenLastCalledWith(
+            `Deleted draft “${removed.label}”`,
+            expect.objectContaining({ action: expect.objectContaining({ label: "Undo" }) }),
+        );
+        await controller.history.undo();
+        expect(toast.dismiss).toHaveBeenCalledWith("deletion-toast");
+        expect(toast).toHaveBeenLastCalledWith(`Restored draft “${removed.label}”`, {
+            duration: 3000,
+        });
+        await controller.history.redo();
+        expect(toast).toHaveBeenLastCalledWith(
+            `Deleted draft “${removed.label}”`,
+            expect.objectContaining({ action: expect.objectContaining({ label: "Undo" }) }),
+        );
+        controller.cancelPendingLoads();
+        expect(await controller.history.undo()).toBe(false);
+    });
 
     it("restores a take from the real draft-panel delete button and Cmd-Z", async () => {
         const { controller, survivor, removed } = setupDeletion();

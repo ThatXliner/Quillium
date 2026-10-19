@@ -1,6 +1,6 @@
 import { StructureHistory } from "$lib/editor/structureHistory";
 import { history, historyKeymap } from "@codemirror/commands";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -65,7 +65,6 @@ function key(target: EventTarget = view.contentDOM, redo = false) {
 
 it("undoes newer typing, deletion, and older typing in order, then redoes them", async () => {
     const { structural, entry } = setup();
-    // Replace the initial boundary with one between two adjacent typing events.
     await structural.undo();
     view.dispatch({ changes: { from: 5, insert: " before" }, userEvent: "input.type" });
     structural.record("doc", entry);
@@ -302,11 +301,129 @@ it("keeps structural redo reachable when a reload drops content redo", async () 
     view.dispatch({ changes: { from: 5, insert: "!" } });
     structural.record("doc", entry);
     await structural.undo();
-    key(); // undo the older prose
+    key();
     view.setState(
         EditorState.create({ doc: "hello", extensions: [history(), keymap.of(historyKeymap)] }),
     );
     structural.loaded();
     key(view.contentDOM, true);
     await vi.waitFor(() => expect(entry.redo).toHaveBeenCalledOnce());
+});
+
+function menuHistory(redo = false, target: EventTarget = view.contentDOM) {
+    const event = new InputEvent("beforeinput", {
+        inputType: redo ? "historyRedo" : "historyUndo",
+        bubbles: true,
+        cancelable: true,
+    });
+    target.dispatchEvent(event);
+    return event;
+}
+
+it("routes menu history through the same prose and deletion boundary", async () => {
+    const { structural, entry } = setup();
+    await structural.undo();
+    view.dispatch({ changes: { from: 5, insert: " before" }, userEvent: "input.type" });
+    structural.record("doc", entry);
+    view.dispatch({ changes: { from: 12, insert: " after" }, userEvent: "input.type" });
+    entry.undo.mockClear();
+    menuHistory();
+    expect(view.state.doc.toString()).toBe("hello before");
+    expect(entry.undo).not.toHaveBeenCalled();
+    expect(menuHistory().defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(entry.undo).toHaveBeenCalledOnce());
+    menuHistory();
+    expect(view.state.doc.toString()).toBe("hello");
+    menuHistory(true);
+    expect(view.state.doc.toString()).toBe("hello before");
+    menuHistory(true);
+    await vi.waitFor(() => expect(entry.redo).toHaveBeenCalledOnce());
+    menuHistory(true);
+    expect(view.state.doc.toString()).toBe("hello before after");
+});
+
+it.each(["key", "menu"])(
+    "consumes opposite-direction %s history while restore is pending",
+    async (route) => {
+        const { entry } = setup();
+        view.dispatch({ changes: { from: 5, insert: "!" } });
+        key();
+        let finish = () => {};
+        entry.undo.mockImplementation(
+            () =>
+                new Promise<void>((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        key();
+        const event = route === "key" ? key(view.contentDOM, true) : menuHistory(true);
+        expect(event.defaultPrevented).toBe(true);
+        expect(view.state.doc.toString()).toBe("hello");
+        finish();
+        await vi.waitFor(() => expect(entry.undo).toHaveBeenCalledOnce());
+    },
+);
+
+it("restores from a locked survivor without moving the deferred prose boundary", async () => {
+    const { structural, entry } = setup();
+    const lock = new Compartment();
+    view.setState(
+        EditorState.create({
+            doc: "hello",
+            extensions: [
+                history(),
+                keymap.of(historyKeymap),
+                lock.of(EditorState.readOnly.of(false)),
+                EditorView.updateListener.of((update) => structural.observe(update)),
+            ],
+        }),
+    );
+    structural.loaded();
+    view.dispatch({ changes: { from: 5, insert: " later" } });
+    view.dispatch({ effects: lock.reconfigure(EditorState.readOnly.of(true)) });
+    key();
+    await vi.waitFor(() => expect(entry.undo).toHaveBeenCalledOnce());
+    expect(view.state.doc.toString()).toBe("hello later");
+    view.dispatch({ effects: lock.reconfigure(EditorState.readOnly.of(false)) });
+    key(view.contentDOM, true);
+    expect(entry.redo).not.toHaveBeenCalled();
+    key();
+    expect(view.state.doc.toString()).toBe("hello");
+    key(view.contentDOM, true);
+    await vi.waitFor(() => expect(entry.redo).toHaveBeenCalledOnce());
+    key(view.contentDOM, true);
+    expect(view.state.doc.toString()).toBe("hello later");
+});
+
+it.each(["key", "menu"])("leaves a foreign CodeMirror target's %s history alone", (route) => {
+    const { entry } = setup();
+    const foreign = document.createElement("div");
+    foreign.className = "cm-editor";
+    document.body.appendChild(foreign);
+    const event = route === "key" ? key(foreign) : menuHistory(false, foreign);
+    expect(event.defaultPrevented).toBe(false);
+    expect(entry.undo).not.toHaveBeenCalled();
+});
+
+it("consumes history while an initial structural mutation owns the session", async () => {
+    const { structural, entry } = setup();
+    let finish = () => {};
+    const pending = structural.perform(
+        () =>
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    expect(key().defaultPrevented).toBe(true);
+    expect(await structural.redo()).toBe(true);
+    expect(entry.undo).not.toHaveBeenCalled();
+    expect(
+        await structural.perform(async () => {
+            throw new Error("overlap");
+        }),
+    ).toBe(false);
+    finish();
+    await pending;
+    await structural.undo();
+    expect(entry.undo).toHaveBeenCalledOnce();
 });

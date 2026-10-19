@@ -49,6 +49,12 @@ export class DocumentLoader {
         switchToDraft: (tabId, draftId) => this.switchToDraft(tabId, draftId),
         flushPendingPersist: () => this.flush(),
         seedStateJson: (draftId) => this.seedStateJson(draftId),
+        cancelPendingSelections: () => {
+            this.#generation++;
+            // The committed view remains valid while reserved target loads are cancelled.
+            this.#committedGeneration = this.#generation;
+        },
+        settleSelection: () => this.#settleSelection(),
         updateCurrentDraftLock: (draftId, locked) => {
             const view = get(editorView);
             if (!view || !this.isReady() || this.#committedDocument?.draftId !== draftId)
@@ -93,6 +99,19 @@ export class DocumentLoader {
         this.#generation++;
         this.#unsubscribe?.();
         this.drafts.cancelPendingLoads();
+    }
+
+    async #settleSelection(): Promise<void> {
+        // A pointer write already inside IPC must finish before deletion can proceed.
+        const write = this.#activeDraftWrite.then(async () => {
+            const tabId = get(currentTabId);
+            const draftId = get(currentDraftId);
+            if (!this.#disposed && tabId && draftId && this.drafts.canSelect(tabId, draftId)) {
+                await setActiveDraft(tabId, draftId);
+            }
+        });
+        this.#activeDraftWrite = write.catch(() => {});
+        await write;
     }
 
     async flush(): Promise<void> {
@@ -155,7 +174,8 @@ export class DocumentLoader {
         showSample?: boolean;
     } = {}): Promise<LoadedDocument | undefined> {
         let documentId = requestedId;
-        if (this.#disposed) return;
+        if (this.#disposed || (target && !this.drafts.canSelect(target.tabId, target.draftId)))
+            return;
         const generation = ++this.#generation;
         const requestedDocument = get(currentDocumentId);
         await this.flush();
@@ -198,15 +218,17 @@ export class DocumentLoader {
         if (target) {
             // Once queued, finish the same-tab UI commit even if a newer load starts.
             // If that newer load fails, the editor still matches the persisted pointer.
-            const write = this.#activeDraftWrite.then(() =>
-                setActiveDraft(target.tabId, target.draftId),
-            );
+            const write = this.#activeDraftWrite.then(async () => {
+                if (this.drafts.canSelect(target.tabId, target.draftId))
+                    await setActiveDraft(target.tabId, target.draftId);
+            });
             this.#activeDraftWrite = write.catch(() => {});
             await write;
             if (
                 this.#disposed ||
                 get(currentDocumentId) !== documentId ||
-                get(currentTabId) !== target.tabId
+                get(currentTabId) !== target.tabId ||
+                !this.drafts.canSelect(target.tabId, target.draftId)
             )
                 return;
         }

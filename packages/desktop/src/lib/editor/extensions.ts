@@ -47,9 +47,9 @@ import {
     highlightSpecialChars,
     keymap,
 } from "@codemirror/view";
-import { editorHistoryShortcuts } from "./historyShortcuts";
 import { dictionaryExtension } from "./dictionaryPlugin";
 import { harperExtension } from "./harper/harperLinter";
+import { editorHistoryShortcuts } from "./historyShortcuts";
 import { type ListenerOptions, listeners } from "./listeners";
 import { markdownFormattingKeymap } from "./markdownFormatting";
 import {
