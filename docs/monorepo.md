@@ -163,6 +163,62 @@ install the filtered workspace. Run Fly commands from the root and keep
 Supabase migrations stay in the root `supabase` directory. Do not create
 package-local schema sources.
 
+### Release Rust caches
+
+[Build Release](../.github/workflows/build.yml) receives `v*` and `mas-v*` tag
+pushes. Its dispatcher starts the same workflow on the repository's default
+branch. The dispatched run validates the release tag and its expected commit
+before any job uses signing secrets. Both build jobs check out that exact commit.
+Publication names and updater versions use the validated tag, not the execution
+branch. The dispatcher summary links to the downstream runs. A successful
+dispatch does not mean that the release has finished.
+
+GitHub scopes caches to the workflow execution ref, independently of checkout.
+Tag-scoped caches cannot be reused by another tag. Default-branch execution lets
+releases reuse earlier release dependencies without an extra compilation job.
+The workflow definition comes from the current default branch while source comes
+from the tag. Tags created before the dispatcher was added retain their historical
+workflow when rerun. To use current orchestration for an older tag, dispatch it
+explicitly with its exact commit.
+
+The public and MAS builds share `v2-release` and `desktop` cache keys. Both use
+the same native Rust dependency graph and release profile. MAS signing and bundle
+configuration do not change dependency compilation. Swatinem still derives keys
+from OS, architecture, Rust compiler, compiler environment, manifests, Cargo.lock,
+and Cargo configuration. Cargo checks restored dependency fingerprints and
+Swatinem removes workspace build products before saving. If a variant adds
+incompatible Cargo features, flags, or profiles, separate its shared key or include
+that configuration in the cache key.
+
+[Keep release Rust caches available](../.github/workflows/rust-cache.yml) restores
+existing caches at most five days apart, subject to scheduler delays. These native
+jobs install Rust and restore the archives. They do not compile or save caches,
+including on a miss. Real restores refresh access during long release gaps. GitHub can evict caches after seven days
+without access, under storage pressure, or when scheduled runs are delayed.
+The first release with a new key compiles dependencies and seeds the default-branch
+cache. Stable Rust updates and other compiler or dependency changes can still
+cause valid misses. Scheduled restores consume runner time and transfer archives.
+Reductions in CI usage have not been measured.
+
+To check dispatch validation without building or publishing, use an existing tag
+and its commit SHA. The dispatch ref must be the repository's default branch.
+
+```bash
+release_tag=v0.25.0
+release_sha=$(git rev-parse "$release_tag^{commit}")
+default_branch=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
+gh workflow run build.yml --ref "$default_branch" \
+  -f release_tag="$release_tag" -f release_sha="$release_sha" -F validate_only=true
+```
+
+Run the local workflow checks with `bun .github/scripts/release-workflow.test.mjs`.
+After a release seeds caches, dispatch `rust-cache.yml` on the default branch to
+inspect actual restores without publication. Compare cache `last_accessed_at`
+before and after that run. A keepalive miss cannot prove compiled dependency reuse.
+
+GitHub documents [cache scope and eviction](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
+Swatinem documents [key derivation and workspace cleanup](https://github.com/Swatinem/rust-cache/tree/v2.9.1).
+
 ## Verification Checklist
 
 Before merging monorepo-affecting changes, run the smallest relevant set:
