@@ -36,11 +36,16 @@
         text-decoration-thickness: 2px;
     }
 }
-.cm-revision-active .cm-revision-nested,
 .cm-revision-active .cm-revision,
 .cm-revision-active {
     background-color: #d8b4fe;
     text-decoration: none;
+}
+/* The fill marks the active root; nested depth keeps its stacked lines in a deeper purple. */
+.cm-revision-active .cm-revision-nested {
+    text-decoration: underline;
+    text-decoration-color: #7e22ce;
+    text-decoration-thickness: 1px;
 }
 .cm-suggestion {
     text-decoration: underline;

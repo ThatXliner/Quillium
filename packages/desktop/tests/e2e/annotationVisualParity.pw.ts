@@ -468,22 +468,40 @@ test("revision underlines show nesting depth across wrapped text", async ({ page
     await expect(deepest.first()).toHaveCSS("text-decoration-color", "rgba(168, 85, 247, 0.35)");
     const passage = await page.locator("#editor-document .cm-revision").first().boundingBox();
     expect(passage).not.toBeNull();
-    await testInfo.attach("nested-underlines", {
-        body: await page.screenshot({
-            ...SCREENSHOT_OPTIONS,
-            clip: {
-                x: passage!.x,
-                y: passage!.y - 4,
-                width: passage!.width,
-                height: passage!.height + 18,
-            },
-            path: testInfo.outputPath("nested-underlines.png"),
-        }),
-        contentType: "image/png",
-    });
+    async function attachPassage(name: string): Promise<void> {
+        await testInfo.attach(name, {
+            body: await page.screenshot({
+                ...SCREENSHOT_OPTIONS,
+                clip: {
+                    x: passage!.x,
+                    y: passage!.y - 4,
+                    width: passage!.width,
+                    height: passage!.height + 18,
+                },
+                path: testInfo.outputPath(`${name}.png`),
+            }),
+            contentType: "image/png",
+        });
+    }
+    await attachPassage("nested-underlines");
     await deepest.first().hover();
     await expect(deepest.first()).toHaveCSS("text-decoration-color", "rgb(168, 85, 247)");
+    await attachPassage("nested-underlines-hover");
     const card = mainAnnotationCard(page, VISUAL_FIXTURE.ids.rootRevision);
+    await card.getByRole("button", { name: "Focus annotation" }).focus();
+    await page.keyboard.press("Enter");
+    const active = page.locator("#editor-document .cm-revision-active").first();
+    await expect(active).toHaveCSS("background-color", "rgb(216, 180, 254)");
+    await page.mouse.move(0, 0);
+    await attachPassage("nested-underlines-active");
+    // The active background marks the root; nested depth keeps its own darker lines on top.
+    await expect(active).toHaveCSS("text-decoration-line", "none");
+    for (const depth of [nested.first(), deepest.first()]) {
+        await expect(depth).toHaveCSS("text-decoration-line", "underline");
+        await expect(depth).toHaveCSS("text-decoration-color", "rgb(126, 34, 206)");
+    }
+    await expect(nested.first()).toHaveCSS("text-underline-offset", "6px");
+    await expect(deepest.first()).toHaveCSS("text-underline-offset", "9px");
     await card.getByRole("button", { name: /^Direct account/ }).click();
     await expect(nested).toHaveCount(0);
     await expect(deepest).toHaveCount(0);

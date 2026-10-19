@@ -21,7 +21,8 @@ Inactive revisions use a thin, muted purple underline that returns to full stren
 Each nested revision in the displayed version adds another underline beneath its own passage
 (two lines for a child, three for a grandchild). The shared decoration builder projects these
 version-local ranges into the containing editor; comments and inactive versions add no lines.
-Touch devices keep the full underline; active revisions retain their purple background.
+Touch devices keep the full underline; active revisions retain their purple background, and
+their nested passages keep the depth lines in a deeper purple on top of it.
 The shared read-only renderer follows the same treatment, and legacy preview buttons also reveal
 the underline on keyboard focus. Empty-revision markers remain visible.
 
