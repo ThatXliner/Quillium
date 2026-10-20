@@ -65,7 +65,7 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-sidebar",
         title: "Your AI Writing Companion",
-        body: "One chat for thinking, feedback, and revisions. Set your goal in Document Context so each discussion starts with the right background.",
+        body: "Use Chat, Feedback, and Revise for different kinds of help. Set your goal in Document Context. You can try one conversation in Settings → AI.",
         position: "right",
     },
     {
@@ -73,7 +73,7 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-tab-chat",
         title: "Chat with AI",
-        body: "Ask questions and explore ideas. Use Give feedback to add comments, or Suggest revisions to propose wording changes, all in the same discussion.",
+        body: "Ask questions and explore ideas about your writing. Feedback adds comments, and Revise proposes wording changes you can choose to accept.",
         position: "right",
     },
     {

@@ -8,6 +8,7 @@ import type { AppSettings } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { HelpCircle } from "lucide-svelte";
 import SettingToggle from "../SettingToggle.svelte";
+import SettingSegmented from "../SettingSegmented.svelte";
 
 const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props();
 </script>
@@ -37,6 +38,20 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
 </SettingToggle>
 
 {#if draft.aiEnabled}
+    <SettingSegmented
+        title="AI panel layout"
+        description={draft.aiSidebarLayout === "combined"
+            ? "One Chat with visible Discuss, Feedback, and Revise actions. Past discussions are preserved."
+            : "Chat, Feedback, and Revise each have their own panel and history. Choose One conversation to try unified Chat."}
+        options={[["separate", "Separate panels"], ["combined", "One conversation"]]}
+        value={draft.aiSidebarLayout}
+        defaultValue="separate"
+        onchange={(value) => {
+            draft.aiSidebarLayout = value === "combined" ? "combined" : "separate";
+            onchange();
+        }}
+    />
+
     <SettingToggle
         title="AI suggestion underlines"
         description="Show green underlines in the editor for AI suggestions. When hidden, suggestions still appear in the sidebar."
@@ -51,7 +66,7 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
 
     <SettingToggle
         title="Collapse context summary"
-        description={'Hide the "AI can see your selection" card in the AI panels and tuck it into the header info (ℹ) icon.'}
+        description={'Hide the context card in separate AI panels and keep its details in the header info icon. Unified Chat always uses a compact context chip.'}
         checked={draft.collapseContextSummary}
         defaultChecked={false}
         ariaLabel="Toggle collapse context summary"

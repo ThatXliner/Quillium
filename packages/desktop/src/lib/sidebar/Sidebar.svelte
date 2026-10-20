@@ -15,7 +15,7 @@ import { collegeState, useCollegeEffects } from "$lib/college/state.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { builtInPanels } from "$lib/sidebar/builtInPanels";
+import { builtInPanels, combinedPanels } from "$lib/sidebar/builtInPanels";
 import {
     type SidebarPanelContribution,
     type SidebarPanelSession,
@@ -54,7 +54,7 @@ useCollegeActivationEffects();
 let collegePreset = $state<"uc-piq" | "common-app" | "supplemental" | undefined>(undefined);
 
 let {
-    contributions = builtInPanels,
+    contributions,
     disabledPanelIds = [],
 }: {
     contributions?: readonly SidebarPanelContribution[];
@@ -62,7 +62,7 @@ let {
 } = $props();
 let action = $state<string | null>(null);
 const panels = $derived(
-    createSidebarPanels(contributions).filter(
+    createSidebarPanels(contributions ?? (appSettings.aiSidebarLayout === "combined" ? combinedPanels : builtInPanels)).filter(
         (panel) =>
             !disabledPanelIds.includes(panel.id) &&
             (appSettings.aiEnabled || !panel.requiresAi) &&
@@ -75,6 +75,14 @@ const panels = $derived(
 const actions = $derived(panels.filter((panel) => panel.placement === "main"));
 const utilities = $derived(panels.filter((panel) => panel.placement === "utility"));
 const activePanel = $derived(panels.find((panel) => panel.id === action));
+const compactChat = $derived(appSettings.aiSidebarLayout === "combined" && action === "chat" && !contributions);
+let previousLayout = appSettings.aiSidebarLayout;
+$effect(() => {
+    const layout = appSettings.aiSidebarLayout;
+    if (layout === previousLayout) return;
+    previousLayout = layout;
+    untrack(stopAllAi);
+});
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 function shortcut(panel: SidebarPanelContribution): string {
     return panel.shortcutKey ? `${isMac ? "⌘⇧" : "Ctrl+Shift+"}${panel.shortcutKey}` : "";
@@ -220,7 +228,7 @@ const headerContextPacket = $derived(
         : null,
 );
 // Keep the next-turn preview available after starter cards disappear.
-const showHeaderContextInfo = $derived(headerContextPacket !== null);
+const showHeaderContextInfo = $derived(headerContextPacket !== null && !compactChat);
 const headerContextRing = $derived(activePanel?.contextRingClass ?? "focus:ring-blue-500");
 
 // Context detail popover (opened by the header info button, rendered by
@@ -412,6 +420,7 @@ function handleSidebarClick(e: MouseEvent) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
     // A modal owns keyboard interaction until it closes. Switching the sidebar
     // beneath it can leave a hidden dialog holding focus.
     if (document.querySelector("dialog[open]")) return;
@@ -521,11 +530,11 @@ function handleKeydown(e: KeyboardEvent) {
       : 'opacity-0 invisible pointer-events-none'}"
   >
     <!-- Row 1: icon wheel -->
-    <div class="shrink-0 pt-2.5 pb-1">
+    <div class="flex shrink-0 items-center pt-2.5 pb-1">
       <div
         role="toolbar" tabindex="-1" aria-label="Sidebar panels" onkeydown={navigateIcons}
         bind:this={iconStrip}
-        class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
+        class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
         style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
           ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'});`
           : ''}"
@@ -562,42 +571,19 @@ function handleKeydown(e: KeyboardEvent) {
           </button>
         {/each}
       </div>
+      {#if compactChat}<div class="flex shrink-0 items-center pr-2">{@render panelUtilities()}</div>{/if}
     </div>
 
     <!-- Row 2: title + reset + settings + close -->
+    {#if !compactChat}
     <div class="flex items-center px-3 pb-2 shrink-0">
       <span class="flex-1 text-xs font-semibold text-black/50 truncate">
         {activePanel?.title ?? ""}
       </span>
-      <RestoreSizeButton
-        restoreSize={isCustomSize ? () => resize.reset() : undefined}
-        label="Reset to default size"
-      />
-      {#if showHeaderContextInfo && headerContextPacket}
-        <ContextInfoButton
-          packet={headerContextPacket}
-          targetLabel={contextTargetLabel}
-          ringClass={headerContextRing}
-          bind:open={showContextPopover}
-        />
-      {/if}
-      {#each utilities as panel (panel.id)}
-        <button onclick={() => action === panel.id ? closePanel(true) : selectAction(panel.id)}
-          aria-label={panel.label} title={panel.title} aria-pressed={action === panel.id}
-          class="p-1.5 rounded-full transition-colors shrink-0 {action === panel.id ? panel.activeClass : 'text-black/30 ' + panel.hoverClass}">
-          <panel.icon size={14} />
-        </button>
-      {/each}
-      <button
-        onclick={() => closePanel(true)}
-        aria-label="Collapse sidebar"
-        title="Collapse sidebar"
-        class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
-      >
-        <PanelLeftCloseIcon size={14} />
-      </button>
+      {@render panelUtilities()}
     </div>
 
+    {/if}
     <div class="w-full h-px bg-black/10 shrink-0"></div>
 
     <!-- Retained built-ins keep their conversations while hidden; active-only panels dispose on hide. -->
@@ -740,3 +726,33 @@ function handleKeydown(e: KeyboardEvent) {
     }
   }
 </style>
+
+{#snippet panelUtilities()}
+      <RestoreSizeButton
+        restoreSize={isCustomSize ? () => resize.reset() : undefined}
+        label="Reset to default size"
+      />
+      {#if showHeaderContextInfo && headerContextPacket}
+        <ContextInfoButton
+          packet={headerContextPacket}
+          targetLabel={contextTargetLabel}
+          ringClass={headerContextRing}
+          bind:open={showContextPopover}
+        />
+      {/if}
+      {#each utilities as panel (panel.id)}
+        <button onclick={() => action === panel.id ? closePanel(true) : selectAction(panel.id)}
+          aria-label={panel.label} title={panel.title} aria-pressed={action === panel.id}
+          class="p-1.5 rounded-full transition-colors shrink-0 {action === panel.id ? panel.activeClass : 'text-black/30 ' + panel.hoverClass}">
+          <panel.icon size={14} />
+        </button>
+      {/each}
+      <button
+        onclick={() => closePanel(true)}
+        aria-label="Collapse sidebar"
+        title="Collapse sidebar"
+        class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
+      >
+        <PanelLeftCloseIcon size={14} />
+      </button>
+{/snippet}

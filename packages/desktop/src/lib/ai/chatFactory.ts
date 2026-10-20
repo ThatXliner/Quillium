@@ -675,7 +675,13 @@ function makeTransport(
  * is a reactive @ai-sdk/svelte Chat whose `.messages`, `.status`,
  * and `.error` properties drive the component UI.
  */
-export function createAiChat({ mode }: { mode: AiChatMode }) {
+export function createAiChat({
+    mode,
+    historyScope = "mode",
+}: {
+    mode: AiChatMode;
+    historyScope?: "mode" | "document";
+}) {
     const streamFns = {
         chat: streamChat,
         feedback: streamFeedback,
@@ -869,6 +875,7 @@ export function createAiChat({ mode }: { mode: AiChatMode }) {
         ? createConversationController({
               chat,
               mode,
+              historyScope,
               beforeReplace: releaseTargetAtSend,
               requestSettings: () => ({
                   provider: aiSettings.provider,

@@ -67,6 +67,24 @@ describe("settings commits", () => {
         });
     });
 
+    it("requires an explicit opt-in to unified Chat", () => {
+        expect(appSettings.aiSidebarLayout).toBe("separate");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ aiEnabled: true }));
+        updateSettings({ showWordCount: false });
+        expect(appSettings.aiSidebarLayout).toBe("separate");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ aiSidebarLayout: true }));
+        updateSettings({ showWordCount: true });
+        expect(appSettings.aiSidebarLayout).toBe("separate");
+        updateSettings({ aiSidebarLayout: "combined" });
+        expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toMatchObject({
+            aiSidebarLayout: "combined",
+        });
+        updateSettings({ showWordCount: false });
+        expect(appSettings.aiSidebarLayout).toBe("combined");
+        updateSettings({ aiSidebarLayout: "separate" });
+        expect(appSettings.aiSidebarLayout).toBe("separate");
+    });
+
     it("applies and persists a partial update while retaining unrelated preferences", () => {
         updateSettings({ uiZoom: 1.2, docFontSize: 22, showWordCount: false });
         expect(document.documentElement.style.zoom).toBe("1.2");

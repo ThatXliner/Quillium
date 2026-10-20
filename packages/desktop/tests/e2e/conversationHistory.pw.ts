@@ -76,6 +76,7 @@ const conversationFixtures: MockConversation[] = [
 
 function newPageObject(page: Page): QuilliumPage {
     return new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
         apiKey: "fake-api-key",
         initialDoc:
             "Morning light pooled on the kitchen tiles. Mara left her father's letter unopened beside the kettle.",
@@ -369,6 +370,7 @@ test("shows recorded tool activity with expandable inputs and results without re
         },
     ];
     const q = new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
         apiKey: "fake-api-key",
         initialDoc: "The morning was beautiful.",
         conversations: [
@@ -415,6 +417,7 @@ test("shows recorded tool activity with expandable inputs and results without re
 for (const outcome of ["applied", "skipped"] as const) {
     test(`renders and persists a streamed feedback tool result: ${outcome}`, async ({ page }) => {
         const q = new QuilliumPage(page, {
+            settings: { aiSidebarLayout: "combined" },
             apiKey: "fake-api-key",
             initialDoc: "The morning was beautiful.",
         });
@@ -458,7 +461,8 @@ for (const outcome of ["applied", "skipped"] as const) {
         const panel = page.locator('[data-panel-id="chat"]');
         const input = panel.locator('textarea[name="message"]');
         await input.fill("Help me make the opening more specific.");
-        await panel.getByRole("button", { name: "Give feedback", exact: true }).click();
+        await panel.getByRole("button", { name: "Feedback", exact: true }).click();
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
         const tool = panel.locator('[data-tool-call="stream-comment"]');
         const expectedLabel = outcome === "applied" ? "Comment added" : "Couldn't add comment";
         await expect(tool).toContainText(expectedLabel, { timeout: 15000 });
@@ -502,7 +506,8 @@ for (const outcome of ["applied", "skipped"] as const) {
         await expect(tool).toContainText(expectedLabel);
         if (outcome === "applied") {
             await input.fill("Look for another place to improve.");
-            await panel.getByRole("button", { name: "Give feedback", exact: true }).click();
+            await panel.getByRole("button", { name: "Feedback", exact: true }).click();
+            await panel.getByRole("button", { name: "Send", exact: true }).click();
             await expect(tool).toHaveCount(2);
             await expect(tool.last()).toContainText("Couldn't add comment");
             await expect(tool.first()).toContainText("Comment added");
@@ -550,6 +555,7 @@ test("continues legacy modes in one discussion with per-request actions and mult
     page,
 }) => {
     const q = new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
         apiKey: "test-key",
         initialDoc: "Morning light pooled on the kitchen tiles.",
         conversations: conversationFixtures.map((item, index) => ({
@@ -575,16 +581,18 @@ test("continues legacy modes in one discussion with per-request actions and mult
     await expect(q.conversationMessage("A useful response.")).toBeVisible();
     await expect(q.chatPanel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
     await q.chatInput.fill("Add a note about the stakes.");
-    await q.chatPanel.getByRole("button", { name: "Give feedback", exact: true }).click();
+    await q.chatPanel.getByRole("button", { name: "Feedback", exact: true }).click();
+    await q.chatPanel.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => requests.length).toBe(2);
     await expect(
-        q.chatPanel.getByRole("button", { name: "Suggest revisions", exact: true }),
+        q.chatPanel.getByRole("button", { name: "Revise", exact: true }),
     ).toBeEnabled();
     await q.chatInput.fill("Offer another opening.");
-    await q.chatPanel.getByRole("button", { name: "Suggest revisions", exact: true }).click();
+    await q.chatPanel.getByRole("button", { name: "Revise", exact: true }).click();
+    await q.chatPanel.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => requests.length).toBe(3);
     await expect(
-        q.chatPanel.getByRole("button", { name: "Give feedback", exact: true }),
+        q.chatPanel.getByRole("button", { name: "Feedback", exact: true }),
     ).toBeEnabled();
     await q.chatInput.fill("Why that choice?");
     await q.chatInput.press("Enter");
@@ -622,8 +630,8 @@ test("writing actions preserve an unsent message", async ({ page }) => {
     await q.init();
     await q.openChat();
     await q.chatInput.fill("I am still composing this question.");
-    await q.chatPanel.getByText("Writing actions", { exact: true }).click();
-    await q.chatPanel.getByRole("button", { name: /Reverse outline/ }).click();
+    await q.chatPanel.getByRole("button", { name: "Starting points", exact: true }).click();
+    await page.getByRole("dialog", { name: "Starting points" }).getByRole("button", { name: /Reverse outline/ }).click();
     await expect(q.conversationMessage("Alternative answer")).toBeVisible();
     await expect(q.chatInput).toHaveValue("I am still composing this question.");
     await q.chatInput.press("Enter");
@@ -653,8 +661,10 @@ test("expanded discussions display save failures and retain the unsent question"
                 : invoke(command, args);
     });
     await q.chatInput.fill("What about the stakes?");
+    await q.chatPanel.getByRole("button", { name: "Feedback", exact: true }).click();
     await q.chatInput.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Opening scene", exact: true });
     await expect(dialog.getByRole("alert")).toContainText("Disk full");
     await expect(q.chatInput).toHaveValue("What about the stakes?");
+    await expect(dialog.getByRole("button", { name: "Feedback", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
