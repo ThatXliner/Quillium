@@ -34,7 +34,7 @@ export const EDITORIAL_HELP_TABS: HelpTab[] = [
             },
         ],
         guidance:
-            "Choose **Author-first** when you want help thinking through a problem. Choose **Collaborative** when you want concrete alternatives to react to. Choose **Exploratory** when you are still deciding what the piece could become. Your request and the panel you use also shape the response.",
+            "Choose **Author-first** when you want help thinking through a problem. Choose **Collaborative** when you want concrete alternatives to react to. Choose **Exploratory** when you are still deciding what the piece could become. Your request and the tools you allow also shape the response.",
     },
     {
         id: "density",
@@ -497,3 +497,37 @@ export function getActionHelpTab(action: ContextAction): HelpTab {
         ...example,
     };
 }
+
+/** Response length remains independent from editorial approach and action permissions. */
+export const RESPONSE_HELP_TABS: HelpTab[] = [
+    {
+        id: "verbosity",
+        label: "Response length",
+        description:
+            "Controls the length of the reply in the conversation. It does not change which tools are enabled or how many feedback concerns deserve attention.",
+        scenario: "You ask: “Why does the ending feel abrupt?”",
+        examples: [
+            {
+                label: "Brief",
+                response:
+                    "The decision happens before we see what it costs Mara. One beat of hesitation could help.",
+            },
+            {
+                label: "Balanced",
+                response:
+                    "Mara decides before the scene gives her anything to lose. A beat of hesitation could connect her choice to the tension you have built.",
+                explanation: "Explains the main observation and its reason.",
+            },
+            {
+                label: "Detailed",
+                response:
+                    "The decision follows the revelation immediately, so the reader has little time to understand its cost. You could pause on what Mara risks, or let an earlier detail return before she chooses. The first slows the decision; the second connects it to the rest of the scene.",
+                explanation:
+                    "Gives more reasoning and tradeoffs, without granting additional tools.",
+            },
+        ],
+        guidance:
+            "Use Brief for a quick answer, Balanced for an explanation, and Detailed when you want more reasoning. Feedback amount separately controls which concerns are worth mentioning.",
+    },
+    ...EDITORIAL_HELP_TABS,
+];

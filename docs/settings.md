@@ -34,7 +34,7 @@ Missing, malformed, or unavailable storage defaults to session-only undo.
 | `uiZoom` | number | `1` | `document.documentElement.zoom` |
 | `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
 | `aiEnabled` | boolean | `false` | AI features active; local sidebar panels remain available |
-| `aiSidebarLayout` | enum | `"separate"` | Separate panels, or explicit opt-in to combined Chat |
+| `aiSidebarLayout` | enum | `"separate"` | Separate panels, or explicit opt-in to One assistant |
 | `showShortcutHints` | boolean | `true` | Keyboard hints in panel |
 | `showDrafts` | boolean | `true` | Expand draft rows; saved independently of outline |
 | `showDocumentOutline` | boolean | `false` | Expand outline content; its header remains available |
@@ -153,3 +153,9 @@ Settings apply via CSS custom properties on `document.documentElement`:
 - Native menu handler
 - StatusBar gear button
 - `Cmd+,` keydown listener
+
+The One assistant layout keeps conversation-local tool permissions, response length,
+and the Readers toggle in `quillium-assistant:<conversation-id>` on this device.
+The first unsent composer uses a document/draft-scoped pending key. These options
+are separate from the layout opt-in and existing editorial preferences. Each sent
+turn also records its tool permissions and response length for edit/retry.

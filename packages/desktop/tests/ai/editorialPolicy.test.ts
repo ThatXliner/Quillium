@@ -1,7 +1,34 @@
-import { compileEditorialPolicy, resolveEditorialTask } from "$lib/ai/editorialPolicy";
+import {
+    compileEditorialPolicy,
+    parseEditorialTurnOptions,
+    resolveEditorialTask,
+} from "$lib/ai/editorialPolicy";
 import { describe, expect, it } from "vitest";
 
 describe("compileEditorialPolicy", () => {
+    it("uses only explicitly selected assistant tools independently from response style", () => {
+        for (const requestedActions of [[], ["comment"], ["suggestion"], ["revision"]] as const) {
+            const policy = compileEditorialPolicy({
+                task: "assistant",
+                requestedActions,
+                responseLength: "detailed",
+                preferences: {
+                    stance: "exploratory",
+                    feedbackDensity: "thorough",
+                    voiceLatitude: "transform",
+                },
+            });
+            expect(policy.allowedActions).toEqual(requestedActions);
+            expect(policy.systemPrompt).toContain("Response length: detailed");
+        }
+        expect(compileEditorialPolicy({ task: "assistant" }).allowedActions).toEqual([]);
+        expect(resolveEditorialTask("chat", "assistant")).toBe("assistant");
+        expect(resolveEditorialTask("feedback", "assistant")).toBe("conversation");
+        expect(parseEditorialTurnOptions({ requestedActions: ["comment", "unknown"] })).toEqual({
+            requestedActions: [],
+        });
+    });
+
     it("keeps conversation text-only", () => {
         const policy = compileEditorialPolicy({ task: "conversation" });
 

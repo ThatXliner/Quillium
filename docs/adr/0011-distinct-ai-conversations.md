@@ -40,7 +40,7 @@ for external assistants and does not replace it.
 ## Explicit layout choice (October 2026)
 
 Separate Chat, Feedback, and Revise panels are the default again. Writers familiar
-with those panels must explicitly choose One conversation in Settings → Advanced
+with those panels must explicitly choose One assistant in Settings → Advanced
 → AI → AI panel layout to enable unified Chat. Missing or invalid saved values
 select Separate panels, including when upgrading from v0.25.
 
@@ -49,3 +49,22 @@ permissions and persistence design. The setting changes views and history filter
 it does not merge, rewrite, or delete conversations. Separate panels load their
 own mode's history. Unified Chat can open every mode. Switching back leaves
 conversations available in the panel matching their stored mode.
+
+## One assistant with selected tools (October 2026)
+
+The combined layout now presents one assistant instead of a Discuss/Feedback/Revise
+selector. Writers opt in with **One assistant** in the existing AI panel layout
+setting; Separate panels remains the default. This supersedes the combined layout's
+per-message task selector, while preserving the distinct legacy panels.
+
+The Tools popup grants comments, suggestions, and revision versions independently.
+These choices stay with the conversation on this device and are snapshotted in each
+user turn, including empty permission sets. Both model tool exposure and editor
+application enforce that snapshot. Edit/retry carry the original snapshot and reply
+length into the new path; old messages retain their original task recipes. Special
+contextual recipes may narrow the selected tools but never expand them.
+
+Response length remains separate from editorial stance, feedback density, and voice
+latitude. None grants tools. The direct Readers toggle adds enabled reader requests
+with the same permission snapshot alongside the assistant's normal reply. Existing
+annotation commands, undo, cancellation, and conversation persistence still apply.

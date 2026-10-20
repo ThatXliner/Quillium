@@ -25,6 +25,7 @@ import type { Conversation } from "./conversationStore";
 import {
     type EditorialTurn,
     isEditorialTaskAllowed,
+    parseEditorialTurnOptions,
     resolveEditorialTask,
 } from "./editorialPolicy";
 
@@ -228,6 +229,7 @@ function turnForMessage(source: Conversation, message?: UIMessage): EditorialTur
     const saved = metadata?.editorialTurn;
     return {
         task: resolveEditorialTask("chat", saved?.task ?? resolveEditorialTask(source.mode)),
+        ...parseEditorialTurnOptions(saved),
         ...(typeof saved?.exactWordCount === "number"
             ? { exactWordCount: saved.exactWordCount }
             : {}),
@@ -258,7 +260,7 @@ export function createConversationController({
                 : isEditorialTaskAllowed(mode, turn.task);
         if (!(mode === "chat" && historyScope === "document") && !supported) {
             throw new Error(
-                "To edit or retry this saved action, choose One conversation in Settings → Advanced → AI → AI panel layout.",
+                "To edit or retry this saved action, choose One assistant in Settings → Advanced → AI → AI panel layout.",
             );
         }
         return turn;
@@ -819,6 +821,7 @@ export function createConversationController({
                     { text: trimmed, messageId: userMessage.id, metadata },
                     {
                         body: {
+                            ...parseEditorialTurnOptions(turn),
                             ...(turn?.task ? { editorialTask: turn.task } : {}),
                             ...(turn?.exactWordCount === undefined
                                 ? {}
@@ -866,7 +869,11 @@ export function createConversationController({
             }
             providerStarted = true;
             await chat.regenerate({
-                body: { editorialTask: turn.task, exactWordCount: turn.exactWordCount },
+                body: {
+                    editorialTask: turn.task,
+                    exactWordCount: turn.exactWordCount,
+                    ...parseEditorialTurnOptions(turn),
+                },
             });
             if (chat.status === "error") throw chat.error ?? new Error("AI request failed.");
         } catch (error) {

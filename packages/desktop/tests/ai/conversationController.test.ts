@@ -434,6 +434,31 @@ describe("conversation controller", () => {
 });
 
 describe("unified discussions", () => {
+    it("retains the saved assistant permission snapshot and reply length when retrying or editing", async () => {
+        const turn = {
+            task: "assistant",
+            requestedActions: ["suggestion"],
+            responseLength: "brief",
+        };
+        db.listConversations.mockResolvedValue([
+            conversation("assistant-path", [
+                { ...textMessage("u1", "user", "Tighten this"), metadata: { editorialTurn: turn } },
+                textMessage("a1", "assistant", "An alternative"),
+            ]),
+        ]);
+        const chat = makeChat();
+        const controller = await startController(chat, "document");
+        await controller.retry("a1");
+        expect(chat.regenerate).toHaveBeenCalledWith({
+            body: {
+                editorialTask: "assistant",
+                exactWordCount: undefined,
+                requestedActions: ["suggestion"],
+                responseLength: "brief",
+            },
+        });
+    });
+
     it.each([
         ["chat", "global-review"],
         ["feedback", "local-rewrite"],
@@ -450,9 +475,9 @@ describe("unified discussions", () => {
             ]);
             const chat = makeChat();
             const controller = await startController(chat, "mode", mode);
-            await expect(controller.retry("a1")).rejects.toThrow("One conversation in Settings");
+            await expect(controller.retry("a1")).rejects.toThrow("One assistant in Settings");
             await expect(controller.edit("u1", "Try another approach")).rejects.toThrow(
-                "One conversation in Settings",
+                "One assistant in Settings",
             );
             expect(db.createConversation).not.toHaveBeenCalled();
             expect(chat.sendMessage).not.toHaveBeenCalled();

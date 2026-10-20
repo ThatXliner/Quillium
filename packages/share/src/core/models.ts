@@ -33,7 +33,13 @@ import { z } from "zod";
 
 export const AiGenerationProvenanceSchema = z.object({
     requestId: z.string().min(1),
-    task: z.enum(["global-review", "local-rewrite", "exact-compression", "background-review"]),
+    task: z.enum([
+        "assistant",
+        "global-review",
+        "local-rewrite",
+        "exact-compression",
+        "background-review",
+    ]),
     provider: z.string().min(1),
     model: z.string().min(1),
     createdAt: z.number(),

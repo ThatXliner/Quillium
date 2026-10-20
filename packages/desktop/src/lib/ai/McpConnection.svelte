@@ -99,7 +99,7 @@ async function copyConfiguration(text = configuration): Promise<void> {
 
             <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
                 <div class="rounded-xl border border-black/[0.06] bg-black/[0.025] px-3.5 py-3">
-                    <p class="text-[12px] leading-relaxed text-black/55">Connected apps can read your live draft, selection, revision versions, annotations, and writing brief, plus saved documents. They can add undoable comments, suggestions, and revisions. Keep Quillium open and ask your assistant to use get_editor_context. After updating Quillium, restart your AI app’s MCP connection to load the new tools.</p>
+                    <p class="text-[12px] leading-relaxed text-black/55">Connected apps can read your live draft, selection, revision versions, annotations, and writing brief, plus saved documents. They can add undoable comments, suggestions, and revisions. Keep the draft you want help with open in Quillium. After updating Quillium, restart the MCP server in Codex, or fully quit and reopen Claude Desktop, to load the new tools.</p>
                 </div>
 
                 <div class="flex gap-1 rounded-xl bg-black/5 p-1" aria-label="Choose your AI app">
@@ -114,10 +114,11 @@ async function copyConfiguration(text = configuration): Promise<void> {
 
                 {#if client === "codex"}
                     <ol class="install-steps">
-                        <li>In Codex, open <strong>Settings → MCP servers → Add server</strong>.</li>
+                        <li>In Codex, open <strong>Settings → Plugins</strong>. Open <strong>Add</strong> and choose <strong>Add MCP server</strong>.</li>
                         <li>Name it <strong>quillium</strong> and choose <strong>STDIO</strong>.</li>
-                        <li>Copy the command below into <strong>Command</strong>. Add each argument separately, in the order shown.</li>
-                        <li>Save, then select <strong>Restart</strong>. Start a new chat and ask “List my Quillium documents.”</li>
+                        <li>Copy the command below into <strong>Command</strong>. Add each argument separately, in the order shown. Paste each value exactly as shown, without adding quotes or escaping spaces.</li>
+                        <li>Save, then select <strong>Restart</strong>.</li>
+                        <li>Start a new chat and try the connection checks below. Allow the Quillium tools when prompted.</li>
                     </ol>
                     {#if server}
                         {#each [{ label: "Command", value: server.command }, ...server.args.map((value, index) => ({ label: `Argument ${index + 1}`, value }))] as field}
@@ -130,14 +131,16 @@ async function copyConfiguration(text = configuration): Promise<void> {
                     {/if}
                 {:else if client === "claude"}
                     <ol class="install-steps">
-                        <li>Open the <strong>Claude desktop app</strong>. From its application menu, choose <strong>Settings → Developer → Edit Config</strong>.</li>
-                        <li>Open <code>claude_desktop_config.json</code> in a text editor and paste the configuration below. If you already have servers, add only the <code>quillium</code> entry inside the existing <code>mcpServers</code> object.</li>
-                        <li>Save the file, fully quit Claude, then reopen it.</li>
-                        <li>Start a new chat and ask “List my Quillium documents.” Allow the Quillium tools when prompted.</li>
+                        <li>Open <strong>Settings</strong> in the <strong>Claude desktop app</strong>. Under <strong>This computer</strong>, select <strong>Developer</strong>, then <strong>Edit config</strong>.</li>
+                        <li>Open <code>claude_desktop_config.json</code> in a text editor. Keep existing settings and servers. Add the <code>quillium</code> entry inside <code>mcpServers</code>, with a comma between entries. If <code>mcpServers</code> is missing, add it at the top level alongside existing settings. If the file is empty, paste the whole configuration below.</li>
+                        <li>Save the file, fully quit Claude, then reopen it. In <strong>Settings → Developer</strong>, check that <strong>quillium</strong> shows <strong>Running</strong>.</li>
+                        <li>Start a new chat and try the connection checks below. Allow the Quillium tools when prompted.</li>
                     </ol>
                 {:else}
-                    <p class="text-xs leading-relaxed text-black/60">For local clients that accept <code>mcpServers</code> JSON, merge the configuration below into their MCP configuration file, then restart the client. For clients with a setup form, use the command and arguments from the Codex tab.</p>
+                    <p class="text-xs leading-relaxed text-black/60">Use a client that supports local <strong>STDIO</strong> servers. For clients that accept <code>mcpServers</code> JSON, add the <code>quillium</code> entry to their configuration, preserving existing settings and servers, then restart the client. For clients with a setup form, use the command and arguments from the Codex tab. Apps that accept only a remote MCP server URL cannot use this local configuration.</p>
                 {/if}
+
+                <p class="text-xs leading-relaxed text-black/50">With a draft open in Quillium, ask “Use get_editor_context to read my current Quillium draft.” To check saved-document access too, ask “List my Quillium documents.” The first checks the open editor; the second checks your saved Library.</p>
 
                 {#if configuration && client !== "codex"}
                     <pre class="max-h-36 overflow-auto rounded-xl bg-black p-3 text-[10px] leading-relaxed text-white/65"><code>{configuration}</code></pre>
