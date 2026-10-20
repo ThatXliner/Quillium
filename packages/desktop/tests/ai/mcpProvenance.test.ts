@@ -81,10 +81,10 @@ it.each(["", "Before. "])(
             expect(buildTextOrigin(events).spans).toEqual([
                 { from: 0, to: prefix.length + version.doc.length, origin: "ai" },
             ]);
-            view.dispatch({ selection: { anchor: prefix.length + 3 } });
             const ctx = session.handle("get_editor_context", {
                 target: { ...identity, revisionPath: [{ revisionId: 0, versionId: version.id }] },
             });
+            view.dispatch({ selection: { anchor: prefix.length + 3 } });
             const result = session.handle("apply_editorial_action", {
                 contextId: ctx.contextId,
                 requestId: "human-raw",

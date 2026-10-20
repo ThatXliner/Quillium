@@ -64,7 +64,7 @@ export function resolveMcpBranch(root: EditorState, path: readonly EditorialBran
                     change && parent.activeOffset !== undefined
                         ? { ...change, from: parent.activeOffset + change.from }
                         : undefined;
-                const transaction = parent.state.update({
+                const spec = {
                     changes: change,
                     effects: _updateRevisionVersionState.of({
                         annotationId: parent.segment.revisionId,
@@ -82,11 +82,11 @@ export function resolveMcpBranch(root: EditorState, path: readonly EditorialBran
                         revisionProvenance.of("human"),
                         isolateHistory.of("full"),
                     ],
-                });
+                };
                 if (index === 0) {
-                    view.dispatch(transaction);
+                    view.dispatch(spec);
                 } else {
-                    child = transaction.state;
+                    child = parent.state.update(spec).state;
                 }
             }
         },
