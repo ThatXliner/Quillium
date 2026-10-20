@@ -6,7 +6,14 @@
  * survived the task's capability limit.
  */
 
+import { z } from "zod";
+
+export const editorialActionsSchema = z.array(z.enum(["comment", "suggestion", "revision"]));
+export const responseLengthSchema = z.enum(["brief", "balanced", "detailed"]);
+export type ResponseLength = z.infer<typeof responseLengthSchema>;
+
 export type EditorialTask =
+    | "assistant"
     | "conversation"
     | "reverse-outline"
     | "branch-comparison"
@@ -22,9 +29,30 @@ export type EditorialPanelMode = "chat" | "feedback" | "revise" | "dictionary";
 export type EditorialTurn = {
     task: EditorialTask;
     exactWordCount?: number;
+    requestedActions?: readonly EditorialAction[];
+    responseLength?: ResponseLength;
 };
 
 export type EditorialAction = "comment" | "suggestion" | "revision";
+
+/** Validate saved or transport-supplied permission snapshots; malformed grants deny all. */
+export function parseEditorialTurnOptions(
+    value: unknown,
+): Pick<EditorialTurn, "requestedActions" | "responseLength"> {
+    if (!value || typeof value !== "object") return {};
+    const actions =
+        "requestedActions" in value
+            ? editorialActionsSchema.safeParse(value.requestedActions)
+            : undefined;
+    const length =
+        "responseLength" in value
+            ? responseLengthSchema.safeParse(value.responseLength)
+            : undefined;
+    return {
+        ...(actions ? { requestedActions: actions.success ? actions.data : [] } : {}),
+        ...(length?.success ? { responseLength: length.data } : {}),
+    };
+}
 
 export type EditorialStance = "author-first" | "collaborative" | "exploratory";
 export type FeedbackDensity = "quiet" | "focused" | "thorough";
@@ -55,6 +83,7 @@ type CompileEditorialPolicyOptions = {
     preferences?: EditorialPreferences;
     /** Require an annotation tool (or the transport-only noAction tool) instead of prose. */
     annotationOnly?: boolean;
+    responseLength?: ResponseLength;
 };
 
 const EDITORIAL_CONSTITUTION = `You are Quillium's editorial collaborator. The writer owns the intent, voice, and final wording.
@@ -80,6 +109,7 @@ const FOCUSED_EDIT_POLICY = `Revision boundaries:
 - Preserve raw dictated wording verbatim. When working inside its revision version, represent cuts and rewordings as separate local nested revisions rather than rewriting that outer version.`;
 
 const TASK_ACTION_LIMITS: Record<EditorialTask, readonly EditorialAction[]> = {
+    assistant: ["comment", "suggestion", "revision"],
     conversation: [],
     "reverse-outline": [],
     "branch-comparison": [],
@@ -93,6 +123,7 @@ const TASK_ACTION_LIMITS: Record<EditorialTask, readonly EditorialAction[]> = {
 
 const PANEL_TASKS: Record<EditorialPanelMode, readonly EditorialTask[]> = {
     chat: [
+        "assistant",
         "conversation",
         "reverse-outline",
         "branch-comparison",
@@ -152,6 +183,8 @@ function taskPrompt(
     annotationOnly = false,
 ): string {
     switch (task) {
+        case "assistant":
+            return `Task: help with the writer's request in one ongoing conversation. Choose the enabled tools that serve the request; permission to use a tool is not a request to use it. Answer questions in the conversation. When useful, attach observations as comments, small wording alternatives as suggestions, and coherent passage alternatives as revision versions. Use document tools for proposed writing changes so the writer can review them in place without copying and pasting. Keep original wording available. Never ask the writer to switch modes. If a needed tool is disabled, explain which permission is needed without claiming to have made the change.${hasSelection ? " Focus document actions inside the selected passage." : " Use a clear anchored target; ask for clarification if the request does not identify one."}`;
         case "conversation":
             return 'Task: discuss the writer\'s question about the current writing. Answer directly and concisely. Offer wording only when the writer explicitly asks you to write alternatives. A statement such as "I do not like the wording" identifies a concern, not permission to rewrite: explain what is not working, discuss the intended effect, or ask a focused question. Do not append a smoother version or sample replacement to that feedback.';
         case "reverse-outline":
@@ -237,13 +270,18 @@ export function compileEditorialPolicy({
     requestedActions,
     preferences = DEFAULT_EDITORIAL_PREFERENCES,
     annotationOnly = false,
+    responseLength,
 }: CompileEditorialPolicyOptions): EditorialPolicy {
     const limit = TASK_ACTION_LIMITS[task];
-    const requested = requestedActions ?? limit;
+    // Assistant requests must carry an explicit permission snapshot, including an empty one.
+    const requested = requestedActions ?? (task === "assistant" ? [] : limit);
     const allowedActions = limit.filter((action) => requested.includes(action));
     const usesAnnotationOnlyOutput =
         annotationOnly &&
-        (task === "global-review" || task === "local-rewrite" || task === "exact-compression");
+        (task === "assistant" ||
+            task === "global-review" ||
+            task === "local-rewrite" ||
+            task === "exact-compression");
 
     return {
         systemPrompt: [
@@ -254,6 +292,11 @@ export function compileEditorialPolicy({
                 : []),
             preferencePrompt(preferences),
             taskPrompt(task, hasSelection, exactWordCount, usesAnnotationOnlyOutput),
+            ...(responseLength
+                ? [
+                      `Response length: ${responseLength}. ${responseLength === "brief" ? "Keep the conversational reply short and direct." : responseLength === "detailed" ? "Explain the reasoning and useful tradeoffs in detail." : "Give a compact explanation with enough reasoning to be useful."} This controls reply length, not feedback density or tool permissions.`,
+                  ]
+                : []),
         ].join("\n\n"),
         allowedActions,
     };

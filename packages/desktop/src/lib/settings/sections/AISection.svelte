@@ -41,9 +41,9 @@ const { draft, onchange }: { draft: AppSettings; onchange: () => void } = $props
     <SettingSegmented
         title="AI panel layout"
         description={draft.aiSidebarLayout === "combined"
-            ? "One Chat with visible Discuss, Feedback, and Revise actions. Past discussions are preserved."
-            : "Chat, Feedback, and Revise each have their own panel and history. Choose One conversation to try unified Chat."}
-        options={[["separate", "Separate panels"], ["combined", "One conversation"]]}
+            ? "One assistant with selectable document tools and separate response preferences. Past discussions are preserved."
+            : "Chat, Feedback, and Revise each have their own panel and history. Choose One assistant to try it."}
+        options={[["separate", "Separate panels"], ["combined", "One assistant"]]}
         value={draft.aiSidebarLayout}
         defaultValue="separate"
         onchange={(value) => {

@@ -120,7 +120,10 @@ test.describe("AI sidebar", () => {
     test("keeps the composer visible while starter content scrolls", async ({ page }) => {
         await page.emulateMedia({ reducedMotion: "reduce" });
         await page.addInitScript(() => {
-            localStorage.setItem("mock-writer-brief:doc-test-1", "Preserve the narrator's voice and keep the ending understated.");
+            localStorage.setItem(
+                "mock-writer-brief:doc-test-1",
+                "Preserve the narrator's voice and keep the ending understated.",
+            );
         });
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
@@ -143,18 +146,30 @@ test.describe("AI sidebar", () => {
                 await expect(submit).toBeInViewport({ ratio: 1 });
                 await expect(input).toBeInViewport({ ratio: 1 });
                 // Check clipping by the panel as well as the browser viewport.
-                await expect.poll(async () => {
-                    const bounds = await panel.boundingBox();
-                    const button = await submit.boundingBox();
-                    return !!bounds && !!button && button.y + button.height <= bounds.y + bounds.height;
-                }).toBe(true);
+                await expect
+                    .poll(async () => {
+                        const bounds = await panel.boundingBox();
+                        const button = await submit.boundingBox();
+                        return (
+                            !!bounds &&
+                            !!button &&
+                            button.y + button.height <= bounds.y + bounds.height
+                        );
+                    })
+                    .toBe(true);
                 const before = await input.boundingBox();
                 const body = panel.locator("[data-conversation-body]");
-                await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+                await body.evaluate((element) => {
+                    element.scrollTop = element.scrollHeight;
+                });
                 await expect(input).toHaveValue("Help me with this passage");
                 expect((await input.boundingBox())?.y).toBeCloseTo(before!.y, 0);
-                await body.evaluate((element) => { element.scrollTop = 0; });
-                await q.aiSidebar.screenshot({ path: `test-results/sidebar-${mode}-${height}.png` });
+                await body.evaluate((element) => {
+                    element.scrollTop = 0;
+                });
+                await q.aiSidebar.screenshot({
+                    path: `test-results/sidebar-${mode}-${height}.png`,
+                });
                 await q.aiSidebar.getByRole("button", { name: "Collapse sidebar" }).click();
             }
         }
@@ -201,11 +216,16 @@ test.describe("AI sidebar", () => {
 
         // Writing actions share one panel; supporting context and readers remain separate.
         await expect(page.locator("#ai-tab-feedback, #ai-tab-revise")).toHaveCount(0);
-        await expect(q.chatPanel.getByRole("button", { name: "Feedback", exact: true })).toBeVisible();
-        await expect(q.chatPanel.getByRole("button", { name: "Revise", exact: true })).toBeVisible();
-        await q.aiSidebar.getByRole("toolbar", { name: "Sidebar panels" }).last().getByRole("button", { name: /Document Context/ }).click();
+        await expect(q.chatPanel.getByRole("button", { name: /^Tools ·/ })).toBeVisible();
+        await expect(
+            q.chatPanel.getByRole("button", { name: "Readers", exact: true }),
+        ).toBeVisible();
+        await q.aiSidebar
+            .getByRole("toolbar", { name: "Sidebar panels" })
+            .last()
+            .getByRole("button", { name: /Document Context/ })
+            .click();
         await expect(q.aiSidebar).toContainText("Document Context");
-
     });
 
     test("shows typed outline and exact-compression recipes", async ({ page }) => {
@@ -224,13 +244,23 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
         await q.chatPanel.getByRole("button", { name: "Starting points", exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Starting points" }).getByRole("button", { name: /Reverse outline/ })).toBeVisible();
+        await expect(
+            page
+                .getByRole("dialog", { name: "Starting points" })
+                .getByRole("button", { name: /Reverse outline/ }),
+        ).toBeVisible();
 
         await q.selectRange(0, draft.length);
         if (!(await q.chatPanel.isVisible())) await page.locator("#ai-tab-chat").click();
         await q.chatPanel.getByRole("button", { name: "Starting points", exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Starting points" }).getByRole("button", { name: /Cut to 9 words/ })).toBeVisible();
-        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText("Exact target from 12 words");
+        await expect(
+            page
+                .getByRole("dialog", { name: "Starting points" })
+                .getByRole("button", { name: /Cut to 9 words/ }),
+        ).toBeVisible();
+        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText(
+            "Exact target from 12 words",
+        );
     });
 
     test("saves and restores document editorial decisions", async ({ page }) => {
@@ -288,19 +318,26 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).not.toContainText("AI can see this draft");
-        await expect(
-            q.aiSidebar.getByRole("button", { name: /Whole draft/ }),
-        ).toBeVisible();
+        await expect(q.aiSidebar.getByRole("button", { name: /Whole draft/ })).toBeVisible();
         await q.chatPanel.getByRole("button", { name: "Starting points", exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText("Your custom actions");
-        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText("Make punchy");
+        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText(
+            "Your custom actions",
+        );
+        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText(
+            "Make punchy",
+        );
 
-        await page.getByRole("dialog", { name: "Starting points" }).getByRole("button", { name: /Reverse outline/ }).click();
+        await page
+            .getByRole("dialog", { name: "Starting points" })
+            .getByRole("button", { name: /Reverse outline/ })
+            .click();
 
         await expect(q.aiSidebar).not.toContainText("Reverse outline");
         await expect(q.aiSidebar).not.toContainText("Find missing context");
         await expect(q.aiSidebar).not.toContainText("Make punchy");
-        await expect(q.aiSidebar.getByRole("button", { name: "Starting points", exact: true })).toBeVisible();
+        await expect(
+            q.aiSidebar.getByRole("button", { name: "Starting points", exact: true }),
+        ).toBeVisible();
         await expect(q.aiSidebar.getByRole("button", { name: "New discussion" })).toBeVisible();
     });
 
@@ -322,7 +359,10 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
         await q.chatPanel.getByRole("button", { name: "Starting points", exact: true }).click();
-        await page.getByRole("dialog", { name: "Starting points" }).getByRole("button", { name: "Edit in settings" }).click();
+        await page
+            .getByRole("dialog", { name: "Starting points" })
+            .getByRole("button", { name: "Edit in settings" })
+            .click();
 
         const settingsModal = page.locator(".settings-modal-inner");
         await expect(settingsModal).toBeVisible();
@@ -346,7 +386,9 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
 
-        await expect(q.chatPanel.getByRole("button", { name: "Selection", exact: true })).toBeVisible();
+        await expect(
+            q.chatPanel.getByRole("button", { name: "Selection", exact: true }),
+        ).toBeVisible();
         await expect(q.aiSidebar).not.toContainText("Context:");
     });
 
@@ -370,7 +412,9 @@ test.describe("AI sidebar", () => {
 
         await expect(q.aiSidebar).not.toContainText("AI can see this draft");
         await q.chatPanel.getByRole("button", { name: "Starting points", exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText("Prioritize notes");
+        await expect(page.getByRole("dialog", { name: "Starting points" })).toContainText(
+            "Prioritize notes",
+        );
         await expect(
             q.aiSidebar.getByRole("button", {
                 name: /Whole draft/,
@@ -591,10 +635,7 @@ test.describe("markdown formatting", () => {
 
         await q.typeInEditor("hello world");
         await q.selectRange(0, 5);
-        // The test browser reports a Windows UA, so CodeMirror maps Mod-b to
-        // Ctrl-b — while ControlOrMeta would send Meta on a macOS host and
-        // miss the keymap entirely (same convention as q.undo()).
-        await page.keyboard.press("Control+b");
+        await page.keyboard.press("ControlOrMeta+b");
 
         await q.expectEditorText("**hello** world");
         await expect(page.getByRole("button", { name: "Bold" })).toHaveCount(0);

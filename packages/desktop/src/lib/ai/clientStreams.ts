@@ -55,6 +55,7 @@ import {
     type EditorialAction,
     type EditorialPreferences,
     type EditorialTask,
+    type ResponseLength,
     compileEditorialPolicy,
     resolveEditorialTask,
 } from "./editorialPolicy";
@@ -84,6 +85,8 @@ interface StreamOpts extends BaseOpts {
     persona?: ReaderPersona;
     editorialPreferences?: EditorialPreferences;
     editorialTask?: EditorialTask;
+    requestedActions?: readonly EditorialAction[];
+    responseLength?: ResponseLength;
     exactWordCount?: number;
     /** Internal fan-out contract: persona output must be annotation tools or noAction. */
     annotationOnly?: boolean;
@@ -294,13 +297,18 @@ async function buildStream(
     const annotationOnly =
         opts.annotationOnly === true &&
         opts.persona !== undefined &&
-        (mode === "feedback" || mode === "revise") &&
-        (task === "global-review" || task === "local-rewrite" || task === "exact-compression");
+        (mode === "chat" || mode === "feedback" || mode === "revise") &&
+        (task === "assistant" ||
+            task === "global-review" ||
+            task === "local-rewrite" ||
+            task === "exact-compression");
     const policy = compileEditorialPolicy({
         task,
         hasSelection: !!opts.selectedText,
         exactWordCount: opts.exactWordCount,
         preferences: opts.editorialPreferences,
+        requestedActions: opts.requestedActions,
+        responseLength: opts.responseLength,
         annotationOnly,
     });
     const retrieval =

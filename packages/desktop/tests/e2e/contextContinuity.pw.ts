@@ -35,7 +35,6 @@ const feedback = (page: Page) => page.locator('[data-panel-id="chat"]');
 async function sendFeedback(page: Page, text: string): Promise<void> {
     if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
     await feedback(page).getByRole("textbox", { name: "Message", exact: true }).fill(text);
-    await feedback(page).getByRole("button", { name: "Feedback", exact: true }).click();
     await feedback(page).getByRole("button", { name: "Send", exact: true }).click();
 }
 
@@ -111,7 +110,9 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
     await q.init();
     await page.locator("#ai-tab-chat").click();
     await expect(feedback(page)).toBeVisible();
-    await feedback(page).getByRole("button", { name: /Whole draft|Revision version/ }).click();
+    await feedback(page)
+        .getByRole("button", { name: /Whole draft|Revision version/ })
+        .click();
     await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText(
         "Changes are noted when you send",
     );
@@ -197,7 +198,9 @@ test("next-turn preview follows the focused nested editor and returns to the dra
     await expect(q.inlineEditor).toBeVisible();
     await q.inlineEditor.click();
     await page.locator("#ai-tab-chat").click();
-    await feedback(page).getByRole("button", { name: /Whole draft|Revision version/ }).click();
+    await feedback(page)
+        .getByRole("button", { name: /Whole draft|Revision version/ })
+        .click();
     await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText(
         "Focused revision version",
     );
@@ -205,8 +208,12 @@ test("next-turn preview follows the focused nested editor and returns to the dra
     await q.aiSidebar.getByRole("button", { name: "Collapse sidebar" }).click();
     await q.editor.click({ position: { x: 20, y: 8 } });
     if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
-    await feedback(page).getByRole("button", { name: /Whole draft|Revision version/ }).click();
-    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText("Current draft");
+    await feedback(page)
+        .getByRole("button", { name: /Whole draft|Revision version/ })
+        .click();
+    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText(
+        "Current draft",
+    );
     q.expectNoPageErrors();
 });
 

@@ -80,6 +80,7 @@ import {
     type EditorialTask,
     type EditorialTurn,
     compileEditorialPolicy,
+    parseEditorialTurnOptions,
     resolveEditorialTask,
 } from "./editorialPolicy";
 import {
@@ -120,10 +121,7 @@ export type ToolApplicationResult = {
 
 type AiChatMode = EditorialPanelMode;
 
-type EditorialTurnAtSend = {
-    task: EditorialTask;
-    exactWordCount?: number;
-};
+type EditorialTurnAtSend = EditorialTurn;
 
 type ToolCallGuard = {
     target: EditorialTargetSnapshot;
@@ -272,7 +270,7 @@ export async function runMultiPersonaStreams({
     personas: ReaderPersona[];
     streamFn: StreamFn;
     messages: UIMessage[];
-    mode: "feedback" | "revise";
+    mode: "chat" | "feedback" | "revise";
     turn?: EditorialTurn;
 }): Promise<void> {
     assertCollegeContextReady();
@@ -329,6 +327,7 @@ export async function runMultiPersonaStreams({
         task,
         hasSelection: !!selectedTextAtStart,
         exactWordCount,
+        requestedActions: turn?.requestedActions,
     });
     const annotationContextAtStart = buildAnnotationContextInputs({
         annotations: targetView ? targetView.state.field(annotationField, false) : get(annotations),
@@ -416,6 +415,8 @@ export async function runMultiPersonaStreams({
             editorialPreferences: { ...editorialPreferencesAtStart },
             editorialTask: task,
             exactWordCount,
+            requestedActions: turn?.requestedActions,
+            responseLength: turn?.responseLength,
             annotationContext: annotationContextAtStart,
             contextRetrieval: contextRetrievalAtStart,
             persona,
@@ -476,6 +477,7 @@ function validExactWordCount(value: unknown): number | undefined {
 
 function actionProvenanceTask(task: EditorialTask): AiGenerationProvenance["task"] | undefined {
     if (
+        task === "assistant" ||
         task === "global-review" ||
         task === "local-rewrite" ||
         task === "exact-compression" ||
@@ -497,7 +499,7 @@ function resolveTurnFromBody(mode: AiChatMode, body: object | undefined): Editor
     if (task === "exact-compression" && exactWordCount === undefined) {
         throw new Error("Exact compression requires a positive whole-word target.");
     }
-    return { task, exactWordCount };
+    return { task, exactWordCount, ...parseEditorialTurnOptions(body) };
 }
 
 /**
@@ -656,6 +658,8 @@ function makeTransport(
                 editorialPreferences: { ...editorialPreferencesAtSend },
                 editorialTask: turn.task,
                 exactWordCount: turn.exactWordCount,
+                requestedActions: turn.requestedActions,
+                responseLength: turn.responseLength,
                 annotationContext: annotationContextAtSend,
                 contextRetrieval: contextRetrievalAtSend,
                 contextHistory,
@@ -853,6 +857,7 @@ export function createAiChat({
                               task: turnAtSend.task,
                               hasSelection: !!targetAtSend.selectedText,
                               exactWordCount: turnAtSend.exactWordCount,
+                              requestedActions: turnAtSend.requestedActions,
                           }).allowedActions,
                           provenance: provenanceAtSend,
                           exactWordCount: turnAtSend.exactWordCount,
@@ -926,6 +931,7 @@ export function createAiChat({
             {
                 body: {
                     editorialTask: task,
+                    ...parseEditorialTurnOptions(turn),
                     ...(exactWordCount === undefined ? {} : { exactWordCount }),
                 },
             },

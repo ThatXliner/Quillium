@@ -81,10 +81,14 @@ the same saved discussions and use the current editorial pipeline.
 
 AI is an editorial collaborator, not the owner of the draft. The writer's text
 remains canonical until the writer applies a suggestion or chooses a revision
-version. Ordinary chat and structural recipes stay conversational. Within the same
-discussion, Give feedback can add anchored comments, while Suggest revisions can
-propose comments, suggestions, or reversible revision branches. Action permissions
-apply to one request, not to the whole conversation. A valid AI turn may produce no document action.
+version. The opt-in One assistant layout uses independently selected comment, suggestion,
+and revision tools. Its Tools popup saves choices per conversation on this device;
+each request snapshots those permissions. The assistant can use enabled tools as
+the request needs, without switching between Discuss, Feedback, and Revise modes.
+Response length, editorial stance, feedback density, and voice latitude shape the
+response separately. Structural recipes stay conversational and specialized context
+actions can narrow the selected permissions. The separate legacy panels retain
+their original task limits. A valid AI turn may produce no document action.
 
 Every turn has an explicit task and capability set. Prompt wording, reader
 personas, saved decisions, and device-local editorial preferences can shape the

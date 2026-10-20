@@ -7,7 +7,7 @@ ChatGPT connection, or OpenAI-compatible endpoint.
 
 The sidebar hosts both local writing panels and AI panels. Separate Chat, Feedback,
 and Revise panels are the default. Settings → Advanced → AI → AI panel layout
-offers One conversation as an explicit opt-in to unified Chat. The saved setting
+offers One assistant as an explicit opt-in to unified Chat. The saved setting
 is `aiSidebarLayout: "separate" | "combined"`; missing or invalid values use
 `"separate"`, including on upgrades. Both layouts use the current editorial pipeline
 and preserve saved conversation IDs and messages.
@@ -74,6 +74,7 @@ stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 | `annotationContext.ts` | Converts CodeMirror annotations into ranked AI context |
 | `contextRetrieval.ts` | Captures draft and nested-version discussions for bounded, read-only retrieval |
 | `editorialAction.ts` | Unique-range resolution, stale/read-only checks, duplicate-concern screening, and annotation dispatch |
+| `assistantOptions.ts` | Device-local conversation tool permissions, reply length, and Readers toggle |
 | `editorialPolicy.ts` | Shared editorial constitution, task recipes, and action permissions |
 | `editorialTarget.ts` | Transient CodeMirror target bookmarks plus document, tab, draft, nested-branch, and selection validation |
 | `conversationController.svelte.ts`, `conversationStore.ts` | Conversation identity, lifecycle, branching, and SQLite persistence |
@@ -221,19 +222,26 @@ the larger discussion modal. Reader review remains a per-mode opt-in.
   Typing remains available during a response, while duplicate sends are blocked.
   Stop cancels generation. Scrolling follows responses only while near the bottom;
   Latest response returns to the end after reading earlier messages.
-- The visible Discuss, Feedback, and Revise buttons select the next request's task.
-  Selecting a button does not send. Send uses the entered message, or a default
-  request for Feedback and Revise when the message is empty. Feedback permits
-  anchored comments. Revise permits comments, suggestions, and reversible revision
-  branches. After sending, the selector returns to Discuss. Failed requests retain
-  the unsent message and selected task.
+- One assistant answers questions and chooses among the selected document tools.
+  The Tools popup independently enables comments, suggestions, and revision versions;
+  no duplicate permission switches appear in the composer. Choices persist per
+  conversation on this device, including across reloads. New conversation paths
+  inherit the source conversation’s choices. Every request snapshots
+  its permissions; tool exposure and editor application enforce that snapshot.
+  A new discussion starts with all three proposal tools available. Empty messages
+  do not send. Existing separate panels keep their original task limits.
+- Response preferences live in their own popup: reply length, editorial stance,
+  feedback amount, and voice latitude. Info buttons open the existing worked-example
+  help modal. Reply length stays with the conversation; editorial preferences use
+  the existing tab-owned College setup or device defaults. None grants tools.
 - A compact context chip shows the current scope, included notes, and writing
   brief. Its popover explains the next turn's context without character counts.
   The composer grows with its text up to 160 pixels. Empty discussions offer
   three contextual starting points. Starting points remains available mid-discussion
   and includes saved custom actions. Eligible College actions appear below the
-  composer. Readers opens the reader review opt-in and names the enabled personas;
-  each enabled reader uses a separate request for Feedback or Revise.
+  composer. Readers is a direct toggle with a filled selected state and no info
+  popup. Its tooltip identifies the enabled readers and additional request count.
+  Each reader uses the same selected tools alongside the normal assistant reply.
 - Tool activity uses plain language in transcript order. “Comment added” requires
   a successful editor action, not merely a provider response. Rejected actions
   show “Couldn't add comment”; interrupted actions are labeled as interrupted.
@@ -247,8 +255,8 @@ the larger discussion modal. Reader review remains a per-mode opt-in.
   saved decisions.
 - Offers context-aware action cards based on selection, draft length, brief, and
   open annotations.
-- Ordinary Send does not expose annotation-creation tools. Explicit writing actions
-  choose the task and tool permissions for that request.
+- Ordinary Send in One assistant exposes only the selected document tools. Context
+  actions can narrow that set; they cannot enable a disabled tool.
 - Failed requests show recovery guidance, including signing in again when a
   ChatGPT connection is expired or invalid. Chat permits another send after a
   failure; active requests disable sending but leave the composer editable.
@@ -270,9 +278,9 @@ by stored mode; unified Chat searches every mode. New discussions use their
 panel’s mode. Unified Chat creates `chat` discussions. Existing rows and branches
 retain their mode.
 New user messages record `editorialTurn` metadata so edit/retry preserve the
-original recipe and exact word target. Legacy messages fall back to the original
+original recipe, exact word target, assistant tool snapshot, and reply length. Legacy messages fall back to the original
 discussion mode when edited/retried. New follow-ups use the active panel’s default
-task; unified Chat defaults to conversation. The draft label is captured
+task; unified Chat sends an assistant task with a permission snapshot. The draft label is captured
 when the conversation is created. Reopening shows that association; the next
 turn uses the source draft's **current** writing context. A discussion opened
 from another draft is readable, but sending requires opening its original draft.
@@ -281,7 +289,7 @@ deleting the document deletes its conversations.
 
 Mixed discussions created in unified Chat remain readable in separate panels.
 If a saved turn uses a task unavailable in that panel, Edit and Retry explain how
-to enable One conversation in Settings. They do not start a request, change the
+to enable One assistant in Settings. They do not start a request, change the
 task, or create an alternative path before that choice.
 
 Branch here copies messages through the chosen point into a separate conversation
@@ -371,11 +379,12 @@ wording cannot expand a turn's permissions.
 
 | Recipe | Surface | Allowed document actions |
 |--------|---------|--------------------------|
-| Conversation | Chat | None |
+| Assistant | Opt-in Chat | Selected comments, suggestions, and revisions |
+| Conversation | Separate Chat | None |
 | Reverse outline | Chat | None |
 | Compare versions | Chat | None |
-| Global review | Chat: Feedback | Comment |
-| Local rewrite | Chat: Revise | Comment, suggestion, revision |
+| Global review | Feedback or Chat context action | Comment (intersected with Chat permissions) |
+| Local rewrite | Revise or Chat context action | Comment, suggestion, revision (intersected with Chat permissions) |
 | Exact compression | Chat: Starting points | Revision only |
 
 An unsupported panel/task pair falls back to the text-only conversation policy.

@@ -1,17 +1,12 @@
+import type { AiGenerationProvenance } from "./core/models";
+
 export type SerializedThreadMessage = {
     message: string;
     author: string;
     time: number;
 };
 
-export type SerializedAiGenerationProvenance = {
-    requestId: string;
-    task: "global-review" | "local-rewrite" | "exact-compression" | "background-review";
-    provider: string;
-    model: string;
-    createdAt: number;
-    persona?: string;
-};
+export type SerializedAiGenerationProvenance = AiGenerationProvenance;
 
 export type SerializedAnnotationBase = {
     id: string;

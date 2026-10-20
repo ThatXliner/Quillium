@@ -55,6 +55,36 @@ describe("editorial stream policy", () => {
         });
     });
 
+    it.each([
+        [[], []],
+        [["comment"], ["createComment"]],
+        [["suggestion"], ["createSuggestion"]],
+        [["revision"], ["createRevision"]],
+    ] as const)("offers exactly the assistant permissions %j", async (requestedActions, names) => {
+        await streamChat({
+            ...baseOptions,
+            editorialTask: "assistant",
+            requestedActions,
+            responseLength: "brief",
+        });
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(Object.keys(request.tools ?? {})).toEqual(names);
+        expect(request.system).toContain("Response length: brief");
+    });
+
+    it("gives reader requests the same assistant permissions plus noAction", async () => {
+        await streamChat({
+            ...baseOptions,
+            editorialTask: "assistant",
+            requestedActions: ["suggestion"],
+            persona,
+            annotationOnly: true,
+        });
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(Object.keys(request.tools)).toEqual(["createSuggestion", "noAction"]);
+        expect(request.toolChoice).toBe("required");
+    });
+
     it("keeps Chat text-only and keeps the writer brief out of the system prompt", async () => {
         await streamChat(baseOptions);
 

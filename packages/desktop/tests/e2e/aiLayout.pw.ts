@@ -33,19 +33,17 @@ test("separate panels are the default; unified Chat requires a saved opt-in and 
 
     let modal = await q.openSettings();
     await modal.getByRole("button", { name: "Advanced", exact: true }).click();
-    await modal.getByRole("button", { name: "One conversation", exact: true }).click();
+    await modal.getByRole("button", { name: "One assistant", exact: true }).click();
     await modal.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.locator('[data-panel-id="feedback"]')).toHaveCount(1);
 
     modal = await q.openSettings();
     await modal.getByRole("button", { name: "Advanced", exact: true }).click();
-    await modal.getByRole("button", { name: "One conversation", exact: true }).click();
+    await modal.getByRole("button", { name: "One assistant", exact: true }).click();
     await modal.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.locator('[data-panel-id="feedback"]')).toHaveCount(0);
     await q.openChat();
-    await expect(
-        q.chatPanel.getByRole("button", { name: "Feedback", exact: true }),
-    ).toBeVisible();
+    await expect(q.chatPanel.getByRole("button", { name: /^Tools ·/ })).toBeVisible();
     await expect(q.chatPanel).toContainText("A useful observation about your opening.");
     expect((await q.mockConversations()).find((item) => item.id === feedbackId)?.mode).toBe(
         "feedback",
@@ -166,94 +164,226 @@ test("replaying a unified action in separate Chat points to the layout setting",
     await q.init();
     await q.openChat();
     await q.chatPanel.getByRole("button", { name: "Retry as new path", exact: true }).click();
-    await expect(q.chatPanel).toContainText("choose One conversation in Settings");
+    await expect(q.chatPanel).toContainText("choose One assistant in Settings");
     expect(await q.mockConversations()).toHaveLength(1);
     expect(requests).toEqual([]);
     q.expectNoPageErrors();
 });
 
-test("opt-in Chat keeps actions visible, sends the chosen task, and fits a small window", async ({ page }) => {
+test("opt-in assistant has independent persistent tools, response preferences, and a direct Readers toggle", async ({
+    page,
+}) => {
     await page.setViewportSize({ width: 1000, height: 600 });
     const q = new QuilliumPage(page, {
         apiKey: "fixture-key",
         settings: { aiSidebarLayout: "combined" },
         initialDoc: "Morning light pooled on the tiles. Mara left the letter unopened.",
     });
-    const requests: string[] = [];
-    page.on("request", request => {
-        if (request.url().includes("api.deepseek.com")) requests.push(request.postData() ?? "");
+    const requests: Array<{
+        tools?: Array<{ function: { name: string } }>;
+        messages: Array<{ role: string; content: string }>;
+    }> = [];
+    page.on("request", (request) => {
+        if (request.url().includes("api.deepseek.com")) requests.push(request.postDataJSON());
     });
     await q.mockDeepSeekProvider("A useful response.");
     await q.init();
     await q.openChat();
-    const discuss = q.chatPanel.getByRole("button", { name: "Discuss", exact: true });
-    const feedback = q.chatPanel.getByRole("button", { name: "Feedback", exact: true });
-    const send = q.chatPanel.getByRole("button", { name: "Send", exact: true });
-    await expect(discuss).toHaveAttribute("aria-pressed", "true");
-    await expect(send).toBeDisabled();
-    await feedback.click();
-    expect(requests).toHaveLength(0);
-    await expect(feedback).toHaveAttribute("aria-pressed", "true");
-    await expect(q.chatInput).toHaveAttribute("placeholder", "What would you like feedback on?");
-    await expect(send).toBeEnabled();
-    await send.click();
-    await expect(q.chatPanel).toContainText("A useful response.");
-    await expect(q.chatPanel.locator("[data-turn-task]")).toHaveText("Feedback");
-    await expect(discuss).toHaveAttribute("aria-pressed", "true");
-    expect(requests).toHaveLength(1);
-    expect(requests[0]).toContain("Give feedback on this draft");
-    await q.chatInput.fill("Why that choice?");
-    await q.chatInput.press("Enter");
-    await expect.poll(() => requests.length).toBe(2);
-    await expect(send).toBeDisabled();
-
-    const chip = q.chatPanel.getByRole("button", { name: "Whole draft", exact: true });
-    await chip.click();
-    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toBeVisible();
+    await expect(q.chatPanel.getByRole("group", { name: "Writing task" })).toHaveCount(0);
+    await expect(q.chatPanel.getByRole("checkbox")).toHaveCount(0);
+    const toolsButton = q.chatPanel.getByRole("button", { name: /^Tools ·/ });
+    await toolsButton.click();
+    const tools = page.getByRole("dialog", { name: "Available tools", exact: true });
+    await tools.getByRole("checkbox", { name: /Add comments/ }).uncheck();
+    await tools.getByRole("checkbox", { name: /Create revision versions/ }).uncheck();
     await page.keyboard.press("Escape");
-    await expect(chip).toBeFocused();
-    await expect(q.chatPanel).toBeVisible();
+    await expect(toolsButton).toBeFocused();
+    await expect(toolsButton).toContainText("Tools · 1");
+    const prefs = q.chatPanel.getByTitle("Response preferences", { exact: true });
+    await prefs.click();
+    const popup = page.getByRole("dialog", { name: "Response preferences", exact: true });
+    await popup.getByLabel("Response length", { exact: true }).selectOption("detailed");
+    for (const name of [
+        "Response length",
+        "Editorial stance",
+        "Feedback amount",
+        "Voice latitude",
+    ]) {
+        await popup
+            .getByRole("button", { name: `About ${name.toLowerCase()}`, exact: true })
+            .click();
+        const guide = page.getByRole("dialog", { name: "Response preferences guide", exact: true });
+        await expect(guide).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(guide).toHaveCount(0);
+        await expect(popup).toBeVisible();
+    }
+    await page.keyboard.press("Escape");
     const readers = q.chatPanel.getByRole("button", { name: "Readers", exact: true });
     await readers.click();
-    const readerPopover = page.getByRole("dialog", { name: "Reader personas" });
-    await readerPopover.getByRole("checkbox", { name: /Ask enabled readers too/ }).check();
-    await page.keyboard.press("Escape");
-    await expect(q.chatPanel.getByRole("button", { name: "Readers on", exact: true })).toBeVisible();
-    await q.chatInput.fill("A longer question.\n".repeat(12));
-    const composer = q.chatPanel.locator("[data-chat-composer]");
-    const box = (await composer.boundingBox())!;
-    expect(box.y).toBeGreaterThanOrEqual(0);
-    expect(box.y + box.height).toBeLessThanOrEqual(600);
-    expect((await q.chatInput.boundingBox())!.height).toBeLessThanOrEqual(160);
-    await q.chatInput.fill("");
-    expect((await q.chatInput.boundingBox())!.height).toBeLessThanOrEqual(48);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await q.aiSidebar.screenshot({ path: "/tmp/quillium-visible-actions.png", animations: "disabled" });
-    await page.setViewportSize({ width: 1000, height: 600 });
-
+    await expect(readers).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("dialog", { name: "Reader personas" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /About readers/i })).toHaveCount(0);
+    await readers.click();
+    await expect(readers).toHaveAttribute("aria-pressed", "false");
+    await q.chatInput.fill("Tighten the opening.");
+    await q.chatInput.press("Enter");
+    await expect(q.conversationMessage("A useful response.")).toBeVisible();
+    expect(
+        requests[0].tools
+            ?.filter((tool) => tool.function.name.startsWith("create"))
+            .map((tool) => tool.function.name),
+    ).toEqual(["createSuggestion"]);
+    expect(requests[0].messages.find((message) => message.role === "system")?.content).toContain(
+        "Response length: detailed",
+    );
+    await expect(toolsButton).toContainText("Tools · 1");
+    await q.aiSidebar.screenshot({
+        path: "/tmp/quillium-one-assistant.png",
+        animations: "disabled",
+    });
+    await page.reload();
+    await q.openChat();
+    await expect(toolsButton).toContainText("Tools · 1");
+    await expect(prefs).toContainText("Detailed");
     await q.chatPanel.getByRole("button", { name: "Expand discussion" }).click();
-    const expanded = page.getByRole("dialog", { name: /Give feedback/ });
-    await expanded.getByRole("button", { name: "Whole draft", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toBeVisible();
+    const expanded = page.getByRole("dialog", { name: /Tighten the opening/ });
+    await expanded.getByRole("button", { name: /^Tools ·/ }).click();
+    await expect(tools.getByRole("checkbox", { name: /Suggest edits/ })).toBeChecked();
     await page.keyboard.press("Escape");
     await expect(expanded).toBeVisible();
+    await expanded.getByTitle("Response preferences", { exact: true }).click();
+    await popup.getByRole("button", { name: "About editorial stance", exact: true }).click();
+    await expect(
+        page.getByRole("dialog", { name: "Response preferences guide", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(expanded).toBeVisible();
+    await page.keyboard.press("Escape");
     await expanded.getByRole("button", { name: "Close discussion" }).click();
-    await feedback.click();
-    await q.chatInput.fill("Review this with my readers.");
-    await send.click();
-    await expect(q.chatPanel).toContainText("Reader review ended.");
-    await expect(discuss).toHaveAttribute("aria-pressed", "true");
     await q.chatPanel.getByRole("button", { name: "New discussion", exact: true }).click();
-    await feedback.click();
-    await q.chatPanel.getByRole("button", { name: "New discussion", exact: true }).click();
-    await expect(discuss).toHaveAttribute("aria-pressed", "true");
-    await page.setViewportSize({ width: 280, height: 600 });
-    const buttons = q.chatPanel.getByRole("group", { name: "Writing task" }).getByRole("button");
-    for (const button of await buttons.all()) {
-        await expect(button).toBeVisible();
-        expect(await button.locator("span").last().evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await expect(toolsButton).toContainText("Tools · 3");
+    await page.setViewportSize({ width: 320, height: 600 });
+    await expect(q.chatPanel.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+    const composer = q.chatPanel.locator("[data-chat-composer]");
+    expect(await composer.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await q.aiSidebar.screenshot({
+        path: "/tmp/quillium-one-assistant-narrow.png",
+        animations: "disabled",
+    });
+    q.expectNoPageErrors();
+});
+
+for (const commentsAllowed of [true, false]) {
+    test(`assistant ${commentsAllowed ? "applies and undoes" : "rejects"} a comment according to selected tools`, async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "fixture-key",
+            settings: { aiSidebarLayout: "combined" },
+            initialDoc: "The morning was beautiful.",
+        });
+        await q.mockDeepSeekProvider();
+        await page.unroute("https://api.deepseek.com/chat/completions");
+        await page.route("https://api.deepseek.com/chat/completions", async (route) => {
+            const chunk = (delta: unknown, finish_reason: string | null = null) =>
+                `data: ${JSON.stringify({ id: "assistant-tool", object: "chat.completion.chunk", created: 1700000000, model: "deepseek-chat", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
+            const body =
+                chunk({ role: "assistant" }) +
+                chunk({
+                    tool_calls: [
+                        {
+                            index: 0,
+                            id: "assistant-comment",
+                            type: "function",
+                            function: {
+                                name: "createComment",
+                                arguments: JSON.stringify({
+                                    targetText: "The morning was beautiful.",
+                                    comment: "Try a specific sensory image.",
+                                }),
+                            },
+                        },
+                    ],
+                }) +
+                chunk({}, "tool_calls") +
+                "data: [DONE]\n\n";
+            await route.fulfill({ status: 200, contentType: "text/event-stream", body });
+        });
+        await q.init();
+        await q.openChat();
+        if (!commentsAllowed) {
+            await q.chatPanel.getByRole("button", { name: /^Tools ·/ }).click();
+            await page
+                .getByRole("dialog", { name: "Available tools" })
+                .getByRole("checkbox", { name: /Add comments/ })
+                .uncheck();
+            await page.keyboard.press("Escape");
+        }
+        await q.chatInput.fill("Add an observation about the opening.");
+        await q.chatInput.press("Enter");
+        const activity = q.chatPanel.locator('[data-tool-call="assistant-comment"]');
+        await expect(activity).toContainText(
+            commentsAllowed ? "Comment added" : "Couldn't add comment",
+        );
+        const annotation = q.annotationCards.filter({ hasText: "Try a specific sensory image." });
+        if (commentsAllowed) {
+            await expect(annotation).toBeVisible();
+            await q.editor.click();
+            await q.undo();
+            await expect(annotation).toHaveCount(0);
+            await page.keyboard.press("ControlOrMeta+Shift+z");
+            await expect(annotation).toBeVisible();
+        } else await expect(annotation).toHaveCount(0);
+        q.expectNoPageErrors();
+    });
+}
+
+test("Readers adds independent requests with the same tools and sends the prompt once to each", async ({
+    page,
+}) => {
+    const q = new QuilliumPage(page, {
+        apiKey: "fixture-key",
+        settings: { aiSidebarLayout: "combined" },
+        initialDoc: "The morning was beautiful.",
+    });
+    await q.mockDeepSeekProvider("An observation.");
+    const requests: Array<{
+        tools?: Array<{ function: { name: string } }>;
+        messages: Array<{ role: string; content: string }>;
+    }> = [];
+    page.on("request", (request) => {
+        if (request.url().includes("api.deepseek.com")) requests.push(request.postDataJSON());
+    });
+    await q.init();
+    await q.openChat();
+    await q.chatPanel.getByRole("button", { name: /^Tools ·/ }).click();
+    const tools = page.getByRole("dialog", { name: "Available tools" });
+    await tools.getByRole("checkbox", { name: /Suggest edits/ }).uncheck();
+    await tools.getByRole("checkbox", { name: /Create revision versions/ }).uncheck();
+    await page.keyboard.press("Escape");
+    await q.chatPanel.getByRole("button", { name: "Readers", exact: true }).click();
+    await q.chatInput.fill("Review with my readers.");
+    await q.chatInput.press("Enter");
+    await expect(q.chatPanel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
+    await expect.poll(() => requests.length).toBe(5);
+    for (const request of requests) {
+        expect(
+            request.tools
+                ?.filter((tool) => tool.function.name.startsWith("create"))
+                .map((tool) => tool.function.name),
+        ).toEqual(["createComment"]);
+        expect(
+            request.messages.filter(
+                (message) =>
+                    message.role === "user" && message.content === "Review with my readers.",
+            ),
+        ).toHaveLength(1);
     }
-    await expect(send).toBeVisible();
-    await q.aiSidebar.screenshot({ path: "/tmp/quillium-visible-actions-narrow.png", animations: "disabled" });
+    await expect(q.conversationMessage("An observation.")).toBeVisible();
+    await expect(q.chatPanel.getByRole("button", { name: "Readers", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+    );
     q.expectNoPageErrors();
 });

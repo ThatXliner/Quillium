@@ -21,6 +21,17 @@ vi.mock("$lib/ai/chatFactory", () => ({
 vi.mock("$lib/ai/settings.svelte", () => ({
     aiSettings: { provider: "openai-oauth" },
     getEffectiveDocumentContext: () => ({ freeform: "" }),
+    getEffectiveEditorialPreferences: () => ({
+        stance: "author-first",
+        feedbackDensity: "focused",
+        voiceLatitude: "preserve",
+    }),
+    editorialPreferences: {
+        stance: "author-first",
+        feedbackDensity: "focused",
+        voiceLatitude: "preserve",
+    },
+    persistEditorialPreferences: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -31,6 +42,7 @@ beforeEach(() => {
             disconnect() {}
         },
     );
+    localStorage.clear();
     mocks.chat.status = "error";
     mocks.sendMessage.mockClear();
 });
@@ -49,21 +61,28 @@ describe("Chat error recovery", () => {
         const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
         expect(send.disabled).toBe(false);
         await fireEvent.submit(input.closest("form")!);
-        expect(mocks.sendMessage).toHaveBeenCalledWith("Try this again", { task: "conversation" });
+        expect(mocks.sendMessage).toHaveBeenCalledWith("Try this again", {
+            task: "assistant",
+            requestedActions: ["comment", "suggestion", "revision"],
+            responseLength: "balanced",
+        });
     });
 
-    it("external chat questions reset a previously selected editing task", async () => {
+    it("external chat questions use the same assistant without mode selection", async () => {
         const previous = get(documentContent);
         documentContent.set("A draft to discuss.");
         try {
             const screen = render(Chat, { active: true, session: null });
-            await fireEvent.click(screen.getByRole("button", { name: "Revise" }));
             expect(mocks.sendMessage).not.toHaveBeenCalled();
             appEventBus.emit({ type: "ai-open-chat", message: "Help me find the right word." });
             const input = screen.getByRole("textbox");
             await fireEvent.submit(input.closest("form")!);
-            expect(screen.getByRole("button", { name: "Discuss" }).getAttribute("aria-pressed")).toBe("true");
-            expect(mocks.sendMessage).toHaveBeenCalledWith("Help me find the right word.", { task: "conversation" });
+            expect(screen.queryByRole("group", { name: "Writing task" })).toBeNull();
+            expect(mocks.sendMessage).toHaveBeenCalledWith("Help me find the right word.", {
+                task: "assistant",
+                requestedActions: ["comment", "suggestion", "revision"],
+                responseLength: "balanced",
+            });
         } finally {
             documentContent.set(previous);
         }

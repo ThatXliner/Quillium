@@ -1,11 +1,11 @@
-<!-- Chat.svelte — One conversation for discussion, feedback, and revision requests. -->
+<!-- Chat.svelte — One assistant with explicit document-tool permissions. -->
 <script lang="ts">
-import { tick } from "svelte";
+import { tick, untrack } from "svelte";
 import { readable } from "svelte/store";
-import { type UIMessage, isToolUIPart } from "ai";
-import { ArrowDown, ArrowUp, Square, Maximize2, MessageCircle, MessageSquareText, PenLine, Users } from "lucide-svelte";
+import { type UIMessage, generateId, isToolUIPart } from "ai";
+import { ArrowDown, ArrowUp, Square, Maximize2, MessageSquareText, PenLine, Users, Wrench, Check, SlidersHorizontal } from "lucide-svelte";
 import { beginAiTask, createAiChat, endAiTask, runMultiPersonaStreams, useAiChatEffects } from "./chatFactory";
-import { streamFeedback, streamRevise } from "./clientStreams";
+import { streamChat } from "./clientStreams";
 import { aiErrorMessage } from "./errorMessage";
 import { aiSettings } from "./settings.svelte";
 import { renderMarkdown } from "./utils";
@@ -22,7 +22,13 @@ import DiscussionModal from "./DiscussionModal.svelte";
 import ConversationHistory from "./ConversationHistory.svelte";
 import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import type { ContextAction } from "./context";
-import type { EditorialTurn } from "./editorialPolicy";
+import { type EditorialAction, type EditorialPreferences, type EditorialTurn, responseLengthSchema } from "./editorialPolicy";
+import { type AssistantOptions, defaultAssistantOptions, loadAssistantOptions, saveAssistantOptions } from "./assistantOptions";
+import { editorialPreferences, getEffectiveEditorialPreferences, persistEditorialPreferences } from "./settings.svelte";
+import { collegeState, getActiveCollegeSetup, updateActiveCollegeSetup } from "$lib/college/state.svelte";
+import HelpModal from "$lib/ui/HelpModal.svelte";
+import InfoButton from "$lib/ui/InfoButton.svelte";
+import { RESPONSE_HELP_TABS } from "./helpContent";
 import { editorialContextView } from "./editorialTarget";
 import { feedbackActions } from "./feedbackActions";
 
@@ -32,31 +38,67 @@ let reviewing = $state(false);
 let reviewOpener = $state<HTMLElement>();
 let scrollArea = $state<HTMLDivElement>();
 let followLatest = $state(true);
-let useReaders = $state(false);
+let options = $state<AssistantOptions>(defaultAssistantOptions());
 let personaInFlight = $state(false);
 let contributedBusy = $state(false);
 let requestError = $state("");
 let actionsOpen = $state(false);
-let readersOpen = $state(false);
-let taskNotice = $state("");
-type ComposerTask = "conversation" | "global-review" | "local-rewrite";
-let selectedTask = $state<ComposerTask>("conversation");
-const tasks = [
-    { task: "conversation", label: "Discuss", icon: MessageCircle, description: "Talk through your writing", color: "text-blue-700", selected: "bg-blue-50 text-blue-800", send: "bg-blue-600 hover:bg-blue-700", placeholder: "Ask about your writing…" },
-    { task: "global-review", label: "Feedback", icon: MessageSquareText, description: "Add comments to your writing", color: "text-green-700", selected: "bg-green-50 text-green-800", send: "bg-green-700 hover:bg-green-800", placeholder: "What would you like feedback on?" },
-    { task: "local-rewrite", label: "Revise", icon: PenLine, description: "Suggest wording you can accept or undo", color: "text-purple-700", selected: "bg-purple-50 text-purple-800", send: "bg-purple-700 hover:bg-purple-800", placeholder: "What would you like to revise?" },
-] satisfies { task: ComposerTask; label: string; icon: typeof MessageCircle; description: string; color: string; selected: string; send: string; placeholder: string }[];
-const currentTask = $derived(tasks.find(task => task.task === selectedTask) ?? tasks[0]);
+let toolsOpen = $state(false);
+let preferencesOpen = $state(false);
+let helpTab = $state<string | null>(null);
+let preferenceError = $state("");
+const id = $props.id();
+const toolOptions = [
+    { action: "comment", label: "Add comments", detail: "Attach observations and questions to passages." },
+    { action: "suggestion", label: "Suggest edits", detail: "Offer small wording changes you can apply or dismiss." },
+    { action: "revision", label: "Create revision versions", detail: "Keep alternate wording beside the original." },
+] satisfies { action: EditorialAction; label: string; detail: string }[];
+const preferences = $derived(getEffectiveEditorialPreferences());
+const stanceLabel = $derived(preferences.stance === "author-first" ? "Author-first" : preferences.stance === "collaborative" ? "Collaborative" : "Exploratory");
+const lengthLabel = $derived(options.responseLength === "brief" ? "Brief" : options.responseLength === "detailed" ? "Detailed" : "Balanced");
 const enabledReaders = $derived(getEnabledPersonas());
 const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "chat", historyScope: "document" });
 const streaming = $derived(chat.status === "submitted" || chat.status === "streaming");
 const isBusy = $derived(streaming || personaInFlight || contributedBusy || (conversations ? !conversations.canSend : false));
+const preferencesDisabled = $derived(isBusy || (collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))));
 const empty = $derived(chat.messages.length === 0);
+let loadedScope: string | undefined;
+let creatingScope: string | undefined;
+const pendingScope = $derived(`pending:${$currentDocumentId}:${$currentDraftId}`);
+const optionScope = $derived(conversations?.current?.id ?? pendingScope);
 $effect(() => {
-    conversations?.current?.id;
-    selectedTask = "conversation";
-    taskNotice = "";
+    const scope = optionScope;
+    const pending = pendingScope;
+    const source = conversations?.current?.sourceConversationId ?? undefined;
+    untrack(() => {
+        if (scope === loadedScope) return;
+        // The first send creates the row lazily; keep the choices made in its empty composer.
+        if (creatingScope === pending && loadedScope === pending && scope !== pending) saveAssistantOptions(scope, options);
+        else {
+            options = loadAssistantOptions(scope, source);
+            if (source) saveAssistantOptions(scope, options);
+        }
+        creatingScope = undefined;
+        loadedScope = scope;
+    });
 });
+function changeOptions(next: AssistantOptions): void {
+    options = next;
+    saveAssistantOptions(optionScope, next);
+}
+function toggleTool(action: EditorialAction, checked: boolean): void {
+    changeOptions({ ...options, requestedActions: toolOptions.filter(tool => tool.action === action ? checked : options.requestedActions.includes(tool.action)).map(tool => tool.action) });
+}
+async function changePreference<K extends keyof EditorialPreferences>(key: K, value: EditorialPreferences[K]): Promise<void> {
+    preferenceError = "";
+    const next = { ...getEffectiveEditorialPreferences(), [key]: value };
+    try {
+        if (getActiveCollegeSetup()) await updateActiveCollegeSetup({ preferences: next });
+        else { Object.assign(editorialPreferences, next); persistEditorialPreferences(); }
+    } catch (error) {
+        preferenceError = error instanceof Error ? error.message : "Could not save response preferences.";
+    }
+}
 const nestedContext = $derived.by(() => {
     void $documentContent;
     void $currentDraftId;
@@ -92,61 +134,57 @@ function followResponse(node: HTMLElement) {
     return { destroy() { observer.disconnect(); } };
 }
 
-async function send(text: string, turn?: EditorialTurn): Promise<boolean> {
+async function send(text: string, requestedTurn?: EditorialTurn): Promise<boolean> {
     if (!text.trim() || isBusy) return false;
     requestError = "";
+    creatingScope = conversations?.current ? undefined : optionScope;
+    const turn: EditorialTurn = {
+        task: "assistant",
+        ...requestedTurn,
+        // A contextual shortcut may narrow the recipe, but can never grant a disabled tool.
+        requestedActions: [...options.requestedActions],
+        responseLength: options.responseLength,
+    };
     const event = turn?.task === "global-review" ? "ai_feedback_requested"
         : turn?.task === "local-rewrite" || turn?.task === "exact-compression" ? "ai_revise_requested"
         : "ai_chat_message_sent";
     posthog.capture(event, { has_selection: hasSelection, message_length: text.length, trigger: "unified_chat" });
     actionsOpen = false;
-    readersOpen = false;
+    toolsOpen = false;
+    preferencesOpen = false;
     // A writing action may run while the writer is still composing a different message.
     const submittedInput = text.trim() === input.trim() ? input : "";
     if (submittedInput) input = "";
     void showLatest();
-    const mode = turn?.task === "global-review" ? "feedback" : turn?.task === "local-rewrite" ? "revise" : null;
-    const personas = useReaders && mode ? getEnabledPersonas() : [];
+    const personas = options.readers ? [...getEnabledPersonas()] : [];
+    let primarySucceeded = false;
+    const readerMessages: UIMessage[] = [...chat.messages, { id: generateId(), role: "user", parts: [{ type: "text", text }] }];
     try {
-        if (mode && personas.length && conversations && turn) {
+        if (personas.length) {
             personaInFlight = true;
             const task = beginAiTask("chat-personas");
             try {
-                const review = async () => {
-                    await runMultiPersonaStreams({
-                        personas,
-                        streamFn: mode === "feedback" ? streamFeedback : streamRevise,
-                        messages: chat.messages,
-                        mode,
-                        turn,
-                    });
-                    return "Reader review ended. Any notes are attached to your writing. You can discuss them here.";
-                };
-                await conversations.runAction(text, turn, review);
+                const outcomes = await Promise.allSettled([
+                    sendMessage(text, turn),
+                    runMultiPersonaStreams({ personas, streamFn: streamChat, messages: readerMessages, mode: "chat", turn }),
+                ]);
+                primarySucceeded = outcomes[0].status === "fulfilled" && !conversations?.error && chat.status !== "error";
+                const failure = outcomes.find(outcome => outcome.status === "rejected");
+                if (failure?.status === "rejected") throw failure.reason;
             } finally {
                 personaInFlight = false;
                 endAiTask(task);
             }
         } else {
             await sendMessage(text, turn);
-            if (conversations?.error) {
-                if (!input) input = submittedInput;
-                return false;
-            }
         }
         if (conversations?.error && !input) input = submittedInput;
         return !conversations?.error;
     } catch (error) {
         requestError = aiErrorMessage(error instanceof Error ? error : new Error(String(error)), aiSettings.provider);
-        if (!input) input = submittedInput;
+        if (!primarySucceeded && !input) input = submittedInput;
         return false;
     }
-}
-function defaultPrompt(task: ComposerTask): string {
-    const target = hasSelection ? "the selected passage" : nestedContext ? "this revision version" : "this draft";
-    return task === "global-review"
-        ? `Give feedback on ${target}. Add comments for useful observations; do not rewrite.`
-        : `Suggest revisions to ${target}, preserving my intent and voice. Keep the original available.`;
 }
 function messageTaskLabel(message: UIMessage): string {
     const metadata = message.metadata;
@@ -185,19 +223,13 @@ $effect(() => appEventBus.on("college-action", (event) => {
 }));
 async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
-    if (isBusy || (!input.trim() && (selectedTask === "conversation" || !$documentContent))) return;
-    taskNotice = "";
-    const task = selectedTask;
-    const text = input.trim() || defaultPrompt(task);
-    selectedTask = "conversation";
-    if (!await send(text, { task }) && selectedTask === "conversation") selectedTask = task;
-    else if (task !== "conversation") taskNotice = "Next message set to Discuss.";
+    await send(input);
 }
 </script>
 
 <div class="unified-chat flex min-h-0 flex-1 flex-col">
     {#if conversations}
-        <ConversationHistory {conversations} compact onnew={() => { selectedTask = "conversation"; taskNotice = ""; }} disabled={personaInFlight || contributedBusy} onopen={() => { followLatest = true; selectedTask = "conversation"; }}>
+        <ConversationHistory {conversations} compact disabled={personaInFlight || contributedBusy} onopen={() => { followLatest = true; }}>
             {#snippet controls()}
                 <button class="shrink-0 rounded-full p-1.5 text-black/60 hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-blue-500" aria-label="Expand discussion" title="Expand discussion" onclick={(event) => { reviewOpener = event.currentTarget; reviewing = true; }}><Maximize2 size={14} /></button>
             {/snippet}
@@ -259,15 +291,7 @@ async function handleSubmit(event: SubmitEvent) {
 {#snippet composer()}
     <div class="shrink-0 px-3 pt-2 pb-3" data-chat-composer>
         <form onsubmit={handleSubmit} class="rounded-xl border border-black/15 bg-white/80 p-2.5 focus-within:ring-2 focus-within:ring-blue-500/40">
-            <div class="mb-2 flex gap-1 border-b border-black/10 pb-2" role="group" aria-label="Writing task">
-                {#each tasks as task (task.task)}
-                    <button type="button" aria-pressed={selectedTask === task.task} title={task.description} disabled={isBusy || (task.task !== "conversation" && !$documentContent)} onclick={() => selectedTask = task.task}
-                        class="task-choice flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-1 py-1.5 text-xs font-medium disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-blue-500 {selectedTask === task.task ? task.selected : `${task.color} hover:bg-black/5`}">
-                        <span class="task-icon shrink-0"><task.icon size={14} /></span><span class="truncate">{task.label}</span>
-                    </button>
-                {/each}
-            </div>
-            <textarea bind:value={input} use:growTextarea={input} name="message" aria-label="Message" rows="1" placeholder={currentTask.placeholder} title="Enter to send · Shift+Enter for a new line"
+            <textarea bind:value={input} use:growTextarea={input} name="message" aria-label="Message" rows="1" placeholder="Ask about your writing…" title="Enter to send · Shift+Enter for a new line"
                 class="block max-h-40 min-h-11 w-full resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-relaxed text-black/90 outline-none"
                 onkeydown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}></textarea>
             <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 pt-1">
@@ -280,20 +304,64 @@ async function handleSubmit(event: SubmitEvent) {
                     </div>
                 </ContextLens>
                 <div class="ml-auto flex items-center gap-1">
-                    <ChatPopover label="Reader personas" {active} align="end" bind:open={readersOpen}>
-                        {#snippet trigger()}<Users size={14} class="shrink-0" /><span>{useReaders ? "Readers on" : "Readers"}</span>{/snippet}
-                        <label class="flex items-start gap-2 rounded-lg py-2"><input type="checkbox" bind:checked={useReaders} disabled={isBusy || (!useReaders && !enabledReaders.length)} class="mt-0.5" /><span>Ask enabled readers too<span class="mt-1 block leading-relaxed text-black/65">For feedback and revisions · {enabledReaders.length} separate AI {enabledReaders.length === 1 ? "request" : "requests"}.</span></span></label>
-                        <p class="mt-2 leading-relaxed text-black/65">{enabledReaders.length ? enabledReaders.map(reader => reader.name).join(" · ") : "Enable readers in the Readers panel."}</p>
+                    <ChatPopover label="Available tools" {active} align="end" bind:open={toolsOpen}>
+                        {#snippet trigger()}<Wrench size={14} class="shrink-0" /><span>Tools · {options.requestedActions.length}</span>{/snippet}
+                        <p class="mb-2 leading-relaxed text-black/65">The assistant chooses which enabled tools your request needs.</p>
+                        {#each toolOptions as tool (tool.action)}
+                            <label class="flex cursor-pointer items-start gap-2 border-t border-black/10 py-3">
+                                <input type="checkbox" checked={options.requestedActions.includes(tool.action)} disabled={isBusy} onchange={(event) => toggleTool(tool.action, event.currentTarget.checked)} class="mt-0.5" />
+                                <span>{tool.label}<span class="mt-1 block leading-relaxed text-black/65">{tool.detail}</span></span>
+                            </label>
+                        {/each}
+                        <p class="border-t border-black/10 pt-2 leading-relaxed text-black/65">Reading the current draft and its notes is always available. Every writing action can be undone.</p>
                     </ChatPopover>
+                    <button type="button" aria-pressed={options.readers} disabled={isBusy || (!options.readers && !enabledReaders.length)}
+                        title={enabledReaders.length ? `Ask enabled readers too · ${enabledReaders.length} additional AI requests with the same tools · ${enabledReaders.map(reader => reader.name).join(", ")}` : "Enable readers in the Readers panel"}
+                        onclick={() => changeOptions({ ...options, readers: !options.readers })}
+                        class="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-xs disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-blue-500 {options.readers ? 'bg-blue-100 text-blue-800 ring-1 ring-inset ring-blue-300' : 'text-black/65 hover:bg-black/5'}">
+                        <Users size={14} class="shrink-0" /><span>Readers</span>{#if options.readers}<Check size={12} class="shrink-0" />{/if}
+                    </button>
                     {#if streaming || personaInFlight}
                         <button type="button" aria-label="Stop response" title="Stop response" class="rounded-full bg-black/80 p-2 text-white focus-visible:outline-2 focus-visible:outline-blue-500" onclick={() => { void chat.stop(); appEventBus.emit({ type: "stop-ai" }); }}><Square size={14} /></button>
                     {:else}
-                        <button type="submit" aria-label="Send" title={`Send · ${currentTask.label}`} disabled={isBusy || (!input.trim() && (selectedTask === "conversation" || !$documentContent))} class="rounded-full p-2 text-white disabled:bg-black/10 disabled:text-black/40 focus-visible:outline-2 focus-visible:outline-blue-500 {currentTask.send}"><ArrowUp size={16} /></button>
+                        <button type="submit" aria-label="Send" title="Send" disabled={isBusy || !input.trim()} class="rounded-full p-2 text-white disabled:bg-black/10 disabled:text-black/40 focus-visible:outline-2 focus-visible:outline-blue-500 bg-blue-600 hover:bg-blue-700"><ArrowUp size={16} /></button>
                     {/if}
                 </div>
             </div>
         </form>
-        <p class="sr-only" role="status">{taskNotice}</p>
+        <div class="mt-1.5 flex items-center">
+            <ChatPopover label="Response preferences" {active} bind:open={preferencesOpen}>
+                {#snippet trigger()}<SlidersHorizontal size={14} class="shrink-0" /><span>{lengthLabel} · {stanceLabel}</span>{/snippet}
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center"><label for={`${id}-length`}>Response length</label><InfoButton title="Response length" onclick={() => helpTab = "verbosity"} /></div>
+                        <select id={`${id}-length`} value={options.responseLength} disabled={isBusy} onchange={(event) => { const parsed = responseLengthSchema.safeParse(event.currentTarget.value); if (parsed.success) changeOptions({ ...options, responseLength: parsed.data }); }} class="preference-select">
+                            <option value="brief">Brief</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center"><label for={`${id}-stance`}>Editorial stance</label><InfoButton title="Editorial stance" onclick={() => helpTab = "stance"} /></div>
+                        <select id={`${id}-stance`} value={preferences.stance} disabled={preferencesDisabled} onchange={(event) => { const value = event.currentTarget.value; if (value === "author-first" || value === "collaborative" || value === "exploratory") void changePreference("stance", value); }} class="preference-select">
+                            <option value="author-first">Author-first</option><option value="collaborative">Collaborative</option><option value="exploratory">Exploratory</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center"><label for={`${id}-density`}>Feedback amount</label><InfoButton title="Feedback amount" onclick={() => helpTab = "density"} /></div>
+                        <select id={`${id}-density`} value={preferences.feedbackDensity} disabled={preferencesDisabled} onchange={(event) => { const value = event.currentTarget.value; if (value === "quiet" || value === "focused" || value === "thorough") void changePreference("feedbackDensity", value); }} class="preference-select">
+                            <option value="quiet">Quiet</option><option value="focused">Focused</option><option value="thorough">Thorough</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center"><label for={`${id}-voice`}>Voice latitude</label><InfoButton title="Voice latitude" onclick={() => helpTab = "voice"} /></div>
+                        <select id={`${id}-voice`} value={preferences.voiceLatitude} disabled={preferencesDisabled} onchange={(event) => { const value = event.currentTarget.value; if (value === "preserve" || value === "adapt" || value === "transform") void changePreference("voiceLatitude", value); }} class="preference-select">
+                            <option value="preserve">Preserve</option><option value="adapt">Adapt</option><option value="transform">Transform</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="mt-3 border-t border-black/10 pt-2 leading-relaxed text-black/65">These shape the response. They don’t grant permission to change your writing.</p>
+                {#if preferenceError}<p role="alert" class="mt-2 text-red-800">{preferenceError}</p>{/if}
+            </ChatPopover>
+        </div>
         {#if active && session}
             {#each feedbackActions as action (action.id)}
                 {#if action.applies(session)}<action.component {session} disabled={isBusy} onBusyChange={(busy) => contributedBusy = busy} />{/if}
@@ -302,10 +370,10 @@ async function handleSubmit(event: SubmitEvent) {
     </div>
 {/snippet}
 
+{#if helpTab}
+    <HelpModal title="Response preferences guide" tabs={RESPONSE_HELP_TABS} initialTab={helpTab} footer="Preferences shape the response; enabled tools determine which document actions are allowed." onclose={() => helpTab = null} />
+{/if}
+
 <style>
-.unified-chat { container-type: inline-size; }
-@container (max-width: 300px) {
-    .task-icon { display: none; }
-    .task-choice { gap: 0; padding-inline: 0; }
-}
+.preference-select { max-width: 48%; border: 1px solid rgb(0 0 0 / .15); border-radius: .5rem; background: rgb(255 255 255 / .6); padding: .375rem .5rem; }
 </style>
