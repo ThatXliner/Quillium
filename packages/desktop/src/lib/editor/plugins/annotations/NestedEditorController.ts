@@ -269,8 +269,8 @@ export class NestedEditorController {
         this._lastDispatchedDoc = authoritativeDoc;
     }
 
-    syncVersionFromParent(version: VersionState): void {
-        if (!this._editor || version.id !== this._editorVersionId) return;
+    syncVersionFromParent(): void {
+        if (!this._editor) return;
         const revision = this.parentRevision();
         if (!revision || revision.activeVersionId !== this._editorVersionId) return;
         const authoritative = versionById(revision, this._editorVersionId);

@@ -366,7 +366,7 @@ it("refreshes the mounted version in place without moving focus or the mapped cu
         path,
     );
     controller.flushCurrentStateToParent(false);
-    controller.syncVersionFromParent(outer.versions[0]);
+    controller.syncVersionFromParent();
     expect(controller.editor).toBe(mounted);
     expect(mounted.hasFocus).toBe(true);
     expect(mounted.state.selection.main.head).toBe(3);
@@ -382,7 +382,7 @@ it("refreshes the mounted version in place without moving focus or the mapped cu
         },
         path,
     );
-    controller.syncVersionFromParent(revision(owner.view.state).versions[0]);
+    controller.syncVersionFromParent();
     expect(controller.editor).toBe(mounted);
     expect(mounted.hasFocus).toBe(true);
     expect(mounted.state.selection.main.head).toBe(7);

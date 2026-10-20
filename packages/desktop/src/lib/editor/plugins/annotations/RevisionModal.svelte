@@ -406,7 +406,7 @@ $effect(() => {
     lastSyncedVersionId = rev.activeVersionId;
 
     if (controller.needsAnnotationRebuild(activeVersionState)) {
-        if (isTop) controller.syncVersionFromParent(activeVersionState);
+        if (isTop) controller.syncVersionFromParent();
         return;
     }
 

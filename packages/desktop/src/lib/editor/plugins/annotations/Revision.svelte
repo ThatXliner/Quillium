@@ -565,7 +565,7 @@ $effect(() => {
     const current = readCurrentActiveVersion();
     const version = current?.version ?? trackedVersion;
     if (!controller.needsAnnotationRebuild(version)) return;
-    controller.syncVersionFromParent(version);
+    controller.syncVersionFromParent();
 });
 
 // The modal event fires after its flush, so the parent already has the new annotations.
@@ -580,7 +580,7 @@ $effect(() => {
         const latestVersion = versionById(rev, rev.activeVersionId);
         if (!latestVersion) return;
         if (!controller.needsAnnotationRebuild(latestVersion)) return;
-        controller.syncVersionFromParent(latestVersion);
+        controller.syncVersionFromParent();
     });
 });
 

@@ -347,7 +347,13 @@ export function createMcpEditorSession(
                       provenance,
                   });
         if (result.ok && snapshot.branch && view !== rootView)
-            snapshot.branch.commit(rootView, view.state);
+            snapshot.branch.commit(
+                rootView,
+                view.state,
+                payload.action === "insert_dictation"
+                    ? { from: payload.position, insert: payload.text }
+                    : undefined,
+            );
         const annotations = view.state.toJSON({ annotations: annotationField }).annotations;
         const created = result.ok
             ? Object.values(view.state.field(annotationField))
