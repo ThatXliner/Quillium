@@ -220,6 +220,9 @@ Intentionally separate from localStorage — keychain requires user-level auth a
 
 Uses `@tauri-apps/plugin-updater` to check for updates on launch.
 
+Frontend-only OTA remains an [evaluation and proposed pilot contract](frontend-ota.md).
+The app currently ships frontend assets through full native releases.
+
 ### Update Flow
 
 ```mermaid
