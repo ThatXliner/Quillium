@@ -211,7 +211,7 @@ function growTextarea(node: HTMLTextAreaElement, _value: string) {
 function useContextAction(action: ContextAction) {
     void send(action.prompt, action.turn);
 }
-$effect(() => appEventBus.on("ai-open-chat", (event) => { input = event.message; selectedTask = "conversation"; taskNotice = ""; }));
+$effect(() => appEventBus.on("ai-open-chat", (event) => { input = event.message; }));
 $effect(() => appEventBus.on("college-action", (event) => {
     if (event.target.documentId !== $currentDocumentId || event.target.tabId !== $currentTabId || event.target.draftId !== $currentDraftId || isBusy) return;
     const prompt = event.action === "plan"
