@@ -656,7 +656,6 @@ test("expanded discussions display save failures and retain the unsent question"
                 : invoke(command, args);
     });
     await q.chatInput.fill("What about the stakes?");
-    await q.chatPanel.getByRole("button", { name: "Feedback", exact: true }).click();
     await q.chatInput.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Opening scene", exact: true });
     await expect(dialog.getByRole("alert")).toContainText("Disk full");
