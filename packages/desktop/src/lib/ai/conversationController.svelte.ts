@@ -22,7 +22,11 @@ import {
     saveConversationMessages,
 } from "./conversationStore";
 import type { Conversation } from "./conversationStore";
-import { type EditorialTurn, resolveEditorialTask } from "./editorialPolicy";
+import {
+    type EditorialTurn,
+    isEditorialTaskAllowed,
+    resolveEditorialTask,
+} from "./editorialPolicy";
 
 export type PersistentConversationMode = "chat" | "feedback" | "revise";
 
@@ -45,6 +49,7 @@ type ConversationChat = {
 type ConversationControllerOptions = {
     chat: ConversationChat;
     mode: PersistentConversationMode;
+    historyScope?: "mode" | "document";
     beforeReplace?: () => void;
     requestSettings?: () => { provider: string; model: string };
 };
@@ -237,9 +242,27 @@ function turnForMessage(source: Conversation, message?: UIMessage): EditorialTur
 export function createConversationController({
     chat,
     mode,
+    historyScope = "mode",
     beforeReplace,
     requestSettings,
 }: ConversationControllerOptions) {
+    const includesMode = (item: Conversation): boolean =>
+        (mode === "chat" && historyScope === "document") || item.mode === mode;
+    function replayTurn(source: Conversation, message?: UIMessage): EditorialTurn {
+        const turn = turnForMessage(source, message);
+        const supported =
+            mode === "chat"
+                ? turn.task === "conversation" ||
+                  turn.task === "reverse-outline" ||
+                  turn.task === "branch-comparison"
+                : isEditorialTaskAllowed(mode, turn.task);
+        if (!(mode === "chat" && historyScope === "document") && !supported) {
+            throw new Error(
+                "To edit or retry this saved action, choose One conversation in Settings → Advanced → AI → AI panel layout.",
+            );
+        }
+        return turn;
+    }
     const state = $state<ConversationState>({
         current: null,
         items: [],
@@ -377,7 +400,7 @@ export function createConversationController({
         if (normalized.documentId !== documentId) {
             throw new Error("Conversation belongs to another document.");
         }
-        if (mode !== "chat" && normalized.mode !== mode) {
+        if (!includesMode(normalized)) {
             throw new Error("Conversation belongs to another AI mode.");
         }
         return normalized;
@@ -433,15 +456,12 @@ export function createConversationController({
 
             const items = (await listConversations(scope.documentId)).map(normalizeConversation);
             if (!tokenIsCurrent(token) || !sameScope(scope, scopeNow())) return;
-            state.items = items.sort((left, right) => right.updatedAt - left.updatedAt);
+            state.items = items
+                .filter(includesMode)
+                .sort((left, right) => right.updatedAt - left.updatedAt);
 
             candidate = state.items
-                .filter(
-                    (item) =>
-                        (mode === "chat" || item.mode === mode) &&
-                        !item.archived &&
-                        item.draftId === scope.draftId,
-                )
+                .filter((item) => !item.archived && item.draftId === scope.draftId)
                 .sort((left, right) => right.updatedAt - left.updatedAt)[0];
             let messages: UIMessage[] = [];
             try {
@@ -481,7 +501,9 @@ export function createConversationController({
             await waitForActiveWork();
             const items = (await listConversations(scope.documentId)).map(normalizeConversation);
             if (!tokenIsCurrent(token) || get(currentDocumentId) !== scope.documentId) return;
-            state.items = items.sort((left, right) => right.updatedAt - left.updatedAt);
+            state.items = items
+                .filter(includesMode)
+                .sort((left, right) => right.updatedAt - left.updatedAt);
             const refreshedCurrent = state.current
                 ? state.items.find((item) => item.id === state.current?.id)
                 : undefined;
@@ -562,7 +584,7 @@ export function createConversationController({
         if (conversation.documentId !== get(currentDocumentId)) {
             throw new Error("Conversation belongs to another document.");
         }
-        if (mode !== "chat" && conversation.mode !== mode)
+        if (!includesMode(conversation))
             throw new Error("Conversation belongs to another AI mode.");
         return conversation;
     }
@@ -872,6 +894,7 @@ export function createConversationController({
             throw new Error("Only user messages can be edited.");
         }
         const chatMessage = chat.messages[index];
+        const turn = replayTurn(source, chatMessage);
         const created = await createDerivedConversation(
             source,
             chat.messages.slice(0, index),
@@ -879,7 +902,7 @@ export function createConversationController({
             "(edit)",
         );
         if (!created) return;
-        await trackSend(runSend(text, turnForMessage(source, chatMessage)));
+        await trackSend(runSend(text, turn));
     }
 
     async function retry(messageId: string): Promise<void> {
@@ -896,6 +919,7 @@ export function createConversationController({
         const prefix = clone(chat.messages.slice(0, index));
         if (prefix.at(-1)?.role !== "user")
             throw new Error("No user prompt precedes this response.");
+        const turn = replayTurn(source, prefix.at(-1));
         const retryPrompt = textFromMessage(prefix.at(-1));
         const retrySettings = requestSettings?.() ?? { provider: "unknown", model: "unknown" };
         const retryUser = prefix.at(-1);
@@ -912,7 +936,7 @@ export function createConversationController({
         }
         const created = await createDerivedConversation(source, prefix, messageId, "(retry)");
         if (!created) return;
-        await trackSend(runRetry(turnForMessage(source, prefix.at(-1))));
+        await trackSend(runRetry(turn));
     }
 
     function trackSend(promise: Promise<void>): Promise<void> {

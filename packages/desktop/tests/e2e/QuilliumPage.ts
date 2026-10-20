@@ -77,6 +77,8 @@ export type TauriMockOptions = {
     skipTutorial: boolean;
     /** Merged into localStorage `quillium-app-settings`. */
     settings: Record<string, unknown>;
+    /** Keep settings changed through the UI when a test reloads the page. */
+    preserveSettingsOnReload: boolean;
     /**
      * Pre-loaded document text.  When set, cmd_load_document_state returns
      * a snapshot so the editor opens with content.
@@ -105,6 +107,7 @@ export type TauriMockOptions = {
 const DEFAULT_OPTIONS: TauriMockOptions = {
     apiKey: null,
     skipTutorial: true,
+    preserveSettingsOnReload: false,
     settings: {
         showNestedEditor: true,
         atomicRevisions: true,
@@ -186,6 +189,7 @@ export class QuilliumPage {
                 apiKey: string | null;
                 skipTutorial: boolean;
                 settings: Record<string, unknown>;
+                preserveSettingsOnReload: boolean;
                 initialDoc: string | null;
                 initialStateJson: string | null;
                 snapshots: MockSnapshot[];
@@ -199,7 +203,11 @@ export class QuilliumPage {
                     localStorage.setItem("quillium_beta_accepted", "true");
                     localStorage.setItem("quillium_changelog_seen", "999.999");
                 }
-                if (Object.keys(payload.settings).length > 0) {
+                if (
+                    Object.keys(payload.settings).length > 0 &&
+                    (!payload.preserveSettingsOnReload ||
+                        !localStorage.getItem("quillium-app-settings"))
+                ) {
                     localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
                 }
                 if (payload.apiKey) {
@@ -1172,6 +1180,7 @@ export class QuilliumPage {
                 apiKey: opts.apiKey,
                 skipTutorial: opts.skipTutorial,
                 settings: opts.settings,
+                preserveSettingsOnReload: opts.preserveSettingsOnReload,
                 initialDoc: opts.initialDoc,
                 initialStateJson: opts.initialStateJson,
                 snapshots: opts.snapshots,
@@ -1209,9 +1218,7 @@ export class QuilliumPage {
         if (await close.isVisible()) await close.click();
         await this.openChat();
         if (!(await this.conversationHistory.isVisible().catch(() => false))) {
-            await this.chatPanel
-                .getByRole("button", { name: "History", exact: true })
-                .click();
+            await this.chatPanel.getByRole("button", { name: "History", exact: true }).click();
         }
         await expect(this.conversationHistory).toBeVisible({ timeout: 10_000 });
     }

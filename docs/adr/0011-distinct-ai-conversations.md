@@ -36,3 +36,16 @@ This changes navigation and action selection, not draft authority, historical
 tool replay, cancellation, or the persistence boundaries above. Built-in chat is
 the primary UI; the existing optional MCP bridge is a complementary integration
 for external assistants and does not replace it.
+
+## Explicit layout choice (October 2026)
+
+Separate Chat, Feedback, and Revise panels are the default again. Writers familiar
+with those panels must explicitly choose One conversation in Settings → Advanced
+→ AI → AI panel layout to enable unified Chat. Missing or invalid saved values
+select Separate panels, including when upgrading from v0.25.
+
+This supersedes unified Chat as the default UI, while retaining its per-turn
+permissions and persistence design. The setting changes views and history filters;
+it does not merge, rewrite, or delete conversations. Separate panels load their
+own mode's history. Unified Chat can open every mode. Switching back leaves
+conversations available in the panel matching their stored mode.

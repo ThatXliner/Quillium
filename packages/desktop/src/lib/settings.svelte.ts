@@ -57,6 +57,7 @@ export type AppSettings = {
     // shareDocumentAnalytics: boolean;
     // shareDocumentKey: string;
     aiEnabled: boolean;
+    aiSidebarLayout: "separate" | "combined";
     showShortcutHints: boolean;
     showWordCount: boolean;
     wordCountDisplayMode: "words" | "chars" | "both";
@@ -110,6 +111,7 @@ const DEFAULTS: AppSettings = {
     // shareDocumentAnalytics: false,
     // shareDocumentKey: "",
     aiEnabled: false,
+    aiSidebarLayout: "separate",
     showShortcutHints: true,
     showWordCount: true,
     wordCountDisplayMode: "both",
@@ -157,6 +159,7 @@ function loadSettings(fallback: AppSettings = DEFAULTS): AppSettings {
 
 function normalizeSettings(settings: AppSettings): AppSettings {
     const merged = { ...settings };
+    merged.aiSidebarLayout = merged.aiSidebarLayout === "combined" ? "combined" : "separate";
     merged.showDrafts = merged.showDrafts !== false;
     merged.showDocumentOutline = merged.showDocumentOutline === true;
     merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;

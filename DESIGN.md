@@ -75,6 +75,10 @@ Root-level modals (`stackIndex === 0`) watch `$annotationsStore` (which reflects
 
 ## AI
 
+Separate Chat, Feedback, and Revise panels are the default. Unified Chat is an
+explicit opt-in in Settings → Advanced → AI → AI panel layout. Both layouts keep
+the same saved discussions and use the current editorial pipeline.
+
 AI is an editorial collaborator, not the owner of the draft. The writer's text
 remains canonical until the writer applies a suggestion or chooses a revision
 version. Ordinary chat and structural recipes stay conversational. Within the same

@@ -35,7 +35,8 @@ const feedback = (page: Page) => page.locator('[data-panel-id="chat"]');
 async function sendFeedback(page: Page, text: string): Promise<void> {
     if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
     await feedback(page).getByRole("textbox", { name: "Message", exact: true }).fill(text);
-    await feedback(page).getByRole("button", { name: "Give feedback", exact: true }).click();
+    await feedback(page).getByRole("button", { name: "Feedback", exact: true }).click();
+    await feedback(page).getByRole("button", { name: "Send", exact: true }).click();
 }
 
 test("Feedback reconsiders draft edits and the latest annotation qualification without pasted context", async ({
@@ -43,7 +44,11 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
 }) => {
     const draft = "The garden improved our neighborhood.";
     const withdrawal = `${"The original criticism requires a careful distinction. ".repeat(9)}I withdraw the evidence concern; only the timeline remains unclear.`;
-    const q = new QuilliumPage(page, { apiKey: "fixture-key", initialDoc: draft });
+    const q = new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
+        apiKey: "fixture-key",
+        initialDoc: draft,
+    });
     q.capturePageErrors();
     const requests: Array<Record<string, unknown>> = [];
     let phase = "feedback";
@@ -106,15 +111,11 @@ test("Feedback reconsiders draft edits and the latest annotation qualification w
     await q.init();
     await page.locator("#ai-tab-chat").click();
     await expect(feedback(page)).toBeVisible();
-    await feedback(page)
-        .locator("details")
-        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
-        .evaluate((el) => {
-            (el as HTMLDetailsElement).open = true;
-        });
-    await expect(feedback(page).locator("[data-next-turn-context]")).toContainText(
+    await feedback(page).getByRole("button", { name: /Whole draft|Revision version/ }).click();
+    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText(
         "Changes are noted when you send",
     );
+    await page.keyboard.press("Escape");
     await sendFeedback(page, "Review the evidence.");
     await expect(
         page
@@ -165,6 +166,7 @@ test("next-turn preview follows the focused nested editor and returns to the dra
     page,
 }) => {
     const q = new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
         apiKey: "fixture-key",
         initialStateJson: JSON.stringify({
             doc: "Opening paragraph.\n\nA revision passage.",
@@ -195,29 +197,16 @@ test("next-turn preview follows the focused nested editor and returns to the dra
     await expect(q.inlineEditor).toBeVisible();
     await q.inlineEditor.click();
     await page.locator("#ai-tab-chat").click();
-    await feedback(page)
-        .locator("details")
-        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
-        .evaluate((el) => {
-            (el as HTMLDetailsElement).open = true;
-        });
-    await expect(feedback(page).locator("[data-next-turn-context]")).toContainText(
-        "focused revision version",
+    await feedback(page).getByRole("button", { name: /Whole draft|Revision version/ }).click();
+    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText(
+        "Focused revision version",
     );
-    await page.locator("[data-context-info-button]").click();
-    await expect(page.getByRole("dialog", { name: "AI context details" })).toContainText(
-        "Next turn: focused revision version",
-    );
+    await page.keyboard.press("Escape");
     await q.aiSidebar.getByRole("button", { name: "Collapse sidebar" }).click();
     await q.editor.click({ position: { x: 20, y: 8 } });
     if (!(await feedback(page).isVisible())) await page.locator("#ai-tab-chat").click();
-    await feedback(page)
-        .locator("details")
-        .filter({ has: page.locator("summary", { hasText: "Writing actions" }) })
-        .evaluate((el) => {
-            (el as HTMLDetailsElement).open = true;
-        });
-    await expect(feedback(page).locator("[data-next-turn-context]")).toContainText("current draft");
+    await feedback(page).getByRole("button", { name: /Whole draft|Revision version/ }).click();
+    await expect(page.getByRole("dialog", { name: "Sent with your next message" })).toContainText("Current draft");
     q.expectNoPageErrors();
 });
 
@@ -237,6 +226,7 @@ test("a retrieval roundtrip rejects a nested-editor switch instead of reading a 
         thread: [{ author: "AI", message, time: 1 }],
     });
     const q = new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
         apiKey: "fixture-key",
         initialStateJson: JSON.stringify({
             doc,
@@ -309,7 +299,11 @@ test("unchanged turns keep one initial summary and later turns omit old retrieve
     page,
 }) => {
     const draft = "The orchard supplied our neighborhood.";
-    const q = new QuilliumPage(page, { apiKey: "fixture-key", initialDoc: draft });
+    const q = new QuilliumPage(page, {
+        settings: { aiSidebarLayout: "combined" },
+        apiKey: "fixture-key",
+        initialDoc: draft,
+    });
     q.capturePageErrors();
     let requestCount = 0;
     await page.route("https://api.openai.com/**", async (route) => {

@@ -5,7 +5,14 @@ provider and credentials. There is no Quillium inference server in the request
 path: prompts are assembled locally and sent directly to the selected provider,
 ChatGPT connection, or OpenAI-compatible endpoint.
 
-The sidebar hosts both local writing panels and AI panels. It is the main AI entry point, but the same provider, context, and
+The sidebar hosts both local writing panels and AI panels. Separate Chat, Feedback,
+and Revise panels are the default. Settings → Advanced → AI → AI panel layout
+offers One conversation as an explicit opt-in to unified Chat. The saved setting
+is `aiSidebarLayout: "separate" | "combined"`; missing or invalid values use
+`"separate"`, including on upgrades. Both layouts use the current editorial pipeline
+and preserve saved conversation IDs and messages.
+
+It is the main AI entry point, but the same provider, context, and
 cancellation infrastructure also powers AutoAI, document-context generation,
 the dictionary assistant, annotation-thread suggestions, title suggestions, and
 the writing characterizer.
@@ -85,7 +92,7 @@ component through the same loops; it does not require another rendering branch i
 the host. Settings uses the utility placement. The `ai_sidebar_opened` analytics
 event and `ai-sidebar` DOM IDs remain unchanged for compatibility.
 
-When AI is disabled, Chat, Context, Readers, AI Settings, and
+When AI is disabled, Chat, Feedback, Revise, Context, Readers, AI Settings, and
 College are hidden through their `requiresAi` metadata. Contributions without
 that dependency remain available. The host hides its chrome when no panels are
 eligible. College additionally requires a saved opt-in for the active document,
@@ -97,8 +104,8 @@ Readers does not load credentials; Settings retains its explicit connection and
 credential controls. Chat retains its credential-to-Settings
 navigation.
 
-The three eager AI writing panels retain their mounted state while collapsed or
-another panel is selected; College
+The selected layout’s writing panels, Context, and Readers retain their mounted
+state while collapsed or another panel is selected; College
 and Settings mount only while active. Hiding a panel ends its host session but
 does not erase saved writing context. Disabling its AI prerequisite, removing its contribution, or adding its ID to `disabledPanelIds`
 unmounts it and stops outstanding built-in AI work; re-enabling creates one instance keyed by the stable ID. Duplicate
@@ -158,8 +165,8 @@ migration or deletion occurs. School-specific review must distinguish which
 responses are read together; reuse between schools is not inherently a problem.
 The College consumer persists independent tab briefs and offers explicit school
 research. Its overlap action is registered through the small
-`ai/feedbackActions.ts` contribution interface. Chat’s Writing actions menu renders eligible
-contributions; the College plugin owns its essay picker, school scope, and
+`ai/feedbackActions.ts` contribution interface. Feedback and the area below
+unified Chat’s composer render eligible contributions; the College plugin owns its essay picker, school scope, and
 comparison logic. Results use ordinary Feedback comments with validated supporting
 passage links. Persistent application grouping and multi-document discovery remain
 deferred. LaTeX compilation and word-processor/debate formatting are outside the
@@ -169,7 +176,7 @@ intended prose-development scope.
 
 | #84 criterion | Status |
 |---|---|
-| Preserve built-in capabilities | Chat now unifies the former Chat/Feedback/Revise panels; Context, Readers, and Settings remain separate. |
+| Preserve built-in capabilities | Separate Chat/Feedback/Revise panels are the default; unified Chat is an explicit Settings opt-in. |
 | Add an icon and panel without rendering branches | Implemented; test-only contributions exercise the real host. |
 | Local operations without credentials | Implemented while AI is enabled; browser tests edit Context and Readers without credential loading or provider traffic. |
 | Activation, hiding, disable/re-enable, focus, errors, cancellation | Implemented for built-in contributions and host sessions; async handlers own their error reporting. |
@@ -184,12 +191,22 @@ intended prose-development scope.
 
 | Tab | Key | Component | Purpose |
 |-----|-----|-----------|---------|
-| Chat | 1 | `Chat.svelte` | Unified discussion, feedback, and revision requests |
+| Chat | 1 | `ClassicChat.svelte` / `Chat.svelte` | Separate conversation / opt-in unified conversation |
+| Feedback | 2 | `Feedback.svelte` | Anchored feedback; separate layout only |
+| Revise | 3 | `Revise.svelte` | Reversible wording proposals; separate layout only |
 | Context | 4 | `DocumentContext.svelte` | Writer-provided brief sent with AI requests |
 | Readers | 5 | `Readers.svelte` | Reader-persona configuration |
 | Settings | 6 | `AISettings.svelte` | Provider, connection, model, and credential configuration |
 
-### Chat
+### Separate panels
+
+Chat, Feedback, and Revise restore the familiar panel views and shortcuts. Their
+histories filter by the conversation’s stored mode. Chat stays conversational;
+Feedback defaults to global review, and Revise defaults to local rewrite. Explicit
+recipes retain their own per-turn permissions. Opening a saved discussion opens
+the larger discussion modal. Reader review remains a per-mode opt-in.
+
+### Unified Chat (opt-in)
 
 - One Chat panel keeps durable discussions across all writing actions. History
   searches the document's discussions, including those created by the old Feedback
@@ -204,12 +221,19 @@ intended prose-development scope.
   Typing remains available during a response, while duplicate sends are blocked.
   Stop cancels generation. Scrolling follows responses only while near the bottom;
   Latest response returns to the end after reading earlier messages.
-- Send is conversational. Give feedback sends the entered request (or a useful
-  default) with comment-only permissions. Suggest revisions sends it with permission
-  to propose comments, suggestions, and reversible revisions. These actions apply
-  to one turn; the following Send returns to conversation. No mode change or new
-  discussion is required. Writing actions contains all contextual recipes, saved
-  custom actions, reader review opt-in, and eligible College actions.
+- The visible Discuss, Feedback, and Revise buttons select the next request's task.
+  Selecting a button does not send. Send uses the entered message, or a default
+  request for Feedback and Revise when the message is empty. Feedback permits
+  anchored comments. Revise permits comments, suggestions, and reversible revision
+  branches. After sending, the selector returns to Discuss. Failed requests retain
+  the unsent message and selected task.
+- A compact context chip shows the current scope, included notes, and writing
+  brief. Its popover explains the next turn's context without character counts.
+  The composer grows with its text up to 160 pixels. Empty discussions offer
+  three contextual starting points. Starting points remains available mid-discussion
+  and includes saved custom actions. Eligible College actions appear below the
+  composer. Readers opens the reader review opt-in and names the enabled personas;
+  each enabled reader uses a separate request for Feedback or Revise.
 - Tool activity uses plain language in transcript order. “Comment added” requires
   a successful editor action, not merely a provider response. Rejected actions
   show “Couldn't add comment”; interrupted actions are labeled as interrupted.
@@ -241,17 +265,24 @@ and accessible names. The context icon toggles the saved turn context.
 ### Conversation identity and alternative paths
 
 Each conversation has a stable ID, a legacy mode field, a title, creation/update timestamps,
-and its original document and draft association. The stored mode no longer
-partitions Chat history. New discussions use `chat`; existing rows and branches of legacy discussions
+and its original document and draft association. Separate panels partition history
+by stored mode; unified Chat searches every mode. New discussions use their
+panel’s mode. Unified Chat creates `chat` discussions. Existing rows and branches
 retain their mode.
 New user messages record `editorialTurn` metadata so edit/retry preserve the
 original recipe and exact word target. Legacy messages fall back to the original
-discussion mode when edited/retried; new follow-ups default to conversation. The draft label is captured
+discussion mode when edited/retried. New follow-ups use the active panel’s default
+task; unified Chat defaults to conversation. The draft label is captured
 when the conversation is created. Reopening shows that association; the next
 turn uses the source draft's **current** writing context. A discussion opened
 from another draft is readable, but sending requires opening its original draft.
 If that draft is no longer available, its discussion remains readable. Permanently
 deleting the document deletes its conversations.
+
+Mixed discussions created in unified Chat remain readable in separate panels.
+If a saved turn uses a task unavailable in that panel, Edit and Retry explain how
+to enable One conversation in Settings. They do not start a request, change the
+task, or create an alternative path before that choice.
 
 Branch here copies messages through the chosen point into a separate conversation
 with source conversation/message references. Open origin conversation returns to
@@ -285,13 +316,14 @@ revisions may propose local suggestions or coherent passage alternatives while
 preserving the original text. Exact compression remains a revision-only recipe
 with an explicit word target. All use the same conversation and target guards.
 
-Reader review is an explicit opt-in in Writing actions, off when the panel mounts.
+Reader review is an explicit opt-in in unified Chat’s Readers popover, off when the panel mounts.
 When enabled readers exist, feedback/revision requests fan out to those readers;
 exact compression still uses one stream. The request is saved before fan-out, and
 an application status message is saved afterward in the same conversation. Reader
 notes remain annotations, not synthesized assistant prose. Application status
 messages do not offer a model retry action. No enabled readers means one normal
-chat response. College review entry points open this same Chat panel.
+chat response. College review entry points open Feedback in the separate layout
+and Chat in the combined layout. Planning opens Chat in both layouts.
 
 ### Context
 
@@ -342,9 +374,9 @@ wording cannot expand a turn's permissions.
 | Conversation | Chat | None |
 | Reverse outline | Chat | None |
 | Compare versions | Chat | None |
-| Global review | Chat: Give feedback | Comment |
-| Local rewrite | Chat: Suggest revisions | Comment, suggestion, revision |
-| Exact compression | Chat: Writing actions | Revision only |
+| Global review | Chat: Feedback | Comment |
+| Local rewrite | Chat: Revise | Comment, suggestion, revision |
+| Exact compression | Chat: Starting points | Revision only |
 
 An unsupported panel/task pair falls back to the text-only conversation policy.
 Exact compression also requires a positive whole-word target and a live selection
@@ -633,7 +665,7 @@ path to retain JSONL records of the generated calls and checks.
 ## Parallel Personas and Document Safety
 
 Feedback and revision actions default to one stream. If the writer opts into
-reader review in Chat’s Writing actions, `runMultiPersonaStreams()` starts one stream per enabled persona
+reader review in Feedback/Revise or through unified Chat’s Readers control, `runMultiPersonaStreams()` starts one stream per enabled persona
 with `Promise.all()`.
 
 The fan-out path snapshots the document ID, tab ID, draft ID, nested branch path,

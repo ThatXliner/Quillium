@@ -1,0 +1,248 @@
+<!-- ClassicChat.svelte — Separate conversational panel using the current editorial pipeline. -->
+<script lang="ts">
+import { readable } from "svelte/store";
+import ToolActivity from "./ToolActivity.svelte";
+import { isToolUIPart } from "ai";
+import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
+import { aiErrorMessage } from "$lib/ai/errorMessage";
+import { aiSettings } from "$lib/ai/settings.svelte";
+import { renderMarkdown } from "$lib/ai/utils";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
+import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
+import { documentContent, selectedText } from "$lib/stores";
+import ContextLens from "./ContextLens.svelte";
+import DiscussionModal from "./DiscussionModal.svelte";
+import ConversationHistory from "./ConversationHistory.svelte";
+import ConversationMessageActions from "./ConversationMessageActions.svelte";
+import CustomQuickActions from "./CustomQuickActions.svelte";
+import type { ContextAction } from "./context";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
+
+let input = $state("");
+let reviewing = $state(false);
+let reviewOpener = $state<HTMLElement>();
+
+const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "chat" });
+let isBusy = $derived(
+    chat.status === "submitted" ||
+        chat.status === "streaming" ||
+        (conversations ? !conversations.canSend : false),
+);
+
+let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
+let hasConversationActivity = $derived(
+    chat.messages.length > 0 || chat.status !== "ready" || !!chat.error,
+);
+let showStarterSuggestions = $derived(!hasConversationActivity);
+
+function useQuickPrompt(prompt: string) {
+    posthog.capture("ai_chat_quick_prompt_used", {
+        has_selection: !!$selectedText,
+    });
+    sendMessage(prompt);
+}
+
+function useContextAction(action: ContextAction) {
+    posthog.capture("ai_context_action_used", {
+        mode: "chat",
+        action: action.id,
+        has_selection: !!$selectedText,
+    });
+    sendMessage(action.prompt, action.turn);
+}
+
+// Pre-fill input from app-level "open chat" requests.
+$effect(() => {
+    return appEventBus.on("ai-open-chat", (event) => {
+        input = event.message;
+    });
+});
+
+$effect(() =>
+    appEventBus.on("college-action", (event) => {
+        if (
+            event.target.documentId !== $currentDocumentId ||
+            event.target.tabId !== $currentTabId ||
+            event.target.draftId !== $currentDraftId
+        )
+            return;
+        if (event.action !== "plan" || isBusy) return;
+        void sendMessage(
+            "Help me plan an answer to this tab's writing brief. Consider each prompt and its constraints. Ask about my real experiences and intentions; do not invent experiences or write the essay for me.",
+        );
+    }),
+);
+
+// Wire up processing indicator + global stop listener.
+useAiChatEffects(chat, "chat");
+
+async function handleSubmit(event: Event) {
+    event.preventDefault();
+    if (isBusy) return;
+    const formData = new FormData(event.target as HTMLFormElement);
+    const userMessage = formData.get("message") as string;
+    if (!userMessage.trim()) return;
+    posthog.capture("ai_chat_message_sent", {
+        has_selection: !!$selectedText,
+        message_length: userMessage.length,
+    });
+    input = "";
+    await sendMessage(userMessage);
+}
+</script>
+
+<div class="flex min-h-0 flex-1 flex-col">
+    <div class="min-h-0 flex-1 overflow-y-auto" data-conversation-body>
+    {#if conversations}
+        <ConversationHistory {conversations} description="Past discussions in Chat." onopen={() => { reviewOpener = document.querySelector<HTMLElement>('[data-panel-id="chat"] [data-history-trigger]') ?? undefined; reviewing = true; }} />
+    {/if}
+
+    {#if !reviewing}{@render transcript()}{/if}
+    </div>
+    {#if reviewing}
+        <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            <div class="min-h-0 flex-1 overflow-y-auto">
+            {@render transcript()}
+            </div>
+            {@render composer()}
+        </DiscussionModal>
+    {:else}
+        {@render composer()}
+    {/if}
+</div>
+
+{#snippet transcript()}
+    {#if conversations?.current?.archived}
+        <p class="px-4 py-2 text-xs text-black/60">Archived. Restore this discussion from History to continue.</p>
+    {:else if conversations?.current && conversations.current.draftId !== $currentDraftId}
+        <p class="px-4 py-2 text-xs text-black/60">Open the source draft to continue this discussion.</p>
+    {/if}
+    {#if conversations?.current?.sourceConversationId}
+        <button class="px-4 py-2 text-left text-xs text-black/60 underline" onclick={() => conversations?.open(conversations.current!.sourceConversationId!)}>Open origin conversation</button>
+    {/if}
+    {#if showStarterSuggestions}
+        <ContextLens
+            mode="chat"
+            disabled={isBusy || !$documentContent}
+            onAction={useContextAction}
+        />
+    {/if}
+
+    <!-- Chat messages -->
+    <div class="p-3 sm:p-4 space-y-3">
+        {#each chat.messages as message (message.id)}
+            <div class="space-y-0.5" data-conversation-message={message.id}>
+            {#each message.parts as part, partIndex (partIndex)}
+                {#if part.type === "text"}
+                    {@const renderPromise = renderMarkdown(part.text)}
+                    <div
+                        class="flex {message.role === 'user'
+                            ? 'justify-end'
+                            : 'justify-start'}"
+                    >
+                        <div
+                            class="relative max-w-[85%] sm:max-w-[75%] lg:max-w-[70%] {message.role ===
+                            'user'
+                                ? 'order-1'
+                                : 'order-2'}"
+                        >
+                            <div
+                                class="px-3 py-2 rounded-lg {message.role ===
+                                'user'
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-100 text-gray-800'}"
+                            >
+                                <div
+                                    class="prose prose-sm max-w-none {message.role ===
+                                    'user'
+                                        ? 'prose-invert'
+                                        : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                                >
+                                    {#await renderPromise then rendered}
+                                        {@html rendered}
+                                    {/await}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {:else if isToolUIPart(part)}
+                    <ToolActivity {part} outcomes={$toolApplications} metadata={message.metadata} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
+                {/if}
+            {/each}
+            {#if conversations}
+                <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading} />
+            {/if}
+            </div>
+        {/each}
+
+        {#if chat.status === "streaming"}
+            <div class="flex justify-start">
+                <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
+                    <div class="bg-gray-100 text-gray-800 px-3 py-2 rounded-lg">
+                        <div class="flex items-center space-x-2">
+                            <span class="inline-block animate-pulse">●</span>
+                            <span class="text-sm">Thinking...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {/if}
+
+        {#if chat.error}
+            <div class="flex justify-start">
+                <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
+                    <div class="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm border border-red-200">
+                        {aiErrorMessage(chat.error, aiSettings.provider)}
+                    </div>
+                </div>
+            </div>
+        {/if}
+
+        {#if showStarterSuggestions && !chat.error}
+            <div
+                class="flex-1 flex items-center justify-center text-gray-400 text-sm"
+            >
+                Start a conversation about your document
+            </div>
+        {/if}
+    </div>
+{/snippet}
+
+{#snippet composer()}
+    <!-- Input form -->
+    <div class="shrink-0 border-t border-black/10 p-3 bg-white/30">
+        <CustomQuickActions
+            prompts={customChatPrompts}
+            disabled={isBusy || !$documentContent}
+            compact={!showStarterSuggestions}
+            panel="chat"
+            theme="blue"
+            onPrompt={useQuickPrompt}
+        />
+
+        <form onsubmit={handleSubmit} class="flex flex-col gap-2">
+            <input
+                bind:value={input}
+                name="message"
+                placeholder={$selectedText
+                    ? "Ask about selection..."
+                    : "Ask about your document..."}
+                disabled={isBusy}
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                autocomplete="off"
+            />
+            <button
+                type="submit"
+                disabled={isBusy || !input.trim()}
+                class="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+                Send
+            </button>
+        </form>
+    </div>
+{/snippet}
