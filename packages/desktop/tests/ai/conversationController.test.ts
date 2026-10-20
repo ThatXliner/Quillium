@@ -1,4 +1,5 @@
 import {
+    type PersistentConversationMode,
     createConversationController,
     sanitizeOutboundMessages,
 } from "$lib/ai/conversationController.svelte";
@@ -95,10 +96,15 @@ function makeChat(initialMessages: UIMessage[] = []) {
 
 let activeController: ReturnType<typeof createConversationController> | null = null;
 
-async function startController(chat: ReturnType<typeof makeChat>) {
+async function startController(
+    chat: ReturnType<typeof makeChat>,
+    historyScope: "mode" | "document" = "mode",
+    mode: PersistentConversationMode = "chat",
+) {
     activeController = createConversationController({
         chat: chat as Parameters<typeof createConversationController>[0]["chat"],
-        mode: "chat",
+        mode,
+        historyScope,
         requestSettings: () => ({ provider: "openai", model: "test-model" }),
     });
     activeController.subscribe();
@@ -428,6 +434,56 @@ describe("conversation controller", () => {
 });
 
 describe("unified discussions", () => {
+    it.each([
+        ["chat", "global-review"],
+        ["feedback", "local-rewrite"],
+        ["revise", "conversation"],
+    ] as const)(
+        "explains how to replay a mixed %s conversation without changing its %s task",
+        async (mode, task) => {
+            const user = {
+                ...textMessage("u1", "user", "Please review"),
+                metadata: { editorialTurn: { task } },
+            };
+            db.listConversations.mockResolvedValue([
+                conversation("mixed", [user, textMessage("a1", "assistant", "Notes")], { mode }),
+            ]);
+            const chat = makeChat();
+            const controller = await startController(chat, "mode", mode);
+            await expect(controller.retry("a1")).rejects.toThrow("One conversation in Settings");
+            await expect(controller.edit("u1", "Try another approach")).rejects.toThrow(
+                "One conversation in Settings",
+            );
+            expect(db.createConversation).not.toHaveBeenCalled();
+            expect(chat.sendMessage).not.toHaveBeenCalled();
+            expect(chat.regenerate).not.toHaveBeenCalled();
+            expect(controller.conversations.current?.id).toBe("mixed");
+            controller.dispose();
+            const unified = await startController(chat, "document");
+            await unified.retry("a1");
+            expect(chat.regenerate).toHaveBeenCalledWith({
+                body: { editorialTask: task, exactWordCount: undefined },
+            });
+        },
+    );
+    it("keeps classic Chat history separate without deleting other panel conversations", async () => {
+        const chatConversation = conversation("chat-history", [
+            textMessage("u1", "user", "Discuss"),
+        ]);
+        const feedbackConversation = conversation("feedback-history", [], {
+            mode: "feedback",
+            updatedAt: 3,
+        });
+        db.listConversations.mockResolvedValue([chatConversation, feedbackConversation]);
+        db.getConversation.mockResolvedValue(feedbackConversation);
+        const controller = await startController(makeChat());
+        expect(controller.conversations.current?.id).toBe("chat-history");
+        expect(controller.conversations.items.map((item) => item.id)).toEqual(["chat-history"]);
+        await controller.conversations.refresh();
+        expect(controller.conversations.items.map((item) => item.id)).toEqual(["chat-history"]);
+        await expect(controller.open("feedback-history")).rejects.toThrow("another AI mode");
+        expect(db.deleteConversation).not.toHaveBeenCalled();
+    });
     it("opens legacy feedback and revision discussions without changing their identity", async () => {
         const oldFeedback = conversation(
             "feedback-history",
@@ -441,7 +497,7 @@ describe("unified discussions", () => {
         );
         db.listConversations.mockResolvedValue([oldFeedback, oldRevision]);
         const chat = makeChat();
-        const controller = await startController(chat);
+        const controller = await startController(chat, "document");
         expect(controller.conversations.current?.id).toBe("revise-history");
         await controller.open("feedback-history");
         await controller.sendMessage("Why?", { task: "conversation" });
@@ -462,7 +518,7 @@ describe("unified discussions", () => {
             conversation("mixed", [prompt, textMessage("a1", "assistant", "Options")]),
         ]);
         const chat = makeChat();
-        const controller = await startController(chat);
+        const controller = await startController(chat, "document");
         await controller.retry("a1");
         expect(chat.regenerate).toHaveBeenCalledWith({
             body: { editorialTask: "exact-compression", exactWordCount: 42 },
@@ -478,7 +534,7 @@ describe("unified discussions", () => {
             ),
         ]);
         const chat = makeChat();
-        const controller = await startController(chat);
+        const controller = await startController(chat, "document");
         await controller.retry("a1");
         expect(chat.regenerate).toHaveBeenCalledWith({
             body: { editorialTask: "global-review", exactWordCount: undefined },
@@ -537,7 +593,7 @@ it("retains legacy task defaults across branching and retrying", async () => {
         ),
     ]);
     const chat = makeChat();
-    const controller = await startController(chat);
+    const controller = await startController(chat, "document");
     await controller.branch("a1");
     expect(controller.conversations.current?.mode).toBe("feedback");
     await controller.retry("a1");

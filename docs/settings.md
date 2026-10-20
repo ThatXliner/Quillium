@@ -34,6 +34,7 @@ Missing, malformed, or unavailable storage defaults to session-only undo.
 | `uiZoom` | number | `1` | `document.documentElement.zoom` |
 | `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
 | `aiEnabled` | boolean | `false` | AI features active; local sidebar panels remain available |
+| `aiSidebarLayout` | enum | `"separate"` | Separate panels, or explicit opt-in to combined Chat |
 | `showShortcutHints` | boolean | `true` | Keyboard hints in panel |
 | `showDrafts` | boolean | `true` | Expand draft rows; saved independently of outline |
 | `showDocumentOutline` | boolean | `false` | Expand outline content; its header remains available |
@@ -41,7 +42,7 @@ Missing, malformed, or unavailable storage defaults to session-only undo.
 | `wordCountDisplayMode` | enum | `"both"` | Words, chars, or both |
 | `autoVersionOnRevisionCreate` | boolean | `true` | Auto-add version when creating revision |
 | `showAiSuggestions` | boolean | `true` | Show AI suggestions in annotations |
-| `collapseContextSummary` | boolean | `false` | Move AI context summary into header info popover |
+| `collapseContextSummary` | boolean | `false` | Move context cards in separate AI panels into the header info popover; unified Chat always uses a context chip |
 | `checkForUpdates` | boolean | `true` | Auto-check for app updates |
 | `grammarCheckEnabled` | boolean | `true` | Harper grammar checking |
 | `grammarDialect` | enum | `"american"` | American, British, or Australian |

@@ -1,4 +1,6 @@
 <script lang="ts">
+import type { Snippet } from "svelte";
+import ChatPopover from "./ChatPopover.svelte";
 import { getEffectiveDocumentContext } from "$lib/ai/settings.svelte";
 import { appSettings, updateSettings } from "$lib/settings.svelte";
 import HelpModal from "$lib/ui/HelpModal.svelte";
@@ -20,6 +22,7 @@ import {
     MessageSquareTextIcon,
     MousePointer2Icon,
     NotebookTabsIcon,
+    ListPlusIcon,
     ScanTextIcon,
 } from "lucide-svelte";
 import { editorialContextView } from "$lib/ai/editorialTarget";
@@ -35,10 +38,22 @@ import {
     shouldShowContextSummary,
 } from "./context";
 
-const {
+let {
+    mode,
     disabled = false,
     onAction,
+    compact = false,
+    active = true,
+    startersOnly = false,
+    actionsOpen = $bindable(false),
+    children,
 }: {
+    mode?: "chat" | "feedback" | "revise";
+    compact?: boolean;
+    active?: boolean;
+    startersOnly?: boolean;
+    actionsOpen?: boolean;
+    children?: Snippet;
     disabled?: boolean;
     onAction: (action: ContextAction) => void | Promise<void>;
 } = $props();
@@ -87,7 +102,7 @@ const annotationContext = $derived(
 
 const packet = $derived(
     buildAiContextPacket({
-        mode: "chat",
+        mode: mode ?? "chat",
         documentContent: contextText,
         selectedText: contextSelectedText,
         selectedTextRange: contextRange,
@@ -95,7 +110,7 @@ const packet = $derived(
         annotationContext,
     }),
 );
-const actions = $derived([
+const actions = $derived(mode ? getContextAwareActions(mode, packet) : [
     ...getContextAwareActions("chat", packet),
     ...getContextAwareActions("feedback", packet).map((action) => ({
         ...action,
@@ -106,6 +121,12 @@ const actions = $derived([
         turn: action.turn ?? { task: "local-rewrite" as const },
     })),
 ]);
+const chipLabel = $derived([
+    contextView?.branchPath.length ? (packet.scope === "selection" ? "Selection in revision" : "Revision version")
+        : packet.scope === "selection" ? "Selection" : packet.scope === "empty" ? "No draft" : packet.omittedDocumentChars ? "Draft excerpt" : "Whole draft",
+    packet.includedAnnotationCount ? `${packet.includedAnnotationCount} ${packet.includedAnnotationCount === 1 ? "note" : "notes"}` : "",
+    packet.writerContext || packet.collegeBriefText ? "brief" : "",
+].filter(Boolean).join(" · "));
 let actionHelpTab = $state<string | null>(null);
 const activeSources = $derived(packet.sources.filter((source) => source.active));
 // Card is shown when the packet warrants a summary AND the writer hasn't
@@ -131,6 +152,35 @@ function sourceIcon(id: string) {
 }
 </script>
 
+{#if startersOnly}
+    <div class="mt-4 space-y-1">
+        {#each actions.slice(0, 3) as action (action.id)}
+            <button type="button" {disabled} class="block w-full rounded-lg border-b border-black/10 px-1 py-2 text-left text-xs text-black/75 hover:bg-white/40 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-blue-500" onclick={() => onAction(action)}>{action.label}</button>
+        {/each}
+    </div>
+{:else if compact}
+    <ChatPopover label="Sent with your next message" {active}>
+        {#snippet trigger()}<ScopeIcon size={14} class="shrink-0" /><span class="truncate">{chipLabel}</span>{/snippet}
+        <p class="font-medium">{contextTargetLabel}{packet.scope === "selection" ? " · selected passage" : ""}</p>
+        <p class="mt-1 leading-relaxed text-black/65" data-next-turn-context>{contextView?.branchPath.length ? (packet.scope === "selection" ? "The selected passage in this revision version, with nearby text." : "The focused revision version is included as writing context.") : contextScopeDetail(packet)} Changes are noted when you send.</p>
+        <ul class="mt-3 space-y-2">
+            {#each activeSources.filter(source => source.id !== "selection" && source.id !== "surrounding" && source.id !== "document") as source (source.id)}
+                {@const Icon = sourceIcon(source.id)}
+                <li class="flex items-start gap-2"><Icon size={14} class="mt-0.5 shrink-0 text-black/55" /><div><span>{source.label}</span><p class="mt-0.5 leading-relaxed text-black/65">{source.detail}</p></div></li>
+            {/each}
+        </ul>
+        <p class="mt-3 leading-relaxed text-black/65">Quillium can read other passages and notes when needed. Earlier replies reflect the writing as it was then.</p>
+    </ChatPopover>
+    <ChatPopover label="Starting points" {active} bind:open={actionsOpen}>
+        {#snippet trigger()}<ListPlusIcon size={14} class="shrink-0" /><span class="sr-only">Starting points</span>{/snippet}
+        <div class="space-y-1">
+            {#each actions as action (action.id)}
+                <button type="button" {disabled} class="block w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-black/5 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-blue-500" onclick={() => onAction(action)}><span class="block font-medium">{action.label}</span><span class="mt-0.5 block text-black/65">{action.detail}</span></button>
+            {/each}
+        </div>
+        {#if children}{@render children()}{/if}
+    </ChatPopover>
+{:else}
 <div class="p-3 border-b border-black/10 space-y-2.5">
     <p class="text-[10px] leading-snug text-black/50" data-next-turn-context>
         Next turn: {contextTargetLabel.toLowerCase()}. Changes are noted when you send.
@@ -208,6 +258,8 @@ function sourceIcon(id: string) {
         {/each}
     </div>
 </div>
+
+{/if}
 
 {#if actionHelpTab}
     <HelpModal

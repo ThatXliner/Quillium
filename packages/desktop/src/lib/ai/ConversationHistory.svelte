@@ -1,13 +1,18 @@
 <!-- ConversationHistory.svelte — Document-wide discussion search and lifecycle actions. -->
 <script lang="ts">
+import type { Snippet } from "svelte";
 import { currentDraftId } from "$lib/stores";
 import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { History, MoreHorizontal, Plus, Search, X } from "lucide-svelte";
 import type { createAiChat } from "./chatFactory";
-let { conversations, disabled = false, onopen }: {
+let { conversations, disabled = false, onopen, description = "Every discussion in this document, together.", compact = false, controls, onnew }: {
     conversations: NonNullable<ReturnType<typeof createAiChat>["conversations"]>;
     disabled?: boolean;
     onopen?: () => void;
+    description?: string;
+    compact?: boolean;
+    controls?: Snippet;
+    onnew?: () => void;
 } = $props();
 let browsing = $state(false);
 let restoreSize = $state<(() => void) | undefined>();
@@ -53,8 +58,10 @@ async function act(action: () => Promise<unknown>) {
 
 <div data-conversation-history class="shrink-0 border-b border-black/10 px-3 py-2 text-xs">
     <div class="flex items-center justify-between gap-2">
-        <button data-history-trigger class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-black/70 hover:bg-white/60" aria-expanded={browsing} onclick={() => { browsing = true; void act(() => conversations.refresh()); }}><History size={14} />History</button>
-        <button class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-black/70 hover:bg-white/60 disabled:opacity-40" disabled={busy} onclick={() => act(() => conversations.newConversation())}><Plus size={14} />New discussion</button>
+        {#if compact}<span class="min-w-0 flex-1 truncate px-1 font-medium text-black/70" title={conversations.current?.title || "New discussion"}>{conversations.current?.title || "New discussion"}</span>{/if}
+        <button aria-haspopup="dialog" aria-label="History" title="History" data-history-trigger class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-black/70 hover:bg-white/60" aria-expanded={browsing} onclick={() => { browsing = true; void act(() => conversations.refresh()); }}><History size={14} />{#if !compact}History{/if}</button>
+        <button aria-label="New discussion" title="New discussion" class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-black/70 hover:bg-white/60 disabled:opacity-40" disabled={busy} onclick={() => act(async () => { await conversations.newConversation(); onnew?.(); })}><Plus size={14} />{#if !compact}New discussion{/if}</button>
+        {#if controls}{@render controls()}{/if}
     </div>
     {#if conversations.loading}<p role="status" class="px-2 py-1 text-black/60">Loading discussion…</p>{/if}
     {#if (conversations.error || actionError) && !browsing}<p role="alert" class="px-2 py-1 text-red-800">{actionError || conversations.error}</p>{/if}
@@ -63,7 +70,7 @@ async function act(action: () => Promise<unknown>) {
     <dialog aria-label="Past discussions" use:showModal onclose={() => browsing = false} class="history-modal rounded-2xl border border-white/60 bg-gray-100 text-sm shadow-xl">
         <header class="shrink-0 space-y-4 border-b border-black/10 p-5">
             <div class="flex items-start justify-between gap-3">
-                <div><h2 class="text-sm font-semibold text-black/85">Past discussions</h2><p class="mt-1 text-xs text-black/60">Every discussion in this document, together.</p></div>
+                <div><h2 class="text-sm font-semibold text-black/85">Past discussions</h2><p class="mt-1 text-xs text-black/60">{description}</p></div>
                 <div class="flex items-center gap-1"><RestoreSizeButton {restoreSize} /><button aria-label="Close history" class="rounded-full p-1.5 text-black/60 hover:bg-black/5" onclick={() => browsing = false}><X size={16} /></button></div>
             </div>
             <label class="flex items-center gap-2 rounded-lg border border-black/15 bg-white/80 px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/50"><Search size={15} class="shrink-0 text-black/50" /><input aria-label="Search conversations" placeholder="Search discussions…" bind:value={search} class="min-w-0 w-full bg-transparent text-sm outline-none" /></label>

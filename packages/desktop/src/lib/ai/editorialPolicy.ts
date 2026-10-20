@@ -188,12 +188,16 @@ Use one revision action containing two meaningfully different compressed alterna
 }
 
 /** Resolve a requested per-turn task without allowing a panel to escalate its capabilities. */
+export function isEditorialTaskAllowed(mode: EditorialPanelMode, task: EditorialTask): boolean {
+    return PANEL_TASKS[mode].includes(task);
+}
+
 export function resolveEditorialTask(
     mode: EditorialPanelMode,
     requestedTask?: EditorialTask,
 ): EditorialTask {
     if (!requestedTask) return DEFAULT_PANEL_TASKS[mode];
-    return PANEL_TASKS[mode].includes(requestedTask) ? requestedTask : "conversation";
+    return isEditorialTaskAllowed(mode, requestedTask) ? requestedTask : "conversation";
 }
 
 function capabilityPrompt(actions: readonly EditorialAction[], annotationOnly = false): string {

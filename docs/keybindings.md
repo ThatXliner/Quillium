@@ -82,6 +82,8 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 | Key | Tab |
 |-----|-----|
 | `1` | Chat |
+| `2` | Feedback (Separate panels layout) |
+| `3` | Revise (Separate panels layout) |
 | `4` | Context |
 | `5` | Readers |
 | `6` | Settings |

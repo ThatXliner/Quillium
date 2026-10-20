@@ -784,9 +784,10 @@ export function createCollegeCapabilities(
             throw new Error("Write some draft text before requesting College feedback.");
         }
 
-        // Navigation is synchronous so the eager Chat listener is
-        // mounted before the action event is delivered.
-        openPanel("chat");
+        // Both layouts mount their writing panels eagerly before this event.
+        openPanel(
+            appSettings.aiSidebarLayout === "combined" || action === "plan" ? "chat" : "feedback",
+        );
         appEventBus.emit({
             type: "college-action",
             action,

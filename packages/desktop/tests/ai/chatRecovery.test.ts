@@ -1,4 +1,7 @@
 import Chat from "$lib/ai/Chat.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
+import { documentContent } from "$lib/stores";
+import { get } from "svelte/store";
 import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,7 +49,24 @@ describe("Chat error recovery", () => {
         const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
         expect(send.disabled).toBe(false);
         await fireEvent.submit(input.closest("form")!);
-        expect(mocks.sendMessage).toHaveBeenCalledWith("Try this again", undefined);
+        expect(mocks.sendMessage).toHaveBeenCalledWith("Try this again", { task: "conversation" });
+    });
+
+    it("external chat questions reset a previously selected editing task", async () => {
+        const previous = get(documentContent);
+        documentContent.set("A draft to discuss.");
+        try {
+            const screen = render(Chat, { active: true, session: null });
+            await fireEvent.click(screen.getByRole("button", { name: "Revise" }));
+            expect(mocks.sendMessage).not.toHaveBeenCalled();
+            appEventBus.emit({ type: "ai-open-chat", message: "Help me find the right word." });
+            const input = screen.getByRole("textbox");
+            await fireEvent.submit(input.closest("form")!);
+            expect(screen.getByRole("button", { name: "Discuss" }).getAttribute("aria-pressed")).toBe("true");
+            expect(mocks.sendMessage).toHaveBeenCalledWith("Help me find the right word.", { task: "conversation" });
+        } finally {
+            documentContent.set(previous);
+        }
     });
 
     it.each(["submitted", "streaming"])("blocks duplicate sends while %s", async (status) => {

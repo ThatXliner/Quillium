@@ -52,7 +52,7 @@ function removeQuickAction(index: number) {
 <div class="setting-row">
     <div class="setting-meta">
         <div class="setting-title">Action type</div>
-        <div class="setting-desc">All actions appear in Chat. Choose what this request can do.</div>
+        <div class="setting-desc">{draft.aiSidebarLayout === "combined" ? "All actions appear in Chat. Choose what this request can do." : "Choose the panel where this action appears."}</div>
     </div>
     <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
         {#each (["revise", "feedback", "chat"] as const) as panel}
