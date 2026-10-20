@@ -1,11 +1,16 @@
 // Validate live Yjs children before projecting them into editor state.
 import * as Y from "yjs";
 import { z } from "zod";
-import { SuggestionReplacementSchema, ThreadMessageSchema } from "../core/models.js";
+import {
+    AiGenerationProvenanceSchema,
+    SuggestionReplacementSchema,
+    ThreadMessageSchema,
+    VersionStateSchema,
+} from "../core/models.js";
 
 export type YjsAnnotationNode = Y.Map<unknown>;
 
-const VersionNodeSchema = z
+export const YjsVersionNodeSchema = z
     .instanceof(Y.Map)
     .transform((node) => Object.fromEntries(node.entries()))
     .pipe(
@@ -13,6 +18,8 @@ const VersionNodeSchema = z
             id: z.string().optional(),
             text: z.instanceof(Y.Text),
             label: z.string().optional(),
+            provenance: VersionStateSchema.shape.provenance.catch(undefined),
+            aiProvenance: AiGenerationProvenanceSchema.optional().catch(undefined),
             annotations: z.instanceof(Y.Map).optional(),
         }),
     );
@@ -29,6 +36,7 @@ const BaseSchema = z.object({
     status: z.enum(["pending", "active"]).optional(),
     thread: YjsThreadSchema.optional().default([]),
     annotations: z.instanceof(Y.Map).optional(),
+    aiProvenance: AiGenerationProvenanceSchema.optional().catch(undefined),
 });
 
 // Optional legacy fields remain supported until older clients/rooms retire.
@@ -58,7 +66,7 @@ export const YjsAnnotationNodeSchema = z
                         (versions) =>
                             versions.size > 0 &&
                             Array.from(versions.values()).every(
-                                (version) => VersionNodeSchema.safeParse(version).success,
+                                (version) => YjsVersionNodeSchema.safeParse(version).success,
                             ),
                     ),
                 order: z

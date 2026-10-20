@@ -9,12 +9,13 @@ The desktop executable also runs a local MCP server when a local AI client launc
 configuration with the installed executable and resolved data directory, directly below the College
 invitation and above provider settings.
 
-The server exposes four tools:
+The server exposes five tools:
 
 | Tool | Purpose |
 |------|---------|
 | `get_editor_context` | Read the running editor's active draft, unsaved text, selection, nested branch, annotations, brief and editorial preferences |
-| `apply_editorial_action` | Add a guarded, undoable comment, suggestion or revision to that captured context |
+| `apply_editorial_action` | Add guarded comments, suggestions, revisions, raw dictation, or versions to that captured context |
+| `read_editorial_workflow` | Read the dictation, nested revision, focused edit, readback, and retry playbooks |
 | `list_documents` | List metadata for non-trashed local documents |
 | `read_document` | Read saved Library index text, **not** the active draft |
 
@@ -24,13 +25,18 @@ is captured on demand, not cached on disk. The response distinguishes the active
 (`text`, selection offsets, branch path) from the whole draft (`rootText`) and includes annotation
 threads and revision alternatives. Context IDs expire after five minutes and after an action.
 
+Pass `target: {documentId, tabId, draftId, revisionPath}` to read a specific version
+without changing focus, opening a modal, or activating it. An empty path addresses
+the root. Each path entry contains an editor-scoped `revisionId` and a stable
+`versionId`. Explicit paths can address inactive versions. With no explicit target,
 `surface` identifies the top open revision, comment, or suggestion-diff modal and reports the
 entire modal stack. Revision modals register their actual editor independently of inline cards
 and keyboard focus. A mounting modal returns an explicit loading error instead of falling back
 to unrelated root text. `revisionPath` includes each ancestor's thread, surrounding prose, active
 version ID and all alternative texts. Nested annotations remain available in serialized context,
 including inactive versions. Comment/diff modal actions are scoped to their anchored passage.
-Closing or changing a modal invalidates its captured action context. Two-level integration tests
+Closing or changing a modal invalidates context captured from that modal. Explicit
+paths stay independent of modal navigation. Two-level integration tests
 exercise real nested controllers and verify that feedback propagates into root state and root undo.
 
 Live calls require an open, loaded draft. A loopback listener with a per-launch random token
@@ -42,11 +48,46 @@ not a sandbox against other programs running as the writer. No network-facing MC
 The frontend uses `getActiveEditorialView` and `applyEditorialAction`, the same nested-editor
 identity and CodeMirror command gateway as the sidebar. Context-bound actions reject changed prose,
 drafts, branches, locked editors, ambiguous matches and targets outside the captured selection.
-Suggestions and revisions preserve the writer's current prose. MCP clients never write SQLite
+Suggestions and revisions preserve the writer's current prose. `insert_dictation`
+inserts raw writer text into one outer version. `wrap_dictation` wraps existing
+wording without duplicating it. Neither creates a blank Original. `add_version`
+extends the named revision without activating the new version. These actions
+return created identities for nested targeting and readback. A unique `requestId`
+lets an identical write retry return its earlier receipt during the editor session.
+Changed payloads with the same ID are rejected. Receipts are not persisted.
+
+The same [editing playbooks](mcp-workflows.md) are compiled into
+`read_editorial_workflow` and the optional `editorial_workflow` MCP prompt.
+Tool descriptions carry essential rules and action-specific schemas for clients
+that do not invoke either. Prompt support is advertised during initialization.
+Prompts require explicit client invocation and do not guarantee workflow selection.
+A separate client-installed skill would add setup and duplicate guidance, so this
+server uses the portable tool as its default and does not claim MCP Skills
+extension support. See the [MCP prompt contract](https://modelcontextprotocol.io/specification/2025-06-18/server/prompts).
+
+MCP clients never write SQLite
 events or snapshots. Ordinary undo, persistence, provenance and collaboration paths remain in charge.
 Conversations and model execution stay in the external AI client; scheduled AutoAI is unchanged.
 
 After updating Quillium, restart the client's MCP connection to load the new tool definitions.
+
+### Verify native editing workflows
+
+Start the frontend with `bun run desktop:dev`, then run:
+
+```bash
+bun packages/desktop/scripts/evaluate-mcp-native.mjs --claude --codex
+```
+
+This macOS check builds the development MCP bridge with an isolated app identifier,
+incognito WebView storage, and a temporary SQLite directory. It verifies actual
+stdio writes, nested version targeting, mounted editor focus, undo and redo,
+SQLite persistence, and a native restart. The optional model flags require the
+corresponding CLI to be authenticated. Without those flags, it runs deterministic
+native checks. The script prints the directory containing fixture-only tool
+transcripts, assertions, and model outputs. Keep source files unchanged during
+a run so development reloads do not invalidate focus checks.
+
 
 ## Native App Menu
 

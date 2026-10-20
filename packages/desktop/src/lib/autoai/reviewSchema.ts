@@ -11,6 +11,7 @@ import { z } from "zod";
 const RawAnnotationSchema = z.object({
     type: z.enum(["comment", "suggestion", "revision"]),
     targetText: z.string(),
+    scope: z.enum(["focused", "whole-passage"]).optional(),
     comment: z.string().optional(),
     replacement: z.string().optional(),
     rationale: z.string().optional(),
@@ -37,12 +38,14 @@ export type AutoAIReviewAnnotation =
           targetText: string;
           replacement: string;
           rationale: string;
+          scope?: "focused" | "whole-passage";
       }
     | {
           type: "revision";
           targetText: string;
           versions: Array<{ label: string; text: string }>;
           threadMessage: string;
+          scope?: "focused" | "whole-passage";
       };
 
 function nonEmpty(...values: Array<string | undefined>): string | undefined {
@@ -61,19 +64,34 @@ export function normalizeAutoAIReview(result: AutoAIReviewOutput): AutoAIReviewA
         }
 
         if (annotation.type === "suggestion") {
-            const replacement = nonEmpty(annotation.replacement, annotation.suggestedReplacement);
+            const aliases = [annotation.replacement, annotation.suggestedReplacement];
+            const replacement =
+                aliases.find((text) => text !== undefined && text.length > 0) ??
+                aliases.find((text) => text !== undefined);
             const rationale = nonEmpty(
                 annotation.rationale,
                 annotation.comment,
                 annotation.explanation,
             );
-            return replacement && rationale
-                ? [{ type: "suggestion", targetText, replacement, rationale }]
+            return replacement !== undefined && rationale
+                ? [
+                      {
+                          type: "suggestion",
+                          targetText,
+                          replacement,
+                          rationale,
+                          ...(annotation.scope ? { scope: annotation.scope } : {}),
+                      },
+                  ]
                 : [];
         }
 
-        const versionTexts = annotation.revisions?.filter((text) => text.trim()) ?? [];
-        if (annotation.versionText?.trim()) versionTexts.unshift(annotation.versionText.trim());
+        const versionTexts = [...(annotation.revisions ?? [])];
+        if (
+            annotation.versionText !== undefined &&
+            (annotation.versionText !== "" || versionTexts.length === 0)
+        )
+            versionTexts.unshift(annotation.versionText);
         const baseLabel = nonEmpty(annotation.versionLabel, annotation.label) ?? "Alternative";
         const versions = versionTexts.map((text, index) => ({
             label: versionTexts.length === 1 ? baseLabel : `${baseLabel} ${index + 1}`,
@@ -81,7 +99,15 @@ export function normalizeAutoAIReview(result: AutoAIReviewOutput): AutoAIReviewA
         }));
         const threadMessage = nonEmpty(annotation.threadMessage, annotation.explanation);
         return versions.length > 0 && threadMessage
-            ? [{ type: "revision", targetText, versions, threadMessage }]
+            ? [
+                  {
+                      type: "revision",
+                      targetText,
+                      versions,
+                      threadMessage,
+                      ...(annotation.scope ? { scope: annotation.scope } : {}),
+                  },
+              ]
             : [];
     });
 }

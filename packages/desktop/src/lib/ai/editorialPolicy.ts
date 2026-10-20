@@ -71,6 +71,14 @@ Core rules:
 - Do not duplicate an existing open concern.
 - Never claim that you changed the document. You may only propose actions that the application explicitly allows.`;
 
+const FOCUSED_EDIT_POLICY = `Revision boundaries:
+- Target the smallest coherent changed passage. Leave unnecessary unchanged surrounding prose outside revisions and suggestions, even when the selection contains a whole paragraph.
+- Keep independent edits independently selectable with separate tool calls. Two unrelated wording changes in different sentences need two revisions, not one paragraph alternative.
+- Keep dependent edits together when splitting them would produce incoherent combinations. Use scope "whole-passage" when the writer explicitly requests a broader rewrite or when the coherent alternative requires that full passage. Exact compression keeps the full selection.
+- For "I was really very excited to start", a cut can target "really very " with an empty replacement. Do not wrap the whole paragraph. For "He is ready" becoming "They are ready", keep "He is" together so the writer cannot select "They is".
+- The application captures Original automatically. Supply only proposed alternatives, with clear labels and explanations in the thread. Never copy the original as a proposed version.
+- Preserve raw dictated wording verbatim. When working inside its revision version, represent cuts and rewordings as separate local nested revisions rather than rewriting that outer version.`;
+
 const TASK_ACTION_LIMITS: Record<EditorialTask, readonly EditorialAction[]> = {
     conversation: [],
     "reverse-outline": [],
@@ -161,7 +169,7 @@ ${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passa
         case "local-rewrite":
             return `Task: help revise the writer's requested passage while preserving its intent and voice.
 
-Use a suggestion for a small local replacement. Use a revision when the passage needs a coherent sentence-level or larger alternative. Use a comment for a question or diagnosis that should precede rewriting. Match the configured stance and voice latitude. Do not spray the passage with word-level edits or invent a minimum number of changes.${
+Use a suggestion for a small local replacement. Use a revision for independently selectable alternatives or a coherent rewrite. A revision can cover a phrase or a cut; it does not require a full sentence. Use a comment for a question or diagnosis that should precede rewriting. Match the configured stance and voice latitude. Do not invent a minimum number of changes.${
                 hasSelection
                     ? " Work only inside the selected passage."
                     : annotationOnly
@@ -241,6 +249,9 @@ export function compileEditorialPolicy({
         systemPrompt: [
             EDITORIAL_CONSTITUTION,
             capabilityPrompt(allowedActions, usesAnnotationOnlyOutput),
+            ...(allowedActions.some((action) => action === "revision" || action === "suggestion")
+                ? [FOCUSED_EDIT_POLICY]
+                : []),
             preferencePrompt(preferences),
             taskPrompt(task, hasSelection, exactWordCount, usesAnnotationOnlyOutput),
         ].join("\n\n"),

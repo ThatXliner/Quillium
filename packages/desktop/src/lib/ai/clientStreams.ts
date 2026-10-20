@@ -123,7 +123,19 @@ export const revisionInputSchema = z.object({
         .string()
         .min(1)
         .describe(
-            "The exact text to revise — copy verbatim from the document, NEVER truncate or use ellipsis",
+            "Exact smallest coherent passage to revise, copied verbatim. Leave unnecessary unchanged prose outside. Make separate calls for independent edits. Never truncate or use ellipsis.",
+        ),
+    targetRange: z
+        .object({ from: z.number().int().nonnegative(), to: z.number().int().nonnegative() })
+        .optional()
+        .describe(
+            "Exact editor character offsets for targetText, especially repeated text. Must match source and stay inside the selection.",
+        ),
+    scope: z
+        .enum(["focused", "whole-passage"])
+        .optional()
+        .describe(
+            "Default focused trims unchanged surroundings. Use whole-passage only when the writer requests a broad rewrite, exact compression, or dependent edits require one coherent alternative.",
         ),
     context: z
         .string()
@@ -136,12 +148,20 @@ export const revisionInputSchema = z.object({
             z.object({
                 label: z
                     .string()
-                    .describe("Short name for this version, e.g. 'Concise', 'Formal', 'Original'"),
-                text: z.string().describe("The full revised text for this version"),
+                    .describe(
+                        "Short name for the proposed version, e.g. 'Concise' or 'Formal'. The application captures Original automatically.",
+                    ),
+                text: z
+                    .string()
+                    .describe(
+                        "Replacement for targetText only. Empty text represents a proposed cut.",
+                    ),
             }),
         )
-        .min(2)
-        .describe("2-3 distinct alternative versions of the passage"),
+        .min(1)
+        .describe(
+            "One or more proposed alternatives. Omit Original because the application preserves it automatically.",
+        ),
     threadMessage: z
         .string()
         .describe(
@@ -154,7 +174,19 @@ export const suggestionInputSchema = z.object({
         .string()
         .min(1)
         .describe(
-            "The exact text to revise — copy verbatim from the document, NEVER truncate or use ellipsis",
+            "Exact smallest coherent changed passage, copied verbatim. Leave unnecessary unchanged prose outside. Make separate calls for independent edits. Never truncate or use ellipsis.",
+        ),
+    targetRange: z
+        .object({ from: z.number().int().nonnegative(), to: z.number().int().nonnegative() })
+        .optional()
+        .describe(
+            "Exact editor character offsets for targetText when repeated text needs disambiguation.",
+        ),
+    scope: z
+        .enum(["focused", "whole-passage"])
+        .optional()
+        .describe(
+            "Default focused removes unchanged surroundings. Whole-passage is only for an explicitly requested broader rewrite or dependent edits.",
         ),
     context: z
         .string()
@@ -210,7 +242,7 @@ const createSuggestionTool = () =>
 const createRevisionTool = () =>
     tool({
         description:
-            "Propose two or more coherent versions of a passage while preserving the original for comparison.",
+            "Propose alternatives for the smallest coherent changed passage. Original is captured automatically. Use separate calls for independent edits; keep dependent edits together. For example revise 'really very excited' to 'excited', leaving the surrounding paragraph outside.",
         inputSchema: revisionInputSchema,
         execute: async ({ targetText, versions, threadMessage }) => ({
             type: "revision",

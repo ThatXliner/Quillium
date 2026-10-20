@@ -12,9 +12,11 @@ import {
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    AiGenerationProvenanceSchema,
     type Annotation as AnnotationType,
     type GenericAnnotation,
     type ThreadMessage,
+    VersionStateSchema,
     activeVersionIndex,
     isAnnotationOfType,
 } from "$lib/editor/plugins/annotations/models";
@@ -122,8 +124,8 @@ export function createAnnotationSyncPlugin(
             ) => void;
             private destroyed = false;
             private idMap = idMap;
-            private nestedIdMaps = new WeakMap<Y.Map<YjsAnnotationNode>, AnnotationIdMap>();
-            private nestedIdMapFor = (annotations: Y.Map<YjsAnnotationNode>): AnnotationIdMap => {
+            private nestedIdMaps = new WeakMap<Y.Map<unknown>, AnnotationIdMap>();
+            private nestedIdMapFor = (annotations: Y.Map<unknown>): AnnotationIdMap => {
                 let idMap = this.nestedIdMaps.get(annotations);
                 if (!idMap) {
                     idMap = new AnnotationIdMap();
@@ -474,6 +476,16 @@ export function createAnnotationSyncPlugin(
             ) {
                 this.syncAnnotationPositions(ann, node);
 
+                if (JSON.stringify(node.get("aiProvenance")) !== JSON.stringify(ann.aiProvenance)) {
+                    if (ann.aiProvenance !== undefined) {
+                        node.set("aiProvenance", ann.aiProvenance);
+                    } else if (
+                        AiGenerationProvenanceSchema.safeParse(node.get("aiProvenance")).success
+                    ) {
+                        node.delete("aiProvenance");
+                    }
+                }
+
                 if (node.get("status") !== ann.status) {
                     node.set("status", ann.status);
                 }
@@ -581,6 +593,23 @@ export function createAnnotationSyncPlugin(
                         this.syncVersionText(version.doc, vtext);
                     }
 
+                    for (const [key, value] of Object.entries({
+                        provenance: version.provenance,
+                        aiProvenance: version.aiProvenance,
+                    })) {
+                        if (JSON.stringify(vNode.get(key)) === JSON.stringify(value)) continue;
+                        if (value !== undefined) {
+                            vNode.set(key, value);
+                        } else if (
+                            (key === "provenance"
+                                ? VersionStateSchema.shape.provenance
+                                : AiGenerationProvenanceSchema
+                            ).safeParse(vNode.get(key)).success
+                        ) {
+                            vNode.delete(key);
+                        }
+                    }
+
                     // Version label
                     const cmLabel = version.label;
                     const yjsLabel = vNode.get("label") as string | undefined;
@@ -592,9 +621,12 @@ export function createAnnotationSyncPlugin(
                         }
                     }
 
-                    let nestedAnnotations = vNode.get("annotations");
-                    if (!(nestedAnnotations instanceof Y.Map)) {
-                        nestedAnnotations = new Y.Map<YjsAnnotationNode>();
+                    const existingAnnotations = vNode.get("annotations");
+                    const nestedAnnotations =
+                        existingAnnotations instanceof Y.Map
+                            ? existingAnnotations
+                            : new Y.Map<unknown>();
+                    if (nestedAnnotations !== existingAnnotations) {
                         vNode.set("annotations", nestedAnnotations);
                     }
                     if (vtext) {
@@ -604,7 +636,7 @@ export function createAnnotationSyncPlugin(
                             vtext,
                             this.clientId,
                             ydoc,
-                            this.nestedIdMapFor(nestedAnnotations as Y.Map<YjsAnnotationNode>),
+                            this.nestedIdMapFor(nestedAnnotations),
                             { nestedIdMapFor: this.nestedIdMapFor },
                         );
                     }
@@ -696,6 +728,12 @@ function createYjsVersionNode(version: AnnotationType<"revision">["versions"][nu
     }
     versionNode.set("id", version.id);
     versionNode.set("text", vtext);
+    if (version.provenance !== undefined) {
+        versionNode.set("provenance", version.provenance);
+    }
+    if (version.aiProvenance !== undefined) {
+        versionNode.set("aiProvenance", version.aiProvenance);
+    }
     if (version.label !== undefined) {
         versionNode.set("label", version.label);
     }
