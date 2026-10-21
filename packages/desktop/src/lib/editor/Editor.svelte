@@ -1,4 +1,5 @@
 <script lang="ts">
+import { dispatchUnlessRestarting } from "$lib/updater/editorFreeze";
 import { logAppEvent } from "$lib/appLog";
 import { connectMcpEditor } from "$lib/ai/mcpConnection";
 import { researchFingerprint } from "$lib/college/researchModel";
@@ -454,7 +455,7 @@ const loader = new DocumentLoader(getExtensionOptions, ({ state }) => {
     if (view) {
         view.setState(state);
     } else {
-        view = new EditorView({ state, parent: element });
+        view = new EditorView({ state, parent: element, dispatchTransactions: dispatchUnlessRestarting });
         $editorView = view;
         loadUserDictionary();
         posthog.capture("app_session_started", {

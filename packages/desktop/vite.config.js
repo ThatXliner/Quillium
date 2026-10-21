@@ -28,7 +28,7 @@ export default defineConfig(async ({ command, mode }) => {
     return {
         plugins: [sveltekit(), tailwindcss()],
         define: {
-            __APP_VERSION__: JSON.stringify(pkg.version),
+            __APP_VERSION__: JSON.stringify(process.env.QUILLIUM_FRONTEND_VERSION ?? pkg.version),
         },
         resolve: {
             dedupe: ["@codemirror/state", "@codemirror/view"],

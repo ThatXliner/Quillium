@@ -199,6 +199,9 @@ jobs:
           PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           PUBLIC_SUPABASE_URL: ${{ vars.PUBLIC_SUPABASE_URL }}
           PUBLIC_RELAY_URL: ${{ vars.PUBLIC_RELAY_URL }}
+          QUILLIUM_OTA_PUBLIC_KEY: ${{ vars.FRONTEND_OTA_PUBLIC_KEY }}
+          QUILLIUM_OTA_NATIVE_REVISION: ${{ needs.prepare-release.outputs.sha }}
+          QUILLIUM_OTA_MANIFEST_URL: "https://github.com/ThatXliner/quillium-releases/releases/download/frontend-{nativeVersion}-stable/manifest.json"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:

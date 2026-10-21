@@ -5,6 +5,7 @@ mod keychain;
 pub mod mcp;
 pub mod mcp_live;
 mod oauth;
+mod ota;
 mod pdf_export;
 mod school_research;
 
@@ -1168,6 +1169,15 @@ fn cmd_open_in_new_window(
     app: tauri::AppHandle,
     open_windows: tauri::State<OpenWindows>,
     doc_id: String,
+    ota: tauri::State<ota::OtaState>,
+) -> Result<(), String> {
+    ota.with_window_open_gate(|| open_in_new_window(&app, &open_windows, doc_id))
+}
+
+fn open_in_new_window(
+    app: &tauri::AppHandle,
+    open_windows: &OpenWindows,
+    doc_id: String,
 ) -> Result<(), String> {
     {
         let mut map = open_windows.0.lock().map_err(|e| e.to_string())?;
@@ -1187,7 +1197,7 @@ fn cmd_open_in_new_window(
     let label = format!("editor-{short_id}");
     let url = format!("/?doc={doc_id}");
 
-    let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
+    let window = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App(url.into()))
         .title("Quillium")
         .inner_size(1373.0, 1170.0)
         .min_inner_size(900.0, 600.0)
@@ -1470,12 +1480,40 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
+    let mut context = tauri::generate_context!();
+    #[cfg(desktop)]
+    let (ota_state, ota_config) = ota::OtaState::configured(
+        &context.config().identifier,
+        &context.package_info().version.to_string(),
+    );
+    #[cfg(desktop)]
+    let ota_handle = tauri_plugin_hot_update::install(&mut context);
+    #[cfg(mobile)]
+    let ota_state = ota::OtaState::mobile();
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .manage(ota_state)
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                window
+                    .state::<ota::OtaState>()
+                    .window_destroyed(window.app_handle(), window.label());
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_fs::init());
+
+    #[cfg(desktop)]
+    {
+        let root = std::env::var_os("QUILLIUM_DATA_DIR")
+            .map(|root| std::path::PathBuf::from(root).join("hot-update"));
+        builder = builder.plugin(tauri_plugin_hot_update::init_with_config_and_root(
+            ota_handle, ota_config, root,
+        ));
+    }
 
     // Dev-only MCP automation bridge. Double-gated: the `mcp-bridge` feature keeps
     // the crate out of production builds entirely, and `debug_assertions` ensures it
@@ -1564,6 +1602,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ota::cmd_ota_status,
+            ota::cmd_ota_check,
+            ota::cmd_ota_download,
+            ota::cmd_ota_ready,
+            ota::cmd_update_prepare,
+            ota::cmd_update_cancel,
+            ota::cmd_update_restart,
+            ota::cmd_update_save_result,
             cmd_mcp_connection_info,
             mcp_live::cmd_mcp_editor_ready,
             mcp_live::cmd_mcp_reply,
@@ -1666,6 +1712,6 @@ pub fn run() {
             school_research_fetch,
             school_research_cancel,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

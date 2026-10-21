@@ -41,6 +41,7 @@ experience, and [BRANDING.md](../BRANDING.md) covers visual design and copy.
 | Authorship classification, playback, report export | [Provenance](provenance.md) |
 | Preferences and fonts | [Settings](settings.md) |
 | Native menus, keychain, updater, exports | [Native integration](native-integration.md) |
+| Frontend OTA shipping, recovery, and original plugin evaluation | [Frontend OTA](frontend-ota.md) |
 
 ## Reference
 

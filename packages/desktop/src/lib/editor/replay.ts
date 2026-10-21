@@ -58,10 +58,14 @@ import {
 } from "./plugins/annotations";
 import {
     RawAnnotationSchema,
+    RawAnnotationsSchema,
+    VersionGroupsSchema,
     isAnnotationOfType,
+    isRawAnnotationOfType,
     normalizeRevision,
 } from "./plugins/annotations/models";
 import type { GenericAnnotation } from "./plugins/annotations/models";
+import { reconstructionFailure } from "./reconstructionStatus";
 // TODO(#191): restore appSettings import when shareDocumentAnalytics is re-enabled
 // import { appSettings } from "$lib/settings.svelte";
 
@@ -72,11 +76,15 @@ import type { GenericAnnotation } from "./plugins/annotations/models";
  * a GenericAnnotation with a proper EditorSelection instance.
  * Returns null and logs a warning if the data fails schema validation.
  */
-function deserializeAnnotation(raw: unknown): GenericAnnotation | null {
+function deserializeAnnotation(raw: unknown, onFailure?: () => void): GenericAnnotation | null {
     const result = RawAnnotationSchema.safeParse(raw);
     if (!result.success) {
+        onFailure?.();
         console.warn("[replay] Annotation failed validation, skipping:", result.error.flatten());
         return null;
+    }
+    if (onFailure && isRawAnnotationOfType(result.data, "revision")) {
+        for (const version of result.data.versions) checkSnapshotFields(version, onFailure);
     }
     const annotation = {
         ...result.data,
@@ -92,19 +100,23 @@ function deserializeAnnotation(raw: unknown): GenericAnnotation | null {
 function buildAnnotationEffects(
     state: EditorState,
     events: AnnotationEvent[],
+    onFailure?: () => void,
 ): StateEffect<unknown>[] {
     const effects: StateEffect<unknown>[] = [];
     for (const event of events) {
         if (event.type === "annotation_add") {
-            const ann = deserializeAnnotation(event.annotation);
+            const ann = deserializeAnnotation(event.annotation, onFailure);
             if (ann) effects.push(addAnnotation.of(ann));
         } else if (event.type === "annotation_remove") {
             const ann = state.field(annotationField)[event.annotationId];
             if (ann) effects.push(removeAnnotation.of(ann));
+            else onFailure?.();
         } else if (event.type === "annotation_update") {
             // addAnnotation overwrites an existing id — effectively an update.
-            const ann = deserializeAnnotation(event.annotation);
+            const ann = deserializeAnnotation(event.annotation, onFailure);
             if (ann) effects.push(addAnnotation.of(ann));
+        } else {
+            onFailure?.();
         }
     }
     return effects;
@@ -423,7 +435,11 @@ function replayTransactionTrace(
     return { state: current, historyTrusted: trusted };
 }
 
-function applyStateFallback(state: EditorState, fallback: PersistedStateFallback): EditorState {
+function applyStateFallback(
+    state: EditorState,
+    fallback: PersistedStateFallback,
+    onFailure?: () => void,
+): EditorState {
     if (
         typeof fallback.doc !== "string" ||
         !fallback.annotations ||
@@ -434,7 +450,7 @@ function applyStateFallback(state: EditorState, fallback: PersistedStateFallback
     }
     const currentAnnotations = Object.values(state.field(annotationField, false) ?? {});
     const nextAnnotations = Object.values(fallback.annotations).map((raw) => {
-        const annotation = deserializeAnnotation(raw);
+        const annotation = deserializeAnnotation(raw, onFailure);
         if (!annotation) throw new Error("Invalid annotation in persisted-state fallback");
         return annotation;
     });
@@ -461,7 +477,11 @@ function applyStateFallback(state: EditorState, fallback: PersistedStateFallback
  * updated state.  Throws on malformed changes so the caller can
  * catch and skip the offending event.
  */
-function applyLegacyEventPayload(state: EditorState, payload: EventPayload): EditorState {
+function applyLegacyEventPayload(
+    state: EditorState,
+    payload: EventPayload,
+    onFailure?: () => void,
+): EditorState {
     const legacyAnnotations = [Transaction.addToHistory.of(false)];
     switch (payload.type) {
         case "doc_change":
@@ -472,7 +492,7 @@ function applyLegacyEventPayload(state: EditorState, payload: EventPayload): Edi
             }).state;
 
         case "compound": {
-            const effects = buildAnnotationEffects(state, payload.annotationEvents);
+            const effects = buildAnnotationEffects(state, payload.annotationEvents, onFailure);
             return state.update({
                 changes: payload.docChanges,
                 effects,
@@ -483,7 +503,7 @@ function applyLegacyEventPayload(state: EditorState, payload: EventPayload): Edi
 
         case "annotation_add":
         case "annotation_update": {
-            const ann = deserializeAnnotation(payload.annotation);
+            const ann = deserializeAnnotation(payload.annotation, onFailure);
             if (!ann) return state;
             return state.update({
                 effects: [addAnnotation.of(ann)],
@@ -493,7 +513,10 @@ function applyLegacyEventPayload(state: EditorState, payload: EventPayload): Edi
 
         case "annotation_remove": {
             const ann = state.field(annotationField)[payload.annotationId];
-            if (!ann) return state;
+            if (!ann) {
+                onFailure?.();
+                return state;
+            }
             return state.update({
                 effects: [removeAnnotation.of(ann)],
                 annotations: legacyAnnotations,
@@ -519,6 +542,7 @@ function applyEventPayload(
     state: EditorState,
     payload: EventPayload,
     historyTrusted: boolean,
+    onFailure?: () => void,
 ): ReplayResult {
     if (payload.transactionReplay) {
         return replayTransactionTrace(state, payload.transactionReplay, historyTrusted);
@@ -529,11 +553,11 @@ function applyEventPayload(
     // from multiple transactions and can throw before recovery is attempted.
     if (payload.stateFallback) {
         return {
-            state: applyStateFallback(state, payload.stateFallback),
+            state: applyStateFallback(state, payload.stateFallback, onFailure),
             historyTrusted: trustAfterDirectReplay(state, historyTrusted),
         };
     }
-    const replayed = applyLegacyEventPayload(state, payload);
+    const replayed = applyLegacyEventPayload(state, payload, onFailure);
     return {
         state: replayed,
         historyTrusted: trustAfterDirectReplay(state, historyTrusted),
@@ -555,17 +579,22 @@ function applyEventPayload(
  * @param events     Events to apply, ordered by ascending id.
  * @returns          Updated EditorState with all events applied.
  */
-function replayEventsWithStatus(state: EditorState, events: EventRecord[]): ReplayResult {
+function replayEventsWithStatus(
+    state: EditorState,
+    events: EventRecord[],
+    onFailure?: () => void,
+): ReplayResult {
     let current = state;
     let historyTrusted = true;
     let failures = 0;
     for (const record of events) {
         try {
             const payload = JSON.parse(record.payload) as EventPayload;
-            const replayed = applyEventPayload(current, payload, historyTrusted);
+            const replayed = applyEventPayload(current, payload, historyTrusted, onFailure);
             current = replayed.state;
             historyTrusted = replayed.historyTrusted;
         } catch (err) {
+            onFailure?.();
             failures++;
             historyTrusted = trustAfterDirectReplay(current, historyTrusted);
             console.warn(`[Editor] Failed to replay event id=${record.id}, skipping:`, err);
@@ -604,6 +633,56 @@ function tryParseType(payload: string): string | undefined {
     }
 }
 
+function checkSnapshotAnnotations(value: unknown, onFailure: () => void): void {
+    if (value == null) return;
+    const parsed = RawAnnotationsSchema.safeParse(value);
+    if (!parsed.success) {
+        onFailure();
+        return;
+    }
+    for (const annotation of Object.values(parsed.data)) {
+        if (!isRawAnnotationOfType(annotation, "revision")) continue;
+        for (const version of annotation.versions) checkSnapshotFields(version, onFailure);
+    }
+}
+
+function checkSnapshotFields(value: unknown, onFailure: () => void): void {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    if ("selection" in value) {
+        try {
+            const selection = EditorSelection.fromJSON(value.selection);
+            if (
+                selection.ranges.some(
+                    (range) =>
+                        !Number.isSafeInteger(range.anchor) ||
+                        !Number.isSafeInteger(range.head) ||
+                        range.from < 0 ||
+                        ("doc" in value &&
+                            typeof value.doc === "string" &&
+                            range.to > value.doc.length),
+                )
+            )
+                onFailure();
+        } catch {
+            onFailure();
+        }
+    }
+    if ("annotationField" in value) checkSnapshotAnnotations(value.annotationField, onFailure);
+    if (
+        "versionGroupField" in value &&
+        value.versionGroupField != null &&
+        !VersionGroupsSchema.safeParse(value.versionGroupField).success
+    )
+        onFailure();
+    if (
+        "annotationHistoryScope" in value &&
+        value.annotationHistoryScope != null &&
+        (!Array.isArray(value.annotationHistoryScope) ||
+            !value.annotationHistoryScope.every(Number.isSafeInteger))
+    )
+        onFailure();
+}
+
 /** Supply the transient cursor omitted by public/share snapshots. */
 function withSnapshotSelection(value: unknown): unknown {
     if (!value || typeof value !== "object" || Array.isArray(value) || "selection" in value) {
@@ -632,24 +711,31 @@ export function reconstructState(
     eventsSince: EventRecord[],
     extensions: Extension,
     fields: Parameters<typeof EditorState.fromJSON>[2] = savedFields,
+    onFailure?: () => void,
 ): EditorState {
+    const restoreExtensions = onFailure
+        ? [extensions, reconstructionFailure.of(onFailure)]
+        : extensions;
     let state: EditorState;
     if (snapshotStateJson && snapshotStateJson !== "{}") {
         try {
+            const snapshot: unknown = JSON.parse(snapshotStateJson);
+            if (onFailure) checkSnapshotFields(snapshot, onFailure);
             state = EditorState.fromJSON(
-                withSnapshotSelection(JSON.parse(snapshotStateJson)),
-                { extensions },
+                withSnapshotSelection(snapshot),
+                { extensions: restoreExtensions },
                 fields,
             );
         } catch (error) {
+            onFailure?.();
             console.error("[replay] Could not restore persisted editor snapshot", error);
-            state = EditorState.create({ extensions });
+            state = EditorState.create({ extensions: restoreExtensions });
         }
     } else {
-        state = EditorState.create({ extensions });
+        state = EditorState.create({ extensions: restoreExtensions });
     }
     if (eventsSince.length > 0) {
-        const replayed = replayEventsWithStatus(state, eventsSince);
+        const replayed = replayEventsWithStatus(state, eventsSince, onFailure);
         state = replayed.state;
         if (!replayed.historyTrusted) {
             // Rebuild through the caller's extension set while deliberately
@@ -662,7 +748,13 @@ export function reconstructState(
                 ),
             ) as NonNullable<Parameters<typeof EditorState.fromJSON>[2]>;
             const semanticState = state.toJSON(semanticFields);
-            state = EditorState.fromJSON(semanticState, { extensions }, fields);
+            state = EditorState.fromJSON(semanticState, { extensions: restoreExtensions }, fields);
+        }
+    }
+    if (onFailure && eventsSince.length > 0) {
+        for (const annotation of Object.values(state.field(annotationField, false) ?? {})) {
+            if (!isAnnotationOfType(annotation, "revision")) continue;
+            for (const version of annotation.versions) checkSnapshotFields(version, onFailure);
         }
     }
     if (!state.facet(persistHistoryFacet)) return state;

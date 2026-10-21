@@ -1,3 +1,4 @@
+import { dispatchUnlessRestarting } from "$lib/updater/editorFreeze";
 /**
  * NestedEditorController — Encapsulates the lifecycle and bidirectional
  * sync logic for nested CodeMirror editors inside revision annotations.
@@ -77,6 +78,15 @@ export function serializedNestedAnnotationSnapshot(version: VersionState): strin
  * - Optional state flush on destroy (modal uses flush, inline does not)
  * - Version switch and annotation blob change detection
  */
+const mountedControllers = new Set<NestedEditorController>();
+
+export function flushNestedEditorsForRestart(): void {
+    // Deepest editors write into their parent before that parent is serialized.
+    for (const controller of [...mountedControllers].reverse()) {
+        controller.flushCurrentStateToParent();
+    }
+}
+
 export class NestedEditorController {
     private _editor: EditorView | undefined;
     private _mountedVersionIndex = -1;
@@ -125,7 +135,12 @@ export class NestedEditorController {
             this.historyView,
         );
 
-        this._editor = new EditorView({ state, parent: host });
+        this._editor = new EditorView({
+            state,
+            parent: host,
+            dispatchTransactions: dispatchUnlessRestarting,
+        });
+        mountedControllers.add(this);
         registerNestedEditorialView({
             view: this._editor,
             parentView: this.parentView,
@@ -188,6 +203,7 @@ export class NestedEditorController {
             this.flushToParent();
         }
 
+        mountedControllers.delete(this);
         unregisterEditorialView(this._editor);
         this._editor.destroy();
         this._editor = undefined;

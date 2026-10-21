@@ -8,7 +8,8 @@
 import { errorText } from "./errors";
 
 export interface UpdateCandidate {
-    downloadAndInstall: () => Promise<void>;
+    download: () => Promise<void>;
+    install: () => Promise<void>;
 }
 
 export type UpdateInstallFailureKind =
@@ -33,6 +34,8 @@ interface PerformUpdateInstallOptions {
     ready: boolean;
     checkForUpdate: () => Promise<UpdateCandidate | null>;
     relaunchApp: () => Promise<void>;
+    prepareInstall: () => Promise<string>;
+    cancelInstall: (attemptId: string) => Promise<void>;
     getExecutableDir: () => Promise<string>;
 }
 
@@ -86,6 +89,8 @@ export async function performUpdateInstall({
     ready,
     checkForUpdate,
     relaunchApp,
+    prepareInstall,
+    cancelInstall,
     getExecutableDir,
 }: PerformUpdateInstallOptions): Promise<UpdateInstallResult> {
     try {
@@ -116,7 +121,14 @@ export async function performUpdateInstall({
         const update = await checkForUpdate();
         if (!update) return { status: "not-available" };
 
-        await update.downloadAndInstall();
+        await update.download();
+        const attemptId = await prepareInstall();
+        try {
+            // Windows installers may exit the running process from inside install().
+            await update.install();
+        } finally {
+            await cancelInstall(attemptId);
+        }
         return { status: "ready" };
     } catch (error) {
         return { status: "failed", failure: classifyUpdateInstallError(error) };

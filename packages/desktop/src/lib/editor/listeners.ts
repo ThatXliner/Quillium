@@ -106,6 +106,8 @@ type PendingMeta = {
 };
 const metaDebounceTimers = new Map<string, PendingMeta>();
 const metaWrites = new Set<Promise<void>>();
+const metaWriteQueues = new Map<string, Promise<void>>();
+const failedMetadata = new Map<string, Omit<PendingMeta, "timer">>();
 // Only show "Saving…" if the write takes longer than this threshold.
 // This keeps the indicator on "Saved" during normal fast writes.
 let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -976,14 +978,22 @@ function writeMeta(docId: string, pending: Omit<PendingMeta, "timer">): Promise<
     const title = titleForDocument(currentTitle, docText);
     if (active && title !== currentTitle) currentDocumentTitle.set(title);
     // docText doubles as the search-index body (FTS + semantic chunks).
-    const write = updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch(
-        (e) => {
-            console.error(e);
+    const write = (metaWriteQueues.get(docId) ?? Promise.resolve())
+        .then(() => updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText))
+        .then(() => {
+            failedMetadata.delete(docId);
+        })
+        .catch((e) => {
+            failedMetadata.set(docId, pending);
+            console.error("[listeners] metadata save failed", e);
             captureException(e);
-        },
-    );
+        });
+    metaWriteQueues.set(docId, write);
     metaWrites.add(write);
-    void write.finally(() => metaWrites.delete(write));
+    void write.finally(() => {
+        metaWrites.delete(write);
+        if (metaWriteQueues.get(docId) === write) metaWriteQueues.delete(docId);
+    });
     return write;
 }
 
@@ -1012,6 +1022,16 @@ export async function flushPersistence(): Promise<void> {
     } finally {
         await flushMetaDebounces();
     }
+}
+
+/** Restart requires durable content, unlike ordinary navigation's best-effort queue drain. */
+export async function flushPersistenceForRestart(): Promise<void> {
+    await flushPersistence();
+    if (persistenceFailed) throw new Error("Your latest writing could not be saved.");
+    // Metadata timers may already have failed before the restart was requested.
+    const retries = [...failedMetadata];
+    await Promise.all(retries.map(([docId, pending]) => writeMeta(docId, pending)));
+    if (failedMetadata.size > 0) throw new Error("Document details could not be saved.");
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────

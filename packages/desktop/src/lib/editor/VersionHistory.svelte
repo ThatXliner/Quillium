@@ -39,6 +39,7 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { markLocalStartupFailed, markLocalStartupReady } from "$lib/updater/startup";
 import { ArrowLeft, BookmarkPlus, ChevronRight, Clock, RotateCcw } from "lucide-svelte";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
@@ -145,6 +146,7 @@ onMount(async () => {
     await Promise.all([loadTimeline(), loadRetention(), refreshStorageSize()]);
     if (timelineItems.length > 0) await selectItem(timelineItems[0]);
     loading = false;
+    markLocalStartupReady();
 });
 
 // ── Data ────────────────────────────────────────────────────────
@@ -311,6 +313,7 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
     } catch (e) {
         // Called from event handlers — swallow instead of leaking an
         // unhandled rejection; show the empty-content state.
+        markLocalStartupFailed();
         console.error("[VersionHistory] preview load failed:", e);
         if (token === previewToken) {
             previewCurrentJson = null;

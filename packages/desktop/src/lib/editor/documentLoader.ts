@@ -21,6 +21,8 @@ import {
     currentTabId,
     editorView,
 } from "$lib/stores";
+import { restartIsPending } from "$lib/updater/restartState";
+import { markLocalStartupFailed, markLocalStartupReady } from "$lib/updater/startup";
 import { Compartment, EditorState } from "@codemirror/state";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
@@ -89,6 +91,7 @@ export class DocumentLoader {
         this.#unsubscribe = currentDocumentId.subscribe((id) => {
             if (this.#selectingDocument) return;
             void this.load({ documentId: id ?? undefined, showSample }).catch((error) => {
+                markLocalStartupFailed();
                 console.error("[documentLoader] load failed", error);
             });
         });
@@ -137,6 +140,7 @@ export class DocumentLoader {
 
     #isCurrent(generation: number, documentId: string | null, tabId?: string): boolean {
         return (
+            !restartIsPending() &&
             !this.#disposed &&
             generation === this.#generation &&
             get(currentDocumentId) === documentId &&
@@ -145,10 +149,16 @@ export class DocumentLoader {
     }
 
     #buildState(loaded: LoadResult, readOnly: boolean, persistHistory: boolean): EditorState {
-        return reconstructState(loaded.snapshotStateJson, loaded.eventsSince, [
-            getExtensions({ ...this.#options, persistHistory }),
-            this.#draftLock.of(EditorState.readOnly.of(readOnly)),
-        ]);
+        return reconstructState(
+            loaded.snapshotStateJson,
+            loaded.eventsSince,
+            [
+                getExtensions({ ...this.#options, persistHistory }),
+                this.#draftLock.of(EditorState.readOnly.of(readOnly)),
+            ],
+            savedFields,
+            markLocalStartupFailed,
+        );
     }
 
     #commit(loaded: LoadedDocument, updateTitle: boolean, generation: number): void {
@@ -161,6 +171,7 @@ export class DocumentLoader {
         seedPersistenceBookkeeping(loaded.latestEventId);
         // setState does not emit an update. The view owner also seeds its Svelte mirrors.
         this.#commitState(loaded);
+        markLocalStartupReady();
     }
 
     /** All visible loads share cancellation, reconstruction, and persistence seeding. */
@@ -174,7 +185,11 @@ export class DocumentLoader {
         showSample?: boolean;
     } = {}): Promise<LoadedDocument | undefined> {
         let documentId = requestedId;
-        if (this.#disposed || (target && !this.drafts.canSelect(target.tabId, target.draftId)))
+        if (
+            restartIsPending() ||
+            this.#disposed ||
+            (target && !this.drafts.canSelect(target.tabId, target.draftId))
+        )
             return;
         const generation = ++this.#generation;
         const requestedDocument = get(currentDocumentId);
@@ -225,6 +240,7 @@ export class DocumentLoader {
             this.#activeDraftWrite = write.catch(() => {});
             await write;
             if (
+                restartIsPending() ||
                 this.#disposed ||
                 get(currentDocumentId) !== documentId ||
                 get(currentTabId) !== target.tabId ||

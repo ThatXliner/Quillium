@@ -1,0 +1,33 @@
+{
+  "platform": "macOS arm64",
+  "nativeVersion": "0.25.3",
+  "distribution": "unsigned debug .app with mcp-bridge; isolated disposable profile",
+  "command": "bun packages/desktop/scripts/verify-frontend-ota.mjs",
+  "checks": [
+    "embedded source",
+    "native trust configured",
+    "secondary window opened after readiness",
+    "verified download stages",
+    "download leaves running source unchanged",
+    "new frontend is active",
+    "native reports OTA source",
+    "origin retained",
+    "WebKit storage retained",
+    "draft text retained",
+    "draft identity retained",
+    "pending main-window edit saved by restart barrier",
+    "pending secondary-window edit saved by restart barrier",
+    "broken signed candidate stages",
+    "first failed trial active offline",
+    "second failed trial active offline",
+    "offline recovery restores confirmed frontend",
+    "draft survives failed trials",
+    "native binary unchanged"
+  ],
+  "nativeSha256": "9a7e3f13a6789238db1eacb9935893ea95ed1c5b20cf97c74fd530a8d642cfab",
+  "limits": [
+    "Windows and Linux packaged behavior is not verified",
+    "No production key, release, or OTA feed was published",
+    "No CI savings measured"
+  ]
+}

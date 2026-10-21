@@ -1,4 +1,9 @@
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(quillium_mas)");
+    println!("cargo:rerun-if-env-changed=VITE_MAS");
+    if std::env::var("VITE_MAS").is_ok_and(|value| value == "true" || value == "1") {
+        println!("cargo:rustc-cfg=quillium_mas");
+    }
     // The MCP bridge capability lives in capabilities/dev/ and must only be
     // compiled into dev builds. Capability files are auto-discovered by glob, so
     // we widen the glob to include capabilities/dev/ ONLY when the `mcp-bridge`

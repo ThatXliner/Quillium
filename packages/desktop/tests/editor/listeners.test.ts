@@ -2,6 +2,7 @@ import { isCollabJoiner } from "$lib/collab/store";
 import {
     flushPersistQueue,
     flushPersistence,
+    flushPersistenceForRestart,
     listeners,
     persistNamedVersion,
     seedPersistenceBookkeeping,
@@ -80,6 +81,30 @@ afterEach(async () => {
 });
 
 describe("listeners integration", () => {
+    it("blocks restart after a swallowed metadata failure and retries the retained write", async () => {
+        let metadataFails = true;
+        let metadataWrites = 0;
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 7, needsSnapshot: false };
+            if (cmd === "cmd_update_document_meta") {
+                metadataWrites++;
+                if (metadataFails) return Promise.reject(new Error("disk full"));
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await flushPersistence();
+        expect(metadataWrites).toBe(1);
+        await expect(flushPersistenceForRestart()).rejects.toThrow(
+            "Document details could not be saved",
+        );
+        expect(metadataWrites).toBe(2);
+        metadataFails = false;
+        await flushPersistenceForRestart();
+        expect(metadataWrites).toBe(3);
+    });
+
     it("checkpoints the latest edit before leaving below the automatic snapshot threshold", async () => {
         const snapshots: Array<{ draftId: string; stateJson: string; upToEventId: number }> = [];
         mockIPC((cmd, args) => {
@@ -670,6 +695,9 @@ describe("listeners integration", () => {
         expect(count).toBe(2);
         expect(get(lastPersistedEventId)).toBe(8);
         expect(get(saveStatus)).toBe("saved");
+        await expect(flushPersistenceForRestart()).rejects.toThrow(
+            "latest writing could not be saved",
+        );
     });
 
     it("respects persist=false and skips saving", async () => {
