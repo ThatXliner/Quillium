@@ -1,4 +1,5 @@
 import { currentDocumentId, currentDraftId, currentTabId, documentContent } from "$lib/stores";
+import { registerRestartParticipant, restartIsPending } from "$lib/updater/restartState";
 import type { Chat } from "@ai-sdk/svelte";
 import { type ChatRequestOptions, type UIMessage, safeValidateUIMessages } from "ai";
 import { untrack } from "svelte";
@@ -365,6 +366,11 @@ export function createConversationController({
         }
     }
 
+    const unregisterRestartParticipant = registerRestartParticipant(async () => {
+        beforeMessageReplacement();
+        await waitForActiveWork();
+    });
+
     function beforeMessageReplacement(): void {
         // This callback must run before stop() so an already buffered tool
         // chunk cannot target the newly selected document/draft.
@@ -419,6 +425,7 @@ export function createConversationController({
     function canSendNow(): boolean {
         const scope = scopeNow();
         if (
+            restartIsPending() ||
             disposed ||
             state.loading ||
             state.busy ||
@@ -987,6 +994,7 @@ export function createConversationController({
     async function dispose(): Promise<void> {
         if (disposed) return;
         disposed = true;
+        unregisterRestartParticipant();
         generation += 1;
         unsubscribeScope?.();
         unsubscribeScope = null;

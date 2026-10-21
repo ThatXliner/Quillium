@@ -220,8 +220,9 @@ Intentionally separate from localStorage — keychain requires user-level auth a
 
 Uses `@tauri-apps/plugin-updater` to check for updates on launch.
 
-Frontend-only OTA remains an [evaluation and proposed pilot contract](frontend-ota.md).
-The app currently ships frontend assets through full native releases.
+Public desktop builds also support [signed frontend OTA](frontend-ota.md). Its
+public key, feed, and exact native revision are compiled into the native binary.
+Unconfigured, MAS, and mobile builds keep using embedded frontend assets.
 
 ### Update Flow
 
@@ -249,9 +250,25 @@ stateDiagram-v2
 | Failed | Persistent failure message + retry and manual-download options |
 | Ready | "is ready — relaunch to finish" + "Relaunch" button |
 
-Uses `downloadAndInstall()` for reliable updates, `relaunch()` from `@tauri-apps/plugin-process`.
-The orchestration in `updater/install.ts` checks the executable location before downloading,
-classifies install failures, and returns explicit outcomes for the page to render and log.
+The orchestration in `updater/install.ts` checks the executable location, downloads
+with the native updater, and calls `cmd_update_prepare` before `install()`. Native
+installation can terminate Windows immediately, so saving after installation is
+too late. If installation returns, `cmd_update_cancel` releases the preparation.
+The later Relaunch action calls `cmd_update_restart` and prepares again.
+
+`ota.rs` captures all open windows under the window-creation gate. Every window
+freezes editing, drains AI and database writes, flushes nested editors and draft
+persistence, then acknowledges its native window identity. A save failure,
+missing acknowledgement, closed window, or changed roster cancels preparation.
+An active or connecting collaboration session vetoes it. Raw frontend restart
+permission is removed. Root-layout listeners participate from every route.
+
+Frontend OTA downloads only stage a bundle. A full launch chooses its asset
+source before creating windows. Only the main window can confirm startup, after
+local load and replay, rendering, and restart listener registration. Auth and
+network availability are not readiness prerequisites. The plugin handles two
+failed trial launches and offline fallback. See the [release runbook](../packages/desktop/scripts/frontend-ota-release.md)
+for compatibility restrictions and platform verification requirements.
 
 The release workflow validates the final macOS updater archive after `tauri-action` completes. It
 checks the embedded version, Apple code signature, Gatekeeper assessment, notarization ticket, and

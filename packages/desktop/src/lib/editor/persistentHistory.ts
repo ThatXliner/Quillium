@@ -1,3 +1,4 @@
+import { reconstructionFailure } from "./reconstructionStatus";
 /**
  * persistentHistory.ts — Lossless cross-restart CodeMirror history.
  *
@@ -320,8 +321,16 @@ export const persistentHistoryField = StateField.define<PersistedHistory | null>
     fromJSON(value, state): PersistedHistory | null {
         if (!state.facet(persistHistoryFacet)) return null;
         try {
-            return parsePersistedHistory(value);
+            const parsed = parsePersistedHistory(value);
+            const legacy =
+                isRecord(value) &&
+                !("version" in value) &&
+                Array.isArray(value.done) &&
+                Array.isArray(value.undone);
+            if (value != null && !parsed && !legacy) state.facet(reconstructionFailure)?.();
+            return parsed;
         } catch (error) {
+            state.facet(reconstructionFailure)?.();
             console.warn("[persistentHistory] Ignoring invalid persisted history", error);
             return null;
         }
@@ -336,6 +345,7 @@ function initializeHistory(state: EditorState): unknown {
         try {
             return hydrateHistory(persisted, state);
         } catch (error) {
+            state.facet(reconstructionFailure)?.();
             console.warn("[persistentHistory] Starting with fresh history", error);
         }
     }

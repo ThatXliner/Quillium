@@ -35,6 +35,7 @@ import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
 import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
+import { markLocalStartupReady } from "$lib/updater/startup";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { onDestroy, onMount } from "svelte";
@@ -181,6 +182,7 @@ async function load() {
         lastClickedId = documents[0].id;
     }
     loading = false;
+    markLocalStartupReady();
 }
 
 async function handleTrashRetentionChange(days: number | null) {

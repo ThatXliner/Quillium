@@ -1,4 +1,9 @@
 import type { EventRecord } from "$lib/db/types";
+import { savedFields } from "$lib/editor/extensions";
+import {
+    persistentHistoryRuntimeExtension,
+    persistentHistoryStateExtension,
+} from "$lib/editor/persistentHistory";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -6,9 +11,10 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
 } from "$lib/editor/plugins/annotations/models";
-import { replayEvents } from "$lib/editor/replay";
+import { reconstructState, replayEvents } from "$lib/editor/replay";
+import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 function makeRecord(id: number, payload: object): EventRecord {
     return {
@@ -252,4 +258,191 @@ describe("replayEvents", () => {
         ]);
         expect(result.doc.toString()).toBe("Hello");
     });
+});
+
+describe("startup replay evidence", () => {
+    it("reports snapshot fallback so a trial frontend cannot confirm a failed load", () => {
+        const failed = vi.fn();
+        reconstructState("{broken", [], annotationExtensions(), undefined, failed);
+        expect(failed).toHaveBeenCalledOnce();
+    });
+
+    it("reports skipped corrupt events while retaining the existing recovery behavior", () => {
+        const failed = vi.fn();
+        const state = reconstructState(
+            null,
+            [
+                makeRecord(1, {
+                    type: "doc_change",
+                    changes: [{ from: 999, to: 999, insert: "unreachable" }],
+                    selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                }),
+            ],
+            annotationExtensions(),
+            undefined,
+            failed,
+        );
+        expect(state.doc.toString()).toBe("");
+        expect(failed).toHaveBeenCalledOnce();
+    });
+});
+
+it.each(["annotation_add", "annotation_update"])("reports a silently skipped legacy %s", (type) => {
+    const failed = vi.fn();
+    const state = reconstructState(
+        null,
+        [
+            makeRecord(1, {
+                type,
+                annotation: { _type: "unknown-ota-format", id: "revision" },
+            }),
+        ],
+        annotationExtensions(),
+        undefined,
+        failed,
+    );
+    expect(state.doc.toString()).toBe("");
+    expect(failed).toHaveBeenCalledOnce();
+});
+
+it("reports a dropped compound annotation while preserving the recoverable text", () => {
+    const failed = vi.fn();
+    const state = reconstructState(
+        null,
+        [
+            makeRecord(1, {
+                type: "compound",
+                docChanges: [{ from: 0, to: 0, insert: "Recovered text" }],
+                annotationEvents: [
+                    {
+                        type: "annotation_add",
+                        annotation: { _type: "unknown-ota-format", id: "revision" },
+                    },
+                ],
+                selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+            }),
+        ],
+        annotationExtensions(),
+        undefined,
+        failed,
+    );
+    expect(state.doc.toString()).toBe("Recovered text");
+    expect(state.field(annotationField)).toEqual({});
+    expect(failed).toHaveBeenCalledOnce();
+});
+
+it.each([
+    { annotationField: { "1": { _type: "unknown-ota-format", id: "revision" } } },
+    { versionGroupField: { group: { id: "group", members: "unsupported" } } },
+    { annotationHistoryScope: "unsupported" },
+    {
+        annotationField: {
+            "1": {
+                id: 1,
+                _type: "revision",
+                thread: [],
+                selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
+                versions: [
+                    {
+                        id: "version",
+                        doc: "draft",
+                        annotationField: { "2": { _type: "unknown-ota-format" } },
+                    },
+                ],
+                activeVersionId: "version",
+            },
+        },
+    },
+])(
+    "reports malformed snapshot fields before their forgiving deserializers discard data",
+    (fields) => {
+        const failed = vi.fn();
+        const state = reconstructState(
+            JSON.stringify({ doc: "draft", ...fields }),
+            [],
+            annotationExtensions(),
+            undefined,
+            failed,
+        );
+        expect(state.doc.toString()).toBe("draft");
+        expect(failed).toHaveBeenCalled();
+    },
+);
+
+it("reports malformed current-format snapshot undo data while keeping the document readable", () => {
+    const failed = vi.fn();
+    const extensions = [
+        annotationExtensions(),
+        history(),
+        persistentHistoryStateExtension,
+        persistentHistoryRuntimeExtension,
+    ];
+    const state = reconstructState(
+        JSON.stringify({ doc: "draft", historyField: { version: 1, effects: "unsupported" } }),
+        [],
+        extensions,
+        savedFields,
+        failed,
+    );
+    expect(state.doc.toString()).toBe("draft");
+    expect(failed).toHaveBeenCalled();
+});
+
+it("reports snapshot history hydration failures instead of acknowledging the silently reset branch", () => {
+    const failed = vi.fn();
+    const extensions = [
+        annotationExtensions(),
+        history(),
+        persistentHistoryStateExtension,
+        persistentHistoryRuntimeExtension,
+    ];
+    const before = EditorState.create({ doc: "draft", extensions }).update({
+        changes: { from: 0, insert: "a" },
+    }).state;
+    const snapshot = before.toJSON(savedFields);
+    snapshot.historyField.effects.done = [];
+    const state = reconstructState(JSON.stringify(snapshot), [], extensions, savedFields, failed);
+    expect(state.doc.toString()).toBe("adraft");
+    expect(failed).toHaveBeenCalled();
+});
+
+it.each(["unsupported", { version: 2, effects: { done: [], undone: [] } }])(
+    "reports an unsupported snapshot history format",
+    (historyField) => {
+        const failed = vi.fn();
+        const extensions = [
+            annotationExtensions(),
+            history(),
+            persistentHistoryStateExtension,
+            persistentHistoryRuntimeExtension,
+        ];
+        const state = reconstructState(
+            JSON.stringify({ doc: "draft", historyField }),
+            [],
+            extensions,
+            savedFields,
+            failed,
+        );
+        expect(state.doc.toString()).toBe("draft");
+        expect(failed).toHaveBeenCalled();
+    },
+);
+
+it("retains the documented compatibility reset for recognizable legacy CodeMirror history", () => {
+    const failed = vi.fn();
+    const extensions = [
+        annotationExtensions(),
+        history(),
+        persistentHistoryStateExtension,
+        persistentHistoryRuntimeExtension,
+    ];
+    const state = reconstructState(
+        JSON.stringify({ doc: "draft", historyField: { done: [], undone: [] } }),
+        [],
+        extensions,
+        savedFields,
+        failed,
+    );
+    expect(state.doc.toString()).toBe("draft");
+    expect(failed).not.toHaveBeenCalled();
 });

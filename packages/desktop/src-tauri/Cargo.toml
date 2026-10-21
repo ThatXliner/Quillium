@@ -15,6 +15,7 @@ name = "quillium_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
+mas = []
 # `mcp-bridge` pulls in the dev-only automation plugin. Off by default so
 # production `tauri build` never compiles it; `bun run tauri:dev:mcp` turns it on.
 mcp-bridge = ["dep:tauri-plugin-mcp-bridge"]
@@ -70,6 +71,7 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync",
 # the hf-hub model download (bge-small-en-v1.5, fetched lazily at runtime
 # into the app data dir).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-hot-update = { path = "../../../crates/tauri-plugin-hot-update" }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 fastembed = { version = "5.16", default-features = false, features = [

@@ -2,6 +2,7 @@ import { getCurrentUserName, getUser } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
 import { historyCompartment } from "$lib/editor/extensions";
 import { persistentHistoryRuntimeExtension } from "$lib/editor/persistentHistory";
+import { requireEditorialMutation } from "$lib/updater/restartState";
 import { history } from "@codemirror/commands";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
 /**
@@ -139,6 +140,7 @@ export async function enableCollab(
     clientID: string,
     asOwner = true,
 ): Promise<void> {
+    requireEditorialMutation();
     // Connect to Yjs relay
     const { provider, awareness, ydoc, ytext, ymap, yVersionGroups } =
         await createYjsProvider(docId);

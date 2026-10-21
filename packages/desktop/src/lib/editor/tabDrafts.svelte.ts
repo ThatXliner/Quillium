@@ -1,3 +1,4 @@
+import { requireEditorialMutation, restartIsPending } from "$lib/updater/restartState";
 /**
  * tabDrafts.svelte.ts — Tab & draft-tree state and actions (#160).
  *
@@ -88,6 +89,7 @@ export class TabDraftController {
     canSelect(tabId: string, draftId?: string): boolean {
         const target = this.#deletionTarget;
         return (
+            !restartIsPending() &&
             !this.#disposed &&
             (!target ||
                 target.tabId !== tabId ||
@@ -116,6 +118,7 @@ export class TabDraftController {
     }
 
     async #mutate(operation: () => Promise<void>, target?: DeletionTarget): Promise<void> {
+        requireEditorialMutation();
         await this.history.perform(() =>
             target ? this.#withDeletionTarget(operation, target) : operation(),
         );
@@ -200,7 +203,11 @@ export class TabDraftController {
     }
 
     #isCurrentContext(generation: number, docId: string): boolean {
-        return generation === this.#contextGeneration && get(currentDocumentId) === docId;
+        return (
+            !restartIsPending() &&
+            generation === this.#contextGeneration &&
+            get(currentDocumentId) === docId
+        );
     }
 
     #persistActiveTab(docId: string, tabId: string): Promise<void> {

@@ -17,3 +17,5 @@ of phase-local markers; the files here are the canonical architecture decisions.
 
 11. [Preserve AI conversation paths independently of prose](./0011-distinct-ai-conversations.md)
 12. [Keep deletion undo in the editor session](./0012-session-undo-for-deletions.md)
+
+13. [Bind frontend updates to one native release and activate on cold launch](./0013-scoped-cold-launch-frontend-updates.md)

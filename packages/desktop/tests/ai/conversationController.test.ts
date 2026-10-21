@@ -5,6 +5,7 @@ import {
 } from "$lib/ai/conversationController.svelte";
 import type { Conversation } from "$lib/ai/conversationStore";
 import { currentDocumentId, currentDraftId, currentTabId, documentContent } from "$lib/stores";
+import { beginRestart, cancelRestart, flushRestartParticipants } from "$lib/updater/restartState";
 import type { ChatStatus, UIMessage } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -141,6 +142,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+    cancelRestart("conversation-restart");
     await activeController?.dispose().catch(() => undefined);
     activeController = null;
     currentDocumentId.set(null);
@@ -625,4 +627,21 @@ it("retains legacy task defaults across branching and retrying", async () => {
     expect(chat.regenerate).toHaveBeenCalledWith({
         body: { editorialTask: "global-review", exactWordCount: undefined },
     });
+});
+
+it("vetoes restart until dirty conversation messages have been saved", async () => {
+    const chat = makeChat();
+    const controller = await startController(chat);
+    db.saveConversationMessages.mockRejectedValue(new Error("disk full"));
+    await expect(controller.sendMessage("Keep this request")).rejects.toThrow("disk full");
+    beginRestart("conversation-restart");
+    await expect(flushRestartParticipants()).rejects.toThrow("Could not save");
+    expect(controller.conversations.canSend).toBe(false);
+    db.saveConversationMessages.mockResolvedValue(undefined);
+    await flushRestartParticipants();
+    expect(db.saveConversationMessages.mock.calls.at(-1)?.[1]).toContain("Keep this request");
+    expect(controller.conversations.canSend).toBe(false);
+    cancelRestart("conversation-restart");
+    expect(controller.conversations.canSend).toBe(true);
+    expect(chat.stop).toHaveBeenCalled();
 });

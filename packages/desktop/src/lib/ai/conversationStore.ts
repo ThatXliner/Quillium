@@ -5,7 +5,7 @@
  * kept opaque here so callers can validate it with the AI SDK when restoring
  * a conversation and search the stored text locally when browsing history.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invokeDatabase as invoke } from "$lib/db/invoke";
 
 export type ConversationMode = "chat" | "feedback" | "revise";
 

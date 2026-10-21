@@ -7,9 +7,74 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 describe("performUpdateInstall", () => {
+    it("downloads before freezing every window and installing", async () => {
+        const order: string[] = [];
+        const result = await performUpdateInstall({
+            ready: false,
+            checkForUpdate: async () => ({
+                download: async () => {
+                    order.push("download");
+                },
+                install: async () => {
+                    order.push("install");
+                },
+            }),
+            prepareInstall: async () => {
+                order.push("prepare");
+                return "attempt";
+            },
+            cancelInstall: async (attemptId) => {
+                order.push(`cancel:${attemptId}`);
+            },
+            relaunchApp: vi.fn(),
+            getExecutableDir: async () => "/Applications/Quillium.app/Contents/MacOS",
+        });
+        expect(result).toEqual({ status: "ready" });
+        expect(order).toEqual(["download", "prepare", "install", "cancel:attempt"]);
+    });
+
+    it("does not start the native installer when a window cannot save", async () => {
+        const install = vi.fn(async () => {});
+        const cancelInstall = vi.fn(async () => {});
+        const result = await performUpdateInstall({
+            ready: false,
+            checkForUpdate: async () => ({ download: async () => {}, install }),
+            prepareInstall: async () => {
+                throw new Error("Could not save all windows");
+            },
+            cancelInstall,
+            relaunchApp: vi.fn(),
+            getExecutableDir: async () => "/Applications/Quillium.app/Contents/MacOS",
+        });
+        expect(result.status).toBe("failed");
+        expect(install).not.toHaveBeenCalled();
+        expect(cancelInstall).not.toHaveBeenCalled();
+    });
+
+    it("releases the window freeze after the native installer fails", async () => {
+        const cancelInstall = vi.fn(async () => {});
+        const result = await performUpdateInstall({
+            ready: false,
+            checkForUpdate: async () => ({
+                download: async () => {},
+                install: async () => {
+                    throw new Error("permission denied");
+                },
+            }),
+            prepareInstall: async () => "attempt",
+            cancelInstall,
+            relaunchApp: vi.fn(),
+            getExecutableDir: async () => "/Applications/Quillium.app/Contents/MacOS",
+        });
+        expect(result).toMatchObject({ status: "failed", failure: { kind: "permission" } });
+        expect(cancelInstall).toHaveBeenCalledWith("attempt");
+    });
+
     it("blocks updates launched from a mounted macOS disk image", async () => {
         const checkForUpdate = vi.fn();
         const result = await performUpdateInstall({
+            prepareInstall: vi.fn(async () => "attempt"),
+            cancelInstall: vi.fn(async () => {}),
             ready: false,
             checkForUpdate,
             relaunchApp: vi.fn(),
@@ -24,22 +89,26 @@ describe("performUpdateInstall", () => {
     });
 
     it("downloads and installs an available update", async () => {
-        const downloadAndInstall = vi.fn(async () => {});
+        const install = vi.fn(async () => {});
         const result = await performUpdateInstall({
+            prepareInstall: vi.fn(async () => "attempt"),
+            cancelInstall: vi.fn(async () => {}),
             ready: false,
-            checkForUpdate: vi.fn(async () => ({ downloadAndInstall })),
+            checkForUpdate: vi.fn(async () => ({ download: vi.fn(async () => {}), install })),
             relaunchApp: vi.fn(),
             getExecutableDir: vi.fn(async () => "/Applications/Quillium.app/Contents/MacOS"),
         });
 
         expect(result).toEqual({ status: "ready" });
-        expect(downloadAndInstall).toHaveBeenCalledTimes(1);
+        expect(install).toHaveBeenCalledTimes(1);
     });
 
     it("relaunches a previously installed update without checking again", async () => {
         const checkForUpdate = vi.fn();
         const relaunchApp = vi.fn(async () => {});
         const result = await performUpdateInstall({
+            prepareInstall: vi.fn(async () => "attempt"),
+            cancelInstall: vi.fn(async () => {}),
             ready: true,
             checkForUpdate,
             relaunchApp,
@@ -53,6 +122,8 @@ describe("performUpdateInstall", () => {
 
     it("reports when an advertised update is no longer available", async () => {
         const result = await performUpdateInstall({
+            prepareInstall: vi.fn(async () => "attempt"),
+            cancelInstall: vi.fn(async () => {}),
             ready: false,
             checkForUpdate: vi.fn(async () => null),
             relaunchApp: vi.fn(),
@@ -63,10 +134,12 @@ describe("performUpdateInstall", () => {
     });
 
     it("does not block installation when executable location detection is unavailable", async () => {
-        const downloadAndInstall = vi.fn(async () => {});
+        const install = vi.fn(async () => {});
         const result = await performUpdateInstall({
+            prepareInstall: vi.fn(async () => "attempt"),
+            cancelInstall: vi.fn(async () => {}),
             ready: false,
-            checkForUpdate: vi.fn(async () => ({ downloadAndInstall })),
+            checkForUpdate: vi.fn(async () => ({ download: vi.fn(async () => {}), install })),
             relaunchApp: vi.fn(),
             getExecutableDir: vi.fn(async () => {
                 throw new Error("path API unavailable");
@@ -74,14 +147,17 @@ describe("performUpdateInstall", () => {
         });
 
         expect(result).toEqual({ status: "ready" });
-        expect(downloadAndInstall).toHaveBeenCalledTimes(1);
+        expect(install).toHaveBeenCalledTimes(1);
     });
 
     it("returns an actionable failure instead of throwing install errors", async () => {
         const result = await performUpdateInstall({
+            prepareInstall: vi.fn(async () => "attempt"),
+            cancelInstall: vi.fn(async () => {}),
             ready: false,
             checkForUpdate: vi.fn(async () => ({
-                downloadAndInstall: vi.fn(async () => {
+                download: vi.fn(async () => {}),
+                install: vi.fn(async () => {
                     throw new Error("Cross-device link while moving current app");
                 }),
             })),

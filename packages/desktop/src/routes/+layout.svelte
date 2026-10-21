@@ -8,7 +8,7 @@
 -->
 <script>
 import "../app.css";
-import { onNavigate } from "$app/navigation";
+import { beforeNavigate, onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 import { logAppEvent } from "$lib/appLog";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
@@ -16,6 +16,10 @@ import { novelNovemberEnabled, startFeatureFlagSync } from "$lib/featureFlags.sv
 import posthog from "$lib/posthog";
 import { editorView, errorBanner } from "$lib/stores";
 import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
+import FrontendUpdateBanner from "$lib/updater/FrontendUpdateBanner.svelte";
+import { markLocalStartupFailed } from "$lib/updater/startup";
+import { startUpdateLifecycle } from "$lib/updater/lifecycle";
+import { restartIsPending, restartPending } from "$lib/updater/restartState";
 import {
     setWritingReminderFeatureEnabled,
     startWritingReminderService,
@@ -33,6 +37,11 @@ const { children } = $props();
 let appLogsOpen = $state(false);
 
 $effect(() => setWritingReminderFeatureEnabled($novelNovemberEnabled));
+
+onMount(startUpdateLifecycle);
+beforeNavigate((navigation) => {
+    if (restartIsPending()) navigation.cancel();
+});
 
 onMount(() => {
     let destroyed = false;
@@ -82,6 +91,12 @@ onNavigate((navigation) => {
 
 <!-- Banner lives outside the boundary so it survives component tree errors -->
 <ErrorBanner />
+<FrontendUpdateBanner />
+{#if $restartPending}
+    <div class="fixed inset-0 z-[1000] cursor-wait bg-white/20" role="status" aria-live="polite">
+        <div class="absolute bottom-4 right-4 rounded-xl bg-white px-4 py-3 text-sm shadow-xl">Saving your writing before restarting…</div>
+    </div>
+{/if}
 <Toaster position="bottom-right" />
 
 <!-- Logs viewer also outside the boundary: it must stay reachable when a
@@ -98,6 +113,7 @@ onNavigate((navigation) => {
 
 <svelte:boundary
     onerror={(error) => {
+        markLocalStartupFailed();
         saveEmergencyBackup(`Svelte component error: ${error instanceof Error ? error.message : String(error)}`);
         saveEmergencySnapshot("Before crash (auto)");
         const hasCrashBackup = Boolean(readBackup("crash"));
@@ -120,7 +136,9 @@ onNavigate((navigation) => {
         posthog.captureException(err);
     }}
 >
-    {@render children()}
+    <div class="contents" inert={$restartPending}>
+        {@render children()}
+    </div>
 </svelte:boundary>
 
 <style>

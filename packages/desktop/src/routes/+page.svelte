@@ -20,7 +20,6 @@
 -->
 <script lang="ts">
 import { page } from "$app/state";
-import Sidebar from "$lib/sidebar/Sidebar.svelte";
 import { logAppEvent } from "$lib/appLog";
 import {
     getConnectionState,
@@ -56,6 +55,7 @@ import { FOCUS_CONTROLS_HIDE_DELAY_MS, isFocusModeShortcut } from "$lib/focusMod
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import { appSettings, updateSettings } from "$lib/settings.svelte";
+import Sidebar from "$lib/sidebar/Sidebar.svelte";
 import {
     currentDocumentId,
     editorView,
@@ -66,11 +66,12 @@ import {
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { cancelNativeInstall, prepareNativeInstall, restartForUpdate } from "$lib/updater/lifecycle";
+import { nativeUpdateVisible } from "$lib/updater/visibility";
 import { invoke } from "@tauri-apps/api/core";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import { onMount } from "svelte";
 
@@ -126,6 +127,10 @@ let showChangelog = $state(false);
 let licensesOpen = $state(false);
 let changelogEntry = $state<{ date: string; content: string; version: string } | null>(null);
 let updateAvailable = $state(false);
+$effect(() => {
+    nativeUpdateVisible.set(updateAvailable);
+    return () => nativeUpdateVisible.set(false);
+});
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
@@ -377,7 +382,9 @@ async function installUpdate() {
     const result = await performUpdateInstall({
         ready: wasReady,
         checkForUpdate: check,
-        relaunchApp: relaunch,
+        relaunchApp: restartForUpdate,
+        prepareInstall: prepareNativeInstall,
+        cancelInstall: cancelNativeInstall,
         getExecutableDir: executableDir,
     });
 

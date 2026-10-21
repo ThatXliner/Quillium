@@ -3,6 +3,7 @@ import { editorialTargetBookmarkField, editorialTargetViewTracker } from "$lib/a
 import { collabCompartment } from "$lib/collab";
 import { appEventBus } from "$lib/events/appEventBus";
 import { appSettings } from "$lib/settings.svelte";
+import { restartMutationFilter } from "$lib/updater/editorFreeze";
 /**
  * extensions.ts — Assembles the full CodeMirror 6 extension stack.
  *
@@ -138,6 +139,7 @@ export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
     const persistHistory = options?.persistHistory ?? true;
     return [
+        restartMutationFilter,
         highlightSpecialChars(),
         // Read-only previews and nested editors omit history entirely. Mark
         // them non-persistent too so event replay never attempts an undo/redo

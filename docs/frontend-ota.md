@@ -1,9 +1,42 @@
-# Frontend OTA evaluation
+# Frontend OTA
 
-[Issue #454](https://github.com/ThatXliner/Quillium/issues/454) explores a
-standalone Tauri v2 plugin for frontend updates. This is an evaluation and
-proposed pilot contract, checked on October 20, 2026. Production integration,
-a separate repository, and package publication remain future work.
+[Issue #454](https://github.com/ThatXliner/Quillium/issues/454) now has a local
+implementation using a hardened, vendored Tauri v2 plugin. Public desktop builds
+can download signed frontend assets, stage them for a full restart, and recover
+after two launches that fail local readiness. The native binary stays unchanged.
+
+The implementation is in [the vendored crate](../crates/tauri-plugin-hot-update/UPSTREAM.md),
+[the native adapter](../packages/desktop/src-tauri/src/ota.rs), and
+[the release runbook](../packages/desktop/scripts/frontend-ota-release.md).
+A dedicated public key and feed are baked into the first supporting native
+release. Builds without that configuration, MAS builds, and mobile builds keep
+using their embedded frontend. No production update has been published by this
+work. A separate plugin repository and package publication remain future work.
+
+The manifest binds the application, channel, persisted format, exact native
+version and source revision. Its signature covers the archive URL, digest and
+size. Installed frontend versions are ordered only within that native identity.
+Corrupt initialized state disables OTA and preserves the evidence. Assets never
+mix embedded and downloaded files during one process. Native and frontend update
+restarts require every window to save. An active collaboration session vetoes
+restart because local persistence cannot prove remote writes have drained.
+
+The reproducible macOS packaged harness is:
+
+```sh
+bun packages/desktop/scripts/verify-frontend-ota.mjs
+```
+
+It uses disposable signing keys, an isolated app identifier and data directory,
+a local feed, and a debug `.app` with the development automation bridge. It does
+not publish a release. Windows and Linux packaged recovery and power-loss
+durability still require platform verification before production rollout.
+
+## Original evaluation, October 20, 2026
+
+The remainder records the unmodified upstream sources and the original probes.
+Their limitations explain the local patches; they are not claims about the
+patched implementation above.
 
 ## Recommendation
 

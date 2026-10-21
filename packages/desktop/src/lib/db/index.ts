@@ -6,7 +6,7 @@
  * `invoke()` calls so the rest of the app never imports
  * @tauri-apps/plugin-sql directly.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invokeDatabase as invoke } from "./invoke";
 import type {
     AppendEventResult,
     DocEventRecord,

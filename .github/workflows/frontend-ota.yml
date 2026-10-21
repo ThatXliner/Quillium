@@ -1,0 +1,173 @@
+name: Frontend OTA
+run-name: Frontend ${{ inputs.frontend_version }} for ${{ inputs.native_tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact frontend commit already merged into protected main
+        required: true
+        type: string
+      native_tag:
+        description: Installed public native release tag (vX.Y.Z)
+        required: true
+        type: string
+      native_sha:
+        description: Exact source commit baked into that native release
+        required: true
+        type: string
+      frontend_version:
+        description: Increasing frontend x.y.z version within this native base
+        required: true
+        type: string
+      publish:
+        description: Publish signed artifacts after the dry run checks
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ota-${{ inputs.native_tag }}-stable
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require protected default branch execution
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const branch = context.payload.repository.default_branch;
+            if (branch !== 'main' || context.ref !== `refs/heads/${branch}`) {
+              throw new Error('Run frontend OTA from the protected main branch');
+            }
+            const { data } = await github.rest.repos.getBranch({ ...context.repo, branch });
+            if (!data.protected) throw new Error('main must have branch protection or a ruleset');
+            const { source_sha, native_sha } = context.payload.inputs;
+            if (![source_sha, native_sha].every(sha => /^[0-9a-f]{40}$/.test(sha))) {
+              throw new Error('Full lowercase source and native commit SHAs are required');
+            }
+
+      - name: Check out release policy from main
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out frontend source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Validate native base and presentation-only changes
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          NATIVE_TAG: ${{ inputs.native_tag }}
+          NATIVE_SHA: ${{ inputs.native_sha }}
+          FRONTEND_VERSION: ${{ inputs.frontend_version }}
+        run: |
+          bun packages/desktop/scripts/frontend-ota-check.mjs
+          bun packages/desktop/scripts/frontend-ota.mjs validate \
+            --repo candidate --source-sha "$SOURCE_SHA" \
+            --native-tag "$NATIVE_TAG" --native-sha "$NATIVE_SHA" \
+            --version "$FRONTEND_VERSION" --output identity.json
+
+      - name: Install frontend dependencies
+        working-directory: candidate
+        run: bun ci
+
+      - name: Check frontend consumers
+        working-directory: candidate
+        run: |
+          bun run check:all
+          bun run desktop:test:run
+          bun run share:test:run
+
+      - name: Build frontend assets
+        working-directory: candidate
+        env:
+          QUILLIUM_FRONTEND_VERSION: ${{ inputs.frontend_version }}
+          PUBLIC_POSTHOG_KEY: ${{ vars.PUBLIC_POSTHOG_KEY }}
+          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
+          PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          PUBLIC_SUPABASE_URL: ${{ vars.PUBLIC_SUPABASE_URL }}
+          PUBLIC_RELAY_URL: ${{ vars.PUBLIC_RELAY_URL }}
+        run: bun run desktop:build
+
+      - name: Install signing CLI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify updater recovery and build the signing tool
+        run: |
+          cargo test --locked --manifest-path crates/tauri-plugin-hot-update/Cargo.toml --features cli
+          cargo build --locked --manifest-path crates/tauri-plugin-hot-update/Cargo.toml --features cli --bin hot-update-sign
+
+      - name: Sign and verify release artifacts
+        env:
+          FRONTEND_OTA_SIGNING_KEY: ${{ secrets.FRONTEND_OTA_SIGNING_KEY }}
+          HOT_UPDATE_KEY_PASSWORD: ${{ secrets.FRONTEND_OTA_SIGNING_KEY_PASSWORD }}
+          FRONTEND_OTA_PUBLIC_KEY: ${{ vars.FRONTEND_OTA_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$FRONTEND_OTA_SIGNING_KEY"
+          test -n "$FRONTEND_OTA_PUBLIC_KEY"
+          umask 077
+          ota_key="$RUNNER_TEMP/frontend-ota.key"
+          ota_pub="$RUNNER_TEMP/frontend-ota.pub"
+          trap 'rm -f "$ota_key" "$ota_pub"' EXIT
+          printf '%s\n' "$FRONTEND_OTA_SIGNING_KEY" > "$ota_key"
+          printf '%s\n' "$FRONTEND_OTA_PUBLIC_KEY" > "$ota_pub"
+          crates/tauri-plugin-hot-update/target/debug/hot-update-sign \
+            --dist candidate/packages/desktop/build \
+            --version "$(jq -r .version identity.json)" \
+            --min-shell "$(jq -r .nativeVersion identity.json)" \
+            --base-version "$(jq -r .nativeVersion identity.json)" \
+            --native-revision "$(jq -r .nativeSha identity.json)" \
+            --application-id com.bryanhu.quillium --channel stable \
+            --state-format quillium-persisted-v1 \
+            --key "$ota_key" --public-key "$ota_pub" \
+            --base-url "$(jq -r .baseUrl identity.json)" --out frontend-ota
+          cp identity.json frontend-ota/identity.json
+
+      - name: Keep signed artifacts for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ota-${{ inputs.native_tag }}-${{ inputs.frontend_version }}
+          path: frontend-ota/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    if: ${{ inputs.publish && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: frontend-ota
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-ota-${{ inputs.native_tag }}-${{ inputs.frontend_version }}
+          path: frontend-ota
+      - name: Publish immutable archive before replacing signed feed
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_PAT }}
+        run: bun packages/desktop/scripts/frontend-ota.mjs publish --dir frontend-ota --identity frontend-ota/identity.json
