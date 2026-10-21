@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/target
+**/.svelte-kit
+**/.vercel
+**/dist
+**/build
+**/coverage
+**/.env
+**/.env.*
+**/.tools
+**/__pycache__

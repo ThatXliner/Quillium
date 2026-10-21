@@ -157,6 +157,20 @@ into `dist/index.js` with Node and esbuild. The production runtime uses Node
 22.23.4 or a newer patched release. Its Docker build copies `packages/share/src`
 to resolve that workspace dependency.
 
+Until a stable Bun release includes the eMudhra CA fix, Docker and release CI
+bootstrap the verified `1.4.4-canary.1+963452075` installer with pinned archive
+SHA256 values. Node downloads and verifies the archive; certificate probes gate
+its use. A changed or unavailable canary archive fails the build and requires a
+reviewed pin update. The production relay runs patched Node, without Bun.
+
+For local dependency work during this incident, use the same verified installer:
+
+```bash
+node scripts/install-secure-bun.mjs "$PWD/.tools/secure-bun"
+export PATH="$PWD/.tools/secure-bun:$PATH"
+bun install --frozen-lockfile
+```
+
 Fly deploys the relay from the monorepo root so `packages/relay/Dockerfile` can
 install the filtered workspace. Run Fly commands from the root and keep
 `packages/relay/fly.toml` pointed at `packages/relay/Dockerfile`.

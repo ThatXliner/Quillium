@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "node ../../scripts/install-secure-bun.mjs /tmp/quillium-secure-bun && /tmp/quillium-secure-bun/bun install --cwd ../.. --frozen-lockfile",
+  "buildCommand": "npm run build"
+}

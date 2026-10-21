@@ -20,3 +20,5 @@ tests/e2e/screenshots/
 .superpowers/
 packages/desktop/src-tauri/embedded.provisionprofile
 .planning/
+
+/.tools/
