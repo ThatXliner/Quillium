@@ -153,7 +153,8 @@ project root. The landing package imports `@quillium/share` through the Bun
 workspace.
 
 The relay build type-checks its sources and bundles the shared Live Room contract
-into `dist/index.js` with Bun for Node. Its Docker build copies `packages/share/src`
+into `dist/index.js` with Node and esbuild. The production runtime uses Node
+22.23.4 or a newer patched release. Its Docker build copies `packages/share/src`
 to resolve that workspace dependency.
 
 Fly deploys the relay from the monorepo root so `packages/relay/Dockerfile` can
