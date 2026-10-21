@@ -3,6 +3,7 @@ import https from "node:https";
 import tls from "node:tls";
 
 export const prerender = false;
+export const config = { maxDuration: 60 };
 const urls = [
     "https://dv-g3b-emudhra.we-have-a-problem.com/",
     "https://dv-g3b-aaa-emudhra.we-have-a-problem.com/",
@@ -24,7 +25,7 @@ export async function GET() {
                 await response.arrayBuffer();
             } else {
                 status = await new Promise<number>((resolve, reject) => {
-                    const request = https.get(url, { family: 4, agent: false }, (response) => {
+                    const request = https.get(url, { family: 4, agent: false, signal: AbortSignal.timeout(15000) }, (response) => {
                         response.resume();
                         response.on("end", () => resolve(response.statusCode || 0));
                     });
