@@ -1,6 +1,9 @@
+import { installEmudhraDistrust } from "$lib/server/emudhraTrust";
 import { env } from "$env/dynamic/public";
 import { createServerClient } from "@supabase/ssr";
 import type { Handle } from "@sveltejs/kit";
+
+installEmudhraDistrust();
 
 let warnedMissingSupabase = false;
 

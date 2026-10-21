@@ -153,8 +153,23 @@ project root. The landing package imports `@quillium/share` through the Bun
 workspace.
 
 The relay build type-checks its sources and bundles the shared Live Room contract
-into `dist/index.js` with Bun for Node. Its Docker build copies `packages/share/src`
+into `dist/index.js` with Node and esbuild. The production runtime uses Node
+22.23.4 or a newer patched release. Its Docker build copies `packages/share/src`
 to resolve that workspace dependency.
+
+Until a stable Bun release includes the eMudhra CA fix, Docker and release CI
+bootstrap the verified `1.4.4-canary.1+963452075` installer with pinned archive
+SHA256 values. Node downloads and verifies the archive; certificate probes gate
+its use. A changed or unavailable canary archive fails the build and requires a
+reviewed pin update. The production relay runs patched Node, without Bun.
+
+For local dependency work during this incident, use the same verified installer:
+
+```bash
+node scripts/install-secure-bun.mjs "$PWD/.tools/secure-bun"
+export PATH="$PWD/.tools/secure-bun:$PATH"
+bun install --frozen-lockfile
+```
 
 Fly deploys the relay from the monorepo root so `packages/relay/Dockerfile` can
 install the filtered workspace. Run Fly commands from the root and keep
@@ -239,3 +254,18 @@ bun run relay:build
 
 Smoke the relay locally with `/health` when relay code, Docker, Fly config, or
 environment handling changes.
+
+### Security runtime verification
+
+The Node bootstrap and emergency Bun canary installer authenticate upstream
+archives with pinned SHA256 values and assert their exact runtime versions. The
+canary download URL is mutable; a new archive fails the hash check until reviewed.
+The relay production image runs Node 22.23.4 and contains no Bun binary.
+
+Run `node scripts/check-bun-ca-trust.mjs` and the same script with the verified
+Bun executable during security verification. Both incident hosts must fail
+certificate validation through native fetch and node:https, and example.com must
+succeed. Network timeouts are inconclusive. These external probes are separate
+from ordinary dependency installation so a diagnostic host outage cannot block
+builds. The landing server also removes all four affected trust roots at startup
+while the hosting provider rolls out its patched Node runtime.
