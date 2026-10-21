@@ -64,13 +64,14 @@ async fn recovery_keeps_previous_bundle_and_suppresses_failed_hash_until_state_c
         downloads
     );
 
-    // Characterize the limitation: corrupt state resets both the watermark and blacklist.
     fs::write(fixture.root.join("state.json"), "{").unwrap();
     let recovered = boot(&fixture.root, "1.0.0");
     assert_eq!(
         recovered.current_bundle().unwrap().source,
         BundleSource::Embedded
     );
+    assert_eq!(fixture.state()["failed"], serde_json::json!([]));
+    assert_eq!(fixture.state()["maxVersionSeen"], "1.0.0");
     assert!(matches!(
         download(&recovered, &fixture).await,
         UpdateOutcome::Staged { .. }
@@ -79,15 +80,29 @@ async fn recovery_keeps_previous_bundle_and_suppresses_failed_hash_until_state_c
 
 #[tokio::test]
 async fn stalled_body_outlives_the_thirty_second_connection_timeout() {
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader, ErrorKind, Write};
     use std::net::TcpListener;
     use std::time::Duration;
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}/manifest.json", listener.local_addr().unwrap());
     let (release, wait) = std::sync::mpsc::channel();
     let server = std::thread::spawn(move || {
-        let (mut socket, _) = listener.accept().unwrap();
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                    if wait.recv_timeout(Duration::from_millis(10))
+                        != Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                    {
+                        return;
+                    }
+                }
+                Err(error) => panic!("test server could not accept a connection: {error}"),
+            }
+        };
+        socket.set_nonblocking(false).unwrap();
         socket
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();

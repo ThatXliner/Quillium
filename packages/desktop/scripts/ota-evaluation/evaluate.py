@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run pinned upstream OTA tests and Quillium probes outside the app workspace."""
+"""evaluate.py runs pinned upstream OTA suites and Quillium probes outside the workspace."""
 
 import argparse
 import hashlib
@@ -7,6 +7,7 @@ import io
 import json
 import os
 import platform
+import signal
 import subprocess
 import tarfile
 import tempfile
@@ -15,6 +16,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+PROCESS_TIMEOUT_SECONDS = 30 * 60
 DEVELOPMENT = "d102eb1a2808268f561a77db6ab293abdc70b69e"
 CANDIDATES = {
     "hot-update": (
@@ -36,20 +38,36 @@ CANDIDATES = {
 
 
 def run(command, cwd, log, env):
-    """Keep complete output on disk and return a failing status on timeout."""
     print(f"{cwd.name}: {' '.join(command)} -> {log}", flush=True)
     with log.open("w") as output:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=os.name == "posix",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
         try:
-            return subprocess.run(
-                command,
-                cwd=cwd,
-                env=env,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-                timeout=1800,
-                check=False,
-            ).returncode
-        except subprocess.TimeoutExpired:
+            return process.wait(timeout=PROCESS_TIMEOUT_SECONDS)
+        except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    check=True,
+                )
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            process.wait()
+            if isinstance(error, KeyboardInterrupt):
+                raise
             output.write("\nEvaluation exceeded the 30-minute process limit.\n")
             return 124
 
@@ -68,6 +86,8 @@ def prepare(name, output):
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as source:
         source.extractall(destination, filter="data")
     (root,) = destination.iterdir()
+    if name == "development":
+        (root / "Cargo.lock").write_bytes((HERE / "development.Cargo.lock").read_bytes())
     (root / "src/quillium_probe.rs").write_text(
         "\n".join((HERE / probe).read_text() for probe in probes)
     )
@@ -100,15 +120,7 @@ def main():
         result["candidates"][name] = entry
         try:
             root = prepare(name, output)
-            # Published hot-update includes a lock; other sources need resolution.
-            # Save that lock with the evidence so subsequent tests use the same graph.
             lock = root / "Cargo.lock"
-            if not lock.exists():
-                status = run(
-                    ["cargo", "generate-lockfile"], root, output / f"{name}-resolve.log", env
-                )
-                if status:
-                    raise RuntimeError(f"dependency resolution exited {status}")
             entry["lock_sha256"] = hashlib.sha256(lock.read_bytes()).hexdigest()
             entry["exit_code"] = run(
                 ["cargo", "test", "--locked", "--lib", "--", "--test-threads=1"],

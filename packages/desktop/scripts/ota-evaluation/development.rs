@@ -19,7 +19,10 @@ async fn development_rechecks_staged_base_after_native_upgrade() {
 async fn development_rearms_trial_despite_native_upgrade_past_base() {
     let fixture = Fixture::new();
     fixture.publish_with_base("1.1.0", "1.0.0", Some("1.0.0"));
-    download(&boot(&fixture.root, "1.0.0"), &fixture).await;
+    assert!(matches!(
+        download(&boot(&fixture.root, "1.0.0"), &fixture).await,
+        UpdateOutcome::Staged { .. }
+    ));
     boot(&fixture.root, "1.0.0");
     let upgraded = boot(&fixture.root, "1.0.1");
     assert_eq!(upgraded.current_bundle().unwrap().source, BundleSource::Ota);
@@ -31,7 +34,10 @@ async fn development_rearms_trial_despite_native_upgrade_past_base() {
 async fn development_keeps_committed_bundle_despite_native_upgrade_past_base() {
     let fixture = Fixture::new();
     fixture.publish_with_base("1.1.0", "1.0.0", Some("1.0.0"));
-    download(&boot(&fixture.root, "1.0.0"), &fixture).await;
+    assert!(matches!(
+        download(&boot(&fixture.root, "1.0.0"), &fixture).await,
+        UpdateOutcome::Staged { .. }
+    ));
     boot(&fixture.root, "1.0.0").notify_app_ready().unwrap();
     let upgraded = boot(&fixture.root, "1.0.1");
     assert_eq!(upgraded.current_bundle().unwrap().source, BundleSource::Ota);

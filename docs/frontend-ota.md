@@ -30,7 +30,7 @@ long-term maintenance or adoption by packaged applications.
 |---|---|---|
 | `tauri-plugin-hot-update` | [Published 0.1.1](https://crates.io/crates/tauri-plugin-hot-update/0.1.1), [development d102eb1](https://github.com/yanqianglu/tauri-plugin-hot-update/tree/d102eb1a2808268f561a77db6ab293abdc70b69e) | Preferred starting point. Verification, cold-launch staging, two-trial recovery, and failed-hash suppression exist. Compatibility and request deadlines need work. |
 | `tauri-plugin-hotswap` | [Published 0.0.4](https://crates.io/crates/tauri-plugin-hotswap/0.0.4), [development d68fffa](https://github.com/denniskribl/tauri-plugin-hotswap/tree/d68fffa792cf3fe172cde9d41699d71ffbb8f463) | More changes are needed for cold launches, signed compatibility metadata, and failed-release suppression. |
-| CrabNebula `tauri-plugin-ota-updater` | [Published 2.1.0](https://crates.io/crates/tauri-plugin-ota-updater/2.1.0), [integration documentation](https://docs.crabnebula.dev/plugins/over-the-air-updates/) | Source inspection found signature verification but no startup-success acknowledgement or recovery from a correctly signed crashing frontend. The published manifest declares `PolyForm-Noncommercial-1.0.0`. Licensing needs clarification before reuse. The repository API returned 404. |
+| CrabNebula `tauri-plugin-ota-updater` | [Published 2.1.0](https://crates.io/crates/tauri-plugin-ota-updater/2.1.0), [integration documentation](https://docs.crabnebula.dev/plugins/over-the-air-updates/) | Source inspection found signature verification but no startup-success acknowledgement or recovery from a correctly signed crashing frontend. The published manifest declares `PolyForm-Noncommercial-1.0.0`. Licensing needs clarification before reuse. The [repository API](https://api.github.com/repos/crabnebula-dev/tauri-plugin-ota-updater) returned 404. |
 
 The development changelog labels hot-update 0.2.0 and an unreleased
 `baseVersion` addition. The latest published crate remains 0.1.1. A changelog
@@ -46,6 +46,9 @@ to ship. Results are local macOS library evidence; Windows, Linux, and packaged
 WebViews remain unverified.
 
 The October 20 run used macOS arm64, Rust 1.95.0, and default crate features.
+The runner retains the published crates' lockfiles and supplies the checked-in
+[development lockfile](../packages/desktop/scripts/ota-evaluation/development.Cargo.lock)
+for the development head.
 All suites passed with the behavior described below.
 
 | Source | Upstream tests | Added probes | Total passed |

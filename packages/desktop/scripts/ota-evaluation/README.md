@@ -18,7 +18,7 @@ python3 packages/desktop/scripts/ota-evaluation/evaluate.py
 The runner prints a temporary output directory and each command's log path.
 First compilation downloads Rust dependencies and can take several minutes.
 Each hot-update suite also holds an HTTP response open for 32 seconds to test
-the published client's connection-only timeout.
+the client's connection-only timeout.
 
 To run one candidate and retain results at a chosen location, run:
 
@@ -33,11 +33,20 @@ Cargo target directory. Each run leaves sources, Cargo lockfiles, complete
 test logs, and `results.json` with source checksums, toolchain, platform, and
 exit codes. Remove the output directory when you no longer need those files.
 
+Each Cargo command has a 30-minute deadline. A timeout or keyboard interrupt
+terminates its process tree before the runner continues or exits.
+
+To check the runner's command output and timeout cleanup without compiling Rust, run:
+
+```bash
+python3 -B -m unittest discover -s packages/desktop/scripts/ota-evaluation -p 'test_*.py'
+```
+
 Sources are pinned by archive SHA-256. The runner adds test modules only in
-the temporary copies. Published hot-update includes its own Cargo lockfile.
-The other candidates resolve dependencies on the first run, so save the
-generated lockfiles with any reported results. To repeat a suite with that
-same dependency graph, run from its extracted source directory:
+the temporary copies. Both published crates include their own Cargo lockfiles.
+The development head uses the checked-in `development.Cargo.lock` from the
+October 20 evaluation. Every suite runs with `--locked`. To repeat a suite with
+that same dependency graph, run from its extracted source directory:
 
 ```bash
 cargo test --locked --lib -- --test-threads=1
