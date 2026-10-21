@@ -111,10 +111,26 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Resolve pinned updater dependency
+        id: ota-plugin
+        env:
+          NATIVE_SHA: ${{ inputs.native_sha }}
+        run: bun packages/desktop/scripts/frontend-ota-plugin.mjs --native-sha "$NATIVE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned updater
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.ota-plugin.outputs.repository }}
+          ref: ${{ steps.ota-plugin.outputs.revision }}
+          path: ota-plugin
+          persist-credentials: false
+
       - name: Verify updater recovery and build the signing tool
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/frontend-ota-plugin-target
         run: |
-          cargo test --locked --manifest-path crates/tauri-plugin-hot-update/Cargo.toml --features cli
-          cargo build --locked --manifest-path crates/tauri-plugin-hot-update/Cargo.toml --features cli --bin hot-update-sign
+          cargo test --locked --manifest-path ota-plugin/Cargo.toml --features cli
+          cargo build --locked --manifest-path ota-plugin/Cargo.toml --features cli --bin hot-update-sign
 
       - name: Sign and verify release artifacts
         env:
@@ -131,7 +147,7 @@ jobs:
           trap 'rm -f "$ota_key" "$ota_pub"' EXIT
           printf '%s\n' "$FRONTEND_OTA_SIGNING_KEY" > "$ota_key"
           printf '%s\n' "$FRONTEND_OTA_PUBLIC_KEY" > "$ota_pub"
-          crates/tauri-plugin-hot-update/target/debug/hot-update-sign \
+          "$RUNNER_TEMP/frontend-ota-plugin-target/debug/hot-update-sign" \
             --dist candidate/packages/desktop/build \
             --version "$(jq -r .version identity.json)" \
             --min-shell "$(jq -r .nativeVersion identity.json)" \

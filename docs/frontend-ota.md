@@ -1,17 +1,21 @@
 # Frontend OTA
 
 [Issue #454](https://github.com/ThatXliner/Quillium/issues/454) now has a local
-implementation using a hardened, vendored Tauri v2 plugin. Public desktop builds
+implementation using a hardened Tauri v2 plugin from a commit-pinned fork. Public desktop builds
 can download signed frontend assets, stage them for a full restart, and recover
 after two launches that fail local readiness. The native binary stays unchanged.
 
-The implementation is in [the vendored crate](../crates/tauri-plugin-hot-update/UPSTREAM.md),
+The implementation is in [the pinned plugin fork](https://github.com/ThatXliner/tauri-plugin-hot-update),
 [the native adapter](../packages/desktop/src-tauri/src/ota.rs), and
 [the release runbook](../packages/desktop/scripts/frontend-ota-release.md).
+The native [Cargo dependency](../packages/desktop/src-tauri/Cargo.toml) pins the
+fork to a full commit SHA. The portable fixes are proposed in [upstream PR #2](https://github.com/yanqianglu/tauri-plugin-hot-update/pull/2).
+No plugin source is copied into Quillium.
+
 A dedicated public key and feed are baked into the first supporting native
 release. Builds without that configuration, MAS builds, and mobile builds keep
 using their embedded frontend. No production update has been published by this
-work. A separate plugin repository and package publication remain future work.
+work. An independently published plugin package remains future work.
 
 The manifest binds the application, channel, persisted format, exact native
 version and source revision. Its signature covers the archive URL, digest and
@@ -35,7 +39,7 @@ durability still require platform verification before production rollout.
 ## Original evaluation, October 20, 2026
 
 The remainder records the unmodified upstream sources and the original probes.
-Their limitations explain the local patches; they are not claims about the
+Their limitations explain the fork patches; they are not claims about the
 patched implementation above.
 
 ## Recommendation

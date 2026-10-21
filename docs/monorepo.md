@@ -163,6 +163,18 @@ install the filtered workspace. Run Fly commands from the root and keep
 Supabase migrations stay in the root `supabase` directory. Do not create
 package-local schema sources.
 
+### Frontend OTA plugin dependency
+
+The desktop native Cargo manifest pins [the updater fork](https://github.com/ThatXliner/tauri-plugin-hot-update) to a full
+commit SHA. Plugin source, tests, and its release-signing CLI live in that fork.
+The native Cargo lockfile records the same Git source and revision.
+
+`frontend-ota-plugin.mjs` reads that dependency. Packaged verification checks out
+the current native pin. The release workflow resolves the pin from the targeted
+native source commit, then builds and tests that exact signer source. This keeps
+a later policy-branch dependency update from changing the signer for an older
+installed native release. Branch names and mutable tags are not accepted pins.
+
 ### Release Rust caches
 
 [Build Release](../.github/workflows/build.yml) receives `v*` and `mas-v*` tag

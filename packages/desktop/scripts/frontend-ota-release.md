@@ -4,6 +4,12 @@ Use this lane to deliver presentation fixes to a specific public desktop binary.
 The workflow builds static frontend assets, signs the manifest, and publishes the
 archive before replacing the stable feed. It does not build a native app.
 
+The updater and signing tool live in [the pinned fork](https://github.com/ThatXliner/tauri-plugin-hot-update). The native
+Cargo manifest is the source of the full revision. The workflow reads that pin
+from the targeted native release commit and checks out the same source to build
+the signer. Updating policy `main` does not change an older native release's
+signer dependency. The portable fixes are in [upstream PR #2](https://github.com/yanqianglu/tauri-plugin-hot-update/pull/2).
+
 ## Prepare the first native release
 
 1. Merge the OTA bootstrap and release tooling into protected `main`.

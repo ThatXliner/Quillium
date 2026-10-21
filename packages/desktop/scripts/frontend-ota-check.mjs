@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { configuredFrontendOtaPlugin, frontendOtaPluginSource } from "./frontend-ota-plugin.mjs";
 import {
     allowedPath,
     checkManifest,
@@ -12,6 +13,32 @@ import {
     releaseIdentity,
     validateSource,
 } from "./frontend-ota.mjs";
+
+const pluginRevision = "c".repeat(40);
+const pluginManifest = (dependency) =>
+    `[target.'cfg(not(target_os = "ios"))'.dependencies]\ntauri-plugin-hot-update = ${dependency}\n`;
+const pluginSource = `{ git = "https://github.com/example/hot-update.git", rev = "${pluginRevision}" }`;
+assert.deepEqual(frontendOtaPluginSource(pluginManifest(pluginSource)), {
+    url: "https://github.com/example/hot-update.git",
+    repository: "example/hot-update",
+    revision: pluginRevision,
+});
+for (const dependency of [
+    '{ path = "../../../local-plugin" }',
+    '{ git = "https://github.com/example/hot-update", branch = "main" }',
+    '{ git = "https://github.com/example/hot-update", rev = "abc123" }',
+    pluginSource.replace(" }", ', branch = "main" }'),
+    pluginSource.replace("https://github.com/", "https://token@github.com/"),
+])
+    assert.throws(() => frontendOtaPluginSource(pluginManifest(dependency)));
+assert.throws(() => frontendOtaPluginSource("[dependencies]\n"));
+assert.throws(() =>
+    frontendOtaPluginSource(
+        `${pluginManifest(pluginSource)}\n[dependencies]\ntauri-plugin-hot-update = ${pluginSource}\n`,
+    ),
+);
+const configuredPlugin = configuredFrontendOtaPlugin();
+assert.match(configuredPlugin.revision, /^[0-9a-f]{40}$/);
 
 const options = {
     sourceSha: "a".repeat(40),
@@ -32,7 +59,7 @@ for (const path of [
     assert(allowedPath(path), `Expected presentation lane to allow ${path}`);
 for (const path of [
     "packages/desktop/src-tauri/src/lib.rs",
-    "crates/tauri-plugin-hot-update/src/machine.rs",
+    "packages/desktop/scripts/frontend-ota-plugin.mjs",
     "packages/desktop/src-tauri/capabilities/default.json",
     "packages/desktop/src-tauri/tauri.conf.json",
     "packages/desktop/package.json",
@@ -143,6 +170,11 @@ try {
         JSON.stringify({ version: "0.25.3", identifier: "com.bryanhu.quillium" }),
     );
     await put("packages/desktop/src/lib/editor/replay.ts", "original codec");
+    await put("packages/desktop/src-tauri/Cargo.toml", pluginManifest(pluginSource));
+    await put(
+        "packages/desktop/scripts/frontend-ota-plugin.mjs",
+        await readFile(new URL("frontend-ota-plugin.mjs", import.meta.url), "utf8"),
+    );
     git(["add", "."]);
     git(["commit", "-m", "native base"]);
     const nativeSha = git(["rev-parse", "HEAD"]);
@@ -174,6 +206,25 @@ try {
         /replay\.ts/,
         "Renames must check the deleted protected path",
     );
+
+    const helper = join(repo, "packages/desktop/scripts/frontend-ota-plugin.mjs");
+    const sourceAtNative = () =>
+        execFileSync("bun", [helper, "--native-sha", nativeSha], {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+    const nativePlugin = sourceAtNative();
+    await put(
+        "packages/desktop/src-tauri/Cargo.toml",
+        pluginManifest(pluginSource.replace(pluginRevision, "d".repeat(40))),
+    );
+    assert.match(execFileSync("bun", [helper], { encoding: "utf8" }), /revision=d{40}/);
+    assert.equal(
+        sourceAtNative(),
+        nativePlugin,
+        "The signer must follow the installed native commit even after the policy checkout changes its pin",
+    );
+    assert.match(nativePlugin, /revision=c{40}/);
 
     const directory = join(fixture, "release");
     await mkdir(directory);
@@ -294,6 +345,23 @@ assert.equal(
     signing.env.HOT_UPDATE_KEY_PASSWORD,
     "${{ secrets.FRONTEND_OTA_SIGNING_KEY_PASSWORD }}",
 );
+const pluginResolution = workflow.jobs.build.steps.find(
+    (step) => step.name === "Resolve pinned updater dependency",
+);
+assert.match(pluginResolution.run, /--native-sha "\$NATIVE_SHA"/);
+assert.equal(pluginResolution.env.NATIVE_SHA, "${{ inputs.native_sha }}");
+const pluginCheckout = workflow.jobs.build.steps.find(
+    (step) => step.name === "Check out pinned updater",
+);
+assert.equal(pluginCheckout.with.repository, "${{ steps.ota-plugin.outputs.repository }}");
+assert.equal(pluginCheckout.with.ref, "${{ steps.ota-plugin.outputs.revision }}");
+assert.equal(pluginCheckout.with["persist-credentials"], false);
+const pluginBuild = workflow.jobs.build.steps.find(
+    (step) => step.name === "Verify updater recovery and build the signing tool",
+);
+assert.match(pluginBuild.run, /--locked --manifest-path ota-plugin\/Cargo.toml/);
+assert.equal(pluginBuild.env.CARGO_TARGET_DIR, "${{ runner.temp }}/frontend-ota-plugin-target");
+assert.match(signing.run, /\$RUNNER_TEMP\/frontend-ota-plugin-target\/debug\/hot-update-sign/);
 const nativeBuild = native.jobs["build-tauri"].steps.find((step) => step.name === "Build the app");
 assert.equal(
     nativeBuild.env.QUILLIUM_OTA_NATIVE_REVISION,

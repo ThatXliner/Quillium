@@ -1,7 +1,7 @@
 # Bind frontend updates to one native release and activate on cold launch
 
 Public desktop builds may load signed frontend assets without replacing the
-native binary. A vendored `tauri-plugin-hot-update` supplies acquisition,
+native binary. A commit-pinned `tauri-plugin-hot-update` fork supplies acquisition,
 verification, persisted trials, and recovery. Quillium owns local readiness,
 window coordination, and the presentation-only publication policy. MAS and
 mobile builds use their existing distribution paths.
@@ -37,3 +37,8 @@ path checks alone cannot prove semantic compatibility.
 See [the release runbook](../../packages/desktop/scripts/frontend-ota-release.md)
 and [evaluation evidence](../frontend-ota.md). Production rollout also requires
 packaged verification on every supported platform.
+
+The plugin source lives in [the fork](https://github.com/ThatXliner/tauri-plugin-hot-update); Quillium retains a Cargo Git
+dependency pinned to a full commit SHA. The signer is built from the plugin pin
+in the targeted native release, even after the policy branch moves to a newer
+pin. Portable fixes are proposed in [upstream PR #2](https://github.com/yanqianglu/tauri-plugin-hot-update/pull/2).

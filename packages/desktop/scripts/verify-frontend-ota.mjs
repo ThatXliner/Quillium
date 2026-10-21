@@ -5,16 +5,19 @@ import { cp, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { configuredFrontendOtaPlugin } from "./frontend-ota-plugin.mjs";
 
 // Disposable keys, app identifier, SQLite files, and WebKit storage isolate this run.
 assert.equal(process.platform, "darwin", "This packaged harness currently requires macOS");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const desktop = join(root, "packages/desktop");
 const evidence = await realpath(await mkdtemp(join(tmpdir(), "quillium-ota-packaged-")));
-const target = process.env.CARGO_TARGET_DIR ?? "/tmp/quillium-ota-454-results/target";
+const target = process.env.CARGO_TARGET_DIR ?? join(tmpdir(), "quillium-frontend-ota-tools-target");
 const nativeTarget =
     process.env.QUILLIUM_OTA_VERIFICATION_TARGET ?? join(desktop, "src-tauri/target");
-const crate = join(root, "crates/tauri-plugin-hot-update/Cargo.toml");
+const plugin = configuredFrontendOtaPlugin();
+const pluginDirectory = join(evidence, "ota-plugin");
+const crate = join(pluginDirectory, "Cargo.toml");
 const identifier = `com.bryanhu.quillium.ota-fixture-${Date.now()}`;
 const revision = "0123456789abcdef0123456789abcdef01234567";
 const checks = [];
@@ -44,6 +47,8 @@ async function until(read, accepts, label, timeout = 30000) {
     }
     throw new Error(`Timed out waiting for ${label}. Last value ${JSON.stringify(value)}`);
 }
+await run("git", ["clone", "--no-checkout", plugin.url, pluginDirectory]);
+await run("git", ["-C", pluginDirectory, "checkout", "--detach", plugin.revision]);
 await run(
     "cargo",
     [
@@ -433,7 +438,7 @@ try {
     );
     await writeFile(
         join(evidence, "results.json"),
-        JSON.stringify({ checks, binary, nativeSha256: originalHash }, null, 2),
+        JSON.stringify({ checks, binary, nativeSha256: originalHash, plugin }, null, 2),
     );
     console.log(`Evidence ${evidence}`);
 } finally {

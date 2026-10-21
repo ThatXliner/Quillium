@@ -71,7 +71,7 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync",
 # the hf-hub model download (bge-small-en-v1.5, fetched lazily at runtime
 # into the app data dir).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-hot-update = { path = "../../../crates/tauri-plugin-hot-update" }
+tauri-plugin-hot-update = { git = "https://github.com/ThatXliner/tauri-plugin-hot-update", rev = "037129ec3ee9b5a42f84d041f0f197a814b459f1" }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 fastembed = { version = "5.16", default-features = false, features = [

@@ -1,0 +1,38 @@
+{
+  "platform": "macOS arm64",
+  "nativeVersion": "0.25.3",
+  "distribution": "unsigned debug .app with mcp-bridge; isolated disposable profile",
+  "command": "bun packages/desktop/scripts/verify-frontend-ota.mjs",
+  "checks": [
+    "embedded source",
+    "native trust configured",
+    "secondary window opened after readiness",
+    "verified download stages",
+    "download leaves running source unchanged",
+    "new frontend is active",
+    "native reports OTA source",
+    "origin retained",
+    "WebKit storage retained",
+    "draft text retained",
+    "draft identity retained",
+    "pending main-window edit saved by restart barrier",
+    "pending secondary-window edit saved by restart barrier",
+    "broken signed candidate stages",
+    "first failed trial active offline",
+    "second failed trial active offline",
+    "offline recovery restores confirmed frontend",
+    "draft survives failed trials",
+    "native binary unchanged"
+  ],
+  "nativeSha256": "caca4e339b24ba271eabacecd78d192c69bad8df237aee1379c456d05c0ed347",
+  "plugin": {
+    "url": "https://github.com/ThatXliner/tauri-plugin-hot-update",
+    "repository": "ThatXliner/tauri-plugin-hot-update",
+    "revision": "037129ec3ee9b5a42f84d041f0f197a814b459f1"
+  },
+  "limits": [
+    "Windows and Linux packaged behavior is not verified",
+    "No production key, release, or OTA feed was published",
+    "No plugin package was published"
+  ]
+}

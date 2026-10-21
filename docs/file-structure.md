@@ -10,7 +10,6 @@ for the relationships between these pieces, read the
 |---|---|
 | [packages/desktop/src](../packages/desktop/src/) | Desktop SvelteKit app |
 | [packages/desktop/src-tauri/src](../packages/desktop/src-tauri/src/) | Rust commands and local SQLite storage |
-| [crates/tauri-plugin-hot-update](../crates/tauri-plugin-hot-update/) | Reusable signed frontend acquisition, trial activation, and recovery |
 | [packages/share/src](../packages/share/src/) | Shared annotation state, UI, and wire contracts |
 | [packages/landing/src](../packages/landing/src/) | Website, auth-link handling, and public preview routes |
 | [packages/relay/src](../packages/relay/src/) | Live Room WebSocket service |
@@ -92,7 +91,7 @@ Read [persistence](persistence.md) for content history and
 | Library and document search | [library](../packages/desktop/src/lib/library/), [db/search.rs](../packages/desktop/src-tauri/src/db/search.rs) | [Library](library.md), [search](search.md) |
 | Authorship playback and export | [provenance](../packages/desktop/src/lib/provenance/) | [Provenance](provenance.md) |
 | Preferences | [settings.svelte.ts](../packages/desktop/src/lib/settings.svelte.ts), [settings](../packages/desktop/src/lib/settings/) | [Settings](settings.md) |
-| Frontend OTA and coordinated update saves | [ota.rs](../packages/desktop/src-tauri/src/ota.rs), [updater](../packages/desktop/src/lib/updater/) | [Frontend OTA](frontend-ota.md) |
+| Frontend OTA and coordinated update saves | [ota.rs](../packages/desktop/src-tauri/src/ota.rs), [updater](../packages/desktop/src/lib/updater/), [external plugin](https://github.com/ThatXliner/tauri-plugin-hot-update) | [Frontend OTA](frontend-ota.md) |
 | Native commands and registration | [src-tauri/src/lib.rs](../packages/desktop/src-tauri/src/lib.rs) | [Native integration](native-integration.md) |
 | Analytics initialization and privacy | [posthog.ts](../packages/desktop/src/lib/posthog.ts), [hooks.client.ts](../packages/desktop/src/hooks.client.ts) | [PostHog events](posthog-events.md) |
 
