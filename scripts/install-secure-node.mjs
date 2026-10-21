@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const archives = {
     arm64: "f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9",
@@ -28,5 +27,4 @@ const executable = join(destination, "bin", "node");
 if (execFileSync(executable, ["--version"], { encoding: "utf8" }).trim() !== "v22.23.4") {
     throw new Error("Unexpected Node version");
 }
-execFileSync(executable, [fileURLToPath(new URL("check-bun-ca-trust.mjs", import.meta.url))], { stdio: "inherit" });
 console.log(`Verified Node 22.23.4 installed at ${executable}`);

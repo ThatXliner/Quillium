@@ -13,8 +13,6 @@ FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20b
 COPY --from=runtime-unpack /out/node /usr/local
 COPY --from=runtime-unpack /out/bun /usr/local/bin/bun
 RUN test "$(node --version)" = 'v22.23.4' && test "$(bun --revision)" = '1.4.4-canary.1+963452075'
-COPY scripts/check-bun-ca-trust.mjs /bootstrap/check-bun-ca-trust.mjs
-RUN bun /bootstrap/check-bun-ca-trust.mjs && node /bootstrap/check-bun-ca-trust.mjs
 
 WORKDIR /app
 COPY package.json bun.lock ./

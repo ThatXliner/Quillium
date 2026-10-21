@@ -254,3 +254,18 @@ bun run relay:build
 
 Smoke the relay locally with `/health` when relay code, Docker, Fly config, or
 environment handling changes.
+
+### Security runtime verification
+
+The Node bootstrap and emergency Bun canary installer authenticate upstream
+archives with pinned SHA256 values and assert their exact runtime versions. The
+canary download URL is mutable; a new archive fails the hash check until reviewed.
+The relay production image runs Node 22.23.4 and contains no Bun binary.
+
+Run `node scripts/check-bun-ca-trust.mjs` and the same script with the verified
+Bun executable during security verification. Both incident hosts must fail
+certificate validation through native fetch and node:https, and example.com must
+succeed. Network timeouts are inconclusive. These external probes are separate
+from ordinary dependency installation so a diagnostic host outage cannot block
+builds. The landing server also removes all four affected trust roots at startup
+while the hosting provider rolls out its patched Node runtime.

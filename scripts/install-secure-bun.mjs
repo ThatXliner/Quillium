@@ -38,7 +38,6 @@ if (!downloadOnly) {
     await chmod(executable, 0o755);
     const actualRevision = execFileSync(executable, ["--revision"], { encoding: "utf8" }).trim();
     if (actualRevision !== revision) throw new Error(`Unexpected Bun revision: ${actualRevision}`);
-    execFileSync(executable, [fileURLToPath(new URL("check-bun-ca-trust.mjs", import.meta.url))], { stdio: "inherit" });
     if (process.env.GITHUB_PATH) await writeFile(process.env.GITHUB_PATH, `${destination}\n`, { flag: "a" });
     console.log(`Verified Bun ${revision} installed at ${executable}`);
 }
