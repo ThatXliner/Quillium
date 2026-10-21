@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --noEmit && bun build src/index.ts --target=node --outdir=dist --sourcemap=external",
+    "build": "tsc --noEmit && node build.mjs",
     "start": "node dist/index.js",
     "test": "vitest",
     "test:run": "vitest run",
@@ -26,6 +26,7 @@
     "@types/ws": "^8.18.1",
     "tsx": "^4.19.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.4",
+    "esbuild": "^0.25.12"
   }
 }
