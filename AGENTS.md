@@ -18,6 +18,13 @@ SQLite; Omni adds Web Preview publishing and live collaboration.
   read [the monorepo guide](docs/monorepo.md).
 - For issues and specs, follow [issue-tracker guidance](docs/agents/issue-tracker.md).
 - For release notes or feature captures, follow [the changelog guide](docs/changelog.md).
+- For analytics changes, follow the
+  [PostHog skill](.agents/skills/posthog-integration-sveltekit/SKILL.md).
+- For documentation changes, update the owning guide and check its links,
+  commands, and claims against current source. Keep setup in the quickstart,
+  domain terms in CONTEXT.md, and resolved architecture decisions in the ADRs.
+- When editing a writer's draft through Quillium MCP, follow the
+  [MCP editing workflow](docs/mcp-workflows.md) for targets, retries, and readback.
 
 ## Rules that prevent expensive mistakes
 
@@ -36,6 +43,9 @@ SQLite; Omni adds Web Preview publishing and live collaboration.
   receives app capabilities; keep Tauri, analytics, auth, and app stores in adapters.
 - Draft content events and snapshots are draft-scoped. Document activity records
   structural changes. Keep those histories distinct.
+- Before leaving an editor or capturing a named snapshot, use the persistence
+  queue and propagate failures. A drained queue does not mean every write
+  succeeded. Read [persistence](docs/persistence.md) before changing save barriers.
 - Append SQLite migrations; preserve shipped migrations so existing databases upgrade.
 
 ## Commands

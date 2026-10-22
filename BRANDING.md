@@ -1,7 +1,8 @@
 # Quillium Brand Bible
 
-> A single reference for what Quillium is, how it looks, how it speaks, and
-> why — so every decision made on the product stays true to the vision.
+Use this guide for visual design and product copy. It records design intent;
+implementation details live in the linked components. Check current code before
+copying dimensions or colors into a new component.
 
 ---
 
@@ -16,10 +17,9 @@ editing tools.
 
 ### Who It's For
 
-Fiction and nonfiction writers doing sustained, serious creative work — novels,
-essays, memoirs, personal projects. Not students taking notes. Not teams
-managing tasks. Not productivity hackers. The writer who opens Quillium wants
-one thing: to get into flow and stay there.
+Quillium is for sustained writing, including novels, essays, memoirs, and college
+applications. Writing stays central. Task management and general note-taking do
+not define the interface.
 
 ### The Core Promise
 
@@ -105,8 +105,8 @@ validation, constructive input.
 |-------|-------|-------|
 | `feedback` | `green-500` | Active feedback icon |
 | `feedback-bg` | `green-50` | Feedback context backgrounds |
-| `suggestion-inactive` | `#f0fdf4` | Suggestion highlight (not selected) |
-| `suggestion-active` | `#dbf9e2` | Suggestion highlight (selected) |
+| Suggestion underline | `#22c55e` | Inactive suggestion |
+| Suggestion fill | `#dcfce7` | Active suggestion |
 
 #### Revision / AI Purple
 
@@ -119,8 +119,8 @@ Used for revision actions. Purple = transformation, craft, editing intent.
 
 #### Comment / Annotation Yellow
 
-Used for comment annotations — the one color that maps to a human action
-(not an AI writing action).
+Used for comment annotations, whether a writer or an AI request created them.
+Color identifies the annotation type, not its author.
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -200,14 +200,13 @@ legibility.
 
 | Property | Value |
 |----------|-------|
-| Document width | `816px` (fixed, centered) |
-| Document padding | `py-3 px-1` |
-| Document margin-top | `mt-12` |
-| Document shadow | `shadow-xl` |
-| Document radius | `rounded-lg` |
+| Width and spacing | Follow the responsive layout in `Editor.svelte` |
+| Text padding and indent | Preserve the CodeMirror content layout |
+| Radius | `rounded-lg` |
 
-The document card is the product. It should have presence — `shadow-xl`
-separates it from the background and establishes it as the primary surface.
+The document card remains visually distinct from the surrounding controls.
+Its responsive dimensions and shadow are defined in
+[Editor.svelte](packages/desktop/src/lib/editor/Editor.svelte).
 
 #### Panels & Sidebars
 
@@ -225,14 +224,14 @@ separates it from the background and establishes it as the primary surface.
    intentional — it signals that writing is the priority.
 2. **Consistent padding.** `p-4` is the standard panel unit. Deviate only
    when context clearly demands it (e.g., tight icon strips).
-3. **No gutters on the document.** The 816px document has side padding through
-   CodeMirror content padding, not outer margin compression.
+3. **Preserve text space.** Keep document padding in the editor layout and check
+   narrow viewports before adding surrounding controls.
 
 ---
 
 ### 3.4 Depth & Elevation
 
-Quillium uses a three-layer depth model. Nothing lives on the same Z-plane.
+Use depth to distinguish the document, panels, and overlays from the background.
 
 | Layer | What Lives Here | Shadow |
 |-------|-----------------|--------|
@@ -280,31 +279,21 @@ Glass recipe: `backdrop-blur-md bg-gray-300/70 border border-white/30`
 
 #### Glassmorphic Pill (AI Sidebar — Collapsed)
 
-The resting state of the AI sidebar. A vertical pill floating on the left edge
-of the screen. Icons only, no labels. Expands on click.
-
-```
-Pill:
-  width: 52px
-  height: 240px
-  radius: 100px
-  bg: gray-300/70, backdrop-blur-md
-  border: white/30
-  shadow: lg
-```
+The sidebar collapses to a vertical pill of icons and expands when a panel is
+selected. Its height follows the visible panels. Use
+[Sidebar.svelte](packages/desktop/src/lib/sidebar/Sidebar.svelte) for current
+sizing and [builtInPanels.ts](packages/desktop/src/lib/sidebar/builtInPanels.ts)
+for panel colors and labels.
 
 #### Expanded Panel
 
 The AI sidebar opens into a rounded panel with an icon strip, a title row, and
 a content area. The panel is resizable via drag handles.
 
-```
-Panel:
-  default: 320 × 520px
-  min: 240 × 400px
-  max: 600 × 800px
-  radius: 14px
-```
+Panels can provide their own preferred size. The sidebar clamps resizing to
+its limits and the viewport. Reuse
+[PanelResizeController](packages/desktop/src/lib/ai/panelResize.svelte.ts)
+instead of copying fixed sizes.
 
 #### Resizable Modals
 
@@ -321,16 +310,11 @@ keep their existing anchored layout.
 
 #### Annotation Card
 
-Floating cards pinned to the right of the document, aligned to their source
-text. They stack vertically with minimum 8px spacing. Active card elevates
-to z-index 100.
-
-```
-Card:
-  width: 240px
-  position: absolute, computed from text coords
-  transition: top 300ms cubic-bezier(...)
-```
+Annotation cards align with their source text. The layout can use both sides
+of the document or one column, and the writer can resize the panel. Defaults and
+bounds live in [settings.svelte.ts](packages/desktop/src/lib/settings.svelte.ts).
+Use the shared [annotation column](packages/share/src/layout/) and
+[card components](packages/share/src/cards/) for presentation.
 
 #### Glassmorphic Status Bar
 
@@ -384,7 +368,7 @@ The writer should never feel startled by the interface.
 ### 4. Color With Intention
 
 Each feature type owns a hue. Blue = chat/conversation. Green = feedback/growth.
-Purple = revision/transformation. Yellow = human comments. Amber = orientation/
+Purple = revision/transformation. Yellow = comments. Amber = orientation/
 context. These are not arbitrary — they build intuition over time. Never
 reassign a color to a different context.
 
@@ -467,56 +451,12 @@ These are the failure modes. If a design decision leads here, reconsider.
 - **Generic AI writing tools** — neon, sparkles, gradients, aggressive CTAs
 - **Google Docs** — functional but characterless, no warmth
 
----
+## Implementation references
 
-## 8. Quick-Reference Tokens
-
-```
-Colors
-------
-App background:         #e5e7eb  (gray-200)
-Document surface:       #ffffff
-Panel glass:            bg-gray-300/70 + border-white/30
-Text primary:           text-black/90
-Text secondary:         text-black/50
-Text tertiary:          text-black/30
-
-Primary (Blue):         blue-500 / blue-600
-Feedback (Green):       green-500 / green-50
-Revise (Purple):        purple-500 / purple-50
-Comment yellow (off):   #fef2cd
-Comment yellow (on):    #fcbc05
-Suggestion green (off): #f0fdf4
-Suggestion green (on):  #dbf9e2
-
-Typography
-----------
-Editor body:            Georgia, serif (default; user-configurable), 18px
-UI labels:              text-xs / text-sm
-UI label weight:        font-semibold (titles), regular (stats)
-
-Spacing
--------
-Panel padding:          p-4
-Document width:         816px
-Document margin-top:    mt-12
-
-Depth
------
-Panel shadow:           shadow-lg
-Document shadow:        shadow-xl
-Glass blur:             backdrop-blur-md
-
-Radius
-------
-Default:                rounded-lg
-Pills / icon buttons:   rounded-full
-Panels (collapsed):     rounded-[100px]
-Panels (expanded):      rounded-[14px]
-
-Motion
-------
-Standard:               transition-colors duration-300
-Panel expand:           340ms cubic-bezier(0.33, 0, 0.2, 1)
-Annotation position:    300ms cubic-bezier(0.25, 0.46, 0.45, 0.94)
-```
+- [Annotation styles](packages/desktop/src/lib/editor/plugins/annotations/default.css)
+  define active and inactive text marks.
+- [Settings defaults](packages/desktop/src/lib/settings.svelte.ts) and
+  [font catalog](packages/desktop/src/lib/settings/fonts.ts) own configurable typography.
+- [Sidebar](packages/desktop/src/lib/sidebar/Sidebar.svelte) owns panel dimensions
+  and transitions.
+- [Shared UI](packages/share/src/) owns reusable cards, modals, and resize controls.

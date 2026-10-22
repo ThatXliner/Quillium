@@ -39,8 +39,8 @@ imports. Match the surrounding code and avoid unrelated formatting churn.
 - Use `isAnnotationOfType()` for annotation type checks. Read
   [annotations](docs/annotations.md) for effect inversion, range mapping, lifecycle,
   and stable version IDs.
-- Start module comments with the filename and purpose, then explain non-obvious
-  constraints and interactions. Error logs
+- Use comments to explain constraints and interactions that the code does not
+  make clear. Error logs
   should include the module name and original error, such as
   `console.error("[module] save failed", error)`.
 
@@ -77,9 +77,10 @@ bun run test:all
 ```
 
 `test:all` does not run every browser or service-backed test. Choose those from
-[visual regression and CI](docs/visual-regression.md) and the
-[cross-package E2E guide](packages/e2e/README.md). CI selects suites by changed
-paths; documentation-only changes skip code jobs.
+[browser test guide](docs/visual-regression.md) and the
+[cross-package E2E guide](packages/e2e/README.md). The checked-in workflows build
+releases and warm Rust caches. They do not run a pull-request test gate, so record
+the checks you ran in the pull request.
 
 For editor behavior, exercise the actual user action as well as its undo and redo.
 For persistence changes, reopen the draft in Tauri and inspect the restored state.

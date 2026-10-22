@@ -37,6 +37,7 @@ experience, and [BRANDING.md](../BRANDING.md) covers visual design and copy.
 | AI context, providers, streaming, tools, cancellation | [AI request pipeline](ai-sidebar.md) |
 | Background review scheduling and status | [AutoAI](autoai.md) |
 | College application prompts, presets, and tab briefs | [College applications](college-applications.md) |
+| Official school sources and reviewed research | [School research](school-research.md) |
 | Feedback from multiple reader perspectives | [Reader personas](reader-personas.md) |
 | Authorship classification, playback, report export | [Provenance](provenance.md) |
 | Preferences and fonts | [Settings](settings.md) |
@@ -48,8 +49,9 @@ experience, and [BRANDING.md](../BRANDING.md) covers visual design and copy.
 |---|---|
 | Where does this code belong? | [Code map](file-structure.md), [package boundaries](monorepo.md) |
 | Why was it designed this way? | [Architecture decision records](adr/README.md) |
-| How do I run the browser suites and review image differences? | [Visual regression and CI](visual-regression.md), [cross-package E2E](../packages/e2e/README.md) |
+| How do I run the browser suites and review image differences? | [Browser tests and visual baselines](visual-regression.md), [cross-package E2E](../packages/e2e/README.md) |
 | Which shortcuts exist? | [Keybindings](keybindings.md) |
+| How can an agent safely edit a writer's draft? | [Quillium MCP workflow](mcp-workflows.md) |
 | How do I add or find analytics events? | [PostHog events](posthog-events.md) |
 | How do I write release notes and capture a feature? | [Changelog guide](changelog.md) |
 | Which constraints should I check before investigating? | [Known limitations](known-limitations.md) |
@@ -63,6 +65,6 @@ copying a command catalog or source tree into each page. Explain the user action
 and state ownership before introducing implementation names.
 
 When behavior changes, update the affected guide and its source links. Add a new
-ADR when a resolved architectural decision needs a durable explanation. The
-older [decision log](../DECISION.md) and [refactoring suggestions](refactoring-suggestions.md)
-provide historical context; verify their claims against current code and ADRs.
+ADR when a resolved architectural decision needs a durable explanation. Use the
+[legacy decision guide](../DECISION.md) to interpret old markers in code. Track
+new refactoring proposals in GitHub Issues rather than a second backlog in docs.
