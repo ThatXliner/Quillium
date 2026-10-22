@@ -641,11 +641,13 @@ function requireDurableHistory(bookkeeping: PersistenceBookkeeping): void {
     if (!bookkeeping.failure) return;
     if (bookkeeping === persistence) {
         saveStatus.set("error");
-        errorBanner.set({
-            message: bookkeeping.failure.message,
-            hasBackup: false,
-            backupType: "auto",
-        });
+        if (get(errorBanner)?.backupType !== "crash") {
+            errorBanner.set({
+                message: bookkeeping.failure.message,
+                hasBackup: false,
+                backupType: "auto",
+            });
+        }
     }
     throw bookkeeping.failure;
 }

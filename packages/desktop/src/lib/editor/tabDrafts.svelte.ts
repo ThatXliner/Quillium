@@ -289,12 +289,19 @@ export class TabDraftController {
                     get(currentTabId) === tabId ? previousTabId : get(currentTabId);
                 currentTabId.set(restoredTabId);
                 if (restoredTabId) {
-                    await this.#persistActiveTab(docId, restoredTabId);
-                    const restoredDrafts =
-                        restoredTabId === previousTabId
-                            ? previousDrafts
-                            : await listTabDrafts(restoredTabId);
-                    if (this.#isCurrentContext(generation, docId)) this.tabDrafts = restoredDrafts;
+                    try {
+                        const restoredDrafts =
+                            restoredTabId === previousTabId
+                                ? previousDrafts
+                                : await listTabDrafts(restoredTabId);
+                        if (this.#isCurrentContext(generation, docId)) {
+                            this.tabDrafts = restoredDrafts;
+                            await this.#persistActiveTab(docId, restoredTabId);
+                        }
+                    } catch (rollbackError) {
+                        console.error("[tabDrafts] active-tab rollback failed", rollbackError);
+                        captureException(rollbackError);
+                    }
                 }
             }
             throw error;

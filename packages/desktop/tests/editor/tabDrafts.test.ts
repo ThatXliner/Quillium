@@ -7,7 +7,9 @@
  */
 import type { DraftMeta, TabMeta } from "$lib/db/types";
 import DraftTreePanel from "$lib/editor/DraftTreePanel.svelte";
+import { PersistenceError } from "$lib/editor/persistenceError";
 import { TabDraftController } from "$lib/editor/tabDrafts.svelte";
+import { captureException } from "$lib/posthog";
 import { currentDocumentId, currentDraftId, currentTabId } from "$lib/stores";
 import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { get } from "svelte/store";
@@ -94,6 +96,39 @@ afterEach(() => {
 });
 
 describe("TabDraftController", () => {
+    it("restores the draft list and original failure when the active-tab rollback write fails", async () => {
+        const initialTab = tab("tab-initial", 0);
+        const nextTab = tab("tab-next", 1);
+        const initialDraft = draft("draft-initial", initialTab.id);
+        const nextDraft = draft("draft-next", nextTab.id);
+        const persistenceFailure = new PersistenceError(new Error("event write failed"));
+        const rollbackFailure = new Error("active-tab write failed");
+        const controller = new TabDraftController({
+            switchToDraft: vi.fn().mockRejectedValue(persistenceFailure),
+            flushPendingPersist: vi.fn().mockResolvedValue(undefined),
+            seedStateJson: vi.fn(),
+        });
+        controller.tabs = [initialTab, nextTab];
+        controller.tabDrafts = [initialDraft];
+        db.listTabDrafts.mockResolvedValue([nextDraft]);
+        db.getActiveDraft.mockResolvedValue(nextDraft.id);
+        db.setActiveTab.mockResolvedValueOnce(undefined).mockRejectedValueOnce(rollbackFailure);
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        try {
+            await expect(controller.handleTabSelect(nextTab.id)).rejects.toBe(persistenceFailure);
+            expect(get(currentTabId)).toBe(initialTab.id);
+            expect(controller.tabDrafts).toEqual([initialDraft]);
+            expect(captureException).toHaveBeenCalledWith(rollbackFailure);
+            expect(consoleError).toHaveBeenCalledWith(
+                "[tabDrafts] active-tab rollback failed",
+                rollbackFailure,
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
+    });
+
     it("restores the tab and its draft list when the editor refuses the switch", async () => {
         const initialTab = tab("tab-initial", 0);
         const nextTab = tab("tab-next", 1);

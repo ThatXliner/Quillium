@@ -15,11 +15,14 @@ import {
     currentDraftId,
     documentContent,
     editorView,
+    errorBanner,
+    saveStatus,
 } from "$lib/stores";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { get } from "svelte/store";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const collab = vi.hoisted(() => ({
     enableCollab: vi.fn().mockResolvedValue(undefined),
@@ -36,9 +39,14 @@ vi.mock("$lib/auth/auth.svelte", async (importOriginal) => ({
     getUser: () => ({ id: "owner-1" }),
     getSession: () => ({ access_token: "test-session" }),
 }));
+vi.mock("$lib/appLog", () => ({ logAppEvent: vi.fn().mockResolvedValue(undefined) }));
 
 let view: EditorView;
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+beforeAll(async () => {
+    await import("../../src/hooks.client");
+});
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -49,6 +57,7 @@ beforeEach(() => {
     currentDocumentTitle.set("Draft title");
     isCollabJoiner.set(false);
     seedPersistenceBookkeeping(6);
+    errorBanner.set(null);
     localStorage.removeItem("quillium_backup_crash");
     view = new EditorView({
         state: EditorState.create({
@@ -101,6 +110,50 @@ const actions = {
     },
     "go live": () => new LiveSessionController().toggle(),
 };
+
+it.each(["before crash", "after crash"])(
+    "keeps the crash backup accessible when the pending append fails %s",
+    async (failureTiming) => {
+        let rejectAppend!: (error: Error) => void;
+        let appends = 0;
+        const named = vi.fn();
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") {
+                if (++appends === 1) {
+                    return new Promise((_resolve, reject) => {
+                        rejectAppend = reject;
+                    });
+                }
+                return { eventId: 8, needsSnapshot: false };
+            }
+            if (cmd === "cmd_create_named_snapshot") named();
+            return null;
+        });
+        view.dispatch({ changes: { from: 11, insert: " missing" } });
+        await vi.waitFor(() => expect(rejectAppend).toBeDefined());
+        if (failureTiming === "before crash") {
+            rejectAppend(new Error("disk full"));
+            await expect(flushPersistQueue()).rejects.toThrow("could not be saved");
+            expect(get(errorBanner)).toMatchObject({ hasBackup: false, backupType: "auto" });
+        }
+
+        documentContent.set(view.state.doc.toString());
+        const crash = new Event("unhandledrejection", { cancelable: true });
+        Object.defineProperty(crash, "reason", { value: new Error("Unrelated rendering error") });
+        window.dispatchEvent(crash);
+        const crashBanner = get(errorBanner);
+        expect(crashBanner).toMatchObject({ hasBackup: true, backupType: "crash" });
+
+        if (failureTiming === "after crash") rejectAppend(new Error("disk full"));
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " later" } });
+        await expect(flushPersistence()).rejects.toThrow("could not be saved");
+
+        expect(get(errorBanner)).toEqual(crashBanner);
+        expect(get(saveStatus)).toBe("error");
+        expect(readBackup("crash")?.documentText).toBe("Hello world missing");
+        expect(named).not.toHaveBeenCalled();
+    },
+);
 
 describe.each(["crash", "go live"] as const)("%s snapshots", (action) => {
     it("does not snapshot uncertain history after a later append succeeds", async () => {
