@@ -120,6 +120,11 @@ appends cannot clear the error or create snapshots over the uncertain event hist
 The editor keeps the unsaved text in memory. Appends are not retried automatically,
 because an error may occur after SQLite has already inserted the event. Loading a new
 draft seeds separate bookkeeping so late completions cannot change its save status.
+Each loaded draft also retains its own event cursor for queued snapshots. Going live,
+manual checkpoints, and crash snapshots capture the editor state synchronously and
+queue it after its pending edits. Failed event history blocks those snapshots and
+content metadata updates. Crash handlers still preserve the plain-text localStorage
+backup when a snapshot cannot be saved.
 
 Document metadata has separate title, tags, and content operations. Each updates only
 its owned fields. Content writes refresh word count, preview, and the search body, and

@@ -94,6 +94,57 @@ afterEach(() => {
 });
 
 describe("TabDraftController", () => {
+    it("restores the tab and its draft list when the editor refuses the switch", async () => {
+        const initialTab = tab("tab-initial", 0);
+        const nextTab = tab("tab-next", 1);
+        const initialDraft = draft("draft-initial", initialTab.id);
+        const nextDraft = draft("draft-next", nextTab.id);
+        const controller = new TabDraftController({
+            switchToDraft: vi.fn().mockRejectedValue(new Error("could not be saved")),
+            flushPendingPersist: vi.fn().mockResolvedValue(undefined),
+            seedStateJson: vi.fn(),
+        });
+        controller.tabs = [initialTab, nextTab];
+        controller.tabDrafts = [initialDraft];
+        db.listTabDrafts.mockResolvedValue([nextDraft]);
+        db.getActiveDraft.mockResolvedValue(nextDraft.id);
+
+        await expect(controller.handleTabSelect(nextTab.id)).rejects.toThrow("could not be saved");
+
+        expect(get(currentTabId)).toBe(initialTab.id);
+        expect(controller.tabDrafts).toEqual([initialDraft]);
+        expect(db.setActiveTab).toHaveBeenLastCalledWith("doc-1", initialTab.id);
+    });
+
+    it("uses the loader's committed tab when it rolls back past an intermediate selection", async () => {
+        const initialTab = tab("tab-initial", 0);
+        const intermediateTab = tab("tab-intermediate", 1);
+        const nextTab = tab("tab-next", 2);
+        const initialDraft = draft("draft-initial", initialTab.id);
+        const nextDraft = draft("draft-next", nextTab.id);
+        const controller = new TabDraftController({
+            switchToDraft: async () => {
+                currentTabId.set(initialTab.id);
+                throw new Error("could not be saved");
+            },
+            flushPendingPersist: vi.fn().mockResolvedValue(undefined),
+            seedStateJson: vi.fn(),
+        });
+        controller.tabs = [initialTab, intermediateTab, nextTab];
+        controller.tabDrafts = [draft("draft-intermediate", intermediateTab.id)];
+        currentTabId.set(intermediateTab.id);
+        db.listTabDrafts.mockImplementation((tabId: string) =>
+            Promise.resolve(tabId === initialTab.id ? [initialDraft] : [nextDraft]),
+        );
+        db.getActiveDraft.mockResolvedValue(nextDraft.id);
+
+        await expect(controller.handleTabSelect(nextTab.id)).rejects.toThrow("could not be saved");
+
+        expect(get(currentTabId)).toBe(initialTab.id);
+        expect(controller.tabDrafts).toEqual([initialDraft]);
+        expect(db.setActiveTab).toHaveBeenLastCalledWith("doc-1", initialTab.id);
+    });
+
     it("keeps the newest tab selection when an older lookup finishes last", async () => {
         const tabA = tab("tab-a", 0);
         const tabB = tab("tab-b", 1);

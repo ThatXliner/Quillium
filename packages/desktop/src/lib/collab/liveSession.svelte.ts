@@ -23,10 +23,10 @@ import {
     restoreJoinerPriorView,
 } from "$lib/collab";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
-import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
+import { flushPersistQueue, persistNamedVersion } from "$lib/editor/listeners";
 import posthog, { captureException } from "$lib/posthog";
-import { currentDraftId, editorView, lastPersistedEventId } from "$lib/stores";
+import { currentDraftId, editorView } from "$lib/stores";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 
@@ -196,7 +196,6 @@ export class LiveSessionController {
             try {
                 const view = get(editorView);
                 const draftId = get(currentDraftId);
-                const eventId = get(lastPersistedEventId);
                 const user = getUser();
                 const session = getSession();
 
@@ -206,10 +205,18 @@ export class LiveSessionController {
 
                 // Per D-58: Snapshot before pulling remote state
                 const stateJson = JSON.stringify(view.state.toJSON(savedFields));
-                await createNamedSnapshot(draftId, stateJson, eventId, "Before going live (auto)");
+                const snapshotId = await persistNamedVersion(
+                    draftId,
+                    stateJson,
+                    "Before going live (auto)",
+                    () => get(editorView) === view && get(currentDraftId) === draftId,
+                );
+                if (snapshotId === null) return;
 
                 // Register document with relay's sync_documents table (auto-creates if missing)
                 await registerDocumentForCollab(draftId, user.id, "Untitled");
+                await flushPersistQueue();
+                if (get(editorView) !== view || get(currentDraftId) !== draftId) return;
 
                 // Per D-50: clientID is user.id for per-user undo
                 // Version comes from relay's initial state

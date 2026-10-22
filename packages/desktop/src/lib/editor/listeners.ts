@@ -130,10 +130,15 @@ type PendingCheckpoint = {
 };
 
 type PersistenceBookkeeping = {
+    lastEventId: number;
     pendingCheckpoint: PendingCheckpoint | null;
     failure: PersistenceError | null;
 };
-let persistence: PersistenceBookkeeping = { pendingCheckpoint: null, failure: null };
+let persistence: PersistenceBookkeeping = {
+    lastEventId: -1,
+    pendingCheckpoint: null,
+    failure: null,
+};
 
 function serializeSelection(sel: EditorSelection): SelectionJSON {
     return {
@@ -619,7 +624,7 @@ export function persistNamedVersion(
     const write = persistQueue.then(async () => {
         if (!isCurrent()) return null;
         requireDurableHistory(bookkeeping);
-        const eventId = get(lastPersistedEventId);
+        const eventId = bookkeeping.lastEventId;
         const snapshotId = await createNamedSnapshot(draftId, stateJson, eventId, label);
         clearPendingCheckpoint(bookkeeping, draftId, eventId);
         return snapshotId;
@@ -709,11 +714,12 @@ function deletionAmount(update: ViewUpdate, directUserEditsOnly = false): Deleti
 function snapshotAndWarn(
     draftId: string,
     update: ViewUpdate,
+    eventId: number,
     label: string,
     message: string,
 ): void {
     const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-    createNamedSnapshot(draftId, preStateJson, get(lastPersistedEventId), label).catch((e) => {
+    createNamedSnapshot(draftId, preStateJson, eventId, label).catch((e) => {
         console.error(e);
         captureException(e);
     });
@@ -757,13 +763,14 @@ function autosavePolicy(
 async function snapshotBeforeChange(
     update: ViewUpdate,
     draftId: string,
+    eventId: number,
     policy: ReturnType<typeof autosavePolicy>,
 ): Promise<void> {
     if (policy.beforeRevision) {
         await createAutosaveSnapshot(
             draftId,
             JSON.stringify(update.startState.toJSON(savedFields)),
-            get(lastPersistedEventId),
+            eventId,
             "Before revision creation (auto)",
         );
     }
@@ -772,7 +779,7 @@ async function snapshotBeforeChange(
         await createSnapshot(
             draftId,
             JSON.stringify(update.startState.toJSON(savedFields)),
-            get(lastPersistedEventId),
+            eventId,
         ).catch((e) => {
             console.error("[listeners] pre-deletion snapshot failed", e);
             captureException(e);
@@ -780,7 +787,12 @@ async function snapshotBeforeChange(
     }
 }
 
-function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: boolean): void {
+function guardRecovery(
+    update: ViewUpdate,
+    draftId: string,
+    eventId: number,
+    beforeRevision: boolean,
+): void {
     if (deletionBurstTracker.record(draftId, deletionAmount(update, true))) {
         toast.info("Deleting a lot of text?", {
             description:
@@ -806,6 +818,7 @@ function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: bool
                 snapshotAndWarn(
                     draftId,
                     update,
+                    eventId,
                     "Before large deletion (auto)",
                     "A large deletion was detected. A recovery snapshot has been saved to your version history.",
                 );
@@ -829,6 +842,7 @@ function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: bool
                 snapshotAndWarn(
                     draftId,
                     update,
+                    eventId,
                     "Before mass annotation removal (auto)",
                     "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
                 );
@@ -841,6 +855,7 @@ function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: bool
                 snapshotAndWarn(
                     draftId,
                     update,
+                    eventId,
                     "Before nested annotation loss (auto)",
                     "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
                 );
@@ -904,7 +919,7 @@ async function persistPendingCheckpoint(bookkeeping: PersistenceBookkeeping): Pr
 
 /** Call after draining persistence and loading a draft's snapshot and events. */
 export function seedPersistenceBookkeeping(eventId = -1): void {
-    persistence = { pendingCheckpoint: null, failure: null };
+    persistence = { lastEventId: eventId, pendingCheckpoint: null, failure: null };
     clearSavingIndicator();
     lastPersistedEventId.set(eventId);
     lastSavedAt.set(null);
@@ -953,13 +968,14 @@ async function doAppend(
     if (!payload) return;
     const policy = autosavePolicy(update, payload);
     if (!bookkeeping.failure) {
-        await snapshotBeforeChange(update, draftId, policy);
-        guardRecovery(update, draftId, policy.beforeRevision);
+        await snapshotBeforeChange(update, draftId, bookkeeping.lastEventId, policy);
+        guardRecovery(update, draftId, bookkeeping.lastEventId, policy.beforeRevision);
         showSavingAfterDelay(docId, draftId, bookkeeping);
     }
 
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
+        bookkeeping.lastEventId = result.eventId;
         if (bookkeeping === persistence) clearSavingIndicator();
         if (bookkeeping === persistence && isActiveDraft(docId, draftId)) {
             lastPersistedEventId.set(result.eventId);
@@ -986,7 +1002,7 @@ async function doAppend(
         return;
     }
 
-    scheduleMetadata(update, docId, title);
+    if (!bookkeeping.failure) scheduleMetadata(update, docId, title);
 }
 
 function scheduleMetadata(update: ViewUpdate, docId: string, title: string): void {
