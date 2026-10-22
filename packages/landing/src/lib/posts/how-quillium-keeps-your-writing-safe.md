@@ -69,7 +69,7 @@ Recovery is best-effort. Skipping a corrupt event can affect later events that d
 <details>
 <summary>How validation works</summary>
 
-Every annotation is validated against a strict schema on load. The schemas are designed to tolerate unknown fields from future versions, so your data won't break when Quillium updates. On validation failure, the annotation is dropped with a logged error, and the rest of the annotation map loads normally.
+Every annotation is validated against a schema on load. The schemas tolerate extra fields, but records that fail validation are skipped with a logged error. The rest of the annotation map continues loading. Extra-field tolerance does not guarantee compatibility with every future format.
 
 During event replay, each event is processed in a try/catch. If a single event throws—malformed data, unknown type, out-of-range position—it's skipped with a warning and replay continues.
 
@@ -87,7 +87,7 @@ One subtle detail: the restore is specially tagged so the suspicious-change dete
 
 Periodic snapshots, named checkpoints, and recovery snapshots build a timeline of saved writing. The periodic policy requests a snapshot after 50 events or when an event arrives at least two minutes after the previous snapshot. It is not a timer that saves an idle editor every two minutes.
 
-Version history isn't an afterthought buried in a menu; it's a full browsing experience where every snapshot is reconstructed as a read-only editor, so you can see exactly what you'd be restoring before you commit to it. Restoring requires two clicks—first to select, second to confirm—so an accidental mis-click can't roll you back.
+Version History reconstructs a selected snapshot in a read-only editor so you can inspect it before restoring. The first click on Restore arms confirmation. The second confirms the restore.
 
 Named checkpoints are never auto-pruned, and only unlabeled automatic snapshots get cleaned up. If storage grows large, Quillium warns you at 1 GB and lets you prune by count or by age.
 

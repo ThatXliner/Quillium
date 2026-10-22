@@ -37,7 +37,10 @@ We deliberately rejected the alternative ("undo of a delete focuses the thing th
 ## Annotation lifecycle
 
 - **Comments** and **suggestions** are tied to their text. Delete the text, the annotation goes away.
-- **Revisions** don't survive deletion either, but undo brings them back whole. When you delete a revision's text, the system briefly keeps the annotation alive (long enough to record restore-on-undo information), then removes it. Cmd-Z restores the text *and* all versions in one step. From the user's perspective: delete and undo work as expected.
+- An ordinary deletion in the parent document removes a revision when its range
+  becomes empty. Cmd-Z restores the text and all versions in one step. Empty
+  versions are valid when created intentionally, selected through a version
+  switch, or cleared inside a nested editor. Those revisions remain available.
 - Only one pending (unsaved) comment at a time per editor level. The main doc and each nested editor enforce this independently since they have separate annotation state.
 
 ## Nested annotations (annotations inside revisions)
