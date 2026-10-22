@@ -74,7 +74,14 @@ try {
 }
 ```
 
-Run it from the root with `bun packages/desktop/scripts/<driver>.ts`, inspect the
-PNG and its appearance in the modal, then remove the temporary driver. A feature
-capture illustrates release notes; regression baselines follow the separate
+Run a custom driver from `packages/desktop` so its dev server and output paths
+resolve to the desktop package:
+
+```bash
+cd packages/desktop
+bun scripts/<driver>.ts
+```
+
+Inspect the PNG and its appearance in the modal, then remove the temporary
+driver. Feature captures illustrate release notes. Regression baselines follow the separate
 [visual regression policy](visual-regression.md).

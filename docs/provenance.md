@@ -1,9 +1,8 @@
-# Authorship Provenance
+# Authorship provenance
 
 The provenance system builds an authorship report from Quillium's local event
-log. It is evidence of the writing process, not cryptographic proof: it records
-timestamped edits captured on this device and classifies where document-changing
-events came from.
+log. It records timestamped edits captured on this device and classifies their
+origin. Reports trust the local database and cannot prove who authored the text.
 
 ## Feature gate
 
@@ -18,15 +17,15 @@ fails closed. Until the flag is on for a user:
 - `/authorship` renders an unavailable state instead of `PlaybackViewer`.
 
 Capture is deliberately not gated. `listeners.ts` keeps stamping provenance on
-every `doc_change`, so turning the flag on later gives a user a report covering
-their whole writing history rather than only the period since the flag flipped.
+document changes. Enabling the report later can therefore use the retained
+events recorded before the flag was enabled. Missing history remains unknown.
 
-The gate is here because the classifier and report builder have not had a
-review pass, and a report about who wrote what is only worth shipping if it is
-right. Screenshot runs override the flag (`scripts/screenshots.ts`,
-`scripts/changelog-shot.ts`).
+Demo capture scripts override the flag for their authored scenes. The flag
+controls access to the report, not the validity of its classifications.
 
-## Files
+## Implementation
+
+Paths below are relative to `packages/desktop`.
 
 | File | Purpose |
 |------|---------|
@@ -38,7 +37,7 @@ right. Screenshot runs override the flag (`scripts/screenshots.ts`,
 | `src/lib/provenance/PlaybackViewer.svelte` | `/authorship` playback UI |
 | `src/routes/authorship/+page.svelte` | Route wrapper for the playback viewer |
 
-## Capturing Provenance
+## Capturing provenance
 
 Only `doc_change` and `compound` events carry provenance. The field is optional
 so legacy events remain loadable:
@@ -65,7 +64,7 @@ source annotation and generated revision versions. Human and legacy work omits
 it. This gives accepted AI text a traceable request identity without treating all
 revision-system transactions as AI-authored.
 
-## Origin Mapping
+## Origin mapping
 
 | Origin | Signal | Meaning |
 |--------|--------|---------|
@@ -87,7 +86,7 @@ reported as unknown. Nested-editor changes carry the active version's updated
 human/mixed provenance; legacy nested edits without it retain the `nested-edit`
 classification.
 
-## Report Builder
+## Report builder
 
 `buildProvenanceReport()` is pure and deterministic. Callers provide the ordered
 events, draft id, document title, generated timestamp, and final document
@@ -102,12 +101,13 @@ length. The report includes:
 - AI assistance counts for AI revision events and AI-authored annotations
 - integrity statement and legacy/unclassified event ratio
 
-`generateProvenanceReport()` is the async convenience wrapper. It loads every
-event for a draft with `listDraftEvents()`, replays them into a minimal
-CodeMirror state to measure final document length, stamps `generatedAt`, then
-delegates to the pure builder.
+[`generateProvenanceReport()`](../packages/desktop/src/lib/provenance/report.ts)
+loads the draft's events and snapshots. It reconstructs final document length
+from the latest snapshot and subsequent events, then passes the full retained
+event list and `generatedAt` to the pure builder. A snapshot can establish final
+text without supplying authorship evidence for its missing event prefix.
 
-## Playback UI
+## Playback
 
 `/authorship` renders `PlaybackViewer.svelte`. The viewer reads the draft event
 stream, replays edits, and lets the writer scrub through the writing timeline.
@@ -165,9 +165,8 @@ wording; this describes edit lineage, not a threshold for ownership of an idea.
 Pure deletion does not relabel surviving words. External drag-and-drop is unknown. Text newly typed beside AI wording
 is writer wording. A mixed revision version may provide only coarse provenance. Nested acceptance now forwards its AI request metadata through parent dispatch; older nested events that lack a source signal remain unknown.
 
-No additional stored state or migration is needed: reopening reconstructs origin
-from the draft's existing event log. Reconstruction failure or disagreement with
+Reopening reconstructs origin from the existing draft event log without storing
+an additional origin map. Reconstruction failure or disagreement with
 the canonical document replay suppresses the overlay and shows an unavailable
-message. This first implementation is a read-only inspection view; a live overlay
-in the root and nested editors and origin-preserving clipboard moves remain future
-work for #388.
+message. The overlay is a read-only playback view. Root and nested editing views do not
+show it, and clipboard moves do not preserve origin metadata.

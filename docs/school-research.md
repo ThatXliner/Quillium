@@ -18,7 +18,7 @@ page belongs to the intended institution. School and cycle corrections in this
 form affect the research target; they do not edit the writing brief. To change a
 prompt, edit setup first.
 
-Retrieval follows the selected provider's verified capability. Hosted OpenAI
+Retrieval follows the selected provider and model allowlist. Hosted OpenAI
 and Anthropic API models search both the confirmed official hostname and
 `collegeessayguy.com` (including their subdomains). Google models use Google
 Search together with URL Context for the exact confirmed URL; because Google's
@@ -82,8 +82,8 @@ Findings start unchecked. **Add to essay context** saves only selected findings.
 Completion, cancellation, failure, and retry do not save context. Review choices
 can also be saved without adding findings. Refresh compares candidate findings
 with saved ones and retains unchecked choices. Changed findings show their
-previous text. A missing finding is not treated as a retraction: a bounded
-provider call or failed page may explain its absence. Removing an older finding is an
+previous text. A missing finding is not treated as a retraction. A bounded provider call or
+failed page may explain its absence. Removing an older finding is an
 explicit checkbox action; refresh never replaces accepted text automatically.
 
 ## Boundaries and failure behavior
@@ -116,19 +116,19 @@ most two simultaneous requests across the app. No automatic retries occur.
 Cancellation interrupts requests and discards late results. Unknown, outdated,
 conflicting, or institution-mismatched evidence remains visible for review.
 
-## Provider support
+## Implementation and verification
 
-OpenAI API, Anthropic, and Google use their installed AI SDK provider tools when
-the configured model supports them. OpenAI and Anthropic apply provider-side
-hostname restrictions for the confirmed official host and College Essay Guy.
-Google combines Search with URL Context, then Quillium keeps only sources on
-those hosts. ChatGPT OAuth stays on the fallback until hosted-tool passthrough
-is verified. DeepSeek, OpenAI-compatible endpoints, and unsupported
-hosted-tool models also use the single-page fallback. Every provider returns the
-same Zod-validated evidence shape through `Output.object()`, followed by the
-same review and acceptance flow. Provider wiring does not prove every
-provider/model combination has passed live factual evaluation; see the PR's
-verification record.
+[`ai/schoolResearch.ts`](../packages/desktop/src/lib/ai/schoolResearch.ts) selects
+hosted search or fallback through `usesHostedSchoolResearch()`. This is a model-ID
+allowlist, not runtime capability discovery. Every provider returns the same
+Zod-validated shape through `Output.object()`.
+
+[`college/research.ts`](../packages/desktop/src/lib/college/research.ts) validates
+sources and findings.
+[`school_research.rs`](../packages/desktop/src-tauri/src/school_research.rs)
+implements the native fetch restrictions. Provider wiring and deterministic tests
+do not establish factual accuracy for every model; evaluate retrieved evidence
+and the acceptance flow when changing providers or prompts.
 
 ## Scope and persistence
 
@@ -139,9 +139,9 @@ Switching target, disabling AI, hiding the panel, or changing setup invalidates
 that operation. Research cannot apply results to the newly selected tab.
 
 Accepted references reuse the version-1 `college_tab_setups` JSON row, with
-optional research provenance and review fields. No migration is needed. The
-existing atomic save, duplicate-tab remapping, trash/restore, and deletion
-behavior applies. Research contains no document or tab IDs inside copied JSON.
+optional research provenance and review fields. Atomic save, duplicate-tab
+remapping, trash, restoration, and deletion behavior apply. Research contains no
+document or tab IDs inside copied JSON.
 Snapshots include evidence and remain usable offline after restart.
 
 New research stores a scope key for each prompt named by the finding, covering

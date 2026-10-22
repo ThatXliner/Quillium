@@ -1,14 +1,17 @@
-# PostHog Events
+# PostHog events
 
 This catalog covers selected product events. Find other call sites with
-`rg -n 'posthog\.capture' packages/desktop/src`.
+`rg -n 'capture\(' packages/desktop/src packages/landing/src`.
 
 ## Add or change an event
 
 Desktop analytics initialization and privacy handling live in
 [posthog.ts](../packages/desktop/src/lib/posthog.ts); startup hooks live in
-[hooks.client.ts](../packages/desktop/src/hooks.client.ts). Use the existing
-`$lib/posthog` client at the user-action boundary. Keep analytics in app adapters,
+[hooks.client.ts](../packages/desktop/src/hooks.client.ts). Use the named `capture` export from
+`$lib/posthog` at the user-action boundary when sending event properties. It
+removes the content keys listed in `REDACTED_KEYS`; the default SDK export does
+not apply that wrapper. Never add prose or other sensitive values under a new
+property name to bypass redaction. Keep analytics in app adapters,
 not the shared annotation core or presentation.
 
 Use a `snake_case` event name with the existing feature prefix, such as
@@ -20,7 +23,7 @@ Local configuration uses `PUBLIC_POSTHOG_KEY` and `PUBLIC_POSTHOG_HOST` from the
 [desktop environment example](../packages/desktop/.env.example). The client can
 remain unconfigured for unrelated development.
 
-## Session & Editor
+## Session and editor
 
 | Event | When | File |
 |-------|------|------|
@@ -33,15 +36,15 @@ remain unconfigured for unrelated development.
 | `focus_mode_exited` | User exits distraction-free focus mode | `routes/+page.svelte` |
 | `beta_terms_accepted` | First-run beta disclaimer accepted | `BetaDisclaimer.svelte` |
 
-## AI Sidebar
+## AI sidebar
 
 | Event | When | File |
 |-------|------|------|
 | `ai_sidebar_opened` | User opens sidebar | `sidebar/Sidebar.svelte` |
-| `ai_message_sent` | Any AI request dispatched | `chatFactory.ts` |
-| `ai_chat_message_sent` | Chat message sent | `Chat.svelte` |
-| `ai_feedback_requested` | Feedback requested | `Chat.svelte` |
-| `ai_revise_requested` | Revision triggered | `Chat.svelte` |
+| `ai_message_sent` | Sidebar chat transport dispatches a request | `chatFactory.ts` |
+| `ai_chat_message_sent` | Chat message sent | `ClassicChat.svelte`, `Chat.svelte` |
+| `ai_feedback_requested` | Feedback requested | `Feedback.svelte`, `Chat.svelte` |
+| `ai_revise_requested` | Revision triggered | `Revise.svelte`, `Chat.svelte` |
 | `context_generated` | Document context generated | `clientStreams.ts` |
 | `context_cleared` | Context cleared | `DocumentContext.svelte` |
 | `editorial_decision_saved` | Writer saves a document editorial decision | `DocumentContext.svelte` |
@@ -56,7 +59,7 @@ remain unconfigured for unrelated development.
 | `comment_ai_suggestion_requested` | AI suggestion in thread | `Comment.svelte`, `CommentModal.svelte` |
 | `comment_modal_opened` | Full-screen comment modal | `Comment.svelte` |
 | `suggestion_applied` | Suggestion applied | `Suggestion.svelte` |
-| `suggestion_branched` | Suggestion → revision | `Suggestion.svelte` |
+| `suggestion_branched` | Suggestion converted to revision | `Suggestion.svelte` |
 | `suggestion_diff_viewed` | Inline diff viewed | `Suggestion.svelte` |
 | `suggestion_diff_modal_opened` | Full-screen diff modal | `Suggestion.svelte` |
 | `revision_version_created` | New revision version | `Revision.svelte`, `RevisionModal.svelte` |
@@ -89,7 +92,7 @@ remain unconfigured for unrelated development.
 | `semantic_search_model_uninstalled` | Semantic model removed | `SettingsModal.svelte` |
 | `shortcut_hints_hidden` | Annotation shortcut hints hidden | `Annotations.svelte` |
 
-## Reader Personas
+## Reader personas
 
 | Event | When | File |
 |-------|------|------|
@@ -139,23 +142,23 @@ with `undo_history_policy_loaded` and `legacy_date_cutoff` to measure active rel
 temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_documents` and
 `document_created.persist_undo_history` measure adoption of the explicit setting.
 
-## Tabs & Drafts
+## Tabs and drafts
 
 | Event | When | File |
 |-------|------|------|
-| `tab_created` | New tab via + button | `Editor.svelte` |
-| `tab_switched` | Tab clicked | `Editor.svelte` |
-| `tab_renamed` | Tab renamed inline | `Editor.svelte` |
-| `tab_reordered` | Tab drag-reordered | `Editor.svelte` |
-| `tab_deleted` | Tab soft-deleted | `Editor.svelte` |
-| `tab_restored` | Tab restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
-| `draft_iterated` | Next version made (iterate) | `Editor.svelte` |
-| `draft_branched` | Different take made (branch) | `Editor.svelte` |
-| `draft_switched` | Draft tree row clicked | `Editor.svelte` |
-| `draft_deleted` | Leaf draft soft-deleted | `Editor.svelte` |
-| `draft_restored` | Draft restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
-| `draft_locked` / `draft_unlocked` | Lock toggled | `Editor.svelte` |
-| `delete_toast_view_history` | Delete undo toast opens history | `Editor.svelte` |
+| `tab_created` | New tab via + button | `tabDrafts.svelte.ts` |
+| `tab_switched` | Tab clicked | `tabDrafts.svelte.ts` |
+| `tab_renamed` | Tab renamed inline | `tabDrafts.svelte.ts` |
+| `tab_reordered` | Tab drag-reordered | `tabDrafts.svelte.ts` |
+| `tab_deleted` | Tab soft-deleted | `tabDrafts.svelte.ts` |
+| `tab_restored` | Delete undo toast restores a tab | `tabDrafts.svelte.ts` |
+| `draft_iterated` | Next version made (iterate) | `tabDrafts.svelte.ts` |
+| `draft_branched` | Different take made (branch) | `tabDrafts.svelte.ts` |
+| `draft_switched` | Draft tree row clicked | `tabDrafts.svelte.ts` |
+| `draft_deleted` | Draft deleted through the panel; `mode` records the operation | `tabDrafts.svelte.ts` |
+| `draft_restored` | Delete undo toast restores a draft | `tabDrafts.svelte.ts` |
+| `draft_locked` / `draft_unlocked` | Lock toggled | `tabDrafts.svelte.ts` |
+| `delete_toast_view_history` | Delete undo toast opens history | `tabDrafts.svelte.ts` |
 
 ## Collaboration
 
@@ -170,7 +173,7 @@ temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_d
 | `collab_reconnected` | Reconnected after retries (`attempts`) | `liveSession.svelte.ts` |
 | `collab_reconnect_failed` | Retries exhausted, session torn down (`attempts`) | `liveSession.svelte.ts` |
 
-## Sharing & Provenance
+## Sharing and provenance
 
 | Event | When | File |
 |-------|------|------|
@@ -190,7 +193,7 @@ temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_d
 | `navigated_to_authorship` | App navigates to authorship route | `navigation.ts` |
 | `navigated_to_editor` | App navigates back to editor | `navigation.ts` |
 
-## Error & Recovery
+## Errors and recovery
 
 | Event | When | File |
 |-------|------|------|
@@ -223,10 +226,12 @@ temporary July 14 grandfathering. `settings_saved.persist_undo_history_for_new_d
 ## Omni landing hero experiment
 
 [Omni hero: original vs manuscript](https://us.posthog.com/project/334824/experiments/461612)
-uses flag `omni-hero`, split equally between `control` (original centered headline)
-and `manuscript` (3D hero). Both use the same signup form and page below the hero.
-PostHog assigns by distinct ID. The page freezes its assignment for the visit and
-falls back to the manuscript hero after 1.2 seconds if flags are unavailable.
+uses flag `omni-hero`. The page recognizes `control` as the original centered
+headline and `manuscript` as the 3D hero. Both use the same signup form and page
+below the hero. Allocation and experiment status are configured in PostHog;
+this repository does not define the active split. The page freezes its assignment
+for the visit and falls back to the manuscript hero after 1.2 seconds if flags
+are unavailable.
 
 | Event | When | File |
 |-------|------|------|
@@ -236,12 +241,13 @@ falls back to the manuscript hero after 1.2 seconds if flags are unavailable.
 | `omni_waitlist_failed` | Waitlist API rejects the request | Same |
 
 Signup events include `hero_variant`, `hero_assignment`, `hero_exposed`, and
-`form_location` (`hero` or `footer`). The metric excludes previews and fallbacks.
-The explicit `$feature/omni-hero` property preserves the rendered assignment even
+`form_location` (`hero` or `footer`). Exposure events exclude previews and
+fallbacks. The explicit `$feature/omni-hero` property preserves the rendered
+assignment even
 if the SDK refreshes its flags while the visitor is on the page. Tracking respects
 the existing PostHog opt-out. No experiment exposure is emitted in development.
 
 Preview either hero with `/omni?omni-hero=original` or
 `/omni?omni-hero=manuscript`. These links never enroll visitors in the experiment.
-Pausing the experiment returns visitors to the manuscript fallback on their next
-visit. Keep the split unchanged while collecting results.
+An unavailable or unrecognized flag value uses the manuscript fallback. Changing
+remote experiment settings does not replace a hero already assigned for the visit.
