@@ -372,7 +372,7 @@ async function installTauriMock(
                         return payload.libraryDocs.find((d) => d.id === id) ?? null;
                     }
                     if (cmd === "cmd_create_document") return "doc-new";
-                    if (cmd === "cmd_update_document_meta") return null;
+                    if (cmd === "cmd_update_document_content_metadata") return null;
                     if (cmd === "cmd_trash_document") return null;
                     if (cmd === "cmd_restore_document") return null;
                     if (cmd === "cmd_delete_document") return null;

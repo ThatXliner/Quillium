@@ -140,27 +140,19 @@ export async function duplicateDocument(
     return invoke<string>("cmd_duplicate_document", { sourceDocumentId, draftStates });
 }
 
-/**
- * `bodyText` is the full plain document text, used to keep the search index
- * current. Omit it for metadata-only updates (rename, tags) — the previously
- * indexed body is preserved.
- */
-export async function updateDocumentMeta(
+export async function updateDocumentTitle(id: string, title: string): Promise<void> {
+    return invoke<void>("cmd_update_document_title", { id, title });
+}
+
+export async function updateDocumentTags(id: string, tags: string): Promise<void> {
+    return invoke<void>("cmd_update_document_tags", { id, tags });
+}
+
+export async function updateDocumentContentMetadata(
     id: string,
-    title: string,
-    wordCount: number,
-    previewText: string,
-    tags: string,
-    bodyText?: string,
+    metadata: { wordCount: number; previewText: string; bodyText: string; automaticTitle?: string },
 ): Promise<void> {
-    return invoke<void>("cmd_update_document_meta", {
-        id,
-        title,
-        wordCount,
-        previewText,
-        tags,
-        bodyText,
-    });
+    return invoke<void>("cmd_update_document_content_metadata", { id, ...metadata });
 }
 
 /**

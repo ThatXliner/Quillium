@@ -17,7 +17,7 @@ import {
     getAiAbortSignal,
     hasApiKey,
 } from "$lib/ai/settings.svelte";
-import { updateDocumentMeta } from "$lib/db";
+import { updateDocumentTitle } from "$lib/db";
 import { captureException } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import { currentDocumentId, currentDocumentTitle, editorView } from "$lib/stores";
@@ -42,13 +42,11 @@ export function startEditing() {
     setTimeout(() => titleInputEl?.select(), 0);
 }
 
-function getWordCount(doc: string): number {
-    return doc.trim().split(/\s+/).filter(Boolean).length;
-}
-
 async function suggestTitle() {
     const text = $editorView?.state.doc.toString() ?? "";
-    if (!text.trim() || titleSuggesting) return;
+    const docId = get(currentDocumentId);
+    const originalTitle = get(currentDocumentTitle);
+    if (!docId || !text.trim() || titleSuggesting) return;
     titleSuggesting = true;
     const task = beginAiTask("title-suggestion");
     const abortSignal = getAiAbortSignal();
@@ -66,22 +64,13 @@ async function suggestTitle() {
             prompt: `Suggest a single short, evocative title for this piece of writing. Reply with only the title — no quotes, no explanation, no punctuation at the end.\n\n${text.slice(0, 1000)}`,
         });
         const newTitle = suggested.trim().slice(0, 40);
-        if (newTitle) {
+        if (
+            newTitle &&
+            get(currentDocumentId) === docId &&
+            get(currentDocumentTitle) === originalTitle
+        ) {
             currentDocumentTitle.set(newTitle);
-            const docId = get(currentDocumentId);
-            if (docId) {
-                updateDocumentMeta(
-                    docId,
-                    newTitle,
-                    getWordCount(text),
-                    text.slice(0, 200),
-                    "[]",
-                    text,
-                ).catch((e) => {
-                    console.error(e);
-                    captureException(e);
-                });
-            }
+            await updateDocumentTitle(docId, newTitle);
         }
     } catch (e) {
         if (!abortSignal.aborted) {
@@ -102,15 +91,7 @@ async function commitTitle() {
     currentDocumentTitle.set(newTitle);
     const docId = get(currentDocumentId);
     if (docId) {
-        const text = $editorView?.state.doc.toString() ?? "";
-        updateDocumentMeta(
-            docId,
-            newTitle,
-            getWordCount(text),
-            text.slice(0, 200),
-            "[]",
-            text,
-        ).catch((e) => {
+        updateDocumentTitle(docId, newTitle).catch((e) => {
             console.error(e);
             captureException(e);
         });

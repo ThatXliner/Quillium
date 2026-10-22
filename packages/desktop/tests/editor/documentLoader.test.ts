@@ -28,7 +28,7 @@ const db = vi.hoisted(() => ({
     listDocuments: vi.fn(),
     loadDocumentState: vi.fn(),
     setActiveDraft: vi.fn(),
-    updateDocumentMeta: vi.fn(),
+    updateDocumentContentMetadata: vi.fn(),
     listTabs: vi.fn(),
     listTabDrafts: vi.fn(),
     getActiveTab: vi.fn(),
@@ -217,6 +217,30 @@ describe("DocumentLoader", () => {
         await loading;
         expect(get(currentDraftId)).toBe("next");
     });
+
+    it.each([false, true])(
+        "retains the committed draft when flushing a replacement fails, changed document=%s",
+        async (changesDocument) => {
+            await loader.load({ documentId: "doc-1" });
+            const committed = commits[0];
+            db.loadDocumentState.mockClear();
+            db.setActiveDraft.mockClear();
+            persistence.flushPersistence.mockRejectedValue(new Error("unsaved changes"));
+            if (changesDocument) currentDocumentId.set("doc-2");
+            await expect(
+                loader.load({
+                    documentId: changesDocument ? "doc-2" : "doc-1",
+                    target: changesDocument ? undefined : { tabId: "tab-1", draftId: "next" },
+                }),
+            ).rejects.toThrow("unsaved changes");
+            expect(db.loadDocumentState).not.toHaveBeenCalled();
+            expect(db.setActiveDraft).not.toHaveBeenCalled();
+            expect(commits).toEqual([committed]);
+            expect(get(currentDocumentId)).toBe("doc-1");
+            expect(get(currentDraftId)).toBe("draft-1");
+            expect(loader.isReady()).toBe(true);
+        },
+    );
 
     it("discards a slower draft before it can persist its pointer", async () => {
         const slow = deferred<LoadResult>();

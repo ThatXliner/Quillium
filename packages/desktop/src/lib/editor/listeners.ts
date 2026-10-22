@@ -1,6 +1,11 @@
 import { recordWritingActivity } from "$lib/achievements/store";
 import { isCollabJoiner } from "$lib/collab/store";
-import { appendEvent, createNamedSnapshot, createSnapshot, updateDocumentMeta } from "$lib/db";
+import {
+    appendEvent,
+    createNamedSnapshot,
+    createSnapshot,
+    updateDocumentContentMetadata,
+} from "$lib/db";
 import { replayHistoryIsolationOf } from "$lib/db/events";
 import type {
     AnnotationEvent,
@@ -57,16 +62,17 @@ import {
  *   1. Build an EventPayload from the transaction(s).
  *   2. Call `appendEvent` (Rust) to store it in the event log.
  *   3. If `needsSnapshot`, call `createSnapshot` with the full state.
- *   4. Debounce `updateDocumentMeta` for the library metadata.
+ *   4. Debounce `updateDocumentContentMetadata` for the library metadata.
  *
  * Key dependencies:
  *   - ./extensions (savedFields) — which StateFields are snapshotted
- *   - $lib/db (appendEvent, createSnapshot, updateDocumentMeta)
+ *   - $lib/db (appendEvent, createSnapshot, updateDocumentContentMetadata)
  *   - ./plugins/annotations (addAnnotation, removeAnnotation, updateThread,
  *     annotationsChanged)
  */
 import { documentMetadata, titleForDocument } from "./documentMetadata";
 import { savedFields } from "./extensions";
+import { PersistenceError } from "./persistenceError";
 import {
     deserializeHistoryEffect,
     historyDoneBranchIsSelectionSentinel,
@@ -112,7 +118,7 @@ let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── Write serialisation queue ─────────────────────────────────────
 // Ensures appendEvent calls are ordered by transaction order, not
-// DB completion order, and that saveStatus reflects the last write.
+// DB completion order.
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
 const deletionBurstTracker = new DeletionBurstTracker();
@@ -123,7 +129,16 @@ type PendingCheckpoint = {
     state: EditorState;
 };
 
-let pendingCheckpoint: PendingCheckpoint | null = null;
+type PersistenceBookkeeping = {
+    lastEventId: number;
+    pendingCheckpoint: PendingCheckpoint | null;
+    failure: PersistenceError | null;
+};
+let persistence: PersistenceBookkeeping = {
+    lastEventId: -1,
+    pendingCheckpoint: null,
+    failure: null,
+};
 
 function serializeSelection(sel: EditorSelection): SelectionJSON {
     return {
@@ -575,9 +590,14 @@ function persistTransaction(update: ViewUpdate): void {
     const enqueueDocId = get(currentDocumentId);
     const enqueueDraftId = get(currentDraftId);
     const enqueueTitle = get(currentDocumentTitle);
+    const bookkeeping = persistence;
     persistQueue = persistQueue
         .then(() =>
-            doAppend(update, { docId: enqueueDocId, draftId: enqueueDraftId, title: enqueueTitle }),
+            doAppend(
+                update,
+                { docId: enqueueDocId, draftId: enqueueDraftId, title: enqueueTitle },
+                bookkeeping,
+            ),
         )
         .catch(() => {});
 }
@@ -589,7 +609,8 @@ function persistTransaction(update: ViewUpdate): void {
  * library re-reads metadata.
  */
 export function flushPersistQueue(): Promise<void> {
-    return persistQueue.catch(() => {});
+    const bookkeeping = persistence;
+    return persistQueue.then(() => requireDurableHistory(bookkeeping));
 }
 
 /** Queue the captured state immediately after its edits, before any later edits. */
@@ -599,15 +620,13 @@ export function persistNamedVersion(
     label: string,
     isCurrent: () => boolean,
 ): Promise<number | null> {
+    const bookkeeping = persistence;
     const write = persistQueue.then(async () => {
         if (!isCurrent()) return null;
-        if (persistenceFailed)
-            throw new Error(
-                "Your latest changes could not be saved. Reopen the draft before naming a version.",
-            );
-        const eventId = get(lastPersistedEventId);
+        requireDurableHistory(bookkeeping);
+        const eventId = bookkeeping.lastEventId;
         const snapshotId = await createNamedSnapshot(draftId, stateJson, eventId, label);
-        clearPendingCheckpoint(draftId, eventId);
+        clearPendingCheckpoint(bookkeeping, draftId, eventId);
         return snapshotId;
     });
     // Navigation and subsequent edits must wait for this snapshot too.
@@ -618,8 +637,20 @@ export function persistNamedVersion(
     return write;
 }
 
-// A later successful append cannot repair a missing event in the replay chain.
-let persistenceFailed = false;
+function requireDurableHistory(bookkeeping: PersistenceBookkeeping): void {
+    if (!bookkeeping.failure) return;
+    if (bookkeeping === persistence) {
+        saveStatus.set("error");
+        if (get(errorBanner)?.backupType !== "crash") {
+            errorBanner.set({
+                message: bookkeeping.failure.message,
+                hasBackup: false,
+                backupType: "auto",
+            });
+        }
+    }
+    throw bookkeeping.failure;
+}
 
 function annotationEventsForPayload(payload: EventPayload): AnnotationEvent[] {
     if (payload.type === "compound") return payload.annotationEvents;
@@ -685,11 +716,12 @@ function deletionAmount(update: ViewUpdate, directUserEditsOnly = false): Deleti
 function snapshotAndWarn(
     draftId: string,
     update: ViewUpdate,
+    eventId: number,
     label: string,
     message: string,
 ): void {
     const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-    createNamedSnapshot(draftId, preStateJson, get(lastPersistedEventId), label).catch((e) => {
+    createNamedSnapshot(draftId, preStateJson, eventId, label).catch((e) => {
         console.error(e);
         captureException(e);
     });
@@ -733,13 +765,14 @@ function autosavePolicy(
 async function snapshotBeforeChange(
     update: ViewUpdate,
     draftId: string,
+    eventId: number,
     policy: ReturnType<typeof autosavePolicy>,
 ): Promise<void> {
     if (policy.beforeRevision) {
         await createAutosaveSnapshot(
             draftId,
             JSON.stringify(update.startState.toJSON(savedFields)),
-            get(lastPersistedEventId),
+            eventId,
             "Before revision creation (auto)",
         );
     }
@@ -748,7 +781,7 @@ async function snapshotBeforeChange(
         await createSnapshot(
             draftId,
             JSON.stringify(update.startState.toJSON(savedFields)),
-            get(lastPersistedEventId),
+            eventId,
         ).catch((e) => {
             console.error("[listeners] pre-deletion snapshot failed", e);
             captureException(e);
@@ -756,7 +789,12 @@ async function snapshotBeforeChange(
     }
 }
 
-function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: boolean): void {
+function guardRecovery(
+    update: ViewUpdate,
+    draftId: string,
+    eventId: number,
+    beforeRevision: boolean,
+): void {
     if (deletionBurstTracker.record(draftId, deletionAmount(update, true))) {
         toast.info("Deleting a lot of text?", {
             description:
@@ -782,6 +820,7 @@ function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: bool
                 snapshotAndWarn(
                     draftId,
                     update,
+                    eventId,
                     "Before large deletion (auto)",
                     "A large deletion was detected. A recovery snapshot has been saved to your version history.",
                 );
@@ -805,6 +844,7 @@ function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: bool
                 snapshotAndWarn(
                     draftId,
                     update,
+                    eventId,
                     "Before mass annotation removal (auto)",
                     "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
                 );
@@ -817,6 +857,7 @@ function guardRecovery(update: ViewUpdate, draftId: string, beforeRevision: bool
                 snapshotAndWarn(
                     draftId,
                     update,
+                    eventId,
                     "Before nested annotation loss (auto)",
                     "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
                 );
@@ -834,25 +875,34 @@ function clearSavingIndicator(): void {
     savingIndicatorTimer = null;
 }
 
-function showSavingAfterDelay(docId: string, draftId: string): void {
+function showSavingAfterDelay(
+    docId: string,
+    draftId: string,
+    bookkeeping: PersistenceBookkeeping,
+): void {
     clearSavingIndicator();
     savingIndicatorTimer = setTimeout(() => {
         savingIndicatorTimer = null;
-        if (isActiveDraft(docId, draftId)) saveStatus.set("saving");
+        if (bookkeeping === persistence && !bookkeeping.failure && isActiveDraft(docId, draftId))
+            saveStatus.set("saving");
     }, 150);
 }
 
-function clearPendingCheckpoint(draftId: string, eventId: number): void {
-    const checkpoint = pendingCheckpoint;
+function clearPendingCheckpoint(
+    bookkeeping: PersistenceBookkeeping,
+    draftId: string,
+    eventId: number,
+): void {
+    const checkpoint = bookkeeping.pendingCheckpoint;
     if (checkpoint?.draftId === draftId && checkpoint.eventId === eventId) {
-        pendingCheckpoint = null;
+        bookkeeping.pendingCheckpoint = null;
     }
 }
 
-async function persistPendingCheckpoint(): Promise<void> {
-    if (persistenceFailed) return;
+async function persistPendingCheckpoint(bookkeeping: PersistenceBookkeeping): Promise<void> {
+    requireDurableHistory(bookkeeping);
 
-    const checkpoint = pendingCheckpoint;
+    const checkpoint = bookkeeping.pendingCheckpoint;
     if (!checkpoint) return;
 
     try {
@@ -861,7 +911,7 @@ async function persistPendingCheckpoint(): Promise<void> {
             JSON.stringify(checkpoint.state.toJSON(savedFields)),
             checkpoint.eventId,
         );
-        if (pendingCheckpoint === checkpoint) pendingCheckpoint = null;
+        if (bookkeeping.pendingCheckpoint === checkpoint) bookkeeping.pendingCheckpoint = null;
     } catch (error) {
         console.error("[listeners] flush snapshot failed:", error);
         captureException(error);
@@ -871,8 +921,7 @@ async function persistPendingCheckpoint(): Promise<void> {
 
 /** Call after draining persistence and loading a draft's snapshot and events. */
 export function seedPersistenceBookkeeping(eventId = -1): void {
-    pendingCheckpoint = null;
-    persistenceFailed = false;
+    persistence = { lastEventId: eventId, pendingCheckpoint: null, failure: null };
     clearSavingIndicator();
     lastPersistedEventId.set(eventId);
     lastSavedAt.set(null);
@@ -884,6 +933,7 @@ async function snapshotAfterChange(
     draftId: string,
     result: { eventId: number; needsSnapshot: boolean },
     afterComment: boolean,
+    bookkeeping: PersistenceBookkeeping,
 ): Promise<void> {
     const wroteCommentSnapshot = afterComment
         ? await createAutosaveSnapshot(
@@ -895,14 +945,14 @@ async function snapshotAfterChange(
         : false;
 
     if (wroteCommentSnapshot) {
-        clearPendingCheckpoint(draftId, result.eventId);
+        clearPendingCheckpoint(bookkeeping, draftId, result.eventId);
     }
 
     if (result.needsSnapshot && !wroteCommentSnapshot) {
         const stateJson = JSON.stringify(update.state.toJSON(savedFields));
         try {
             await createSnapshot(draftId, stateJson, result.eventId);
-            clearPendingCheckpoint(draftId, result.eventId);
+            clearPendingCheckpoint(bookkeeping, draftId, result.eventId);
         } catch (e) {
             console.error("[listeners] post-change snapshot failed:", e);
             captureException(e);
@@ -913,41 +963,48 @@ async function snapshotAfterChange(
 async function doAppend(
     update: ViewUpdate,
     { docId, draftId, title }: { docId: string | null; draftId: string | null; title: string },
+    bookkeeping: PersistenceBookkeeping,
 ): Promise<void> {
-    if (!docId || !draftId || get(currentDocumentId) !== docId) return;
+    if (!docId || !draftId) return;
     const payload = buildEventPayload(update);
     if (!payload) return;
     const policy = autosavePolicy(update, payload);
-    await snapshotBeforeChange(update, draftId, policy);
-    guardRecovery(update, draftId, policy.beforeRevision);
-    showSavingAfterDelay(docId, draftId);
+    if (!bookkeeping.failure) {
+        await snapshotBeforeChange(update, draftId, bookkeeping.lastEventId, policy);
+        guardRecovery(update, draftId, bookkeeping.lastEventId, policy.beforeRevision);
+        showSavingAfterDelay(docId, draftId, bookkeeping);
+    }
 
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
-        clearSavingIndicator();
-        if (isActiveDraft(docId, draftId)) {
+        bookkeeping.lastEventId = result.eventId;
+        if (bookkeeping === persistence) clearSavingIndicator();
+        if (bookkeeping === persistence && isActiveDraft(docId, draftId)) {
             lastPersistedEventId.set(result.eventId);
-            lastSavedAt.set(Date.now());
+            if (!bookkeeping.failure) lastSavedAt.set(Date.now());
         }
-        if (isActiveDraft(docId, draftId)) {
-            pendingCheckpoint = {
+        if (!bookkeeping.failure) {
+            bookkeeping.pendingCheckpoint = {
                 draftId,
                 eventId: result.eventId,
                 state: update.state,
             };
+            await snapshotAfterChange(update, draftId, result, policy.afterComment, bookkeeping);
+            if (bookkeeping === persistence && isActiveDraft(docId, draftId))
+                saveStatus.set("saved");
         }
-        await snapshotAfterChange(update, draftId, result, policy.afterComment);
-        if (isActiveDraft(docId, draftId)) saveStatus.set("saved");
-    } catch (e) {
-        persistenceFailed = true;
-        console.error("[listeners] appendEvent failed:", e);
-        captureException(e);
-        clearSavingIndicator();
-        if (isActiveDraft(docId, draftId)) saveStatus.set("error");
+    } catch (error) {
+        bookkeeping.failure ??= new PersistenceError(error);
+        console.error("[listeners] appendEvent failed:", error);
+        captureException(error);
+        if (bookkeeping === persistence) {
+            clearSavingIndicator();
+            if (isActiveDraft(docId, draftId)) saveStatus.set("error");
+        }
         return;
     }
 
-    scheduleMetadata(update, docId, title);
+    if (!bookkeeping.failure) scheduleMetadata(update, docId, title);
 }
 
 function scheduleMetadata(update: ViewUpdate, docId: string, title: string): void {
@@ -976,12 +1033,15 @@ function writeMeta(docId: string, pending: Omit<PendingMeta, "timer">): Promise<
     const title = titleForDocument(currentTitle, docText);
     if (active && title !== currentTitle) currentDocumentTitle.set(title);
     // docText doubles as the search-index body (FTS + semantic chunks).
-    const write = updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch(
-        (e) => {
-            console.error(e);
-            captureException(e);
-        },
-    );
+    const write = updateDocumentContentMetadata(docId, {
+        wordCount,
+        previewText,
+        bodyText: docText,
+        automaticTitle: currentTitle === "Untitled" && title !== currentTitle ? title : undefined,
+    }).catch((e) => {
+        console.error(e);
+        captureException(e);
+    });
     metaWrites.add(write);
     void write.finally(() => metaWrites.delete(write));
     return write;
@@ -1004,7 +1064,8 @@ export async function flushMetaDebounces(): Promise<void> {
 
 /** Checkpoint pending edits before leaving; appends can also schedule metadata debounces. */
 export async function flushPersistence(): Promise<void> {
-    const checkpoint = persistQueue.then(persistPendingCheckpoint);
+    const bookkeeping = persistence;
+    const checkpoint = persistQueue.then(() => persistPendingCheckpoint(bookkeeping));
     // Queue synchronously so later edits and concurrent flushes retain their order.
     persistQueue = checkpoint.catch(() => {});
     try {

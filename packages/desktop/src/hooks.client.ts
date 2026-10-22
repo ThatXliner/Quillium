@@ -5,6 +5,7 @@ import {
     PUBLIC_SUPABASE_URL,
 } from "$env/static/public";
 import { logAppEvent } from "$lib/appLog";
+import { PersistenceError } from "$lib/editor/persistenceError";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
 import posthog from "$lib/posthog";
 import { errorBanner } from "$lib/stores";
@@ -92,6 +93,10 @@ if (typeof window !== "undefined") {
     });
 
     window.addEventListener("unhandledrejection", (event) => {
+        if (event.reason instanceof PersistenceError) {
+            event.preventDefault();
+            return;
+        }
         const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
         // Svelte's internal effect_orphan error is benign — SvelteKit's
         // generated root.svelte uses $effect.pre during async mount and

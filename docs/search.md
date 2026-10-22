@@ -8,7 +8,7 @@ matches (on-device embeddings) are fused into a single ranked list.
 
 ```
 edit → listeners.ts writeMeta (500 ms debounce)
-     → cmd_update_document_meta(..., bodyText)
+     → cmd_update_document_content_metadata(..., bodyText)
          → documents.body_text                 ── SQL triggers ──→ documents_fts (FTS5)
          → SemanticIndex.request_index(docId)  ── worker thread ──→ chunks + vec_chunks (vec0)
 
@@ -55,8 +55,8 @@ Key files:
 ## Keyword side (Phase 1)
 
 - `documents.body_text` is denormalized full plain text, written by the same
-  debounced `updateDocumentMeta` path that already computes it (`bodyText` is
-  optional — rename/tag updates omit it and preserve the indexed body).
+  debounced `updateDocumentContentMetadata` path that already computes it.
+  Separate title and tag operations preserve the indexed body.
 - `documents_fts` is an **external-content** FTS5 table (`content='documents'`)
   kept in sync by AFTER INSERT/DELETE triggers and an
   `AFTER UPDATE OF title, body_text, tags` trigger — scoped so the

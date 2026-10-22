@@ -29,6 +29,7 @@ import {
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
+    errorBanner,
     lastPersistedEventId,
     lastSavedAt,
     saveStatus,
@@ -63,12 +64,13 @@ beforeEach(() => {
     currentDocumentId.set("doc-1");
     currentDraftId.set("draft-1");
     currentDocumentTitle.set("Untitled");
+    errorBanner.set(null);
     seedPersistenceBookkeeping();
     isCollabJoiner.set(false);
 });
 
 afterEach(async () => {
-    await flushPersistence();
+    await flushPersistence().catch(() => {});
     vi.useRealTimers();
     view?.destroy();
     view = undefined;
@@ -265,7 +267,7 @@ describe("listeners integration", () => {
         view = makeView();
         view.dispatch({ changes: { from: 11, insert: " first" } });
         view.dispatch({ changes: { from: view.state.doc.length, insert: " later" } });
-        await flushPersistence();
+        await expect(flushPersistence()).rejects.toThrow("could not be saved");
 
         expect(appendCount).toBe(2);
         expect(snapshots).toHaveLength(0);
@@ -454,7 +456,7 @@ describe("listeners integration", () => {
 
     it("creates a named snapshot before a revision annotation is persisted", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
-        lastPersistedEventId.set(12);
+        seedPersistenceBookkeeping(12);
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
             if (cmd === "cmd_create_named_snapshot") return 99;
@@ -540,7 +542,7 @@ describe("listeners integration", () => {
 
     it("creates an autosave from the pre-change state before a sentence-sized deletion", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
-        lastPersistedEventId.set(31);
+        seedPersistenceBookkeeping(31);
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
             if (cmd === "cmd_append_event") return { eventId: 32, needsSnapshot: false };
@@ -656,7 +658,7 @@ describe("listeners integration", () => {
         expect(get(saveStatus)).toBe("saved");
     });
 
-    it("continues the ordered queue after a failed append", async () => {
+    it("keeps failure visible and rejects both flushes after a later successful append", async () => {
         let count = 0;
         mockIPC((cmd) => {
             if (cmd !== "cmd_append_event") return null;
@@ -666,11 +668,96 @@ describe("listeners integration", () => {
         view = makeView();
         view.dispatch({ changes: { from: 0, insert: "One " } });
         view.dispatch({ changes: { from: 0, insert: "Two " } });
-        await flushPersistence();
+        await expect(flushPersistence()).rejects.toThrow("could not be saved");
+        await expect(flushPersistQueue()).rejects.toThrow("could not be saved");
         expect(count).toBe(2);
         expect(get(lastPersistedEventId)).toBe(8);
-        expect(get(saveStatus)).toBe("saved");
+        expect(get(saveStatus)).toBe("error");
+        expect(view.state.doc.toString()).toBe("Two One Hello world");
     });
+
+    it("does not index text from a later successful append after an earlier append failed", async () => {
+        const metadata = vi.fn();
+        let appends = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") {
+                if (++appends === 1) throw new Error("disk full");
+                return { eventId: 8, needsSnapshot: false };
+            }
+            if (cmd === "cmd_update_document_content_metadata") metadata(args);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: " missing" } });
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " later" } });
+
+        await expect(flushPersistence()).rejects.toThrow("could not be saved");
+
+        expect(metadata).not.toHaveBeenCalled();
+    });
+
+    it.each(["deletion", "revision", "checkpoint"])(
+        "uses the old draft's completed append for a queued %s snapshot after reseeding",
+        async (change) => {
+            let releaseAppend!: (result: { eventId: number; needsSnapshot: boolean }) => void;
+            const snapshots: unknown[] = [];
+            let appends = 0;
+            mockIPC((cmd, args) => {
+                if (cmd === "cmd_append_event") {
+                    if (++appends === 1) {
+                        return new Promise((resolve) => {
+                            releaseAppend = resolve;
+                        });
+                    }
+                    return { eventId: 102, needsSnapshot: false };
+                }
+                if (cmd === "cmd_create_snapshot" || cmd === "cmd_create_named_snapshot")
+                    snapshots.push(args);
+                return null;
+            });
+            view = makeView({}, "A long opening paragraph. ".repeat(10));
+            view.dispatch({ changes: { from: 0, insert: "Old draft edit. " } });
+            await vi.waitFor(() => expect(releaseAppend).toBeDefined());
+            const expectedState = expect.stringContaining('"doc":"Old draft edit. ');
+            if (change === "deletion") {
+                view.dispatch({ changes: { from: 0, to: 150 } });
+            } else if (change === "revision") {
+                const versions = [makeVersion({ doc: "Old d" })];
+                const revision = {
+                    ...createNewAnnotation(
+                        view.state.field(annotationField),
+                        EditorSelection.single(0, 5),
+                        "revision",
+                    ),
+                    activeVersionId: versions[0].id,
+                    versions,
+                };
+                view.dispatch({ effects: addAnnotation.of(revision) });
+            } else {
+                void persistNamedVersion(
+                    "draft-1",
+                    JSON.stringify(view.state.toJSON()),
+                    "Captured checkpoint",
+                    () => true,
+                );
+            }
+            const oldWrites = flushPersistQueue();
+            currentDraftId.set("draft-2");
+            seedPersistenceBookkeeping(90);
+            releaseAppend({ eventId: 101, needsSnapshot: false });
+            await oldWrites;
+
+            expect(snapshots.length).toBeGreaterThan(0);
+            for (const snapshot of snapshots) {
+                expect(snapshot).toMatchObject({
+                    draftId: "draft-1",
+                    stateJson: expectedState,
+                    upToEventId: 101,
+                });
+            }
+            expect(get(lastPersistedEventId)).toBe(90);
+        },
+    );
 
     it("respects persist=false and skips saving", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
@@ -899,6 +986,87 @@ describe("persistence timing and identity", () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     });
 
+    it("keeps a failed draft in error while a later append is slow and skips recovery snapshots", async () => {
+        let finishAppend!: (value: unknown) => void;
+        let appends = 0;
+        const snapshots: string[] = [];
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") {
+                if (++appends === 1) throw new Error("disk full");
+                return new Promise((resolve) => {
+                    finishAppend = resolve;
+                });
+            }
+            if (cmd === "cmd_create_snapshot" || cmd === "cmd_create_named_snapshot")
+                snapshots.push(cmd);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "First " } });
+        await expect(flushPersistQueue()).rejects.toThrow("could not be saved");
+        const comment = createNewAnnotation(
+            view.state.field(annotationField),
+            EditorSelection.single(0, 5),
+            "comment",
+        );
+        view.dispatch({ effects: addAnnotation.of(comment) });
+        await vi.advanceTimersByTimeAsync(150);
+        expect(get(saveStatus)).toBe("error");
+        finishAppend({ eventId: 8, needsSnapshot: true });
+        await expect(flushPersistence()).rejects.toThrow("could not be saved");
+        expect(get(saveStatus)).toBe("error");
+        expect(snapshots).toEqual([]);
+    });
+
+    it("persists an enqueued edit to its captured draft when selection changes before the queue runs", async () => {
+        const drafts: unknown[] = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") {
+                drafts.push(args);
+                return { eventId: 10, needsSnapshot: false };
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Original " } });
+        currentDocumentId.set("doc-2");
+        await flushPersistence();
+        expect(drafts).toEqual([expect.objectContaining({ draftId: "draft-1" })]);
+    });
+
+    it("isolates late failure after reseeding the same draft while the original flush still rejects", async () => {
+        let reject!: (error: Error) => void;
+        const snapshots: unknown[] = [];
+        let attempts = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") {
+                if (++attempts === 1)
+                    return new Promise((_resolve, fail) => {
+                        reject = fail;
+                    });
+                return { eventId: 91, needsSnapshot: false };
+            }
+            if (cmd === "cmd_create_snapshot") snapshots.push(args);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Old " } });
+        const originalFlush = expect(flushPersistence()).rejects.toThrow("could not be saved");
+        await vi.advanceTimersByTimeAsync(0);
+        seedPersistenceBookkeeping(90);
+        reject(new Error("late failure"));
+        await originalFlush;
+        expect(get(saveStatus)).toBe("saved");
+        expect(get(errorBanner)).toBeNull();
+        expect(get(lastPersistedEventId)).toBe(90);
+        view.dispatch({ changes: { from: 0, insert: "New " } });
+        await flushPersistence();
+        expect(get(saveStatus)).toBe("saved");
+        expect(snapshots).toEqual([
+            expect.objectContaining({ draftId: "draft-1", upToEventId: 91 }),
+        ]);
+    });
+
     it("waits for ordered appends, then the latest metadata write", async () => {
         const writes: string[] = [];
         let finishAppend!: (value: unknown) => void;
@@ -912,7 +1080,7 @@ describe("persistence timing and identity", () => {
                     });
                 return { eventId: 2, needsSnapshot: false };
             }
-            if (cmd === "cmd_update_document_meta") {
+            if (cmd === "cmd_update_document_content_metadata") {
                 writes.push((args as { bodyText: string }).bodyText);
                 return new Promise<void>((resolve) => {
                     finishMeta = resolve;
@@ -944,7 +1112,7 @@ describe("persistence timing and identity", () => {
         let finishMeta!: () => void;
         mockIPC((cmd) => {
             if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
-            if (cmd === "cmd_update_document_meta") {
+            if (cmd === "cmd_update_document_content_metadata") {
                 return new Promise<void>((resolve) => {
                     finishMeta = resolve;
                 });
@@ -1028,7 +1196,7 @@ describe("persistence timing and identity", () => {
                 return new Promise((resolve) => {
                     finishAppend = resolve;
                 });
-            if (cmd === "cmd_update_document_meta") metadata.push(args);
+            if (cmd === "cmd_update_document_content_metadata") metadata.push(args);
             return null;
         });
         view = makeView();
@@ -1041,7 +1209,7 @@ describe("persistence timing and identity", () => {
         expect(metadata).toEqual([
             expect.objectContaining({
                 id: "doc-1",
-                title: "Original title",
+                automaticTitle: undefined,
                 bodyText: "Hi Hello world",
             }),
         ]);

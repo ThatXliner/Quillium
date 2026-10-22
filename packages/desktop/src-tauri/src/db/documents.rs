@@ -373,30 +373,43 @@ pub fn duplicate_document(
     Ok(document_id)
 }
 
-/// `body_text` is the full plain text used by full-text search. Pass `None`
-/// for metadata-only updates (rename, tags) to leave the indexed body intact.
-pub fn update_document_meta(
+pub fn update_document_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE documents SET title = ?1, updated_at = ?2 WHERE id = ?3",
+        params![title, now_ms(), id],
+    )?;
+    Ok(())
+}
+
+pub fn update_document_tags(conn: &Connection, id: &str, tags: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE documents SET tags = ?1, updated_at = ?2 WHERE id = ?3",
+        params![tags, now_ms(), id],
+    )?;
+    Ok(())
+}
+
+pub fn update_document_content_metadata(
     conn: &Connection,
     id: &str,
-    title: &str,
     word_count: i64,
     preview_text: &str,
-    tags: &str,
-    body_text: Option<&str>,
+    body_text: &str,
+    automatic_title: Option<&str>,
 ) -> Result<()> {
-    let now = now_ms();
-    match body_text {
-        Some(body) => conn.execute(
-            "UPDATE documents SET title = ?1, updated_at = ?2, word_count = ?3,
-             preview_text = ?4, tags = ?5, body_text = ?6 WHERE id = ?7",
-            params![title, now, word_count, preview_text, tags, body, id],
-        )?,
-        None => conn.execute(
-            "UPDATE documents SET title = ?1, updated_at = ?2, word_count = ?3,
-             preview_text = ?4, tags = ?5 WHERE id = ?6",
-            params![title, now, word_count, preview_text, tags, id],
-        )?,
-    };
+    conn.execute(
+        "UPDATE documents SET word_count = ?1, preview_text = ?2, body_text = ?3,
+         title = CASE WHEN title = 'Untitled' THEN COALESCE(?4, title) ELSE title END,
+         updated_at = ?5 WHERE id = ?6",
+        params![
+            word_count,
+            preview_text,
+            body_text,
+            automatic_title,
+            now_ms(),
+            id
+        ],
+    )?;
     Ok(())
 }
 
@@ -626,7 +639,7 @@ mod tests {
                     create_document(&conn, &format!("Document {index}"), *version).unwrap()
                 })
                 .collect();
-            update_document_meta(&conn, &ids[0], "Renamed", 1, "text", "[]", None).unwrap();
+            update_document_title(&conn, &ids[0], "Renamed").unwrap();
             trash_document(&conn, &ids[1]).unwrap();
             assert_eq!(
                 list_trashed_documents(&conn).unwrap()[0].created_with_version,
@@ -734,19 +747,63 @@ mod tests {
     }
 
     #[test]
+    fn metadata_writers_preserve_fields_owned_by_other_actions() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("metadata.db")).unwrap();
+        let id = create_document(&conn, "Untitled", None).unwrap();
+        update_document_tags(&conn, &id, "[\"fiction\"]").unwrap();
+        update_document_content_metadata(
+            &conn,
+            &id,
+            4,
+            "Opening words",
+            "Opening words in full",
+            Some("Automatic title"),
+        )
+        .unwrap();
+        let meta = get_document(&conn, &id).unwrap().unwrap();
+        assert_eq!(meta.title, "Automatic title");
+        assert_eq!(meta.tags, "[\"fiction\"]");
+        update_document_title(&conn, &id, "Chosen title").unwrap();
+        update_document_content_metadata(
+            &conn,
+            &id,
+            5,
+            "New opening",
+            "New opening words in full",
+            Some("Delayed automatic title"),
+        )
+        .unwrap();
+        update_document_tags(&conn, &id, "[\"revised\"]").unwrap();
+        let meta = get_document(&conn, &id).unwrap().unwrap();
+        assert_eq!(meta.title, "Chosen title");
+        assert_eq!(meta.word_count, 5);
+        assert_eq!(meta.preview_text, "New opening");
+        assert_eq!(meta.tags, "[\"revised\"]");
+        let body: String = conn
+            .query_row(
+                "SELECT body_text FROM documents WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(body, "New opening words in full");
+    }
+
+    #[test]
     fn duplicate_document_copies_live_structure_without_history() {
         let dir = tempfile::tempdir().unwrap();
         let conn = open_db(&dir.path().join("test.db")).unwrap();
         let source_version = Some("0.24.4-dev.7+sha.abc123");
         let source_id = create_document_with_history(&conn, "Novel", true, source_version).unwrap();
-        update_document_meta(
+        update_document_tags(&conn, &source_id, "[\"fiction\"]").unwrap();
+        update_document_content_metadata(
             &conn,
             &source_id,
-            "Novel",
             42,
             "Opening words",
-            "[\"fiction\"]",
-            Some("Opening words and the rest"),
+            "Opening words and the rest",
+            None,
         )
         .unwrap();
         let tab_a = create_tab(&conn, &source_id, "Draft").unwrap();

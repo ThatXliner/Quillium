@@ -27,7 +27,8 @@ use db::{
         create_document_with_history, create_draft, delete_document, duplicate_document,
         get_document, get_semantic_search_enabled, get_trash_retention, list_documents,
         list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
-        set_semantic_search_enabled, set_trash_retention, trash_document, update_document_meta,
+        set_semantic_search_enabled, set_trash_retention, trash_document,
+        update_document_content_metadata, update_document_tags, update_document_title,
         DuplicateDraftState,
     },
     events::{
@@ -339,36 +340,49 @@ fn cmd_duplicate_document(
     Ok(document_id)
 }
 
-/// `body_text` (the full plain text) is optional: rename/tag updates omit it
-/// so the search index keeps the last indexed body. When present it also
-/// queues the document for semantic (re-)indexing.
 #[tauri::command]
-fn cmd_update_document_meta(
+fn cmd_update_document_title(
+    state: tauri::State<DbState>,
+    id: String,
+    title: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    update_document_title(&conn, &id, &title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_update_document_tags(
+    state: tauri::State<DbState>,
+    id: String,
+    tags: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    update_document_tags(&conn, &id, &tags).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_update_document_content_metadata(
     state: tauri::State<DbState>,
     semantic: tauri::State<SemanticState>,
     id: String,
-    title: String,
     word_count: i64,
     preview_text: String,
-    tags: String,
-    body_text: Option<String>,
+    body_text: String,
+    automatic_title: Option<String>,
 ) -> Result<(), String> {
     {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
-        update_document_meta(
+        update_document_content_metadata(
             &conn,
             &id,
-            &title,
             word_count,
             &preview_text,
-            &tags,
-            body_text.as_deref(),
+            &body_text,
+            automatic_title.as_deref(),
         )
         .map_err(|e| e.to_string())?;
     }
-    if body_text.is_some() {
-        semantic.0.request_index(&id);
-    }
+    semantic.0.request_index(&id);
     Ok(())
 }
 
@@ -1605,7 +1619,9 @@ pub fn run() {
             cmd_get_document,
             cmd_create_document,
             cmd_duplicate_document,
-            cmd_update_document_meta,
+            cmd_update_document_title,
+            cmd_update_document_tags,
+            cmd_update_document_content_metadata,
             cmd_search_documents,
             cmd_search_status,
             cmd_get_semantic_search_enabled,

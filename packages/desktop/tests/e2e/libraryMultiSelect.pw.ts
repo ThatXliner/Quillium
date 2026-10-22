@@ -142,7 +142,7 @@ async function installLibraryMock(
                         const a = args as { id: string };
                         return docs.find((d) => d.id === a.id) ?? null;
                     }
-                    if (cmd === "cmd_update_document_meta") return null;
+                    if (cmd === "cmd_update_document_content_metadata") return null;
                     if (cmd === "cmd_get_trash_retention") return null;
                     if (cmd === "cmd_set_trash_retention") return null;
 

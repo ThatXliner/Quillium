@@ -260,6 +260,8 @@ export class TabDraftController {
         const docId = get(currentDocumentId);
         if (!docId || !this.canSelect(tabId)) return;
         const generation = ++this.#contextGeneration;
+        const previousTabId = get(currentTabId);
+        const previousDrafts = this.tabDrafts;
         await this.#deps.flushPendingPersist();
         if (!this.#isCurrentContext(generation, docId)) return;
         // Clicking back to the already-committed tab must still cancel and
@@ -279,7 +281,31 @@ export class TabDraftController {
         this.tabDrafts = drafts;
         const draft = drafts.find((d) => d.id === persisted) ?? drafts[0];
         currentTabId.set(tabId);
-        if (draft) await this.#deps.switchToDraft(tabId, draft.id);
+        try {
+            if (draft) await this.#deps.switchToDraft(tabId, draft.id);
+        } catch (error) {
+            if (this.#isCurrentContext(generation, docId)) {
+                const restoredTabId =
+                    get(currentTabId) === tabId ? previousTabId : get(currentTabId);
+                currentTabId.set(restoredTabId);
+                if (restoredTabId) {
+                    try {
+                        const restoredDrafts =
+                            restoredTabId === previousTabId
+                                ? previousDrafts
+                                : await listTabDrafts(restoredTabId);
+                        if (this.#isCurrentContext(generation, docId)) {
+                            this.tabDrafts = restoredDrafts;
+                            await this.#persistActiveTab(docId, restoredTabId);
+                        }
+                    } catch (rollbackError) {
+                        console.error("[tabDrafts] active-tab rollback failed", rollbackError);
+                        captureException(rollbackError);
+                    }
+                }
+            }
+            throw error;
+        }
         if (!this.#isCurrentContext(generation, docId)) return;
         posthog.capture("tab_switched");
     }

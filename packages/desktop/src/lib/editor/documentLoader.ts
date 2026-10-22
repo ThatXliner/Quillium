@@ -7,7 +7,7 @@ import {
     listDocuments,
     loadDocumentState,
     setActiveDraft,
-    updateDocumentMeta,
+    updateDocumentContentMetadata,
 } from "$lib/db";
 import { getUndoHistoryPolicyAnalytics } from "$lib/db/historyPolicy";
 import type { LoadResult } from "$lib/db/types";
@@ -178,7 +178,17 @@ export class DocumentLoader {
             return;
         const generation = ++this.#generation;
         const requestedDocument = get(currentDocumentId);
-        await this.flush();
+        try {
+            await this.flush();
+        } catch (error) {
+            if (generation === this.#generation && this.#committedDocument && !this.#disposed) {
+                this.#selectDocument(this.#committedDocument.documentId);
+                currentTabId.set(this.#committedTabId);
+                currentDraftId.set(this.#committedDocument.draftId);
+                this.#committedGeneration = generation;
+            }
+            throw error;
+        }
         if (!this.#isCurrent(generation, requestedDocument, target?.tabId)) return;
 
         if (!documentId) {
@@ -291,14 +301,11 @@ export class DocumentLoader {
                 extensions: getExtensions({ ...this.#options, persistHistory }),
             });
             await createSnapshot(draftId, JSON.stringify(state.toJSON(savedFields)), -1);
-            await updateDocumentMeta(
-                documentId,
-                title,
-                content.trim().split(/\s+/).filter(Boolean).length,
-                content.slice(0, 200),
-                "",
-                content,
-            );
+            await updateDocumentContentMetadata(documentId, {
+                wordCount: content.trim().split(/\s+/).filter(Boolean).length,
+                previewText: content.slice(0, 200),
+                bodyText: content,
+            });
         }
         return documentId;
     }

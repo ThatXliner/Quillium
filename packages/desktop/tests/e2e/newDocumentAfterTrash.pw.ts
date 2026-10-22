@@ -110,18 +110,17 @@ async function installMock(page: Page, options: MockOptions = {}) {
                     });
                     return id;
                 }
-                if (cmd === "cmd_update_document_meta") {
+                if (cmd === "cmd_update_document_content_metadata") {
                     const doc = docs.find((d) => d.id === args.id);
-                    if (doc) {
-                        doc.title = args.title;
-                        doc.wordCount = args.wordCount;
-                        doc.previewText = args.previewText;
-                        doc.tags = args.tags;
-                        doc.updatedAt = Date.now();
-                    }
+                    if (!doc) return null;
+                    if (doc.title === "Untitled" && args.automaticTitle)
+                        doc.title = args.automaticTitle;
+                    doc.wordCount = args.wordCount;
+                    doc.previewText = args.previewText;
+                    doc.updatedAt = Date.now();
                     metaUpdates.push({
                         id: args.id,
-                        title: args.title,
+                        title: doc.title,
                         previewText: args.previewText,
                     });
                     return null;

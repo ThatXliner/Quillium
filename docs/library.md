@@ -79,7 +79,8 @@ These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Ta
 |----------|---------|
 | `listDocuments` | Get all documents |
 | `createDocument` | Create new document |
-| `updateDocumentMeta` | Update title, tags |
+| `updateDocumentTitle` | Rename without changing tags or content metadata |
+| `updateDocumentTags` | Update tags without changing title or content metadata |
 | `trashDocument` | Soft-delete |
 | `restoreDocument` | Restore from trash |
 | `deleteDocument` | Permanent delete |

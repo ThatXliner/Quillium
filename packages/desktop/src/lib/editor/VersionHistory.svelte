@@ -12,7 +12,6 @@
 -->
 <script lang="ts">
 import {
-    createNamedSnapshot,
     getSnapshotRetention,
     getSnapshotStorageSize,
     labelSnapshot,
@@ -29,6 +28,7 @@ import {
 } from "$lib/db";
 import type { DocEventRecord, DocumentSnapshotMeta, DraftMeta, TabMeta } from "$lib/db/types";
 import { savedFields } from "$lib/editor/extensions";
+import { persistNamedVersion } from "$lib/editor/listeners";
 import { goToEditor } from "$lib/navigation";
 import posthog, { captureException } from "$lib/posthog";
 import {
@@ -414,7 +414,13 @@ async function saveCheckpoint() {
     savingCheckpoint = true;
     try {
         const stateJson = JSON.stringify(view.state.toJSON(savedFields));
-        await createNamedSnapshot(draftId, stateJson, eventId, checkpointLabel.trim());
+        const snapshotId = await persistNamedVersion(
+            draftId,
+            stateJson,
+            checkpointLabel.trim(),
+            () => get(editorView) === view && get(currentDraftId) === draftId,
+        );
+        if (snapshotId === null) return;
         checkpointLabel = "";
         await loadTimeline();
         await reconcileSelection();
