@@ -11,11 +11,11 @@
  */
 import { type Server as HttpServer, type IncomingMessage, createServer } from "node:http";
 import type { Duplex } from "node:stream";
-import { type WebSocket, WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { authenticateWebSocket } from "./auth/middleware.js";
 import { createLogger } from "./logger.js";
 import { isOriginAllowed } from "./origins.js";
-import { queueYjsUpdate } from "./persistence/debouncedUpdates.js";
+import { flushAllDocumentUpdates, queueYjsUpdate } from "./persistence/debouncedUpdates.js";
 import { getOrCreateYjsRoom, getRoomCount, scheduleRoomCleanup } from "./yjs/rooms.js";
 import { setupYjsConnection } from "./yjs/sync.js";
 
@@ -24,7 +24,11 @@ const logger = createLogger("server");
 /**
  * Create and configure the Yjs relay server.
  */
-export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpServer } {
+export function createRelayServer(): {
+    wss: WebSocketServer;
+    httpServer: HttpServer;
+    close: () => Promise<void>;
+} {
     const httpServer = createServer((req, res) => {
         // Health check endpoint
         if (req.url === "/health") {
@@ -44,10 +48,20 @@ export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpSer
     });
 
     const wss = new WebSocketServer({ noServer: true });
+    const upgradingSockets = new Set<Duplex>();
+    const initializingConnections = new Set<Promise<void>>();
+    let accepting = true;
+    let closing: Promise<void> | null = null;
 
     // Handle WebSocket upgrade with auth
     httpServer.on("upgrade", async (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+        upgradingSockets.add(socket);
+        socket.once("close", () => upgradingSockets.delete(socket));
         try {
+            if (!accepting) {
+                socket.destroy();
+                return;
+            }
             if (!isOriginAllowed(request.headers.origin)) {
                 socket.write("HTTP/1.1 403 Forbidden\r\n\r\nOrigin not allowed");
                 socket.destroy();
@@ -74,6 +88,10 @@ export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpSer
 
             // Authenticate
             const authResult = await authenticateWebSocket(token, documentId);
+            if (!accepting || socket.destroyed) {
+                socket.destroy();
+                return;
+            }
 
             if (!authResult.success || !authResult.data) {
                 logger.info(`Auth failed: ${authResult.error}`);
@@ -84,19 +102,30 @@ export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpSer
             const clientData = authResult.data;
 
             // Upgrade to WebSocket
-            wss.handleUpgrade(request, socket, head, async (ws: WebSocket) => {
-                const room = await getOrCreateYjsRoom(documentId);
-
-                // Setup Yjs connection with persistence callback
-                setupYjsConnection(ws, room, clientData, (update) => {
-                    queueYjsUpdate(documentId, update);
-                });
-
-                // Schedule cleanup when client disconnects
-                ws.on("close", () => {
-                    if (room.clients.size === 0) {
-                        scheduleRoomCleanup(room);
+            wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+                upgradingSockets.delete(socket);
+                const initialize = async (): Promise<void> => {
+                    try {
+                        const room = await getOrCreateYjsRoom(documentId);
+                        if (!accepting || ws.readyState !== WebSocket.OPEN) {
+                            if (room.clients.size === 0) scheduleRoomCleanup(room);
+                            return;
+                        }
+                        setupYjsConnection(ws, room, clientData, (update) => {
+                            queueYjsUpdate(documentId, update);
+                        });
+                        ws.on("close", () => {
+                            if (room.clients.size === 0) scheduleRoomCleanup(room);
+                        });
+                    } catch (error) {
+                        logger.error(`Room initialization failed for ${documentId}`, error);
+                        ws.close(1011, "Room initialization failed");
                     }
+                };
+                const initialization = initialize();
+                initializingConnections.add(initialization);
+                void initialization.finally(() => {
+                    initializingConnections.delete(initialization);
                 });
             });
         } catch (e) {
@@ -106,7 +135,30 @@ export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpSer
         }
     });
 
-    return { wss, httpServer };
+    const close = (): Promise<void> => {
+        if (closing) return closing;
+        accepting = false;
+        for (const socket of upgradingSockets) socket.destroy();
+        for (const client of wss.clients) {
+            client.removeAllListeners("message");
+            client.close(1001, "Server shutting down");
+        }
+        const socketsClosed = new Promise<void>((resolve, reject) => {
+            wss.close((error) => (error ? reject(error) : resolve()));
+        });
+        const httpClosed = new Promise<void>((resolve, reject) => {
+            httpServer.close((error) => (error ? reject(error) : resolve()));
+        });
+        closing = Promise.all([
+            flushAllDocumentUpdates(),
+            ...initializingConnections,
+            socketsClosed,
+            httpClosed,
+        ]).then(() => undefined);
+        return closing;
+    };
+
+    return { wss, httpServer, close };
 }
 
 // Export for types
