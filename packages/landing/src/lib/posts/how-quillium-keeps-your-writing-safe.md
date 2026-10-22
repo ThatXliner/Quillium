@@ -62,7 +62,7 @@ The editor's persistence queue keeps writes in order and retains a failed-write 
 ### 2. Recover readable data
 
 
-If a part of your history is corrupted—a mangled record, an annotation with invalid data—most apps would crash. Quillium handles every record individually instead. A corrupt event is skipped, a warning is logged, and replay continues with everything that came after it, so one bad record doesn't prevent recovery of the thousands of good ones. The same approach applies to annotations: if one fails validation on load, it's dropped (unless we can recover it—see the next section) and the rest load normally, and if an entire snapshot is corrupted, Quillium falls back to rebuilding from a fresh state.
+During replay, Quillium catches errors from individual events and tries to continue. Invalid annotations can be dropped while other annotations load. If a snapshot cannot be decoded, reconstruction starts from an empty editor and attempts the later events.
 
 Recovery is best-effort. Skipping a corrupt event can affect later events that depend on it, and an unreadable snapshot can contain state that later events cannot reconstruct. Keep separate backups of important work.
 
