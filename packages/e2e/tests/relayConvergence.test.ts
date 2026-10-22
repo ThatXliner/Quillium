@@ -8,12 +8,13 @@
  * the migrated local database.
  */
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import fc from "fast-check";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type RawData, WebSocket } from "ws";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
@@ -204,19 +205,197 @@ function createComment({
 }
 
 describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
+    it.each(["yjs_documents", "yjs_updates"])(
+        "preserves durable state when %s reads fail and recovers on reconnect",
+        async (failedTable) => {
+            process.env.SUPABASE_URL = environment.url;
+            process.env.SUPABASE_SERVICE_ROLE_KEY = environment.serviceRoleKey;
+            const [{ createRelayServer }, { _clearAllRooms, getYjsRoom }] = await Promise.all([
+                import("../../relay/src/server"),
+                import("../../relay/src/yjs/rooms"),
+            ]);
+            const admin = createTestClient(environment.serviceRoleKey);
+            const documentId = randomUUID();
+            const { httpServer, close } = createRelayServer();
+            const saved = new Y.Doc();
+            let owner: TestIdentity | undefined;
+            let rejectedClient: WebSocket | undefined;
+            let recoveredClient: HeadlessYjsClient | undefined;
+            const originalFetch = globalThis.fetch;
+            const interceptedFetch = vi.spyOn(globalThis, "fetch");
+            try {
+                owner = await createIdentity(admin, environment.publishableKey, "read-failure");
+                const { error: documentError } = await admin.from("sync_documents").insert({
+                    id: documentId,
+                    owner_id: owner.userId,
+                    title: "Recover after read failure",
+                });
+                expect(documentError).toBeNull();
+                saved.getText("document").insert(0, "Previously durable");
+                const snapshot = {
+                    state_update: Buffer.from(Y.encodeStateAsUpdate(saved)).toString("base64"),
+                    state_vector: Buffer.from(Y.encodeStateVector(saved)).toString("base64"),
+                };
+                const { error: snapshotError } = await admin
+                    .from("yjs_documents")
+                    .insert({ document_id: documentId, ...snapshot });
+                expect(snapshotError).toBeNull();
+                saved.getText("document").insert(saved.getText("document").length, " writing");
+                const update = {
+                    update_data: Buffer.from(Y.encodeStateAsUpdate(saved)).toString("base64"),
+                };
+                const { error: updateError } = await admin
+                    .from("yjs_updates")
+                    .insert({ document_id: documentId, ...update });
+                expect(updateError).toBeNull();
+                await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+                const address = httpServer.address();
+                if (!address || typeof address === "string") throw new Error("Missing relay port");
+                const url = `ws://127.0.0.1:${address.port}/${documentId}?auth=${encodeURIComponent(owner.accessToken)}`;
+                let failedReads = 0;
+                interceptedFetch.mockImplementation(async (input, init) => {
+                    const request = new Request(input, init);
+                    if (
+                        request.method === "GET" &&
+                        request.url.includes(`/rest/v1/${failedTable}?`) &&
+                        request.url.includes(documentId)
+                    ) {
+                        failedReads += 1;
+                        return new Response(JSON.stringify({ message: "Injected read outage" }), {
+                            status: 503,
+                            headers: { "content-type": "application/json" },
+                        });
+                    }
+                    return originalFetch(input, init);
+                });
+                rejectedClient = new WebSocket(url);
+                const [code] = await once(rejectedClient, "close");
+                interceptedFetch.mockRestore();
+
+                expect(code).toBe(1011);
+                expect(failedReads).toBeGreaterThan(0);
+                expect(getYjsRoom(documentId)).toBeUndefined();
+                const { data: storedSnapshot, error: readSnapshotError } = await admin
+                    .from("yjs_documents")
+                    .select("state_update, state_vector")
+                    .eq("document_id", documentId)
+                    .single();
+                expect(readSnapshotError).toBeNull();
+                expect(storedSnapshot).toEqual(snapshot);
+                const { data: storedUpdates, error: readUpdatesError } = await admin
+                    .from("yjs_updates")
+                    .select("update_data")
+                    .eq("document_id", documentId);
+                expect(readUpdatesError).toBeNull();
+                expect(storedUpdates).toEqual([update]);
+
+                recoveredClient = new HeadlessYjsClient(url);
+                await recoveredClient.connect();
+                expect(recoveredClient.text.toString()).toBe("Previously durable writing");
+            } finally {
+                interceptedFetch.mockRestore();
+                rejectedClient?.terminate();
+                await close();
+                if (recoveredClient) await recoveredClient.close();
+                _clearAllRooms();
+                saved.destroy();
+                await admin.from("sync_documents").delete().eq("id", documentId);
+                if (owner) {
+                    await owner.client.auth.signOut({ scope: "global" });
+                    await admin.auth.admin.deleteUser(owner.userId, false);
+                }
+            }
+        },
+        30_000,
+    );
+
+    it("recovers more than 1,000 updates before migrating and clearing the log", async () => {
+        process.env.SUPABASE_URL = environment.url;
+        process.env.SUPABASE_SERVICE_ROLE_KEY = environment.serviceRoleKey;
+        const [{ createRelayServer }, { _clearAllRooms }, { persistYjsUpdates, loadYjsState }] =
+            await Promise.all([
+                import("../../relay/src/server"),
+                import("../../relay/src/yjs/rooms"),
+                import("../../relay/src/persistence/yjsUpdates"),
+            ]);
+        const admin = createTestClient(environment.serviceRoleKey);
+        const documentId = randomUUID();
+        const { httpServer, close } = createRelayServer();
+        const saved = new Y.Doc();
+        let owner: TestIdentity | undefined;
+        let client: HeadlessYjsClient | undefined;
+        try {
+            owner = await createIdentity(admin, environment.publishableKey, "paged-recovery");
+            const { error: documentError } = await admin.from("sync_documents").insert({
+                id: documentId,
+                owner_id: owner.userId,
+                title: "Recover every update page",
+            });
+            expect(documentError).toBeNull();
+            const updates: Uint8Array[] = [];
+            saved.on("update", (update: Uint8Array) => updates.push(update));
+            const text = saved.getText("document");
+            const expected = Array.from({ length: 1_005 }, (_, index) => `edit ${index}\n`);
+            for (const edit of expected) text.insert(text.length, edit);
+            expect(updates).toHaveLength(1_005);
+            expect(await persistYjsUpdates(documentId, updates)).toEqual({ success: true });
+            const { count: savedCount, error: countError } = await admin
+                .from("yjs_updates")
+                .select("id", { count: "exact", head: true })
+                .eq("document_id", documentId);
+            expect(countError).toBeNull();
+            expect(savedCount).toBe(1_005);
+
+            await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+            const address = httpServer.address();
+            if (!address || typeof address === "string") throw new Error("Missing relay port");
+            client = new HeadlessYjsClient(
+                `ws://127.0.0.1:${address.port}/${documentId}?auth=${encodeURIComponent(owner.accessToken)}`,
+            );
+            await client.connect();
+            expect(client.text.length).toBe(expected.join("").length);
+            expect(client.text.toString()).toBe(expected.join(""));
+
+            const { count: remainingCount, error: remainingError } = await admin
+                .from("yjs_updates")
+                .select("id", { count: "exact", head: true })
+                .eq("document_id", documentId);
+            expect(remainingError).toBeNull();
+            expect(remainingCount).toBe(0);
+            const { ydoc: restored } = await loadYjsState(documentId);
+            expect(restored.getText("document").toString()).toBe(expected.join(""));
+            restored.destroy();
+        } finally {
+            await close();
+            if (client) await client.close();
+            _clearAllRooms();
+            saved.destroy();
+            await admin.from("sync_documents").delete().eq("id", documentId);
+            if (owner) {
+                await owner.client.auth.signOut({ scope: "global" });
+                await admin.auth.admin.deleteUser(owner.userId, false);
+            }
+        }
+    }, 30_000);
+
     it("converges two JWT-authenticated clients without echo and persists every update", async () => {
         process.env.SUPABASE_URL = environment.url;
         process.env.SUPABASE_SERVICE_ROLE_KEY = environment.serviceRoleKey;
 
-        const [{ createRelayServer }, { flushAllDocumentUpdates }, { _clearAllRooms }] =
-            await Promise.all([
-                import("../../relay/src/server"),
-                import("../../relay/src/persistence/debouncedUpdates"),
-                import("../../relay/src/yjs/rooms"),
-            ]);
+        const [
+            { createRelayServer },
+            { flushAllDocumentUpdates },
+            { _clearAllRooms },
+            { loadYjsState },
+        ] = await Promise.all([
+            import("../../relay/src/server"),
+            import("../../relay/src/persistence/debouncedUpdates"),
+            import("../../relay/src/yjs/rooms"),
+            import("../../relay/src/persistence/yjsUpdates"),
+        ]);
         const admin = createTestClient(environment.serviceRoleKey);
         const documentId = randomUUID();
-        const { wss, httpServer } = createRelayServer();
+        const { httpServer, close } = createRelayServer();
         let owner: TestIdentity | undefined;
         let collaborator: TestIdentity | undefined;
         let clientA: HeadlessYjsClient | undefined;
@@ -301,13 +480,24 @@ describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
             expect(restored.getText("document").toString()).toBe("Hello world");
             expect(restored.getMap("annotations").size).toBe(2);
             restored.destroy();
+
+            clientB.text.insert(clientB.text.length, " before shutdown");
+            await waitFor(
+                "the final edit before shutdown",
+                () => clientA?.text.toString() === "Hello world before shutdown",
+            );
+            await close();
+            const { ydoc: afterShutdown } = await loadYjsState(documentId);
+            expect(afterShutdown.getText("document").toString()).toBe(
+                "Hello world before shutdown",
+            );
+            expect(afterShutdown.getMap("annotations").size).toBe(2);
+            afterShutdown.destroy();
         } finally {
-            await flushAllDocumentUpdates();
+            await close();
             if (clientB) await clientB.close().catch(() => undefined);
             if (clientA) await clientA.close().catch(() => undefined);
             _clearAllRooms();
-            await new Promise<void>((resolve) => wss.close(() => resolve()));
-            await new Promise<void>((resolve) => httpServer.close(() => resolve()));
             await admin.from("sync_documents").delete().eq("id", documentId);
             for (const identity of [owner, collaborator]) {
                 if (!identity) continue;

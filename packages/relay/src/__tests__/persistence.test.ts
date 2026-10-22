@@ -43,6 +43,14 @@ function requireUpdate(update: Uint8Array | null): Uint8Array {
     return update;
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve = (_value: T): void => {};
+    const promise = new Promise<T>((complete) => {
+        resolve = complete;
+    });
+    return { promise, resolve };
+}
+
 describe("Retry wrapper", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -182,16 +190,22 @@ describe("Yjs persistence", () => {
         const updatesQuery = {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
-            order: vi.fn().mockResolvedValue({
-                data: [
-                    {
-                        update_data: Buffer.from(requireUpdate(incrementalUpdate)).toString(
-                            "base64",
-                        ),
-                    },
-                ],
-                error: null,
-            }),
+            gt: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi
+                .fn()
+                .mockResolvedValueOnce({
+                    data: [
+                        {
+                            id: 1,
+                            update_data: Buffer.from(requireUpdate(incrementalUpdate)).toString(
+                                "base64",
+                            ),
+                        },
+                    ],
+                    error: null,
+                })
+                .mockResolvedValue({ data: [], error: null }),
         };
 
         mockedSupabase().from.mockImplementation((table: string) => {
@@ -235,5 +249,140 @@ describe("Yjs persistence", () => {
             expect.objectContaining({ update_data: "AQ==" }),
             expect.objectContaining({ update_data: "Ag==" }),
         ]);
+    });
+
+    it("rejects when Supabase refuses to clear the update log", async () => {
+        const eq = vi.fn().mockResolvedValue({ error: { message: "delete refused" } });
+        mockedSupabase().from.mockReturnValue({ delete: () => ({ eq }) });
+
+        await expect(clearYjsUpdates("doc-123")).rejects.toThrow("delete refused");
+    });
+
+    it.each(["result", "rejection"])("retains failed updates after a %s failure", async (mode) => {
+        const insert = vi.fn().mockResolvedValue({ error: null });
+        if (mode === "result") {
+            insert.mockResolvedValueOnce({ error: { message: "write failed" } });
+        } else {
+            insert.mockRejectedValueOnce(new Error("write failed"));
+        }
+        mockedSupabase().from.mockReturnValue({ insert });
+        queueYjsUpdate("doc-retry", new Uint8Array([1]));
+
+        const failure = await flushDocumentUpdates("doc-retry").catch((error: unknown) => error);
+        await flushDocumentUpdates("doc-retry");
+
+        expect(failure).toBeInstanceOf(Error);
+        expect(insert).toHaveBeenCalledTimes(2);
+        expect(insert).toHaveBeenLastCalledWith([expect.objectContaining({ update_data: "AQ==" })]);
+    });
+
+    it("retries a failed batch before updates received during its write", async () => {
+        const write = deferred<{ error: { message: string } }>();
+        const insert = vi
+            .fn()
+            .mockResolvedValue({ error: null })
+            .mockReturnValueOnce(write.promise);
+        mockedSupabase().from.mockReturnValue({ insert });
+        queueYjsUpdate("doc-ordered", new Uint8Array([1]));
+        const firstFlush = flushDocumentUpdates("doc-ordered").catch((error: unknown) => error);
+        queueYjsUpdate("doc-ordered", new Uint8Array([2]));
+        write.resolve({ error: { message: "write failed" } });
+        await firstFlush;
+        await flushDocumentUpdates("doc-ordered");
+
+        expect(insert).toHaveBeenLastCalledWith([
+            expect.objectContaining({ update_data: "AQ==" }),
+            expect.objectContaining({ update_data: "Ag==" }),
+        ]);
+    });
+
+    it("includes a debounce-started write and concurrent arrivals in the global drain", async () => {
+        vi.useFakeTimers();
+        const write = deferred<{ error: null }>();
+        const insert = vi
+            .fn()
+            .mockResolvedValue({ error: null })
+            .mockReturnValueOnce(write.promise);
+        mockedSupabase().from.mockReturnValue({ insert });
+        queueYjsUpdate("doc-inflight", new Uint8Array([1]));
+        await vi.advanceTimersByTimeAsync(500);
+        let drained = false;
+        const drain = flushAllDocumentUpdates().then(() => {
+            drained = true;
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        const completedBeforeWrite = drained;
+        queueYjsUpdate("doc-inflight", new Uint8Array([2]));
+        write.resolve({ error: null });
+        await drain;
+
+        expect(completedBeforeWrite).toBe(false);
+        expect(insert).toHaveBeenCalledTimes(2);
+        expect(insert).toHaveBeenLastCalledWith([expect.objectContaining({ update_data: "Ag==" })]);
+    });
+
+    it("serializes concurrent flushes without duplicating the write", async () => {
+        const write = deferred<{ error: null }>();
+        const insert = vi.fn().mockReturnValue(write.promise);
+        mockedSupabase().from.mockReturnValue({ insert });
+        queueYjsUpdate("doc-one-write", new Uint8Array([1]));
+        const first = flushDocumentUpdates("doc-one-write");
+        let secondFinished = false;
+        const second = flushDocumentUpdates("doc-one-write").then(() => {
+            secondFinished = true;
+        });
+        await Promise.resolve();
+        const completedBeforeWrite = secondFinished;
+        write.resolve({ error: null });
+        await Promise.all([first, second]);
+
+        expect(completedBeforeWrite).toBe(false);
+        expect(insert).toHaveBeenCalledTimes(1);
+    });
+
+    it("includes documents queued while a global drain is in progress", async () => {
+        const write = deferred<{ error: null }>();
+        const insert = vi
+            .fn()
+            .mockResolvedValue({ error: null })
+            .mockReturnValueOnce(write.promise);
+        mockedSupabase().from.mockReturnValue({ insert });
+        queueYjsUpdate("doc-first", new Uint8Array([1]));
+        const drain = flushAllDocumentUpdates();
+        queueYjsUpdate("doc-second", new Uint8Array([2]));
+        write.resolve({ error: null });
+        await drain;
+
+        expect(insert).toHaveBeenCalledTimes(2);
+        expect(insert).toHaveBeenLastCalledWith([
+            expect.objectContaining({ document_id: "doc-second", update_data: "Ag==" }),
+        ]);
+    });
+
+    it("waits for every document write before reporting a global drain failure", async () => {
+        const write = deferred<{ error: null }>();
+        const insert = vi
+            .fn()
+            .mockResolvedValue({ error: null })
+            .mockResolvedValueOnce({ error: { message: "write failed" } })
+            .mockReturnValueOnce(write.promise);
+        mockedSupabase().from.mockReturnValue({ insert });
+        queueYjsUpdate("doc-fails", new Uint8Array([1]));
+        queueYjsUpdate("doc-pending", new Uint8Array([2]));
+        let finished = false;
+        const drain = flushAllDocumentUpdates().catch((error: unknown) => {
+            finished = true;
+            return error;
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const completedBeforeWrite = finished;
+        write.resolve({ error: null });
+        const error = await drain;
+        await flushAllDocumentUpdates();
+
+        expect(completedBeforeWrite).toBe(false);
+        expect(error).toBeInstanceOf(AggregateError);
+        expect(insert).toHaveBeenCalledTimes(3);
     });
 });
