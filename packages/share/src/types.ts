@@ -118,9 +118,15 @@ export function isReadonlyShareStateV2(value: unknown): value is ReadonlyShareSt
     return ReadonlyShareStateV2Schema.safeParse(value).success;
 }
 
+const ReadonlyShareHeaderSchema = ReadonlyShareStateV2Schema.pick({
+    kind: true,
+    version: true,
+    scope: true,
+});
+
 export function readonlyShareScopeOf(value: unknown): ReadonlyShareScope {
-    if (!isReadonlyShareStateV2(value)) return "current-tab";
-    return value.scope === "all-tabs" ? "all-tabs" : "current-tab";
+    const header = ReadonlyShareHeaderSchema.safeParse(value);
+    return header.success && header.data.scope === "all-tabs" ? "all-tabs" : "current-tab";
 }
 
 export function includesReadonlyShareTab(

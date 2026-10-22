@@ -31,6 +31,20 @@ describe("readonly share state", () => {
         ).toBe("current-tab");
     });
 
+    it("preserves the owner's publishing scope when a tab cannot be rendered", () => {
+        const state = {
+            kind: "quillium-readonly-share",
+            version: 2,
+            scope: "all-tabs",
+            activeTabId: "tab-1",
+            tabs: [null],
+        };
+
+        expect(isReadonlyShareStateV2(state)).toBe(false);
+        expect(readonlyShareScopeOf(state)).toBe("all-tabs");
+        expect(readonlyShareScopeOf({ ...state, scope: "unsupported" })).toBe("current-tab");
+    });
+
     it.each([
         [null],
         [{ id: "tab-1" }],
