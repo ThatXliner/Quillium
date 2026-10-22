@@ -17,6 +17,9 @@ export type WebPreviewSeed = {
     userId: string;
     modernToken: string;
     legacyToken: string;
+    emptyToken: string;
+    malformedTabsToken: string;
+    malformedAnnotationsToken: string;
     disabledToken: string;
     visualModernToken: string;
     visualLegacyToken: string;
@@ -122,6 +125,12 @@ export async function seedWebPreview(config: SupabaseSeedConfig): Promise<WebPre
         const disabledToken = crypto.randomUUID();
         const visualModernToken = crypto.randomUUID();
         const visualLegacyToken = crypto.randomUUID();
+        const emptyDocumentId = crypto.randomUUID();
+        const malformedTabsDocumentId = crypto.randomUUID();
+        const malformedAnnotationsDocumentId = crypto.randomUUID();
+        const emptyToken = crypto.randomUUID();
+        const malformedTabsToken = crypto.randomUUID();
+        const malformedAnnotationsToken = crypto.randomUUID();
         const title = "Omni browser round-trip";
         const visualTitle = "The Lantern Archive";
         const excerpt = "A real landing route backed by the local public-share RPC.";
@@ -151,6 +160,9 @@ export async function seedWebPreview(config: SupabaseSeedConfig): Promise<WebPre
 
         await postRows(config, "sync_documents", [
             { id: modernDocumentId, owner_id: userId, title },
+            { id: emptyDocumentId, owner_id: userId, title },
+            { id: malformedTabsDocumentId, owner_id: userId, title },
+            { id: malformedAnnotationsDocumentId, owner_id: userId, title },
             { id: legacyDocumentId, owner_id: userId, title: `${title} (legacy)` },
             { id: disabledDocumentId, owner_id: userId, title: `${title} (disabled)` },
             { id: visualModernDocumentId, owner_id: userId, title: visualTitle },
@@ -161,6 +173,46 @@ export async function seedWebPreview(config: SupabaseSeedConfig): Promise<WebPre
             },
         ]);
         await postRows(config, "shares", [
+            ...[
+                {
+                    document_id: emptyDocumentId,
+                    share_token: emptyToken,
+                    tabs: [],
+                    annotations: legacyAnnotations,
+                },
+                {
+                    document_id: malformedTabsDocumentId,
+                    share_token: malformedTabsToken,
+                    tabs: [null],
+                    annotations: [],
+                },
+                {
+                    document_id: malformedAnnotationsDocumentId,
+                    share_token: malformedAnnotationsToken,
+                    tabs: null,
+                    annotations: [null],
+                },
+            ].map((fixture) => ({
+                document_id: fixture.document_id,
+                share_token: fixture.share_token,
+                enabled: true,
+                permission: "read",
+                published_title: title,
+                preview_text: excerpt,
+                published_content: flat.content,
+                published_annotations: fixture.annotations,
+                published_state:
+                    fixture.tabs === null
+                        ? null
+                        : {
+                              kind: "quillium-readonly-share",
+                              version: 2,
+                              activeTabId: null,
+                              tabs: fixture.tabs,
+                          },
+                author_name: authorName,
+                published_at: publishedAt,
+            })),
             {
                 document_id: modernDocumentId,
                 share_token: modernToken,
@@ -170,7 +222,20 @@ export async function seedWebPreview(config: SupabaseSeedConfig): Promise<WebPre
                 preview_text: excerpt,
                 published_content: flat.content,
                 published_annotations: flat.annotations,
-                published_state: serializeFixtureWire(state),
+                published_state: {
+                    kind: "quillium-readonly-share",
+                    version: 2,
+                    scope: "current-tab",
+                    activeTabId: "tab-1",
+                    tabs: [
+                        {
+                            id: "tab-1",
+                            label: "Draft",
+                            draftId: "draft-1",
+                            state: serializeFixtureWire(state),
+                        },
+                    ],
+                },
                 author_name: authorName,
                 published_at: publishedAt,
             },
@@ -232,6 +297,9 @@ export async function seedWebPreview(config: SupabaseSeedConfig): Promise<WebPre
             userId,
             modernToken,
             legacyToken,
+            emptyToken,
+            malformedTabsToken,
+            malformedAnnotationsToken,
             disabledToken,
             visualModernToken,
             visualLegacyToken,
