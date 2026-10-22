@@ -5,7 +5,6 @@
 import {
     createDocument,
     deleteDocument,
-    getDocumentMeta,
     getTrashRetention,
     isDocOpenElsewhere,
     isSearchStatusPreparing,
@@ -17,7 +16,8 @@ import {
     searchDocuments,
     setTrashRetention,
     trashDocument,
-    updateDocumentMeta,
+    updateDocumentTags,
+    updateDocumentTitle,
 } from "$lib/db";
 import {
     getNewDocumentUndoHistoryAnalytics,
@@ -240,9 +240,7 @@ async function handleDuplicate(id: string) {
 }
 
 async function handleRenameTitle(id: string, newTitle: string) {
-    const meta = await getDocumentMeta(id);
-    if (!meta) return;
-    await updateDocumentMeta(id, newTitle, meta.wordCount, meta.previewText, meta.tags);
+    await updateDocumentTitle(id, newTitle);
     posthog.capture("document_renamed");
     documents = await listDocuments();
     // Keep the store in sync if this is the currently open document
@@ -250,9 +248,7 @@ async function handleRenameTitle(id: string, newTitle: string) {
 }
 
 async function handleUpdateTags(id: string, tags: string) {
-    const meta = await getDocumentMeta(id);
-    if (!meta) return;
-    await updateDocumentMeta(id, meta.title, meta.wordCount, meta.previewText, tags);
+    await updateDocumentTags(id, tags);
     posthog.capture("document_tags_updated", { count: parseTags(tags).length });
     documents = await listDocuments();
 }

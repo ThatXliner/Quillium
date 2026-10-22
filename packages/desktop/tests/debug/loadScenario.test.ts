@@ -78,7 +78,7 @@ describe("shared DEV scenario loader", () => {
             "cmd_append_event",
             "cmd_append_event",
             "cmd_create_snapshot",
-            "cmd_update_document_meta",
+            "cmd_update_document_content_metadata",
         ]);
         const snapshot = calls.find(({ cmd }) => cmd === "cmd_create_snapshot")!.args;
         expect(snapshot.draftId).toBe("scenario-draft");
@@ -86,10 +86,8 @@ describe("shared DEV scenario loader", () => {
         expect(JSON.parse(snapshot.stateJson as string)).toEqual(expectedState);
         expect(calls.at(-1)!.args).toMatchObject({
             id: "scenario-doc",
-            title: scenario.label,
             wordCount: 2,
             previewText: "Hello world",
-            tags: "[]",
             bodyText: "Hello world",
         });
         expect(reload).toHaveBeenCalledOnce();

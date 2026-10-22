@@ -114,8 +114,18 @@ Snapshot triggers:
 `flushPersistence()` queues this last checkpoint behind pending event writes and awaits
 it before flushing metadata. The checkpoint retains the immutable state and draft/event
 IDs from the successful append; repeated flushes do not duplicate it. A failed checkpoint
-blocks the transition and can be retried. Exit checkpoints are skipped after an event
-write fails.
+blocks the transition and can be retried. An event append failure remains attached to
+that loaded draft. Both flush APIs reject, navigation stays in the editor, and later
+appends cannot clear the error or create snapshots over the uncertain event history.
+The editor keeps the unsaved text in memory. Appends are not retried automatically,
+because an error may occur after SQLite has already inserted the event. Loading a new
+draft seeds separate bookkeeping so late completions cannot change its save status.
+
+Document metadata has separate title, tags, and content operations. Each updates only
+its owned fields. Content writes refresh word count, preview, and the search body, and
+request semantic indexing. They may propose an automatic title, which SQLite applies
+only while the stored title is still `Untitled`. Renaming and tagging preserve content
+and its search index.
 
 ## Load Flow
 
@@ -230,7 +240,9 @@ These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Ta
 |----------|---------|
 | `listDocuments` | Get all documents with metadata |
 | `createDocument` | Create new document |
-| `updateDocumentMeta` | Update title, tags, etc. |
+| `updateDocumentTitle` | Rename without changing tags or content metadata |
+| `updateDocumentTags` | Update tags without changing title or content metadata |
+| `updateDocumentContentMetadata` | Update word count, preview, and search body |
 | `trashDocument` | Soft-delete |
 | `restoreDocument` | Restore from trash |
 | `deleteDocument` | Permanent delete |

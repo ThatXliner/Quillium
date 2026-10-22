@@ -882,7 +882,7 @@ export class QuilliumPage {
 
                         if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
                         if (cmd === "cmd_create_snapshot") return null;
-                        if (cmd === "cmd_update_document_meta") return null;
+                        if (cmd === "cmd_update_document_content_metadata") return null;
                         if (cmd === "cmd_get_document_writer_brief") {
                             const a = args as { documentId: string };
                             return localStorage.getItem(`mock-writer-brief:${a.documentId}`);

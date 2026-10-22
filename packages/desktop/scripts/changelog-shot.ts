@@ -245,7 +245,7 @@ async function installTauriMock(
                     if (cmd === "cmd_purge_expired_trash") return 0;
                     if (cmd === "cmd_get_document") return null;
                     if (cmd === "cmd_create_document") return "doc-new";
-                    if (cmd === "cmd_update_document_meta") return null;
+                    if (cmd === "cmd_update_document_content_metadata") return null;
                     if (cmd === "cmd_reset_db") {
                         savedState = null;
                         return null;

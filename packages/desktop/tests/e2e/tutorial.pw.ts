@@ -76,7 +76,7 @@ async function installTauriMockWithTutorial(page: Page) {
                     return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
                 if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
                 if (cmd === "cmd_create_snapshot") return null;
-                if (cmd === "cmd_update_document_meta") return null;
+                if (cmd === "cmd_update_document_content_metadata") return null;
                 if (cmd === "get_api_key") return null;
                 if (cmd === "plugin:event|listen") return 1;
                 if (cmd === "plugin:event|unlisten") return null;

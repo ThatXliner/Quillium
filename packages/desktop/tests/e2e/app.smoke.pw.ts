@@ -96,7 +96,7 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
 
                     // Snapshot / meta
                     if (cmd === "cmd_create_snapshot") return null;
-                    if (cmd === "cmd_update_document_meta") return null;
+                    if (cmd === "cmd_update_document_content_metadata") return null;
 
                     // Keychain
                     if (cmd === "get_api_key") return payload.apiKey;

@@ -66,10 +66,22 @@ describe("navigation helpers", () => {
         );
         const navigation = goToLibrary();
         expect(mockGoto).not.toHaveBeenCalled();
+        expect(mockDeregisterOpenDoc).not.toHaveBeenCalled();
         finish();
         await navigation;
         expect(mockGoto).toHaveBeenCalledWith("/library");
     });
+
+    it.each([goToLibrary, goToHistory, goToAuthorship])(
+        "keeps the document registered when persistence blocks navigation",
+        async (navigate) => {
+            const error = new Error("disk full");
+            mockFlushPersistence.mockRejectedValue(error);
+            await expect(navigate()).rejects.toBe(error);
+            expect(mockGoto).not.toHaveBeenCalled();
+            expect(mockDeregisterOpenDoc).not.toHaveBeenCalled();
+        },
+    );
 
     it("goes back to the editor without waiting on persistence helpers", async () => {
         await goToEditor();

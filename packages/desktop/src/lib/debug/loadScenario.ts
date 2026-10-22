@@ -5,7 +5,7 @@ import {
     createDraft,
     createSnapshot,
     resetDb,
-    updateDocumentMeta,
+    updateDocumentContentMetadata,
 } from "$lib/db";
 import type { EventPayload } from "$lib/db/events";
 import { documentMetadata } from "$lib/editor/documentMetadata";
@@ -59,7 +59,7 @@ export async function loadScenario(
     await createSnapshot(draftId, JSON.stringify(finalState.toJSON(savedFields)), lastEventId);
     const docText = finalState.doc.toString();
     const { wordCount, previewText } = documentMetadata(docText);
-    await updateDocumentMeta(docId, scenario.label, wordCount, previewText, "[]", docText);
+    await updateDocumentContentMetadata(docId, { wordCount, previewText, bodyText: docText });
 
     // Publishing the document ID can start loading it, so the snapshot must exist first.
     currentDocumentId.set(docId);
