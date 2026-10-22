@@ -208,15 +208,20 @@ describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
         process.env.SUPABASE_URL = environment.url;
         process.env.SUPABASE_SERVICE_ROLE_KEY = environment.serviceRoleKey;
 
-        const [{ createRelayServer }, { flushAllDocumentUpdates }, { _clearAllRooms }] =
-            await Promise.all([
-                import("../../relay/src/server"),
-                import("../../relay/src/persistence/debouncedUpdates"),
-                import("../../relay/src/yjs/rooms"),
-            ]);
+        const [
+            { createRelayServer },
+            { flushAllDocumentUpdates },
+            { _clearAllRooms },
+            { loadYjsState },
+        ] = await Promise.all([
+            import("../../relay/src/server"),
+            import("../../relay/src/persistence/debouncedUpdates"),
+            import("../../relay/src/yjs/rooms"),
+            import("../../relay/src/persistence/yjsUpdates"),
+        ]);
         const admin = createTestClient(environment.serviceRoleKey);
         const documentId = randomUUID();
-        const { wss, httpServer } = createRelayServer();
+        const { httpServer, close } = createRelayServer();
         let owner: TestIdentity | undefined;
         let collaborator: TestIdentity | undefined;
         let clientA: HeadlessYjsClient | undefined;
@@ -301,13 +306,24 @@ describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
             expect(restored.getText("document").toString()).toBe("Hello world");
             expect(restored.getMap("annotations").size).toBe(2);
             restored.destroy();
+
+            clientB.text.insert(clientB.text.length, " before shutdown");
+            await waitFor(
+                "the final edit before shutdown",
+                () => clientA?.text.toString() === "Hello world before shutdown",
+            );
+            await close();
+            const { ydoc: afterShutdown } = await loadYjsState(documentId);
+            expect(afterShutdown.getText("document").toString()).toBe(
+                "Hello world before shutdown",
+            );
+            expect(afterShutdown.getMap("annotations").size).toBe(2);
+            afterShutdown.destroy();
         } finally {
-            await flushAllDocumentUpdates();
+            await close();
             if (clientB) await clientB.close().catch(() => undefined);
             if (clientA) await clientA.close().catch(() => undefined);
             _clearAllRooms();
-            await new Promise<void>((resolve) => wss.close(() => resolve()));
-            await new Promise<void>((resolve) => httpServer.close(() => resolve()));
             await admin.from("sync_documents").delete().eq("id", documentId);
             for (const identity of [owner, collaborator]) {
                 if (!identity) continue;

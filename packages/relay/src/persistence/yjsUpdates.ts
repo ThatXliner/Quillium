@@ -226,13 +226,12 @@ export async function loadYjsState(documentId: string): Promise<YjsLoadResult> {
  */
 export async function clearYjsUpdates(documentId: string): Promise<void> {
     if (!supabase) {
-        return;
+        throw new Error("Supabase not configured");
     }
 
-    try {
-        await supabase.from("yjs_updates").delete().eq("document_id", documentId);
-        logger.info(`Cleared incremental updates for ${documentId.slice(0, 8)}...`);
-    } catch (e) {
-        logger.warn("Error clearing Yjs updates:", e);
+    const { error } = await supabase.from("yjs_updates").delete().eq("document_id", documentId);
+    if (error) {
+        throw new Error(error.message);
     }
+    logger.info(`Cleared incremental updates for ${documentId.slice(0, 8)}...`);
 }

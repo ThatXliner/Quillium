@@ -8,42 +8,38 @@
  */
 import "dotenv/config";
 import { createLogger } from "./logger.js";
-import { flushAllDocumentUpdates } from "./persistence/debouncedUpdates.js";
 import { createRelayServer } from "./server.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3001", 10);
 const HOST = process.env.HOST ?? "0.0.0.0";
 const logger = createLogger("relay");
 
-const { httpServer, wss } = createRelayServer();
+const { httpServer, close } = createRelayServer();
 
 httpServer.listen(PORT, HOST, () => {
     logger.info(`Yjs WebSocket relay listening on ${HOST}:${PORT}`);
     logger.info(`Health check: http://${HOST}:${PORT}/health`);
 });
 
-// Graceful shutdown
-async function shutdown(signal: NodeJS.Signals): Promise<void> {
-    logger.info(`${signal} received, closing server...`);
+let stopping = false;
 
-    await flushAllDocumentUpdates();
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+    if (stopping) return;
+    stopping = true;
+    logger.info(`${signal} received, closing server...`);
 
     const forceExit = setTimeout(() => {
         logger.warn("Graceful shutdown timed out");
         process.exit(1);
     }, 10_000);
 
-    for (const client of wss.clients) {
-        client.close(1001, "Server shutting down");
+    try {
+        await close();
+    } finally {
+        clearTimeout(forceExit);
     }
-
-    wss.close(() => {
-        httpServer.close(() => {
-            clearTimeout(forceExit);
-            logger.info("Server closed");
-            process.exit(0);
-        });
-    });
+    logger.info("Server closed");
+    process.exit(0);
 }
 
 process.on("SIGTERM", () => {

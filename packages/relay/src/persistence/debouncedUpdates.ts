@@ -11,24 +11,25 @@ const debounceMs = Number.parseInt(
 );
 const logger = createLogger("persistence");
 
-interface PendingBatch {
+interface DocumentUpdateQueue {
     updates: Uint8Array[];
     timer: NodeJS.Timeout | null;
+    inFlight: Promise<void> | null;
 }
 
-const pending = new Map<string, PendingBatch>();
+const queues = new Map<string, DocumentUpdateQueue>();
 
 export function queueYjsUpdate(documentId: string, update: Uint8Array): void {
-    let batch = pending.get(documentId);
+    let batch = queues.get(documentId);
 
     if (!batch) {
-        batch = { updates: [], timer: null };
-        pending.set(documentId, batch);
+        batch = { updates: [], timer: null, inFlight: null };
+        queues.set(documentId, batch);
     }
 
     batch.updates.push(update);
 
-    if (!batch.timer) {
+    if (!batch.timer && !batch.inFlight) {
         batch.timer = setTimeout(
             () => {
                 flushDocumentUpdates(documentId).catch((e) => {
@@ -41,7 +42,7 @@ export function queueYjsUpdate(documentId: string, update: Uint8Array): void {
 }
 
 export async function flushDocumentUpdates(documentId: string): Promise<void> {
-    const batch = pending.get(documentId);
+    const batch = queues.get(documentId);
 
     if (!batch) {
         return;
@@ -49,18 +50,50 @@ export async function flushDocumentUpdates(documentId: string): Promise<void> {
 
     if (batch.timer) {
         clearTimeout(batch.timer);
+        batch.timer = null;
     }
 
-    pending.delete(documentId);
-
-    const result = await persistYjsUpdates(documentId, batch.updates);
-    if (!result.success) {
-        logger.warn(`Failed to flush updates for ${documentId.slice(0, 8)}...`);
+    if (batch.inFlight) {
+        return batch.inFlight;
     }
+
+    const drain = async (): Promise<void> => {
+        try {
+            while (batch.updates.length > 0) {
+                const updates = batch.updates;
+                batch.updates = [];
+                try {
+                    const result = await persistYjsUpdates(documentId, updates);
+                    if (!result.success) {
+                        throw new Error(
+                            result.error ?? `Failed to persist updates for ${documentId}`,
+                        );
+                    }
+                } catch (error) {
+                    batch.updates = updates.concat(batch.updates);
+                    throw error;
+                }
+            }
+        } finally {
+            batch.inFlight = null;
+            if (batch.updates.length === 0) {
+                queues.delete(documentId);
+            }
+        }
+    };
+
+    batch.inFlight = drain();
+    return batch.inFlight;
 }
 
 export async function flushAllDocumentUpdates(): Promise<void> {
-    await Promise.all(
-        Array.from(pending.keys()).map((documentId) => flushDocumentUpdates(documentId)),
-    );
+    while (queues.size > 0) {
+        const results = await Promise.allSettled(
+            Array.from(queues.keys()).map((documentId) => flushDocumentUpdates(documentId)),
+        );
+        const errors = results.flatMap((result) =>
+            result.status === "rejected" ? [result.reason] : [],
+        );
+        if (errors.length > 0) throw new AggregateError(errors, "Failed to flush Yjs updates");
+    }
 }

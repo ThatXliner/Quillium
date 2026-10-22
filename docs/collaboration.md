@@ -119,6 +119,21 @@ revision rooms from numeric version keys plus `activeVersionIndex` to the
 id-native shape above. The desktop read path still accepts the old shape so
 partially migrated or pre-v2 rooms can be projected safely.
 
+The relay creates one room per document, including concurrent initial connections.
+After the last client leaves, cleanup waits 45 seconds, drains pending updates,
+writes a snapshot, and clears the update log. A connection that arrives during
+those writes waits for cleanup to finish. If any write fails, the relay keeps the
+live document and retries cleanup after another delay.
+
+Each document keeps failed update batches ahead of newer updates. Flush calls
+wait for writes already in progress and reject on persistence failure. The next
+edit, explicit flush, or room cleanup retries a retained batch. Shutdown stops
+new connections and incoming messages before the final flush. The process exits
+with an error if flushing fails or shutdown exceeds 10 seconds.
+
+Room ownership remains process-local. Update-log cleanup assumes one relay
+instance, as described in the [relay constraints](../packages/relay/README.md#current-constraints).
+
 ## Sync Loops
 
 ### Text Sync

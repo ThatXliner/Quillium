@@ -30,6 +30,14 @@ function fakeWebSocket(): WebSocket {
     return {} as WebSocket;
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve = (_value: T): void => {};
+    const promise = new Promise<T>((complete) => {
+        resolve = complete;
+    });
+    return { promise, resolve };
+}
+
 function makeLegacyYdoc(): Y.Doc {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
@@ -94,6 +102,27 @@ describe("Yjs room manager", () => {
 
         expect(room1).toBe(room2);
         expect(loadYjsState).toHaveBeenCalledTimes(1);
+    });
+
+    it("shares initialization between concurrent room acquisitions", async () => {
+        const load = deferred<Awaited<ReturnType<typeof loadYjsState>>>();
+        vi.mocked(loadYjsState).mockReturnValueOnce(load.promise);
+        const first = getOrCreateYjsRoom("doc-concurrent");
+        const second = getOrCreateYjsRoom("doc-concurrent");
+        load.resolve({ ydoc: new Y.Doc(), stateVector: null });
+
+        expect(await first).toBe(await second);
+        expect(loadYjsState).toHaveBeenCalledTimes(1);
+    });
+
+    it("allows another acquisition after initialization fails", async () => {
+        vi.mocked(loadYjsState).mockRejectedValueOnce(new Error("storage unavailable"));
+
+        await expect(getOrCreateYjsRoom("doc-retry")).rejects.toThrow();
+        const room = await getOrCreateYjsRoom("doc-retry");
+
+        expect(room.ydoc.isDestroyed).toBe(false);
+        expect(getYjsRoom("doc-retry")).toBe(room);
     });
 
     it("migrates and snapshots legacy Yjs schema on room creation", async () => {
@@ -161,6 +190,90 @@ describe("Yjs room manager", () => {
 
         expect(persistYjsState).not.toHaveBeenCalled();
         expect(getYjsRoom("doc-active")).toBe(room);
+    });
+
+    it.each(["flush", "snapshot", "clear"])(
+        "waits for cleanup during %s before admitting a rejoin",
+        async (phase) => {
+            vi.useFakeTimers();
+            const room = await getOrCreateYjsRoom(`doc-rejoin-${phase}`);
+            const barrier = deferred<void>();
+            if (phase === "flush") {
+                vi.mocked(flushDocumentUpdates).mockReturnValueOnce(barrier.promise);
+            } else if (phase === "snapshot") {
+                vi.mocked(persistYjsState).mockReturnValueOnce(
+                    barrier.promise.then(() => ({ success: true })),
+                );
+            } else {
+                vi.mocked(clearYjsUpdates).mockReturnValueOnce(barrier.promise);
+            }
+            scheduleRoomCleanup(room);
+            await vi.advanceTimersByTimeAsync(45_000);
+
+            let joined = false;
+            const rejoin = getOrCreateYjsRoom(room.documentId).then((nextRoom) => {
+                joined = true;
+                nextRoom.clients.add(fakeWebSocket());
+                nextRoom.ydoc.getText("document").insert(0, "after rejoin");
+                return nextRoom;
+            });
+            await Promise.resolve();
+            const admittedDuringCleanup = joined;
+            barrier.resolve();
+            const nextRoom = await rejoin;
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(admittedDuringCleanup).toBe(false);
+            expect(nextRoom.ydoc.isDestroyed).toBe(false);
+            expect(nextRoom.ydoc.getText("document").toString()).toBe("after rejoin");
+            expect(getYjsRoom(room.documentId)).toBe(nextRoom);
+        },
+    );
+
+    it.each(["flush", "snapshot-result", "snapshot-rejection", "clear"])(
+        "retains the live document when cleanup fails at %s",
+        async (phase) => {
+            vi.useFakeTimers();
+            const room = await getOrCreateYjsRoom(`doc-failure-${phase}`);
+            room.ydoc.getText("document").insert(0, "keep this text");
+            vi.mocked(clearYjsUpdates).mockClear();
+            if (phase === "flush") {
+                vi.mocked(flushDocumentUpdates).mockRejectedValueOnce(new Error("write failed"));
+            } else if (phase === "snapshot-result") {
+                vi.mocked(persistYjsState).mockResolvedValueOnce({ success: false });
+            } else if (phase === "snapshot-rejection") {
+                vi.mocked(persistYjsState).mockRejectedValueOnce(new Error("snapshot failed"));
+            } else {
+                vi.mocked(clearYjsUpdates).mockRejectedValueOnce(new Error("delete failed"));
+            }
+
+            scheduleRoomCleanup(room);
+            await vi.advanceTimersByTimeAsync(45_000);
+
+            expect(await getOrCreateYjsRoom(room.documentId)).toBe(room);
+            expect(room.ydoc.isDestroyed).toBe(false);
+            expect(room.ydoc.getText("document").toString()).toBe("keep this text");
+            if (phase !== "clear") expect(clearYjsUpdates).not.toHaveBeenCalled();
+        },
+    );
+
+    it("retries failed cleanup while retaining the document until storage recovers", async () => {
+        vi.useFakeTimers();
+        const room = await getOrCreateYjsRoom("doc-cleanup-retry");
+        room.ydoc.getText("document").insert(0, "retained text");
+        vi.mocked(persistYjsState).mockResolvedValueOnce({ success: false });
+        vi.mocked(clearYjsUpdates).mockClear();
+        scheduleRoomCleanup(room);
+        await vi.advanceTimersByTimeAsync(45_000);
+
+        expect(room.ydoc.isDestroyed).toBe(false);
+        expect(clearYjsUpdates).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(45_000);
+
+        expect(persistYjsState).toHaveBeenLastCalledWith(room.documentId, room.ydoc);
+        expect(clearYjsUpdates).toHaveBeenCalledWith(room.documentId);
+        expect(room.ydoc.isDestroyed).toBe(true);
+        expect(getYjsRoom(room.documentId)).toBeUndefined();
     });
 
     it("clears document text, annotations, version groups, and awareness state", async () => {
