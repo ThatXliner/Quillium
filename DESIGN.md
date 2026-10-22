@@ -2,7 +2,9 @@
 
 ## Core model
 
-One document. That's it. Every piece of text the user sees, including text inside revision regions, lives in the main CodeMirror document.
+The active draft has one authoritative CodeMirror document. The text of each
+active revision version appears in that document. Inactive versions retain their
+own saved text and annotations.
 
 A revision annotation marks a span and keeps the inactive versions off to the side. The active version's text *is* the document text at that span. There's no separate "revision document."
 
@@ -35,43 +37,32 @@ We deliberately rejected the alternative ("undo of a delete focuses the thing th
 ## Annotation lifecycle
 
 - **Comments** and **suggestions** are tied to their text. Delete the text, the annotation goes away.
-- **Revisions** don't survive deletion either, but undo brings them back whole. When you delete a revision's text, the system briefly keeps the annotation alive (long enough to record restore-on-undo information), then removes it. Cmd-Z restores the text *and* all versions in one step. From the user's perspective: delete and undo work as expected.
+- An ordinary deletion in the parent document removes a revision when its range
+  becomes empty. Cmd-Z restores the text and all versions in one step. Empty
+  versions are valid when created intentionally, selected through a version
+  switch, or cleared inside a nested editor. Those revisions remain available.
 - Only one pending (unsaved) comment at a time per editor level. The main doc and each nested editor enforce this independently since they have separate annotation state.
 
 ## Nested annotations (annotations inside revisions)
 
 A revision version can contain its own annotations—comments, sub-revisions, whatever. Each nested editor has its own annotation state, independent from the parent. Annotation IDs are scoped per editor level, not global.
 
-### Event routing across nesting levels
-
-The event bus is global but annotation IDs are per-editor, so events include `sourceView` (the EditorView that contains the target annotation). Each listener checks `sourceView` against its own editor to avoid handling events from a different nesting level. Without this, ID collisions across levels (e.g. both parent and child having annotation ID 0) route events to the wrong handler.
-
 ### Creating sub-annotations
 
-When the user selects text inside a revision and invokes the annotation shortcut:
+From an inline card, a new sub-annotation appears inline and can expand into a
+modal. From within a modal, the sub-annotation opens in another modal on the
+stack. Both paths edit the same parent-owned state.
 
-- **From the sidebar** (inline card): the sub-annotation is created inline. The user sees it in the annotation panel and can expand it into a modal.
-- **From within a modal**: the sub-annotation opens immediately in its own modal (pushed onto the stack). No intermediate inline step—you're already in a focused context, so modal-to-modal is the natural flow.
+### Synchronization and persistence
 
-### Undo across nesting levels
+Nested edits translate into parent transactions, and parent changes update the
+nested views. Annotation IDs require an editor context because the same ID can
+appear at different levels. Closing a modal does not create a separate undo
+history or discard its annotations.
 
-One undo tree, rooted in the main document's history. Cmd-Z at any depth delegates up to the root editor's `undo()`. When the root undoes a change:
-
-1. The document text reverts.
-2. Each modal detects the change in its parent view and patches its nested editor.
-3. This cascades down: level 0 syncs from root, level 1 syncs from level 0, etc.
-
-Upward: `translateAndDispatch`. Downward: each modal's `$effect` watcher on its parent's annotation state.
-
-### Sub-annotation persistence
-
-Sub-annotations are serialized into the `VersionState` blob (`editor.state.toJSON(nestedSavedFields)`). When a modal closes or a version switch happens, the nested editor's state (including sub-annotations) is flushed to the parent's version slot. Reopening the version restores from the blob.
-
-Sub-annotations are per-version. Switching versions and switching back preserves them. If a higher-level undo modifies the parent text, sub-annotation positions remap through the change like any other annotation.
-
-### External sync for nested modals
-
-Root-level modals (`stackIndex === 0`) watch `$annotationsStore` (which reflects the main editor). Deeper modals watch `modalAnnotationStores[stackIndex - 1]`, a per-level store that each modal publishes its nested editor's annotations into. A modal also reads its own revision data directly from `view.state.field(annotationField)` for internal use (version text, thread state).
+Nested annotations belong to a revision version. Switching away and back retains
+them. Parent edits remap their ranges. Read [nested editors](docs/nested-editors.md)
+for routing, synchronization, serialization, and modal lifecycle details.
 
 ## AI
 

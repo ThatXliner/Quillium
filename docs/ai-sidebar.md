@@ -2,7 +2,7 @@
 
 Quillium's AI features run in the desktop client using the writer's selected
 provider and credentials. There is no Quillium inference server in the request
-path: prompts are assembled locally and sent directly to the selected provider,
+path. Prompts are assembled locally and sent directly to the selected provider,
 ChatGPT connection, or OpenAI-compatible endpoint.
 
 The sidebar hosts both local writing panels and AI panels. Separate Chat, Feedback,
@@ -17,7 +17,7 @@ cancellation infrastructure also powers AutoAI, document-context generation,
 the dictionary assistant, annotation-thread suggestions, title suggestions, and
 the writing characterizer.
 
-## End-to-End Pipeline
+## Request pipeline
 
 ```mermaid
 flowchart LR
@@ -53,7 +53,7 @@ rewrite; the writer must explicitly request wording or invoke a permitted rewrit
 task. Feedback remains diagnostic for every stance and voice setting, including
 selected passages: neither its chat text nor its comment fields should contain
 replacement prose. The Suggest revisions action enables replacement proposals for that turn. These are model
-instructions; tool permissions separately enforce which annotations can be created.
+instructions. Tool permissions separately enforce which annotations can be created.
 
 Text chunks update the panel through `@ai-sdk/svelte`. Tool calls are validated
 with Zod, checked against the turn's permissions and captured editor identity,
@@ -61,11 +61,13 @@ mapped selection, and target text, then routed by `chatFactory.ts` to the
 annotation commands. A
 stale, out-of-scope, forbidden, or missing target is skipped with a warning.
 
-### Core Files
+### Core files
+
+Unqualified AI filenames below live in `packages/desktop/src/lib/ai`.
 
 | File | Purpose |
 |------|---------|
-| `sidebar/Sidebar.svelte` | Panel navigation, resize behavior, context summary, global stop button |
+| [`sidebar/Sidebar.svelte`](../packages/desktop/src/lib/sidebar/Sidebar.svelte) | Panel navigation, resize behavior, context summary, global stop button |
 | `AISettings.svelte` | Connection, provider, model, and API-key UI |
 | `settings.svelte.ts` | Shared settings, lazy key loading, task tracking, and cancellation |
 | `provider.ts` | Converts the selected provider and model ID into an AI SDK `LanguageModel` |
@@ -110,9 +112,7 @@ state while collapsed or another panel is selected; College
 and Settings mount only while active. Hiding a panel ends its host session but
 does not erase saved writing context. Disabling its AI prerequisite, removing its contribution, or adding its ID to `disabledPanelIds`
 unmounts it and stops outstanding built-in AI work; re-enabling creates one instance keyed by the stable ID. Duplicate
-IDs and shortcuts are rejected when the contribution list is assembled. The
-`ai_sidebar_opened` analytics event and `ai-sidebar` DOM IDs remain unchanged
-for compatibility.
+IDs and shortcuts are rejected when the contribution list is assembled.
 
 A contribution receives only `active` and a nullable `session` prop. The session
 contains a copied document/tab/draft identity, an abort signal, a guarded selection
@@ -139,56 +139,21 @@ strips support arrow keys, Home, End, and native Tab navigation. Extra icons scr
 vertically in the pill and horizontally in the expanded strip, and panel dimensions
 are capped to the viewport.
 
-### Scope of issue #84
+### Extension boundary
 
-This is the host foundation, not the complete plugin interface. A **preset**
-configures existing behavior; a **plugin** adds capabilities and may supply presets.
-Bundled contributions do not imply external installation or distribution.
+A preset configures existing behavior. A plugin adds capabilities and may supply
+presets. The built-in host supports declarative panels, lifecycle sessions, and
+per-panel render failures. It does not load external plugins or sandbox untrusted
+code.
 
-The foundation supplies declarative built-in rendering, local panels, navigation,
-mount/disposal rules, target-scoped read sessions, and per-panel render failure
-containment. Existing AI actions retain their validated gateways. The [College applications consumer](college-applications.md) adds a narrow
-host adapter for tab setup persistence, snapshot reads, panel navigation, and
-three fixed Chat writing actions. Other namespaced capabilities should be added
-only with concrete consumers. Registration is not a security sandbox for
-untrusted executable code. External loading, compatibility, isolation, consent,
-updates, removal, and a marketplace remain deferred.
+The [College applications consumer](college-applications.md) has a narrow adapter
+for setup persistence, snapshot reads, prompt insertion, panel navigation, and
+fixed Chat and Feedback actions. Its overlap action uses
+[`feedbackActions.ts`](../packages/desktop/src/lib/ai/feedbackActions.ts).
+External installation, compatibility, isolation, consent, updates, and removal
+remain outside this interface.
 
-Each configured College workspace tab owns one prompt, with drafts representing
-alternate attempts at that writing task. A plugin can work across a document:
-selecting multiple prompts creates one named tab per prompt, with one root draft
-and setup per tab, in a prevalidated atomic batch. Applying one prompt to an
-existing workspace tab changes only its College setup and preserves the tab label,
-existing prose, and document-owned notes and decisions. There is no preview
-acknowledgment or separate context-confirmation screen. Legacy saved setups that
-contain multiple prompts remain readable until explicit replacement; no automatic
-migration or deletion occurs. School-specific review must distinguish which
-responses are read together; reuse between schools is not inherently a problem.
-The College consumer persists independent tab briefs and offers explicit school
-research. Its overlap action is registered through the small
-`ai/feedbackActions.ts` contribution interface. Feedback and the area below
-unified Chat’s composer render eligible contributions; the College plugin owns its essay picker, school scope, and
-comparison logic. Results use ordinary Feedback comments with validated supporting
-passage links. Persistent application grouping and multi-document discovery remain
-deferred. LaTeX compilation and word-processor/debate formatting are outside the
-intended prose-development scope.
-
-### Acceptance coverage for this slice
-
-| #84 criterion | Status |
-|---|---|
-| Preserve built-in capabilities | Separate Chat/Feedback/Revise panels are the default; unified Chat is an explicit Settings opt-in. |
-| Add an icon and panel without rendering branches | Implemented; test-only contributions exercise the real host. |
-| Local operations without credentials | Implemented while AI is enabled; browser tests edit Context and Readers without credential loading or provider traffic. |
-| Activation, hiding, disable/re-enable, focus, errors, cancellation | Implemented for built-in contributions and host sessions; async handlers own their error reporting. |
-| Stable document/tab/draft targets | Implemented for host sessions; existing request guards retained and late Context generation rejected. |
-| Plugin action permission, annotation, and undo guarantees | Existing built-in gateways retained and regression-tested. College delegates three fixed actions to Chat and Feedback; arbitrary plugin actions remain deferred. |
-| College panel, setup presets, and review without globals | Implemented by the College consumer; see its [ownership and capability guide](college-applications.md). |
-| Keyboard names/navigation, narrow layout, icon overflow | Automated keyboard/layout checks plus a browser check with 14 contributions at 320×600. |
-| Lifecycle, target, capability tests and real sidebar exercise | Covered by `tests/sidebar`, `tests/e2e/sidebarHost.pw.ts`, existing sidebar E2E, and editorial-target tests. |
-| Owning documentation distinguishes sidebar/presets/plugins/distribution | Documented here and in the glossary. |
-
-## Sidebar Tabs
+## Sidebar panels
 
 | Tab | Key | Component | Purpose |
 |-----|-----|-----------|---------|
@@ -197,6 +162,7 @@ intended prose-development scope.
 | Revise | 3 | `Revise.svelte` | Reversible wording proposals; separate layout only |
 | Context | 4 | `DocumentContext.svelte` | Writer-provided brief sent with AI requests |
 | Readers | 5 | `Readers.svelte` | Reader-persona configuration |
+| College | None | `CollegePanel.svelte` | Document opt-in, prompt setup, and school research |
 | Settings | 6 | `AISettings.svelte` | Provider, connection, model, and credential configuration |
 
 ### Separate panels
@@ -209,66 +175,33 @@ the larger discussion modal. Reader review remains a per-mode opt-in.
 
 ### Unified Chat (opt-in)
 
-- One Chat panel keeps durable discussions across all writing actions. History
-  searches the document's discussions, including those created by the old Feedback
-  and Revise panels. Existing conversation IDs, original drafts, and messages stay intact.
-- History rows show a title, latest text preview, draft, and last activity. Active
-  and Archived views are separate, with an optional current-draft filter. Rename,
-  Archive/Restore, and Delete live in each row's overflow menu. Deletion requires
-  an inline confirmation. Search matches titles and all stored message text.
-- Opening history resumes the discussion in the sidebar. Expand discussion opens
-  a larger modal with the same messages and composer; Escape returns to the sidebar.
-- The multiline composer sends on Enter and inserts a newline on Shift+Enter.
-  Typing remains available during a response, while duplicate sends are blocked.
-  Stop cancels generation. Scrolling follows responses only while near the bottom;
-  Latest response returns to the end after reading earlier messages.
-- One assistant answers questions and chooses among the selected document tools.
-  The Tools popup independently enables comments, suggestions, and revision versions;
-  no duplicate permission switches appear in the composer. Choices persist per
-  conversation on this device, including across reloads. New conversation paths
-  inherit the source conversation’s choices. Every request snapshots
-  its permissions; tool exposure and editor application enforce that snapshot.
-  A new discussion starts with all three proposal tools available. Empty messages
-  do not send. Existing separate panels keep their original task limits.
-- Response preferences live in their own popup: reply length, editorial stance,
-  feedback amount, and voice latitude. Info buttons open the existing worked-example
-  help modal. Reply length stays with the conversation; editorial preferences use
-  the existing tab-owned College setup or device defaults. None grants tools.
-- A compact context chip shows the current scope, included notes, and writing
-  brief. Its popover explains the next turn's context without character counts.
-  The composer grows with its text up to 160 pixels. Empty discussions offer
-  three contextual starting points. Starting points remains available mid-discussion
-  and includes saved custom actions. Eligible College actions appear below the
-  composer. Readers is a direct toggle with a filled selected state and no info
-  popup. Its tooltip identifies the enabled readers and additional request count.
-  Each reader uses the same selected tools alongside the normal assistant reply.
-- Tool activity uses plain language in transcript order. “Comment added” requires
-  a successful editor action, not merely a provider response. Rejected actions
-  show “Couldn't add comment”; interrupted actions are labeled as interrupted.
-  Editor outcomes persist in message metadata and survive reopening. Older
-  activity without an editor outcome says “Comment requested,” never “added.”
-- Hold Command and click an activity row to inspect raw names, inputs, results,
-  errors, and editor outcomes. Releasing Command or leaving the window hides them.
-  Unknown tool names appear as “Assistant action” outside inspection.
-- Uses the shared context packet before the writer's latest prompt.
-- Shows a context lens for selection, nearby text, draft, annotations, brief, and
-  saved decisions.
-- Offers context-aware action cards based on selection, draft length, brief, and
-  open annotations.
-- Ordinary Send in One assistant exposes only the selected document tools. Context
-  actions can narrow that set; they cannot enable a disabled tool.
-- Failed requests show recovery guidance, including signing in again when a
-  ChatGPT connection is expired or invalid. Chat permits another send after a
-  failure; active requests disable sending but leave the composer editable.
-- Streaming failures retain their original error and provider/model context in
-  Help → App Logs before being converted to a user-facing message.
-- The Reverse outline recipe lists each paragraph or section's current job and
-  structural gaps in the conversation without creating annotations.
-- When an active revision is in context, Compare versions gives a read-only
-  account of meaning, voice, pacing, emphasis, and reader-effect tradeoffs.
+One assistant can discuss writing and use the document tools selected in its
+Tools popup. Comments, suggestions, and revision versions start enabled for a
+new conversation. Context actions can narrow those permissions but cannot enable
+a disabled tool. Response length and editorial preferences do not grant tools.
 
-Message actions use compact copy, branch, edit, retry, and context icons with tooltips
-and accessible names. The context icon toggles the saved turn context.
+[`assistantOptions.ts`](../packages/desktop/src/lib/ai/assistantOptions.ts) saves
+tool choices, reply length, and the Readers toggle per conversation on this
+device. Alternative conversation paths inherit those options. Each sent turn
+records its permission snapshot and reply length for edit and retry.
+
+The Readers toggle starts off for a new discussion. When enabled, it adds one
+request per enabled reader alongside the normal assistant response, using the
+same turn permissions. See [reader personas](reader-personas.md).
+
+History searches every conversation mode in the document. It supports draft
+filtering, rename, archive, restore, delete, and a larger discussion modal. Enter
+sends; Shift+Enter adds a newline. The composer stays editable during generation,
+but another send waits for the current work to finish. Stop cancels generation.
+
+The context chip describes the next turn's writing context. Starting points
+uses the current selection, brief, annotations, and saved custom actions. Tool
+activity reports an annotation as added only after editor application succeeds.
+Rejected or interrupted actions keep that outcome in saved message metadata.
+Command-click exposes raw tool details for inspection.
+
+Failed requests retain the available text and allow another send. Provider
+errors go to Help → App Logs before conversion to a user-facing message.
 
 ### Conversation identity and alternative paths
 
@@ -324,14 +257,15 @@ revisions may propose local suggestions or coherent passage alternatives while
 preserving the original text. Exact compression remains a revision-only recipe
 with an explicit word target. All use the same conversation and target guards.
 
-Reader review is an explicit opt-in in unified Chat’s Readers popover, off when the panel mounts.
-When enabled readers exist, feedback/revision requests fan out to those readers;
-exact compression still uses one stream. The request is saved before fan-out, and
-an application status message is saved afterward in the same conversation. Reader
-notes remain annotations, not synthesized assistant prose. Application status
-messages do not offer a model retry action. No enabled readers means one normal
-chat response. College review entry points open Feedback in the separate layout
-and Chat in the combined layout. Planning opens Chat in both layouts.
+Separate Feedback and Revise use their saved per-mode reader opt-ins. With
+readers enabled, they save the request, run reader streams, and save an
+application-status message. Exact compression in separate Revise remains a
+single-stream request. One assistant adds reader streams alongside its normal
+response when its conversation-local Readers toggle is enabled. See
+[reader execution](reader-personas.md#request-execution).
+
+College review actions open Feedback in the separate layout and Chat in the
+combined layout. Planning opens Chat in both layouts.
 
 ### Context
 
@@ -357,8 +291,9 @@ execution, attribution, and cost behavior.
 
 ### Editorial approach
 
-AI Settings stores three device-local preferences that apply to every editorial
-request:
+AI Settings stores device defaults for three editorial preferences. An active
+[College setup](college-applications.md#effective-preferences-and-requests) can
+override them for its tab:
 
 | Preference | Options | Default |
 |------------|---------|---------|
@@ -391,7 +326,7 @@ An unsupported panel/task pair falls back to the text-only conversation policy.
 Exact compression also requires a positive whole-word target and a live selection
 before provider inference starts.
 
-## Context Packets
+## Context packets
 
 AI calls do not send an unbounded raw document. `buildAiContextPacket()` creates
 a deterministic, mode-specific initial summary with these possible sources:
@@ -488,14 +423,11 @@ text reads return at most 12,000 characters per page. Capture is bounded to 512
 scopes and 20 nested levels, with omitted scope counts reported. The focused
 version remains available within that limit.
 
-Before starting a new sidebar turn, the SDK's `pruneMessages()` removes prior
-retrieval tool calls and results from the model input. Assistant prose and
-annotation-creation tool records remain; the visible UI history is unchanged.
-Fresh retrieval results remain available throughout the current tool loop.
-This uses the installed AI SDK's selective tool pruning and `stopWhen` /
-`prepareStep` controls rather than adding a separate loop implementation. See
-[SDK message pruning](https://ai-sdk.dev/docs/reference/ai-sdk-ui/prune-messages)
-and [tool loop control](https://ai-sdk.dev/docs/agents/loop-control).
+Before sending saved history, `sanitizeOutboundMessages()` removes historical
+tool parts from provider input without changing the visible conversation. The
+stream builder also prunes prior retrieval calls and results if supplied.
+Retrieval results from the current request remain available within its tool
+loop. None of these records executes historical editor actions.
 
 Retrieval tools execute locally through the AI SDK, with bounded continuation
 steps so the model can use their results in its answer. The eighth step disables
@@ -506,12 +438,14 @@ the editorial action gateway; historical tool records are never replayed as edit
 Feedback still permits comments only, and all stale-target and selection checks
 remain in force.
 
-## Providers, Connections, and Models
+## Providers and connections
 
-`createModel()` is the only layer that imports provider SDKs. The rest of the AI
-pipeline consumes a provider-agnostic `LanguageModel`.
+`createModel()` in [`provider.ts`](../packages/desktop/src/lib/ai/provider.ts)
+constructs the provider-neutral `LanguageModel` used by editorial requests.
+[School research](school-research.md) also imports provider SDKs to configure
+hosted search tools.
 
-### OpenAI Connections
+### OpenAI connections
 
 The OpenAI tab has three connection methods:
 
@@ -531,25 +465,15 @@ clears both the keychain session and that cached provider.
 The ChatGPT connection is explicitly beta and uses an unofficial integration;
 the settings UI tells users to review OpenAI's terms and privacy policy.
 
-### Curated API-Key Models
+### Model selection
 
-| Provider | Curated models |
-|----------|----------------|
-| OpenAI | `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra` |
-| Anthropic | `claude-opus-5-5`, `claude-opus-4-6`, `claude-sonnet-4-6` |
-| Google | `gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-3-flash-preview` |
-| DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
+[`AISettings.svelte`](../packages/desktop/src/lib/ai/AISettings.svelte) owns the
+curated provider model lists. The model guide explains the app's recommendations.
+Every API-key provider also accepts a custom model ID, passed directly to its
+SDK. OpenAI-compatible endpoints use a freeform ID. Saved custom IDs survive
+settings reloads. ChatGPT sign-in discovers models for the connected account.
 
-Quillium recommends Claude Opus 5.5 for prose, DeepSeek V4 Flash for value, and
-OpenAI GPT-5.6 Sol or Luna depending on whether quality or economy matters more.
-The model guide in AI Settings explains this policy.
-
-Every API-key provider also offers **Use a custom model ID**. Quillium passes
-that string directly to the selected provider SDK. OpenAI-compatible endpoints
-always use a freeform model ID. Existing custom IDs are preserved when settings
-reload.
-
-## Credentials and Privacy
+## Credentials and privacy
 
 - Provider API keys are stored by `keychain.rs` in macOS Keychain, Windows
   Credential Manager, or Linux Secret Service.
@@ -565,13 +489,13 @@ reload.
 - Writing and prompts are sent directly to the selected third party. Users are
   shown a provider-specific privacy notice in AI Settings.
 
-## Tools and Annotation Dispatch
+## Tools and annotation dispatch
 
 | Tool | Used by | Result |
 |------|---------|--------|
-| `createComment` | Feedback, local Revise | Comment thread anchored to exact text |
-| `createRevision` | Local Revise, exact compression | Two or more named passage versions plus a thread message |
-| `createSuggestion` | Revise | One or more replacement options for a short target |
+| `createComment` | Feedback, Revise, permitted assistant turns | Comment thread anchored to exact text |
+| `createRevision` | Revise, exact compression, permitted assistant turns | Two or more named passage versions plus a thread message |
+| `createSuggestion` | Revise, permitted assistant turns | One or more replacement options for a short target |
 | `listAnnotationThreads` | Chat, Feedback, Revise | Searchable pages of scoped discussion references |
 | `readAnnotationThread` | Chat, Feedback, Revise | Complete discussion content in bounded pages |
 | `readDraftContext` | Chat, Feedback, Revise | Captured draft or revision-version passages in bounded pages |
@@ -627,7 +551,7 @@ AutoAI does not consume streamed tool calls. It uses a structured Zod response,
 then sends each normalized result through the same `editorialAction.ts` gateway;
 see [AutoAI](./autoai.md).
 
-## Provider Conformance Fixtures
+## Provider conformance fixtures
 
 `tests/ai/fixtures/editorialConformance.ts` defines deterministic cases for the
 OpenAI API, ChatGPT OAuth, OpenAI-compatible endpoints, Anthropic, Google, and
@@ -671,19 +595,7 @@ decisions and editor behavior, but does not verify another provider's HTTP
 transport or native SQLite persistence. Set `QUILLIUM_EVAL_OUTPUT` to an absolute
 path to retain JSONL records of the generated calls and checks.
 
-## Parallel Personas and Document Safety
-
-Feedback and revision actions default to one stream. If the writer opts into
-reader review in Feedback/Revise or through unified Chat’s Readers control, `runMultiPersonaStreams()` starts one stream per enabled persona
-with `Promise.all()`.
-
-The fan-out path snapshots the document ID, tab ID, draft ID, nested branch path,
-selection, and owning editor once. Tool calls use the same action and target guard as ordinary
-requests, preventing a late persona result from landing in another draft or
-outside the captured selection. See
-[Reader Personas](./reader-personas.md) for the full behavior.
-
-## Processing State and Cancellation
+## Processing state and cancellation
 
 `beginAiTask()` and `endAiTask()` maintain a set of active operations, so the
 sidebar processing glow stays active until overlapping work finishes. Standard
@@ -699,9 +611,9 @@ The global stop control calls `stopAllAi()`, which:
 
 New work receives a fresh abort signal after a stop.
 
-## Other AI-Powered Surfaces
+## Other AI entry points
 
-### Title Suggestions
+### Title suggestions
 
 The sparkle action in `DocumentTitleBar.svelte` sends at most the first 1,000
 characters of the current draft to `generateText()` and asks for one short title.
@@ -709,7 +621,7 @@ The result is trimmed to 40 characters, written to the document metadata, and
 uses the shared provider, lazy credential loading, task indicator, and abort
 signal.
 
-### Annotation-Thread Suggestions
+### Annotation-thread suggestions
 
 Comment cards and comment modals can ask AI to respond to the current thread.
 `commentAi.ts` builds a JSON reference packet from the thread messages and
@@ -718,21 +630,21 @@ deltas, and appends the result as an `AI` thread message. This path sends no
 additional draft context. The writer brief remains user-role guidance. If stopped, it
 keeps any text that streamed before cancellation rather than adding an error.
 
-### Dictionary and Thesaurus
+### Dictionary and thesaurus
 
 `Mod-D` opens the dictionary popover for a single selected word. Definitions,
 synonyms, and antonyms come from the Free Dictionary API. Its AI mode uses
 `streamDictionary()` for nuanced lookup and word-finding; it intentionally sends
 the selected word or phrase without draft text.
 
-### Writing Characterizer
+### Writing characterizer
 
 The Statistics modal can call `generateCharacterization()` on the current
 document. It uses `generateObject()` with a Zod schema to return seven 1–10 style
 dimensions, tone descriptors, and a short style summary. It shares the selected
 provider, model, credential loading, task indicator, and global abort signal.
 
-## Event Bus Integration
+## Event bus integration
 
 `appEventBus` handles cross-component AI actions:
 

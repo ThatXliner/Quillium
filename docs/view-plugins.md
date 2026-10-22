@@ -1,4 +1,4 @@
-# ViewPlugins and Extensions
+# View plugins and extensions
 
 [Desktop annotations/index.ts](../packages/desktop/src/lib/editor/plugins/annotations/index.ts)
 registers view plugins and facet extensions that react to editor updates. Shared
@@ -26,47 +26,23 @@ their nested passages keep the depth lines in a deeper purple on top of it.
 The shared read-only renderer follows the same treatment, and legacy preview buttons also reveal
 the underline on keyboard focus. Empty-revision markers remain visible.
 
-Active state is determined by `getActiveAnnotation()` — the annotation whose range contains the cursor. If multiple ranges overlap, the narrowest one wins.
+Active state is determined by `getActiveAnnotation()`, the annotation whose range contains the cursor. If multiple ranges overlap, the narrowest one wins.
 
 ## revisionAtomicRanges
 
 Registered via `EditorView.atomicRanges.of(...)` (a facet provider, not a `ViewPlugin`). When `appSettings.atomicRevisions` is enabled, marks **all** revision ranges as atomic. The cursor jumps over the entire span instead of entering it.
 
-This does **not** block edits — `atomicRanges` only governs cursor placement.
+`atomicRanges` governs cursor placement. It does not prevent edits.
 
 ## collapsedRevisionResolver
 
 Monitors for revision ranges that collapsed to `from === to` in a `docChanged` transaction (not annotated `revisionInternalEdit`). Collects all collapsed revisions and, in a single `queueMicrotask`-deferred dispatch:
 
 1. Removes all collapsed revisions via `removeAnnotation` effects
-2. Tags `Transaction.addToHistory.of(false)` — no new history entry
-3. Tags `_revisionCleanup.of(true)` — tells `invertedAnnotationFieldEffects` to skip
+2. Tags `Transaction.addToHistory.of(false)` to avoid a new history entry
+3. Tags `_revisionCleanup.of(true)` so `invertedAnnotationFieldEffects` skips cleanup
 
-```mermaid
-flowchart TD
-    DocChange["docChanged transaction"]
-    Check{"revisionInternalEdit?"}
-    Skip["Skip (intentional collapse)"]
-    Collect["Collect collapsed revisions"]
-    HasCollapsed{"Any collapsed?"}
-    NoOp["No action"]
-    Microtask["queueMicrotask"]
-    StaleGuard{"view.state === update.state?"}
-    Stale["Skip (state changed)"]
-    Dispatch["Dispatch cleanup"]
-    
-    DocChange --> Check
-    Check -->|yes| Skip
-    Check -->|no| Collect
-    Collect --> HasCollapsed
-    HasCollapsed -->|no| NoOp
-    HasCollapsed -->|yes| Microtask
-    Microtask --> StaleGuard
-    StaleGuard -->|no| Stale
-    StaleGuard -->|yes| Dispatch
-```
-
-Undo is handled by `_restoreAnnotation` effects stored on the deletion transaction — Cmd+Z re-inserts deleted text and restores all revisions in one step.
+Undo is handled by `_restoreAnnotation` effects stored on the deletion transaction. Cmd+Z re-inserts deleted text and restores all revisions in one step.
 
 The `queueMicrotask` defers past the current update cycle (required to avoid "dispatch inside update"). The stale-state guard prevents double-dispatch if Cmd+Z fires synchronously before the microtask.
 
@@ -76,7 +52,7 @@ Fires a `revision-boundary-nudge` UI event when text is inserted immediately at 
 
 Skipped for transactions annotated `revisionInternalEdit` (programmatic insertions).
 
-## Rich Markdown (richMarkdown.ts)
+## Markdown preview
 
 A ViewPlugin that renders markdown with live preview:
 
@@ -86,7 +62,7 @@ A ViewPlugin that renders markdown with live preview:
 
 Works with the Lezer markdown parser via `syntaxTree()`.
 
-## Markdown Formatting (markdownFormatting.ts)
+## Markdown formatting
 
 Keybindings for markdown formatting:
 
@@ -98,7 +74,7 @@ Keybindings for markdown formatting:
 
 Handles selection wrapping and cursor placement for empty selections.
 
-## Harper Linter (harper/)
+## Harper grammar checking
 
 Grammar and style checking integration:
 
@@ -109,69 +85,18 @@ Grammar and style checking integration:
 | `lintKindColor.ts` | Color coding by issue type |
 | `HarperTooltip.svelte` | Hover tooltip UI |
 
-## Extension Stack (extensions.ts)
+## Extension assembly
 
-An abridged view of the extension stack registered in `Editor.svelte`:
+[extensions.ts](../packages/desktop/src/lib/editor/extensions.ts) assembles the
+root and nested editor extensions and declares their serialized fields. Nested
+editors disable their own history and persistence. The root editor installs
+persistence listeners and captures the document's undo-after-restart policy.
 
-```typescript
-// The wrapper adds tagged Quillium effects to CodeMirror's history JSON.
-// Its per-document facet emits null when history is session-only.
-export const savedFields = {
-    historyField: persistentHistoryField,
-    annotationField,
-    versionGroupField,
-};
-
-// Editor.svelte passes the policy stored on the document.
-const extensions = getExtensions({ persistHistory: document.persistHistory });
-
-// Abridged extension assembly:
-const withHistory = options?.history !== false;
-const persistHistory = options?.persistHistory ?? true;
-return [
-    highlightSpecialChars(),
-    persistHistoryFacet.of(withHistory && persistHistory),
-    ...(withHistory
-        ? [
-              persistentHistoryStateExtension,
-              historyCompartment.of([
-                  persistentHistoryRuntimeExtension,
-                  history({ newGroupDelay: 250 }),
-              ]),
-          ]
-        : []),
-    // ...editing, language, markdown, grammar, and dictionary extensions...
-    listeners(options),
-    annotations(),
-    collabCompartment.of([]),
-];
-```
-
-### Persistent history adapter
-
-Stock CodeMirror history JSON stores text changes and selections but omits custom `StateEffect`s.
-Quillium's annotation, revision-version, and version-group inverses live in those effects, so loading
-the stock representation could produce a text-only undo and corrupt the semantic state.
-
-`persistentHistoryField` stores tagged Quillium effects beside CodeMirror's native history branches
-and restores both together. The adapter is deliberately fail-closed: a pre-0.22 legacy stack,
-malformed payload, unknown effect, or incompatible runtime shape starts with a fresh stack rather
-than a partial one. Documents created before July 14, 2026 retain persistent history, with that
-one-time legacy reset; newer documents default to session-only unless **Undo after restart for new
-documents** was enabled before they were created. The setting is captured per document and never
-retroactively changes an existing document.
-
-The same fail-closed rule covers event tails: a legacy or fallback event can restore content, but it
-cannot prove that a previously saved undo branch remains semantically complete. Persistent loads
-therefore keep the restored content and selection while replacing that branch with a fresh one.
-
-Event-tail restoration uses the same effect codecs. Versioned `transactionReplay` entries preserve
-transaction boundaries, start/final selections, selection contributions on the current history item,
-live undo-group boundaries, and undo/redo intent; effect-only changes such as version-group
-membership are persisted as `state_transaction` events. Selection-only cursor movement is folded
-into the next semantic transaction rather than written as its own event. For a session-only document
-the same trace restores the exact content and annotations with `addToHistory: false`, leaving the
-reopened undo branch empty.
+The custom persistent-history adapter stores Quillium effects alongside
+CodeMirror changes and selections. Unsupported or incomplete saved history starts
+a fresh undo stack while retaining content. See
+[persistence](persistence.md#undo-history-policy-022) for the policy, exact replay,
+and legacy-history handling.
 
 ## Compartments
 

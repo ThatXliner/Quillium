@@ -1,4 +1,4 @@
-# Nested Editors
+# Nested editors
 
 Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline editor inside the revision card and a full-screen modal. Both are full `CodeMirror EditorView` instances. The parent document remains the **single source of truth**.
 
@@ -9,58 +9,40 @@ contains state creation, edit translation, and parent undo helpers. Read
 
 Architecture decision: [nested editors use parent authority](./adr/0004-nested-editors-use-parent-authority.md).
 
-## Architecture: Direct Parent Dispatch
+## Parent dispatch
 
-Nested editors are intentional viewports that never own their document. When the user types inside a nested editor:
+The controller translates nested text changes into parent coordinates and
+marks the parent transaction with `nestedEditorEdit`. If the edit also changes or
+remaps nested annotations, the translated text and serialized version state go
+into the same parent transaction. Splitting them would let undo restore only one
+half of the change. Annotation-only mutations also update the parent's version
+state through an undoable transaction.
 
-```mermaid
-sequenceDiagram
-    participant Nested as Nested Editor
-    participant Controller as NestedEditorController
-    participant Parent as Parent EditorView
-    participant Field as annotationField
-
-    Nested->>Controller: updateListener fires
-    Controller->>Controller: translateAndDispatch()
-    Controller->>Parent: dispatch with offset mapping
-    Note over Parent: nestedEditorEdit.of(revisionId)<br/>addToHistory.of(true)
-    Parent->>Field: Phase 3 runs
-    Field->>Field: pushDocToVersionState()
-    Note over Field: active version's doc updated
-```
-
-1. The `updateListener` calls `translateAndDispatch(update, parentView, revisionId)`
-2. `translateAndDispatch` translates each change into parent coordinates (`rev.selection.main.from + delta`)
-3. Dispatches to parent with `nestedEditorEdit.of(revisionId)` + `addToHistory.of(true)`
-4. Phase 3 re-reads the post-transaction slice and keeps the active version's `doc` current (the slot at `activeVersionIndex(rev)`)
+For ordinary text changes, the annotation field refreshes the active version's
+prose from the parent range. Explicit version-state effects already carry that
+state and skip the automatic refresh.
 
 ## NestedEditorController
 
-Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors delegate lifecycle to `NestedEditorController`:
+Inline and modal revision editors delegate lifecycle to the controller. It
+creates the view, translates edits, synchronizes parent changes, and destroys the
+view when its target changes or the presentation closes. The implementation owns
+the method signatures; the important distinction is whether an update came from
+the user or from parent synchronization.
 
-| Method | Purpose |
-|--------|---------|
-| `constructor` | Creates `EditorView` from `VersionState` blob |
-| `syncFromParent(doc)` | Patches nested text from current parent authority |
-| `translateAndDispatch` helper | Maps nested edits to parent coordinates |
-| `needsVersionSwitch()` | Detects when to rebuild for new version |
-| `syncVersionFromParent()` | Refreshes current-version annotations in place, preserving focus and mapped selection |
-| `needsAnnotationRebuild()` | Detects when annotation blob changed |
-| `destroy()` | Cleanup, optional flush |
+### Flush behavior
 
-### Flush Behavior
-
-| Mode | Behavior | Used By |
-|------|----------|---------|
-| `"flush"` | Serialize nested state to parent on destroy | Modal |
-| `"no-flush"` | Parent is source of truth via Phase 3 | Inline |
+| Presentation | Controller mode |
+|---|---|
+| Inline revision | `"flush-on-destroy"` |
+| Revision modal | `"flush"` |
 
 Mutation writes sync immediately. Closing also retains the nested selection.
 Bookkeeping and destroy flushes skip a newer parent annotation blob so a stale
 editor cannot erase external edits. PostHog
 `nested_editor_flush_to_parent_meaningful` records meaningful destroy flushes.
 
-### Parent Sync Edit Annotation
+### Parent synchronization
 
 The controller checks the mounted version against the live parent state before
 syncing, because Svelte mirrors can trail a parent transaction. It computes a
@@ -71,14 +53,16 @@ The sync transaction carries `parentSyncEdit` and `addToHistory.of(false)`.
 The nested listener skips forwarding it, which prevents an update from the
 parent from becoming another parent edit or undo step.
 
-## Inline Editor (Revision.svelte)
+## Inline editor
 
-Creates a `NestedEditorController` with `flushBehavior: "no-flush"`. Svelte `$effect` blocks watch `activeVersion?.doc` and call `controller.syncFromParent()`. Version switches trigger destroy + recreate. External annotation changes within
+`Revision.svelte` uses the `flush-on-destroy` mode. Its Svelte effects synchronize
+parent text through `syncFromParent()`. Version switches rebuild the view.
+External annotation changes within
 the same version use `syncVersionFromParent()` to retain the mounted editor,
 keyboard focus, and selection. The controller reads the current parent version
 rather than trusting a delayed reactive snapshot.
 
-## Modal Editor (RevisionModal.svelte)
+## Modal editor
 
 Creates a `NestedEditorController` with `flushBehavior: "flush"`. External sync watches the parent's annotation state:
 
@@ -87,45 +71,26 @@ Creates a `NestedEditorController` with `flushBehavior: "flush"`. External sync 
 
 Annotation IDs are scoped per-editor and can collide across nesting levels.
 
-### RevisionModal FSM
+The modal state machine waits for the dialog and Svelte `tick()` before mounting
+or rebuilding the editor. Its event handlers are in
+[RevisionModal.svelte](../packages/desktop/src/lib/editor/plugins/annotations/RevisionModal.svelte).
+Keyboard ownership is checked by
+[revisionModalKeyguard.ts](../packages/desktop/src/lib/editor/plugins/annotations/revisionModalKeyguard.ts),
+so a dialog does not handle a key already consumed by its editor or text input.
 
-The modal editor uses a finite state machine for lifecycle:
+## Undo in nested editors
 
-```mermaid
-stateDiagram-v2
-    [*] --> unmounted
-    unmounted --> mounting: DIALOG_BOUND
-    mounting --> ready: TICK_RESOLVED
-    ready --> rebuilding: REBUILD_REQUESTED / VERSION_SWITCHED
-    rebuilding --> ready: TICK_RESOLVED
-```
+`makeParentUndoKeymap` delegates undo and redo to the parent view. Nested editors
+disable their own CodeMirror history. Parent transactions retain both translated
+text changes and semantic version-state effects.
 
-| State | Description |
-|-------|-------------|
-| `unmounted` | Waiting for `dialogEl` to bind |
-| `mounting` | Dialog open, waiting for `tick()` |
-| `ready` | Normal operation |
-| `rebuilding` | Editor destroyed, awaiting recreate |
+## Version switching
 
-### Sensor Effects
+Switching versions rebuilds the view from the selected version state. Text and
+annotation updates within the mounted version synchronize in place, preserving
+focus and mapped selection.
 
-| Effect | Watches | Sends |
-|--------|---------|-------|
-| A | `dialogEl`, `rebuildToken` | `DIALOG_BOUND`, `REBUILD_REQUESTED` |
-| B | Parent annotation state | `VERSION_SWITCHED`, `EXTERNAL_DOC_CHANGED` |
-| C-0 | `"annotation-add-version"` event | Calls `addVersion()` |
-| C | `"nested-annotation-create"` event | `NESTED_ANNOTATION_EVENT` |
-| D | `"revision-focus-request"` event | Pushes new modal |
-
-## Undo in Nested Editors
-
-`makeParentUndoKeymap` delegates `Mod-z`/`Mod-y` to `undo(parentView)`/`redo(parentView)`. Nested editors have no local history (`getExtensions({ history: false })`). The parent history records nested edits as plain doc changes.
-
-## Version Switching
-
-Version switching is the **only** time the nested editor is torn down and recreated. Other parent-driven updates mutate the existing view via buffer replacements.
-
-## Infinite Nesting
+## Multiple nesting levels
 
 Modal's `parentView` can be another nested `EditorView`. `translateAndDispatch` chains up the stack automatically.
 
@@ -141,26 +106,13 @@ Mod-Shift-c for comments and Mod-Alt-k for revisions, then emits
 
 ## The modalStack
 
-`modalStack` in `stores.ts` manages nested revision/diff overlays:
+`modalStack` in `stores.ts` manages revision and diff overlays. Each entry records its parent view and the annotation it displays. Stack actions
+open, close, or return to a level. `popToAndRebuild()` also changes the rebuild
+token when a parent modal must mount a different version. The types and stack
+operations live in [stores.ts](../packages/desktop/src/lib/stores.ts).
 
-```typescript
-type ModalEntry =
-    | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
-    | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
-```
-
-| Method | Effect |
-|--------|--------|
-| `push(entry)` | Open new modal on top |
-| `pop()` | Close topmost modal |
-| `popTo(i)` | Close all above index `i` |
-| `popToAndRebuild(i)` | `popTo(i)` + stamp `rebuildToken` |
-| `clear()` | Close all modals |
-
-**`popToAndRebuild`**: When a child modal switches the parent's active version, the parent must recreate its editor. `rebuildToken: Date.now()` signals this.
-
-## Collab Awareness in Nested Editors
+## Collaboration awareness
 
 When collab is active, `createNestedEditorState` installs `createAwarenessExtension` with position mappers over the parent revision range. The nested editor has no Yjs text binding and syncs through `translateAndDispatch`; awareness only maps cursor coordinates.
 
-Options: `broadcastInitialCursor: false`, `clearCursorOnDestroy: false` — mounting a background nested editor doesn't steal the user's shared cursor.
+Options: `broadcastInitialCursor: false`, `clearCursorOnDestroy: false`. Mounting a background nested editor does not replace the user's shared cursor.

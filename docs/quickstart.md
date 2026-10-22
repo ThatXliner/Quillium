@@ -6,12 +6,14 @@ UI work, but it does not provide the native backend.
 
 ## Prerequisites
 
-Install Git and Bun. Native desktop development also needs Rust/Cargo and your
+Install Git, Bun, and a Node version supported by the root `package.json`.
+Native desktop development also needs Rust/Cargo and your
 platform's Tauri system dependencies. The project includes the Tauri JavaScript
 CLI as a development dependency, so a separate global CLI is unnecessary.
 
-CI pins its Bun version in [the test workflow](../.github/workflows/test.yml).
-The package manifests and lockfiles record dependency versions.
+Use the runtime requirements and verified Bun installer in the
+[monorepo guide](monorepo.md#deployments). Package manifests and the root
+`bun.lock` record dependency versions.
 
 ## Install and configure
 
@@ -48,12 +50,9 @@ Configure AI connections in the app's AI settings. API-key connections use the
 OS keychain; adding `OPENAI_API_KEY` to the frontend environment is not the setup
 path. AI is optional for editing and annotation work.
 
-To use Quillium from a local MCP client, open AI Settings and choose **Add MCP**.
-Follow the Codex or Claude Desktop steps; other clients can use the generic JSON.
-Keep Quillium open and ask the client to use `get_editor_context` for your active draft,
-selection and unsaved changes. Connected clients can read saved documents and add undoable
-comments, suggestions and revisions to the live draft. Restart the client's MCP connection
-after updating Quillium so it discovers new tools.
+For a local MCP client, use **Add MCP** in AI Settings. The
+[native integration guide](native-integration.md#local-mcp-server) explains
+connection setup and live editing.
 
 ## Launch the desktop app
 

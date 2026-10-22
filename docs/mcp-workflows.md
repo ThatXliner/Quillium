@@ -1,5 +1,10 @@
 # Edit writing through Quillium MCP
 
+The native MCP server also exposes this guide through `read_editorial_workflow`.
+The tool contracts live in
+[`mcp.rs`](../packages/desktop/src-tauri/src/mcp.rs), and live editor operations
+run through [`mcpEditor.ts`](../packages/desktop/src/lib/ai/mcpEditor.ts).
+
 ## Read before editing
 
 Call `get_editor_context` for live unsaved writing. `list_documents` and
@@ -81,9 +86,8 @@ Do not insert another copy of text that already exists.
 
 An ordinary revision captures its existing target as Original and leaves Original
 active. An empty captured range can create a blank Original. Leaving Original active
-does not itself make Original blank. The reported screenshot alone does not
-establish the captured range or stored state. `insert_dictation` avoids using an
-empty range as the writer's original wording.
+does not itself make Original blank. `insert_dictation` avoids using an empty
+range as the writer's original wording.
 
 ## Keep edits independently selectable
 

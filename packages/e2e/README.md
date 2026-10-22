@@ -1,94 +1,80 @@
-# @quillium/e2e
+# Cross-package Omni tests
 
-Cross-package integration and end-to-end tests for **Quillium Omni** — the
-seams no single package can test on its own.
+This package checks the desktop serializer, shared renderer, Supabase contracts,
+relay, and hosted Web Preview together. Run commands from the repository root:
 
 ```bash
-bun run e2e:test:run   # component, round-trip, fuzz, and optional DB contract
-bun run e2e:test:web  # Playwright only; requires the Supabase env below
-bun run e2e:test:full # start/reuse local Supabase, then run every layer
-bun run e2e:test       # Vitest watch mode
+bun run e2e:test:run   # Vitest; database tests skip without configuration
+bun run e2e:test:web   # Playwright; requires Supabase configuration
+bun run e2e:test:full  # Local Supabase, all Vitest layers, then Playwright
+bun run e2e:test      # Vitest watch mode
 ```
 
-`e2e:test:full` is the release-confidence command for Omni. It reads
-credentials from `supabase status -o json`, starts the local stack when needed,
-generates required SvelteKit state for a clean checkout, and does not allow the
-database, relay, or browser layers to be silently skipped. CI runs this command
-for changes that can affect the collaboration or hosted preview paths.
+## Run the complete local suite
 
-## Track A — Relay real-time collaboration (implemented)
-
-`relayConvergence.test.ts` boots the production `createRelayServer()` on an
-ephemeral port and connects two headless Yjs clients over real `ws` sockets. It
-creates two local Supabase users, authenticates both clients with their real
-access-token JWTs, and covers:
-
-- owner and collaborator edits in both directions, including document text and
-  annotation maps;
-- exactly-once delivery to the other client without sender echo; and
-- relay debounce persistence through snapshot-plus-update recovery; and
-- 12 seeded, shrinking fast-check runs of generated peer, insertion, and
-  annotation sequences over the same production wire path.
-
-The suite uses the same opt-in Supabase environment as Track B, so the default
-`e2e:test:run` remains infrastructure-free. `e2e:test:full` supplies those
-variables from the local Supabase CLI and therefore requires the relay contract
-to run.
-
-## Track B — Share / web preview (implemented)
-
-The suite covers the desktop → wire → Supabase → landing → browser pipeline at
-four levels:
-
-- `shareRoundTrip.test.ts` calls the production desktop serializer, restores
-  with the shared read-only core, and verifies comments, suggestions, revisions,
-  and linked-version cascades.
-- `shareRoundTrip.fuzz.test.ts` runs 100 seeded, shrinking fast-check cases over
-  generated documents, ranges, threads, replacements, and revision versions.
-- `readonlyRender.test.ts` mounts the actual share shell and CodeMirror renderer,
-  including UI-driven linked-version switching, malformed-state recovery, and
-  the legacy pre-`published_state` fallback.
-- `supabaseContract.test.ts` creates and authenticates a real local user, checks
-  owner RLS, calls the production desktop repository to publish/get/disable,
-  verifies anonymous table denial, and reads enabled snapshots through
-  `get_public_share_by_token`.
-- `webPreview.pw.ts` starts the real landing app and drives `/share/[token]` in
-  Chromium, covering metadata, the CTA, read-only enforcement, all annotation
-  types, linked revisions, legacy shares, malformed tokens, disabled shares,
-  and cleanup.
-
-The Supabase-backed Vitest and Playwright layers accept:
+Install workspace dependencies, Docker, and the Supabase CLI. Docker must be
+running and `supabase` must be on `PATH`. Install the browser once:
 
 ```bash
+bun install --frozen-lockfile
+bun run --cwd packages/e2e playwright install chromium --with-deps
+bun run e2e:test:full
+```
+
+[`scripts/runLocal.ts`](scripts/runLocal.ts) starts or reuses the root local
+Supabase project, applies pending migrations, reads its credentials, and
+generates the desktop's SvelteKit configuration. It then requires every database,
+relay, and browser layer to run. It leaves Supabase running for reuse.
+
+Use a disposable local stack. The runner applies migrations to an existing
+local project, and the tests create and delete fixture users and documents.
+It does not run the desktop package's separate test suite or a native Tauri app.
+
+## Coverage
+
+| Test | Boundary exercised |
+|---|---|
+| `relayConvergence.test.ts` | Production relay, real WebSockets and Supabase JWTs, two-way text and annotation changes, sender-echo checks, persisted recovery, and seeded generated operations |
+| `shareRoundTrip.test.ts` | Production desktop serialization and shared state restoration, including linked revisions |
+| `shareRoundTrip.fuzz.test.ts` | Seeded generated documents, ranges, threads, replacements, and revision versions |
+| `readonlyRender.test.ts` | Mounted shared shell and CodeMirror renderer, version switching, malformed-state recovery, and legacy rendering |
+| `supabaseContract.test.ts` | Real user authentication, owner RLS, publish/read/disable through the desktop repository, anonymous table denial, and the public-share RPC |
+| `webPreview.pw.ts` | Actual landing route, read-only interactions, annotations and modals, invalid/disabled shares, and responsive images |
+
+The source files own the seeds and run counts. Long desktop collaboration stress
+tests live in [the opt-in fuzz directory](../desktop/src/lib/collab/fuzz/README.md).
+
+## Run against an existing test stack
+
+The database and browser layers accept these variables:
+
+```dotenv
 E2E_SUPABASE_URL=http://127.0.0.1:54321
-E2E_SUPABASE_SERVICE_ROLE_KEY=...
-E2E_SUPABASE_PUBLISHABLE_KEY=... # E2E_SUPABASE_ANON_KEY also works
+E2E_SUPABASE_SERVICE_ROLE_KEY=your-local-service-role-key
+E2E_SUPABASE_PUBLISHABLE_KEY=your-local-publishable-key
 ```
 
-The browser suite remains optional when those variables are absent. CI and other
-required runs set `E2E_WEB_PREVIEW_REQUIRED=1`; in that mode a missing URL,
-service-role key, or publishable/anon key fails during Playwright configuration
-instead of reporting a skipped green run. CI retries failures only to collect
-diagnostic evidence and uses Playwright's `failOnFlakyTests`, so a retry-pass is
-still a failing required check. Playwright retains a trace, screenshot, and HTML
-DOM attachment for each failed test under `packages/e2e/test-results/`; CI also
-writes JSON and HTML reports.
+`E2E_SUPABASE_ANON_KEY` is a compatibility fallback for the publishable key.
+Keep service-role keys out of frontend configuration. The browser runner passes
+only the public values to its landing child process.
 
-Web Preview image assertions cover modern `published_state` and pre-migration
-legacy rendering in light and dark themes at wide, tablet, and mobile widths,
-plus nested revision, long comment, and multi-option suggestion modals. Expected
-images live in `packages/e2e/tests/webPreview.pw.ts-snapshots/` and Linux is the
-canonical rendering environment. On macOS and Windows, the same tests retain
-their interaction and semantic assertions but ignore screenshot comparisons,
-so `e2e:test:full` does not generate noncanonical baselines. Set
-`E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` only when a platform-specific diagnostic
-image is useful; do not commit those images. To review an intentional visual
-change, run this on the documented Ubuntu/Playwright environment:
+Set `E2E_WEB_PREVIEW_REQUIRED=1` when a skipped service-backed layer must fail
+the run. The full local runner sets it automatically. Without it, missing
+credentials can produce skipped tests rather than verify the database or browser.
+The repository currently has no pull-request workflow that runs these suites.
+
+## Visual checks
+
+Linux owns committed snapshots. Web Preview skips image comparisons on macOS
+and Windows while retaining semantic checks. `CI=1` requires Linux, builds the
+landing app before serving it, writes reports, and fails retry-passes.
+
+For an intentional image change on Ubuntu 24.04:
 
 ```bash
-CI=1 bun run e2e:test:full -- --update-snapshots
+CI=1 bun run e2e:test:full -- --update-snapshots --retries=0
 ```
 
-`runLocal.ts` forwards arguments after `--` only to Playwright, while still
-running the required migrations and Vitest contract layer first. Do not commit
-macOS- or Windows-generated baselines.
+Arguments after `--` go only to Playwright; the required Vitest layer still runs
+first. Follow [visual verification](../../docs/visual-regression.md) to review
+image differences and failure artifacts. Do not commit non-Linux baselines.

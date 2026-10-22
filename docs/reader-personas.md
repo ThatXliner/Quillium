@@ -1,171 +1,72 @@
-# Reader Personas
+# Reader personas
 
-Reader personas are configurable AI "readers" that provide feedback from distinct perspectives. When personas are turned **on** for a mode, all enabled personas run in parallel — each producing annotations attributed to that persona's name.
+Reader personas run separate model requests that attach notes under each reader's
+name. Enabling a reader in the Readers panel selects that reader for future
+fan-out requests. It does not start a request or enable fan-out by itself.
 
-Because personas fan a single request out into one AI stream **per enabled persona**, they cost roughly N× the tokens of a normal request. For that reason they are an explicit, **per-mode opt-in that defaults to OFF** — see [Per-Mode Opt-In](#per-mode-opt-in) below.
+## Reader configuration
 
-## Files
+[`readers/presets.ts`](../packages/desktop/src/lib/readers/presets.ts) owns the
+`ReaderPersona` type, built-in descriptions, and defaults. A persona has a stable
+ID, display name, avatar, instruction, enabled state, and chattiness. Built-ins
+also have an expandable profile. Custom readers can be deleted; built-ins cannot.
 
-| File | Purpose |
-|------|---------|
-| `presets.ts` | `ReaderPersona` type, `DEFAULT_PERSONAS` |
-| `settings.svelte.ts` | Persona list store, localStorage persistence |
-| `prompt.ts` | `buildPersonaPrompt()` |
-| `colors.ts` | `lightTint()` / `mediumTint()` for avatars |
-| `Readers.svelte` | Configuration panel UI |
+The default enabled readers are Skeptical Editor, Clarity Coach, First-Time
+Reader, and Emotional Reader. Flow Reader, Devil's Advocate, Expert Reader, and
+Casual Skimmer start disabled. Chattiness is `quiet`, `normal`, or `verbose`.
+[`buildPersonaPrompt()`](../packages/desktop/src/lib/readers/prompt.ts) sends that
+instruction as a writer-selected user-role lens. It cannot expand the task's
+system policy or tool permissions.
 
-## Data Model
+[`readers/settings.svelte.ts`](../packages/desktop/src/lib/readers/settings.svelte.ts)
+saves device choices under `quillium-readers-settings`. Loading preserves saved
+built-in toggles and chattiness, adds new built-ins from the current presets, and
+appends custom readers.
 
-```typescript
-type ReaderPersona = {
-    id: string;          // UUID for custom, slug for builtin
-    name: string;        // Display name
-    emoji: string;       // Avatar emoji
-    color: string;       // Hex color for accent
-    description: string; // Short tagline
-    profile?: {          // Rich profile for builtins
-        about: string;
-        goodFor: string[];
-        example: string;
-    };
-    instruction: string; // AI prompt (not shown to users)
-    builtin: boolean;
-    enabled: boolean;
-    chattiness: "quiet" | "normal" | "verbose";
-};
-```
+An active [College setup](college-applications.md#effective-preferences-and-requests)
+supplies the tab's reader list and separate-panel opt-ins. Readers edits then save
+to that setup. Pausing or removing it restores the unchanged device defaults.
 
-## Builtin Personas
+## Opt-in by layout
 
-| Persona | Focus | Default |
-|---------|-------|---------|
-| Skeptical Editor 🔍 | Logical gaps, weak claims | Enabled |
-| Clarity Coach 💡 | Jargon, ambiguity, readability | Enabled |
-| First-Time Reader 👶 | Missing context, assumed knowledge | Enabled |
-| Emotional Reader 💜 | Tone, voice, emotional resonance | Enabled |
-| Flow Reader 🌊 | Pacing, transitions, momentum | Disabled |
-| Devil's Advocate 😈 | Challenging assumptions | Disabled |
-| Expert Reader 🎓 | Depth, accuracy, rigor | Disabled |
-| Casual Skimmer ⚡ | Scannability, key points | Disabled |
+| Layout | Opt-in | Request behavior |
+|---|---|---|
+| Separate Feedback and Revise | Saved per-mode toggle, off by default | One request per enabled reader replaces the normal response. Exact compression in Revise uses the normal stream. |
+| Separate Chat | No reader toggle | One conversational response. |
+| One assistant | Conversation-local Readers toggle, off for a new discussion | One normal assistant response plus one request per enabled reader, with the same turn permissions. |
 
-## Chattiness
+With no enabled readers, requests use the normal single response. One assistant
+persists its toggle with the conversation's device-local tool choices in
+[`assistantOptions.ts`](../packages/desktop/src/lib/ai/assistantOptions.ts).
+Separate-panel opt-ins use `quillium-ai-persona-modes` unless a College setup
+owns the effective preferences.
 
-Each persona has a 3-level chattiness setting:
+Each enabled reader adds a model request. Token use and cost depend on the
+provider, context, and generated output; they are not a fixed multiplier.
 
-| Level | Behavior |
-|-------|----------|
-| `quiet` | Only significant issues; nothing if solid |
-| `normal` | Issues worth writer's attention |
-| `verbose` | Thorough about meaningful patterns; skips minor preferences |
+## Request execution
 
-The directive is sent as a writer-selected reader lens in a user-role message via
-`buildPersonaPrompt()`. The shared system policy keeps the task's action permissions fixed.
+[`runMultiPersonaStreams()`](../packages/desktop/src/lib/ai/chatFactory.ts) copies
+the enabled readers and captures the writing target, selection, context,
+provider settings, and permitted actions before starting parallel streams.
 
-## College tab overrides
+Each stream consumes annotation tool calls rather than displaying its
+conversational text. Reader requests require a permitted annotation tool call or
+an empty `noAction` when there is no useful note. When a retrieval snapshot is available, readers can use the same bounded
+[read-tool loop](ai-sidebar.md#continuity-between-feedback-and-annotation-discussions)
+as sidebar conversations. There is no separate prose-summary request after the
+annotation work. Providers may still emit text or reasoning, so this does not
+guarantee zero billed non-annotation tokens. `noAction` creates nothing.
 
-An active [College setup](college-applications.md) supplies the effective reader
-list and per-mode opt-ins for its one-prompt workspace tab. Selecting several
-prompts creates one named tab and setup per prompt in one atomic batch. Applying
-one prompt to an existing workspace tab updates only that setup, preserving the
-tab label, existing prose, and document-owned notes and decisions. General
-Readers edits update the saved setup; device defaults remain untouched. There is
-no preview acknowledgment or separate context-confirmation screen. Pausing or
-removing setup returns to device defaults. Legacy saved setups containing
-multiple prompts remain readable until explicit replacement, with no automatic
-migration or deletion. Chat still displays and requires explicit fan-out
-opt-in.
+Feedback readers can create comments. Revise readers can create comments,
+suggestions, and revisions. One assistant readers receive the same permission
+snapshot as the accompanying assistant turn, including contextual restrictions.
+Every result passes the shared
+[annotation gateway](ai-sidebar.md#tools-and-annotation-dispatch), which checks
+the captured document, tab, draft, nested version, selection, and source text.
+Late output cannot apply to another draft or changed target passage.
 
-## Settings Persistence
-
-Stored in localStorage under `"quillium-readers-settings"`. On load, saved state merges with `DEFAULT_PERSONAS`:
-- User toggles and chattiness preserved
-- New builtins added if preset list grows
-- Custom personas appended after builtins
-
-## Multi-Persona Execution
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Feedback as Chat.svelte
-    participant Factory as chatFactory.ts
-    participant AI as AI Provider
-
-    User->>Feedback: Click feedback button
-    Feedback->>Factory: sendWithPersonas()
-    Factory->>Factory: getEnabledPersonas()
-    Factory->>Factory: Snapshot document ID and AI context
-    
-    par Parallel execution
-        Factory->>AI: Persona 1 stream
-        Factory->>AI: Persona 2 stream
-        Factory->>AI: Persona N stream
-    end
-    
-    AI-->>Factory: Streamed tool calls
-    Factory->>Factory: Confirm document is still active
-    Factory->>Factory: Attribute annotations to persona name
-```
-
-When feedback is triggered:
-1. The panel checks the **per-mode opt-in** (`personaModes[mode]`). If the mode is OFF, it uses a single plain stream and stops here.
-2. If ON, it reads `getEnabledPersonas()`; if any exist, it calls `runMultiPersonaStreams()`
-3. The factory snapshots the document, tab, draft, nested revision-version path,
-   selection and mapped range, open annotations, active annotation, writer brief,
-   saved decisions, editorial preferences, and provider settings once.
-4. Each persona runs **in parallel** (`Promise.all`) with the shared abort signal.
-5. Each stream sends `buildPersonaPrompt(persona)` as a writer-selected lens before
-   the context packet.
-6. Tool-call handlers attribute annotations to the persona's name.
-7. A tool call must match the captured editor identity, selection, and task
-   permissions. Late output cannot land in another draft, revision branch, or
-   changed target passage.
-
-If the mode is OFF, or it is ON but no personas are enabled, it falls back to standard single-stream.
-
-Persona streams consume tool-call chunks directly instead of rendering each
-persona's conversational text in the panel. Each fan-out request requires one
-or more permitted annotation tool calls, or an empty `noAction` call when none
-is warranted. The policy omits prose-summary instructions, and the SDK stays at
-one generation step with no follow-up summary request. Standard single-persona
-streams retain their text behavior. Providers and custom endpoints may ignore
-or reject required tool selection or emit accompanying text or reasoning, so
-this cannot guarantee zero billed non-annotation tokens; `noAction` never
-creates an annotation. Feedback personas can create comments; Revise personas
-can create comments, suggestions, and revisions. The global AI stop control
-cancels every persona stream through the shared abort signal.
-
-## Reader review opt-in
-
-Chat’s Writing actions contains an explicit reader review checkbox, off when the
-panel mounts. Enabling it routes Give feedback and Suggest revisions through the
-enabled readers, with one request per reader. Ordinary Send and exact compression
-remain single-stream. The Readers panel selects which readers participate. With
-none enabled, a writing action falls back to a normal response.
-
-The request and an application status message are saved in the same discussion;
-reader notes are attached to the draft. The legacy per-mode preference storage is
-retained for compatibility with College setup, but Chat's explicit checkbox owns
-whether this interactive fan-out runs.
-
-## UI (Readers.svelte)
-
-Tab 5 in AI sidebar. Rose theme accent.
-
-Layout:
-- **Enabled personas** at top
-- **Disabled personas** below divider (dimmed 55%)
-- Each card: emoji avatar, name, description, chattiness dots (1–3), toggle
-- Clicking builtin card expands: about text, "Good for" tags, example quote
-- **Custom reader form** at bottom: name, emoji, color swatch, instruction textarea
-- Custom personas deletable; builtins are not
-
-## Integration Points
-
-- **Chat.svelte**: Owns the explicit reader review opt-in and unified composer
-- **conversationController.svelte.ts**: Saves reader requests and application status messages
-- **chatFactory.ts**: `runMultiPersonaStreams()` handles parallel execution
-- **context.ts / annotationContext.ts**: Build the same budgeted, annotation-aware
-  context used by ordinary Feedback and Revise requests
-- **settings.svelte.ts**: Supplies the shared abort signal and global stop behavior
-- **Sidebar**: Readers contribution in `sidebar/Sidebar.svelte`
+The global AI stop control cancels all reader streams through the shared abort
+signal. Annotation authors and request provenance retain the reader's identity.
+Separate Feedback and Revise save the request and an application-status message
+in their conversation; reader notes remain annotations on the draft.

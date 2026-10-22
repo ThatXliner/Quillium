@@ -1,131 +1,102 @@
-# Visual Regression and CI Policy
+# Visual regression and verification
 
-Quillium's pre-merge `CI Gate` checks the behavior and presentation shared by the desktop editor,
-Version History, and Omni Web Preview. It runs only for pull requests targeting `main` and does not
-run again when the pull request merges.
+The checked-in Playwright suites compare the desktop editor, Version History,
+and Web Preview. The repository currently has release-build and Rust-cache
+workflows, but no pull-request test workflow or `CI Gate`. Run the relevant
+checks before merging; a pull request with no checks is not evidence of a pass.
+See [CONTRIBUTING.md](../CONTRIBUTING.md#verify-your-change) for nonvisual checks.
 
-## Pull request jobs
+## Canonical images
 
-The workflow classifies the changed paths before starting the expensive jobs:
+Linux is the canonical snapshot platform. Use Ubuntu 24.04 with Chromium from
+the Bun-locked Playwright dependency. Rendering differs by OS, so macOS or
+Windows images must not replace the Linux baselines.
 
-| Job | Runs when | Command or coverage |
-|-----|-----------|------------------------------|
-| Static checks | Source, configuration, or workflow code changes | `bun ci`, `bun run check:all`, `bun run landing:build` |
-| Cross-package tests | Source, configuration, or workflow code changes | `bun ci`, `bun run test:all` |
-| Desktop Playwright | Desktop, shared UI, dependency, or CI harness changes | Focused annotation, modal, history, and visual suite |
-| Web Preview | Landing, share, publishing, Supabase, E2E, dependency, or CI harness changes | Real landing route against an ephemeral local Supabase stack |
+| Suite | Coverage | Expected images |
+|---|---|---|
+| Desktop and Version History | Light theme at wide, tablet, and mobile sizes, including modal and nested states | `packages/desktop/tests/e2e/annotationVisualParity.pw.ts-snapshots/` |
+| Web Preview | Modern and legacy rendering in light and dark themes at the same widths, plus revision, comment, and suggestion modals | `packages/e2e/tests/webPreview.pw.ts-snapshots/` |
 
-Documentation-only changes skip those jobs. `CI Gate` still runs on the pull request and fails if
-any path-selected job fails, is cancelled, or is skipped unexpectedly. Its stable name can be used
-as the required status check in branch protection for `main`.
+Desktop does not currently expose a dark theme. Its Playwright configuration
+does not skip image comparisons on other operating systems; non-Linux runs may
+report missing platform-specific images. Web Preview keeps its semantic checks
+but skips screenshots on macOS and Windows by default.
+`E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` enables diagnostic images for Web Preview
+only. Do not commit those images. Web Preview rejects `CI=1` on non-Linux hosts.
 
-Behavioral browser jobs retain a small, finite retry budget to preserve evidence about intermittent
-failures. Playwright's `failOnFlakyTests` option makes a retry-pass fail CI, so a flake cannot become
-a green pull request. Desktop behavioral coverage is capped at two workers with a 60-second test
-timeout; the pixel matrix runs separately with one worker and no retries to avoid contending over
-its shared preview server and rendering initialization. Each browser job records its wall-clock
-runtime and expected, flaky, and failed test counts in the GitHub Actions job summary.
+The fixtures fix time, IDs, viewport, color scheme, scale, and animations. Web
+Preview uses self-hosted Inter fonts. Missing fonts or unfinished rendering
+invalidate a baseline. Keep semantic assertions beside screenshots so missing
+content, selection behavior, scrolling, and editor state are checked directly.
 
-## Canonical visual environment
+## Run the suites
 
-Canonical image comparisons use the Bun-locked Playwright version and Chromium on Ubuntu 24.04.
-Linux snapshots are canonical. A run on macOS or Windows is useful for diagnosis, but its output
-must not replace the Linux baseline because font rasterization and browser rendering differ by OS.
-Expected filenames retain Playwright's platform suffix (`-chromium-linux.png`); a developer run on
-macOS or Windows keeps the semantic parts of each visual scenario active but ignores screenshot
-comparisons by default. Set `E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` to produce separate platform
-images for diagnosis; those images cannot silently overwrite the Linux baselines and must not be
-committed.
-
-The checked-in baseline sets are:
-
-| Surface | Matrix | Expected images |
-|---------|--------|-----------------|
-| Desktop and Version History | Light theme at wide, tablet, and mobile sizes, plus modal and nested states; desktop does not currently expose a dark theme | `packages/desktop/tests/e2e/annotationVisualParity.pw.ts-snapshots/` |
-| Omni Web Preview | Modern/legacy renderers in light/dark at wide, tablet, and mobile sizes, plus modern revision, comment, and suggestion modals | `packages/e2e/tests/webPreview.pw.ts-snapshots/` |
-
-Dark cross-surface parity cannot be asserted until desktop exposes a dark theme. The Web Preview
-dark baselines protect the dark UI that exists today without presenting duplicate light pixels as
-coverage.
-
-Animations, fixture data, clocks, generated IDs, fonts, viewport, color scheme, and device scale
-factor must be fixed by the visual harness. Mask a region only when its value is genuinely
-nondeterministic and irrelevant to the behavior under test. Do not mask content, layout, scroll
-positions, annotation anchors, or modal geometry.
-
-Web Preview loads the self-hosted Inter files from `@fontsource/inter`, and its visual harness pins
-the document font to that family. A system-font fallback is not a valid baseline environment.
-
-Screenshots supplement semantic assertions. Every visual scenario must retain assertions for the
-state or interaction it represents; an image comparison is not a replacement for accessible names,
-content, selection, scrolling, or editor-state checks.
-
-## Running and updating baselines
-
-Run the visual file from the repository root:
+Run commands from the repository root after the
+[desktop environment setup](quickstart.md#install-and-configure).
+Install the locked dependencies and browser:
 
 ```bash
-bun ci
+bun install --frozen-lockfile
 bun run --cwd packages/desktop playwright install chromium --with-deps
+```
+
+On the canonical Linux host, run the desktop visual matrix with one worker and
+no retries:
+
+```bash
 CI=1 bun run --cwd packages/desktop test:e2e \
   tests/e2e/annotationVisualParity.pw.ts --workers=1 --retries=0
 ```
 
-When an intentional UI change requires new expected images, run the same commands on Ubuntu 24.04
-and add `--update-snapshots` to the test command:
+`CI=1` uses a production frontend build. Production builds require public
+Supabase configuration. For an intentionally offline desktop fixture run,
+prefix the command with `QUILLIUM_ALLOW_MISSING_SUPABASE_ENV=1`; keep the public
+variable names defined as described in the quickstart.
 
-```bash
-CI=1 bun run --cwd packages/desktop test:e2e \
-  tests/e2e/annotationVisualParity.pw.ts --workers=1 --retries=0 --update-snapshots
-```
-
-Review the resulting PNG diff before committing it. Baseline changes must be committed in the same
-pull request as the source change and called out explicitly in the pull request description. State
-which scenarios changed and why. Reviewers should inspect the old expected image, the CI actual and
-diff images, and the new expected image rather than approving a filename-only change.
-
-Web Preview baselines require the repository's ephemeral local Supabase stack and must be generated
-on Ubuntu 24.04 (native or in a correctly configured container). On that Linux host, the full runner
-applies local migrations and forwards the snapshot-update flag only to Playwright:
+Web Preview requires a local Supabase stack. Install Chromium for that package
+and use the full runner on the Linux host:
 
 ```bash
 bun run --cwd packages/e2e playwright install chromium --with-deps
-CI=1 bun run e2e:test:full -- --update-snapshots --retries=0
+CI=1 bun run e2e:test:full -- --retries=0
 ```
 
-This produces the Linux images in `packages/e2e/tests/webPreview.pw.ts-snapshots/`. Running the same
-command directly on macOS ignores screenshot assertions by default. Set
-`E2E_COMPARE_NONCANONICAL_SNAPSHOTS=1` only to generate separate Darwin diagnostic images, not to
-update canonical baselines. Do not use production Supabase credentials to create or update a
-baseline.
+The [E2E README](../packages/e2e/README.md) covers Docker, Supabase CLI setup,
+required environment variables, and the service-backed checks run before the
+browser suite. Use disposable local data, never production credentials.
 
-Never update a baseline merely because CI produced a new actual image. First rule out missing fonts,
-unfrozen time or IDs, unfinished animations, incorrect fixture state, viewport drift, clipping,
-unintended responsive changes, and other harness instability.
+Both Playwright configs enable `failOnFlakyTests` under `CI=1`, so a retry-pass
+still fails that run. Desktop limits CI workers to two and uses a 60-second
+test timeout. The visual command above further limits workers and retries for
+repeatable rendering.
 
-## Acceptable differences
+## Update an intentional visual change
 
-A baseline update is acceptable when the changed pixels are the intended result of an approved UI
-or fixture change and the companion semantic assertions still pass. A rendering-engine change may
-also justify an update after the whole matrix has been inspected on the canonical environment.
+Add `--update-snapshots` to the corresponding command on the canonical Linux
+host. The full E2E runner forwards arguments after `--` only to Playwright.
 
-The parity suites currently permit at most a `0.005` changed-pixel ratio; desktop comparisons also
-declare Playwright's `0.2` per-pixel color threshold explicitly. The tolerance beside each screenshot
-assertion is the allowed difference. Do not raise a per-test or global threshold to hide unexplained
-drift. Any threshold change needs its own review rationale and should remain as narrow as possible.
-Missing content, unreadable contrast, incorrect wrapping, misplaced annotations, broken context
-scrolling, and viewport-specific overflow are regressions, not acceptable baseline differences.
+Inspect the old expected image, new actual image, and diff. Commit changed
+baselines with the source change and explain which scenarios changed. First
+rule out missing fonts, changing clocks or IDs, animations, incorrect fixture
+state, viewport drift, and clipping. A new actual image alone does not justify
+replacing the baseline.
 
-## Failure artifacts
+Both suites currently allow a `0.005` changed-pixel ratio with a `0.2` per-pixel
+color threshold. The options beside each screenshot assertion own those values.
+Do not raise tolerances to hide unexplained differences. Missing content,
+unreadable contrast, incorrect wrapping, misplaced annotations, broken context
+scrolling, and overflow are regressions.
 
-On a browser failure, GitHub Actions retains an artifact for 14 days containing:
+## Inspect failures
 
-- the Playwright HTML and JSON reports;
-- expected, actual, and diff images;
-- the Playwright trace and failure screenshots;
-- DOM snapshots attached by the visual harness; and
-- the checked-in expected snapshot directory for side-by-side comparison.
+Playwright retains traces and screenshots on failure. The visual tests also
+attach DOM snapshots. With `CI=1`, both configs produce JSON and HTML reports:
 
-Start with the HTML report, then open the trace to inspect the DOM, network, console, and action
-timeline. The artifact should make the failure diagnosable without a local reproduction. If it does
-not, improve the fixture or attachment rather than adding unbounded retries.
+- Desktop writes `packages/desktop/playwright-results.json` and
+  `packages/desktop/playwright-report/`.
+- Web Preview writes `packages/e2e/test-results/results.json` and
+  `packages/e2e/playwright-report/`.
+
+Start with the HTML report, then use the trace to inspect the DOM, network,
+console, and action timeline. Artifact uploads and retention need an automation
+workflow; the repository currently does not configure them for these suites.

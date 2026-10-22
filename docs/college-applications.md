@@ -47,7 +47,8 @@ Selecting several creates separate tabs; **Add another prompt** selects just one
 for the current tab. Length constraints preserve words versus characters; blank
 bounds mean unknown, not zero. Writers can enter exact supplemental wording.
 
-New tabs start with `# Prompt text (69 words)` and room for an answer. Edit or
+New tabs start with a prompt H1 and room for an answer. A known limit appears
+in the heading, for example `# Prompt text (350 words)`. Edit or
 paste ordinary H1 headings to change prompts. Each answer runs from its heading
 to the next top-level H1. H2 headings remain inside the answer; fenced code,
 block quotes, and list-contained headings do not start College sections. The
@@ -69,8 +70,11 @@ Prompt metadata is retained for recovery (up to 100 archived prompts); this is
 not a separate undo history. Accepted research remains saved until explicitly
 removed, even while its prompt is absent.
 
-The bundled guidance sources were checked on September 12, 2026. UC and Common App
-presets use the official prompt wording verbatim:
+[`promptCatalog.ts`](../packages/desktop/src/lib/college/promptCatalog.ts) and
+[`bundledGuidanceData.ts`](../packages/desktop/src/lib/college/bundledGuidanceData.ts)
+own the shipped prompts, source dates, and guidance. The current bundle records
+September 12, 2026 as its check date. This is a saved source snapshot, not a claim
+that the installed app has checked the current admissions cycle. Sources include:
 
 - [UC first-year PIQ guidance](https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-first-year/personal-insight-questions.html):
   its response limit is included; the source does not name an application cycle.
@@ -111,11 +115,8 @@ or removing its heading excludes that guidance from requests, while restoring it
 reconnects the saved sources. Adding a prompt attaches guidance for that prompt
 without updating references already accepted for other prompts.
 
-Accepted references include publisher, URL, check date, cycle or unknown, and a
-classification: official requirement, official advice, or editorial
-guidance. Applying saves these snapshots. Opening a saved setup never silently
-substitutes a new bundle. Guidance updates offer a preview before replacing
-accepted references.
+Accepted references retain publisher, URL, check date, cycle or unknown, and
+classification as official requirement, official advice, or editorial guidance.
 
 ## Effective preferences and requests
 
@@ -143,8 +144,7 @@ General Context shows shared notes separately from the tab brief and accepted
 sources. Context Lens uses the same packet builder as requests. Tab brief context
 has an 8,000-character budget; accepted reference context has a 6,000-character
 budget with visible omissions. Both are reference material, never extra tool or
-model permissions. There is no separate context-confirmation screen. Prompts do
-not grant broader editing authority.
+model permissions. Prompts do not grant broader editing authority.
 
 Hiding the panel leaves an active setup in requests, visibly available in general
 Context and Readers while AI features are enabled. Pause setup excludes its owned
@@ -194,10 +194,8 @@ permission, provenance, and the existing annotation gateway and undo commands.
 Sources, setups, and the current target are rechecked before applying results.
 Notes, research, and other Library documents are not included in this comparison.
 
-Selections are transient. No application groups or new database tables are
-created. Multi-document discovery, persistent groups, external plugins,
-marketplace distribution, and paper/debate workflows remain deferred. This
-consumer does not complete all of #84.
+Selections are transient and stay within the current document. Persistent
+application groups and multi-document discovery are not implemented.
 
 ## Optional school research
 

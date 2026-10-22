@@ -1,8 +1,9 @@
 # Architecture decision records
 
 These records capture decisions that are costly to reverse, easy to misread from
-the code, and based on a real trade-off. `DECISION.md` remains a historical index
-of phase-local markers; the files here are the canonical architecture decisions.
+the code, and based on a real trade-off. The [legacy decision guide](../../DECISION.md)
+explains phase-local markers in older code. The files here are the canonical
+architecture decisions.
 
 1. [Persist local edits as an event log with snapshots](./0001-event-log-with-snapshots.md)
 2. [Separate iteration lineage from alternate-run lineage](./0002-separate-iteration-and-branch-lineage.md)
@@ -14,6 +15,5 @@ of phase-local markers; the files here are the canonical architecture decisions.
 8. [Run owner-led Yjs Live Rooms with ephemeral joiners](./0008-owner-led-yjs-live-rooms.md)
 9. [Share editor presentation through app-neutral capabilities](./0009-app-neutral-editor-capabilities.md)
 10. [Keep public Web Preview identity document-keyed](./0010-document-keyed-web-preview.md)
-
 11. [Preserve AI conversation paths independently of prose](./0011-distinct-ai-conversations.md)
 12. [Keep deletion undo in the editor session](./0012-session-undo-for-deletions.md)

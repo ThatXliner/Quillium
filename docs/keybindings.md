@@ -1,15 +1,17 @@
 # Keybindings
 
-All keyboard shortcuts in Quillium.
+Quillium-specific shortcuts. `Mod` means Command on macOS and Control on other
+platforms. CodeMirror also supplies its standard editing shortcuts. Context and
+feature availability determine which commands can run.
 
-## Annotation Shortcuts
+## Annotation shortcuts
 
 The comment chord is matched from the physical `KeyC` webview event at highest precedence, then
 calls `createCommentFromSelection()` with CodeMirror's active view. This avoids layout-dependent
 key-name normalization while preserving the correct root, inline, or modal editor context. The
 remaining annotation shortcuts use the high-precedence CodeMirror keymap.
 
-| Key | Command Chain |
+| Key | Command chain |
 |-----|---------------|
 | `Backspace` | `nudgeBoundary("backward")` → `deleteAdjacentRevision("backward")` → default |
 | `Delete` | `nudgeBoundary("forward")` → `deleteAdjacentRevision("forward")` → default |
@@ -18,7 +20,7 @@ remaining annotation shortcuts use the high-precedence CodeMirror keymap.
 
 Each handler returns `false` to fall through if it doesn't apply. `redirectToNestedEditor` returns `true` (swallows keypress) only when cursor is inside an active revision.
 
-## Editor Shortcuts
+## Editor shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -41,7 +43,7 @@ undo first; browser `historyUndo` and `historyRedo` input events use the same bo
 The Undo toast and shortcut share one restore entry. See
 [tabs and drafts](tabs-and-drafts.md#keyboard-undo-and-redo) for scope.
 
-## Native App Menu Accelerators
+## Native app menu accelerators
 
 | Key | Action |
 |-----|--------|
@@ -49,15 +51,15 @@ The Undo toast and shortcut share one restore entry. See
 | `Mod-O` | Navigate to library |
 | `Mod-Shift-O` | Open selected document in new window (library) |
 | `Mod-Shift-H` | Navigate to version history |
-| `Mod-Shift-A` | Navigate to authorship report |
-| `Mod-Shift-E` | Export plain text |
+| `Mod-Shift-A` | Navigate to authorship report (`authorship-provenance` feature flag) |
+| `Mod-T` | Create a tab in the open document |
 | `Mod-Shift-F` | Toggle focus mode (`novel-november` feature flag) |
 
 `Command-Option-M` is not bound because macOS reserves it for Minimize All. `Command-Shift-M` is
 not bound because macOS uses it for the Open man Page in Terminal text Service. Right-clicking
 selected prose opens a native menu with Cut, Copy, Paste, Select All, Add Comment, and Add Revision.
 
-## Revision Modal Shortcuts
+## Revision modal shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -66,9 +68,11 @@ selected prose opens a native menu with Cut, Copy, Paste, Select All, Add Commen
 | `Mod-Enter` | Create new version |
 | `Escape` | Close modal |
 
-Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has focus.
+The modal-level handler skips events already handled by CodeMirror and events
+from editors or text inputs. Nested editors install their own version shortcuts.
+See [revisionModalKeyguard.ts](../packages/desktop/src/lib/editor/plugins/annotations/revisionModalKeyguard.ts).
 
-## Nested Editor Shortcuts
+## Nested editor shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -77,48 +81,45 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 | `Mod-Shift-C` | Emit `nested-annotation-create` for comment |
 | `Mod-Alt-K` | Emit `nested-annotation-create` for revision |
 
-## AI Sidebar Tab Keys
+## AI sidebar panels
+
+[Sidebar.svelte](../packages/desktop/src/lib/sidebar/Sidebar.svelte) handles these
+chords when the panel is available and no dialog is open. Panel contributions in
+[builtInPanels.ts](../packages/desktop/src/lib/sidebar/builtInPanels.ts) own the
+mapping. Number keys alone do not switch sidebar panels.
 
 | Key | Tab |
 |-----|-----|
-| `1` | Chat |
-| `2` | Feedback (Separate panels layout) |
-| `3` | Revise (Separate panels layout) |
-| `4` | Context |
-| `5` | Readers |
-| `6` | Settings |
+| `Mod-Shift-1` | Chat |
+| `Mod-Shift-2` | Feedback (Separate panels layout) |
+| `Mod-Shift-3` | Revise (Separate panels layout) |
+| `Mod-Shift-4` | Context |
+| `Mod-Shift-5` | Readers |
+| `Mod-Shift-6` | Settings |
 
-## Thread Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Cmd-/` | Focus reply textarea (emits `annotation-focus-reply`) |
-
-## Comment/Suggestion Card Shortcuts
+## Thread shortcuts
 
 | Key | Action |
 |-----|--------|
-| `Cmd-Enter` | Submit / Apply |
-| `Escape` | Cancel / Close |
+| `Mod-/` | Focus reply textarea (emits `annotation-focus-reply`) |
 
-## Revision Card Shortcuts
+## Annotation controls
 
-| Key | Action |
-|-----|--------|
-| `Cmd-Enter` | Create new version |
-| Number keys `1-9` | Switch to version N |
+`Mod-Enter` submits a comment or reply while its text field has focus. Escape
+cancels that input. `Mod-E` opens the active revision's editor. Version selection
+uses `Ctrl-[` and `Ctrl-]`, or the version buttons; bare number keys are not a
+version-switch shortcut.
 
-## Global Shortcuts
+## Focus mode
 
-| Key | Action |
-|-----|--------|
-| `Cmd-,` | Open settings |
-| `Cmd-O` | Open library |
-| `Cmd-Shift-H` | Open version history |
-| `Cmd-Shift-A` | Open authorship report |
-| `Cmd-Shift-F` / `F11` | Toggle focus mode (`novel-november` feature flag) |
-| `Escape` | Exit focus mode |
+With the `novel-november` feature flag enabled, `Mod-Shift-F` or `F11` toggles
+focus mode. Escape exits it.
 
-## Shortcut Hints
+## Shortcut hints
 
 When `appSettings.showShortcutHints` is `true`, the annotation panel shows keyboard hints for available actions.
+
+The native menu definitions are in
+[src-tauri/src/lib.rs](../packages/desktop/src-tauri/src/lib.rs). Keep this list
+aligned with those accelerators, the annotation keymaps, and each component's
+keyboard handler; there is no user shortcut editor.

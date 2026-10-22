@@ -1,13 +1,17 @@
 # AutoAI
 
-AutoAI is a background AI review system that watches document content and creates annotations automatically. It runs independently from the AI sidebar and is controlled via a bubble widget in the bottom-left corner.
+AutoAI watches draft content and adds annotations after a configurable pause.
+It runs independently of sidebar conversations and starts disabled. Its widget
+controls automatic or manual review.
 
-## Files
+## Implementation
+
+Files below live in `packages/desktop/src/lib/autoai`.
 
 | File | Purpose |
 |------|---------|
-| `settings.svelte.ts` | Settings store, localStorage persistence |
-| `engine.ts` | Review orchestration, AI calls, annotation dispatch |
+| [`settings.svelte.ts`](../packages/desktop/src/lib/autoai/settings.svelte.ts) | Settings store, localStorage persistence |
+| [`engine.ts`](../packages/desktop/src/lib/autoai/engine.ts) | Review orchestration, AI calls, annotation dispatch |
 | `reviewSchema.ts` | Provider-tolerant structured schema and strict result normalization |
 | `outcome.ts` | Typed last-review result and compact user-facing labels |
 | `AutoAIWidget.svelte` | Bubble + expanded panel UI |
@@ -24,10 +28,10 @@ Stored in localStorage under `"quillium-autoai-settings"`:
 | `mode` | `"continuous"` \| `"manual"` | `"continuous"` | Auto-review vs manual trigger |
 | `debounceMs` | number | 10000 | Delay before review after change |
 | `persona` | string | `"AutoAI"` | Name in annotation author fields |
-| `annotationTypes` | set | comments only | Which types to create |
+| `annotationTypes` | array | comments only | Which types to create |
 | `conservativeness` | enum | `"conservative"` | Review depth |
 
-## Review Engine
+## Review engine
 
 ```mermaid
 flowchart TD
@@ -55,7 +59,7 @@ flowchart TD
 | `cancelPendingReview()` | Clear the debounce without disabling the engine |
 | `triggerManualReview()` | Cancel debounce, run immediately |
 
-### Annotation Application
+### Annotation application
 
 Before review, AutoAI builds the same context packet used by the sidebar:
 
@@ -98,86 +102,27 @@ duplicate or unsafe results, was discarded after the draft changed, or failed. T
 outcome is cleared when the active document or draft changes. Routine cancellation
 while the writer keeps typing is not presented as an error.
 
-Continuous review is skipped for read-only drafts. Manual review runs immediately
-when the document is non-empty and shows a “No issues found” toast when the model
-returns no applicable annotations.
+Read-only drafts cannot receive review annotations. Manual review runs
+immediately for a non-empty draft. Its result distinguishes no concerns from
+duplicate notes, rejected targets, and a draft changed during review.
 
-## Widget UI
+## Widget state
 
-Fixed at `bottom: 24px; left: 24px`:
-
-### Collapsed (67 × 67px)
-
-- Animated `<AutoAIFace>` reacting to app state
-- Rainbow gradient border while enabled; spinning during review
-- Dimmed to 50% opacity when no API key
-
-### Expanded (320 × 310px)
-
-- Persona name (editable), enable toggle, close button
-- Last completed review outcome, when one exists for the active draft
-- Mode selector (Auto / Manual)
-  - Auto: delay slider (2–60s)
-  - Manual: "Review now" button
-- Annotation type pills
-- Depth slider (Conservative → Balanced → Thorough)
-
-## Face State Machine
-
-`AutoAIFace.svelte` is a presentational SVG driven by `state` and eye offset props. All animation is CSS keyframes.
-
-```mermaid
-stateDiagram-v2
-    [*] --> idle
-    idle --> sleeping: 30s no interaction
-    sleeping --> waking: Any interaction
-    waking --> idle: 1600ms elapsed
-    idle --> tracking: Sustained typing (1s)
-    tracking --> idle: 2s after last edit
-    idle --> thinking: Final 30% of debounce
-    thinking --> reviewing: Request starts
-    reviewing --> idle: Review complete
-    
-    note right of disabled: No API key
-```
-
-| State | Appearance | Trigger |
-|-------|------------|---------|
-| `disabled` | × eyes | No API key |
-| `reviewing` | Narrow squint, scanning | `autoAIPhase === "reviewing"` |
-| `thinking` | `>_<` with head bob | `autoAIPhase === "thinking"` |
-| `waking` | Eyes stretch open | Within 1600ms of wake |
-| `sleeping` | Horizontal bars + zzz | 30s idle |
-| `tracking` | Eyes follow caret/cursor | Sustained typing |
-| `idle` | Bar eyes, periodic blink | Default |
-
-### Eye Tracking
-
-`computeEyeOffset()` maps distance/direction from widget center to ±4px offset. Two tracking modes:
-
-1. **Caret tracking** — via `quillium:caret-moved` custom event (throttled, from `listeners.ts`). Requires sustained typing gate (1s streak) with 2s linger.
-
-2. **Mouse tracking** — when caret tracking active OR cursor within 180px of widget center.
-
-Eyes glide back to center (0.35s transition) when tracking ends.
-
-### Sleep/Wake
-
-After 30s of no `keydown` or caret events, the face sleeps. Any interaction triggers 1600ms waking animation. Opening the panel silently clears sleep.
+The expanded widget exposes enablement, review mode, delay, annotation types,
+review depth, and the last review outcome. `AutoAIFace.svelte` renders its visual
+state. [`faceAnimation.svelte.ts`](../packages/desktop/src/lib/autoai/faceAnimation.svelte.ts)
+owns caret and mouse tracking, sleep, and wake timing; the engine owns the
+`idle`, `thinking`, and `reviewing` phases.
 
 ## Keybinding
 
-`Mod-Shift-R` — registered in main editor only. Dispatches `"quillium:manual-review"` event, which `+page.svelte` handles by calling `triggerManualReview()`.
+`Mod-Shift-R` is registered in the main editor. It dispatches
+`quillium:manual-review`, which `+page.svelte` handles with
+`triggerManualReview()`.
 
-## Integration Points
+## Shared behavior
 
-- **Document content**: Engine subscribes to `documentContent` store
-- **Annotation creation**: Uses the same guarded `editorialAction.ts` gateway as the AI sidebar
-- **Context**: Shares the budgeted draft, writer brief, saved decisions, and
-  annotation context builder
-- **Provenance**: Records the request ID, provider, model, task, timestamp, and configured
-  persona on every created annotation
-- **AI settings**: Shares provider config, lazy credential loading, and `createModel()`
-- **Processing/cancellation**: Registers an AI task, uses the shared abort signal,
-  and cancels a pending debounce on the global `stop-ai` event
-- **+page.svelte**: Renders widget, handles manual review event
+AutoAI uses the sidebar's provider, credential loading, context packet, editorial
+policy, annotation gateway, and provenance metadata. It registers an active AI
+task and uses the shared abort signal. The global `stop-ai` event also cancels
+pending debounce work. See [the AI pipeline](ai-sidebar.md).

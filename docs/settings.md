@@ -1,6 +1,6 @@
 # Settings
 
-## App Settings (`settings.svelte.ts`)
+## App preferences
 
 Read preferences through `appSettings`. Commit absolute values with
 `updateSettings({ uiZoom: appSettings.uiZoom + 0.1 })`; the module validates,
@@ -18,93 +18,51 @@ document is created. Each Tauri window has its own settings state, so this query
 must see another window's latest undo policy even before a local settings update.
 Missing, malformed, or unavailable storage defaults to session-only undo.
 
-| Setting | Type | Default | Controls |
-|---------|------|---------|----------|
-| `selectTextInNestedEditor` | boolean | `true` | Auto-select in nested editor |
-| `showNestedEditor` | boolean | `true` | Show inline nested editor |
-| `atomicRevisions` | boolean | `true` | Block direct revision editing |
-| `editorMode` | enum | `"markdown"` | Plain or markdown mode |
-| `docFontFamily` | string | `"Georgia, serif"` | Editor body font |
-| `docFontSize` | number | `18` | Editor body font size |
-| `uiFontFamily` | string | `"system-ui, ..."` | UI chrome font |
-| `customQuickActions` | array | `[]` | User-defined AI quick actions |
-| `titleVisibility` | enum | `"hover"` | Title display mode |
-| `titleHoverDelay` | number | `350` | ms before title appears |
-| `titleLingerDuration` | number | `3000` | ms title stays visible |
-| `uiZoom` | number | `1` | `document.documentElement.zoom` |
-| `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
-| `aiEnabled` | boolean | `false` | AI features active; local sidebar panels remain available |
-| `aiSidebarLayout` | enum | `"separate"` | Separate panels, or explicit opt-in to One assistant |
-| `showShortcutHints` | boolean | `true` | Keyboard hints in panel |
-| `showDrafts` | boolean | `true` | Expand draft rows; saved independently of outline |
-| `showDocumentOutline` | boolean | `false` | Expand outline content; its header remains available |
-| `showWordCount` | boolean | `true` | Word count in status bar |
-| `wordCountDisplayMode` | enum | `"both"` | Words, chars, or both |
-| `autoVersionOnRevisionCreate` | boolean | `true` | Auto-add version when creating revision |
-| `showAiSuggestions` | boolean | `true` | Show AI suggestions in annotations |
-| `collapseContextSummary` | boolean | `false` | Move context cards in separate AI panels into the header info popover; unified Chat always uses a context chip |
-| `checkForUpdates` | boolean | `true` | Auto-check for app updates |
-| `grammarCheckEnabled` | boolean | `true` | Harper grammar checking |
-| `grammarDialect` | enum | `"american"` | American, British, or Australian |
-| `annotationPanelWidth` | number | `280` | Width of annotation sidebar |
-| `annotationLayout` | enum | `"visual-split"` | Annotation placement when AI sidebar is hidden |
+The `AppSettings` type and `DEFAULTS` in
+[`settings.svelte.ts`](../packages/desktop/src/lib/settings.svelte.ts) are the
+complete setting reference. They cover editor behavior, appearance, sidebar
+layout, draft and outline visibility, Web Preview updates, undo persistence,
+analytics, grammar checking, and writing reminders.
 
-## Why localStorage Instead of SQLite
+AI starts disabled. When enabled, separate Chat, Feedback, and Revise panels are
+the default. One assistant is an explicit layout choice. Disabling AI hides all
+built-in AI panels, including local Context, Readers, and College configuration.
+The host can keep contributions without an AI prerequisite available.
 
-App settings are presentation preferences, not document data:
-- Need to be available before Tauri backend loads
-- Fonts and zoom affect initial render
-- Per-device rather than per-document
-- localStorage is synchronous; SQLite requires async `invoke()`
+## Storage and appearance
 
-**Exception:** API keys go through OS keychain (security).
+App preferences are per-device and use localStorage so fonts and zoom can apply
+before the native backend loads. Document data belongs in SQLite. Provider
+secrets belong in the OS keychain.
 
-## Font System (`settings/fonts.ts`)
+Settings apply `--doc-font-family`, `--doc-font-size`, and `--ui-font-family` to
+`document.documentElement`, along with the document zoom value. The Settings
+modal previews a draft locally and commits on Save. Cancel restores the saved
+appearance.
 
-`FONTS` is the single source of truth for font metadata:
-- CSS families
-- Categories
-- Picker groups
-- "Our Pick" status
-- Samples
-- Guide descriptions
+[`settings/fonts.ts`](../packages/desktop/src/lib/settings/fonts.ts) owns font
+metadata and picker groups. The settings picker and font guide derive from it.
+[`fontOptions.ts`](../packages/desktop/src/lib/settings/fontOptions.ts) resolves
+system-font labels at runtime.
 
-Both `SettingsModal.svelte` and `FontGuideModal.svelte` derive from this array.
+`Mod-,`, the native Settings menu item, and the status-bar gear open the same
+modal through `settingsOpen`.
 
-Two runtime-resolved entries (system sans-serif, system monospace) are injected at mount via `document.fonts.check()`.
+## AI preferences and credentials
 
-## Settings UI
-
-### SettingsModal.svelte
-
-Opens as a `<dialog>`:
-- Changes apply live but aren't persisted until Save
-- Closing without saving: shake + red ring animation, reverts to last saved
-- Font picker with preview
-- Zoom slider
-- Toggle switches for behavior settings
-
-### FontGuideModal.svelte
-
-Sub-modal with:
-- Font descriptions by category
-- Sample text preview
-- "Our Pick" recommendations
-
-## AI Settings (`ai/settings.svelte.ts`)
-
-AI connection state is separate from general app settings. Non-secret values
-use individual localStorage keys:
+AI connection state is separate from app preferences. Its owning module is
+[`ai/settings.svelte.ts`](../packages/desktop/src/lib/ai/settings.svelte.ts).
+Storage is divided by scope:
 
 | Runtime field | Storage key | Description |
 |---------------|-------------|-------------|
 | `aiSettings.provider` | `quillium-ai-provider` | OpenAI API, ChatGPT OAuth, OpenAI-compatible, Anthropic, Google, or DeepSeek |
-| `aiSettings.model` | `quillium-ai-model` | Curated or custom provider model ID; defaults to `gpt-5.6-sol` |
+| `aiSettings.model` | `quillium-ai-model` | Curated or custom provider model ID |
 | `aiSettings.baseURL` | `quillium-ai-base-url` | OpenAI-compatible endpoint URL |
 | `editorialPreferences` | `quillium-ai-editorial-preferences` | Stance, feedback density, and voice latitude |
 | `documentContext.freeform` | SQLite `document_ai_profiles` | Document-scoped writer brief injected into AI requests; the legacy `quillium-document-context` key is imported once |
 | `documentContext.decisions` | SQLite `document_editorial_decisions` | Explicit document-scoped editorial choices injected as writer-confirmed context |
-| `personaModes` | `quillium-ai-persona-modes` | Per-mode reader-persona opt-in for Feedback and Revise |
+| `personaModes` | `quillium-ai-persona-modes` | Device-default reader opt-ins for separate Feedback and Revise |
 
 `aiSettings.apiKey` is memory-only. Provider API keys are lazy-loaded from the
 OS keychain when an AI feature is first used, avoiding a keychain permission
@@ -127,32 +85,13 @@ The same module also owns:
 
 `stopAllAi()` aborts the shared controller, tells mounted chat instances to
 stop, cancels pending AutoAI work through the event bus, and resets processing
-state. See [AI Features and Request Pipeline](./ai-sidebar.md) for the full flow.
+state. See [the AI request pipeline](ai-sidebar.md) for the full flow.
 
-## AutoAI Settings (`autoai/settings.svelte.ts`)
+## Feature-owned preferences
 
-See [AutoAI](./autoai.md) documentation.
-
-## Reader Personas Settings (`readers/settings.svelte.ts`)
-
-See [Reader Personas](./reader-personas.md) documentation.
-
-## CSS Custom Properties
-
-Settings apply via CSS custom properties on `document.documentElement`:
-
-| Property | Source |
-|----------|--------|
-| `--doc-font-family` | `docFontFamily` |
-| `--doc-font-size` | `docFontSize` |
-| `--ui-font-family` | `uiFontFamily` |
-
-## Native Menu Integration
-
-`Mod-,` opens settings modal. The `settingsOpen` store is shared between:
-- Native menu handler
-- StatusBar gear button
-- `Cmd+,` keydown listener
+[AutoAI](autoai.md) and [reader personas](reader-personas.md) have separate
+settings stores. An active [College setup](college-applications.md) owns its tab's
+editorial preferences and reader choices without overwriting device defaults.
 
 The One assistant layout keeps conversation-local tool permissions, response length,
 and the Readers toggle in `quillium-assistant:<conversation-id>` on this device.
