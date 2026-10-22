@@ -19,6 +19,7 @@ import {
 import { FEEDBACK_FORM_URL } from "./constants";
 import { clearBackup, readBackup } from "./errorGuard";
 import type { BackupEntry } from "./errorGuard";
+import { goToHistory } from "./navigation";
 import { errorBanner } from "./stores";
 
 let showDetails = $state(false);
@@ -98,7 +99,21 @@ function restoreFromBackup() {
     $errorBanner = null;
 }
 
-function viewHistory() {
+async function viewHistory(): Promise<void> {
+    const banner = $errorBanner;
+    if (banner?.backupType !== "crash") {
+        try {
+            await goToHistory();
+            if ($errorBanner === banner) {
+                $errorBanner = null;
+                showDetails = false;
+            }
+        } catch (error) {
+            console.error("[ErrorBanner] navigation to history failed", error);
+        }
+        return;
+    }
+
     $errorBanner = null;
     showDetails = false;
     // After a crash, the <svelte:boundary> in the root layout may have
