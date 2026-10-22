@@ -31,6 +31,30 @@ describe("readonly share state", () => {
         ).toBe("current-tab");
     });
 
+    it.each([
+        [null],
+        [{ id: "tab-1" }],
+        [{ id: "tab-1", label: "Draft", draftId: "draft-1", state: null }],
+        [{ id: "tab-1", label: "Draft", draftId: "draft-1", state: { doc: 42 } }],
+        [
+            {
+                id: "tab-1",
+                label: "Draft",
+                draftId: "draft-1",
+                state: { doc: "Text", annotationField: { 0: null } },
+            },
+        ],
+    ])("rejects malformed tabs %j", (...tabs) => {
+        expect(
+            isReadonlyShareStateV2({
+                kind: "quillium-readonly-share",
+                version: 2,
+                activeTabId: "tab-1",
+                tabs,
+            }),
+        ).toBe(false);
+    });
+
     it("selects either the current tab or every tab", () => {
         expect(includesReadonlyShareTab("current-tab", "tab-1", "tab-1")).toBe(true);
         expect(includesReadonlyShareTab("current-tab", "tab-2", "tab-1")).toBe(false);

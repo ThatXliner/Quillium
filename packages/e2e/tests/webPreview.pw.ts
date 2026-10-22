@@ -391,6 +391,31 @@ test.describe("Omni Web Preview", () => {
         await expect(page.locator("[data-version-group-id]")).toHaveCount(0);
     });
 
+    test("renders flat content for an empty published tab envelope", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
+        const response = await page.goto(`/share/${currentSeed.emptyToken}`);
+        expect(response?.status()).toBe(200);
+        await expect(page.locator('[data-readonly-renderer="legacy-static"]')).toBeVisible();
+        await expect(page.locator(".share-document")).toContainText(currentSeed.content);
+        await expect(page.locator("[data-annotation-card-view]")).toHaveCount(4);
+        await expect(page.locator(".cm-editor")).toHaveCount(0);
+    });
+
+    test("returns unavailable for malformed published tabs and annotations", async ({ page }) => {
+        const currentSeed = requireSeed(seed);
+        const pageErrors: string[] = [];
+        page.on("pageerror", (error) => pageErrors.push(error.message));
+        for (const token of [
+            currentSeed.malformedTabsToken,
+            currentSeed.malformedAnnotationsToken,
+        ]) {
+            const response = await page.goto(`/share/${token}`);
+            expect(response?.status()).toBe(404);
+            await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible();
+        }
+        expect(pageErrors).toEqual([]);
+    });
+
     test("falls back only when the measured annotation column is too narrow", async ({ page }) => {
         const currentSeed = requireSeed(seed);
         await page.setViewportSize({ width: 1_200, height: 900 });
