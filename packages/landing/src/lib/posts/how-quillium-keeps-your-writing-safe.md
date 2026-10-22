@@ -75,13 +75,13 @@ During event replay, each event is processed in a try/catch. If a single event t
 
 </details>
 
-### 3. Restore should heal, not just paste
+### 3. Plain-text recovery preserves what it can
 
-Restoring from a backup isn't just dumping text back into the editor. In case of something going wrong, Quillium performs a "healing restore" that recovers your annotations—revisions, comments, suggestions—alongside the text itself.
+The emergency backup contains plain text, not annotations. Restoring it replaces the prose and tries to reattach annotations still present in the loaded editor. It cannot recreate annotations that are missing from that editor.
 
-It works by remembering the actual text content at each annotation's position, not just the position. After the document is restored, it searches for each of those text fragments in the new document. If found, the annotation is re-attached at its correct position. If not found, it's placed at the beginning with a warning rather than silently dropped. For revisions with nested content, the healing process goes deeper, validating and re-anchoring at every level.
+Quillium searches the restored text for each existing annotation's anchor and uses the first match. An unmatched anchor moves to the beginning with a warning. It also repairs direct child ranges in revision versions, but does not recursively reconstruct every nested annotation. Inspect the result, especially when the same passage appears more than once.
 
-One subtle detail: the restore is specially tagged so the suspicious-change detector doesn't trigger on it. Without that tag, restoring a backup would look like a massive deletion and create a circular loop of warnings.
+The restore transaction is marked so it does not trigger another suspicious-deletion warning. Saved Version History snapshots contain annotation state; they are different from this plain-text fallback.
 
 ### 4. Browse saved history
 
