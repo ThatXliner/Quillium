@@ -190,16 +190,22 @@ describe("Yjs persistence", () => {
         const updatesQuery = {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
-            order: vi.fn().mockResolvedValue({
-                data: [
-                    {
-                        update_data: Buffer.from(requireUpdate(incrementalUpdate)).toString(
-                            "base64",
-                        ),
-                    },
-                ],
-                error: null,
-            }),
+            gt: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi
+                .fn()
+                .mockResolvedValueOnce({
+                    data: [
+                        {
+                            id: 1,
+                            update_data: Buffer.from(requireUpdate(incrementalUpdate)).toString(
+                                "base64",
+                            ),
+                        },
+                    ],
+                    error: null,
+                })
+                .mockResolvedValue({ data: [], error: null }),
         };
 
         mockedSupabase().from.mockImplementation((table: string) => {

@@ -161,14 +161,12 @@ export async function persistYjsUpdates(
  * @returns Y.Doc with loaded state, or empty Y.Doc if not found
  */
 export async function loadYjsState(documentId: string): Promise<YjsLoadResult> {
-    const ydoc = new Y.Doc();
-
     if (!supabase) {
-        return { ydoc, stateVector: null };
+        throw new Error("Supabase not configured");
     }
 
+    const ydoc = new Y.Doc();
     try {
-        // First try to load full state snapshot
         const { data: snapshot, error: snapshotError } = await supabase
             .from("yjs_documents")
             .select("state_update, state_vector")
@@ -176,10 +174,10 @@ export async function loadYjsState(documentId: string): Promise<YjsLoadResult> {
             .maybeSingle();
 
         if (snapshotError) {
-            logger.warn("Error loading Yjs snapshot:", snapshotError.message);
+            throw new Error(snapshotError.message);
         }
 
-        if (snapshot?.state_update) {
+        if (snapshot) {
             const update = new Uint8Array(Buffer.from(snapshot.state_update, "base64"));
             Y.applyUpdate(ydoc, update);
             logger.info(
@@ -187,34 +185,46 @@ export async function loadYjsState(documentId: string): Promise<YjsLoadResult> {
             );
         }
 
-        // Then apply any incremental updates since the snapshot
         const stateVector = snapshot?.state_vector
             ? new Uint8Array(Buffer.from(snapshot.state_vector, "base64"))
             : null;
 
-        // If we have incremental updates table, load those too
-        // (This is for crash recovery between snapshots)
-        const { data: updates, error: updatesError } = await supabase
-            .from("yjs_updates")
-            .select("update_data")
-            .eq("document_id", documentId)
-            .order("created_at", { ascending: true });
+        let lastUpdateId = 0;
+        let updateCount = 0;
+        while (true) {
+            const { data: updates, error: updatesError } = await supabase
+                .from("yjs_updates")
+                .select("id, update_data")
+                .eq("document_id", documentId)
+                .gt("id", lastUpdateId)
+                .order("id", { ascending: true })
+                .limit(1_000);
 
-        if (!updatesError && updates && updates.length > 0) {
+            if (updatesError) {
+                throw new Error(updatesError.message);
+            }
+            if (!updates) {
+                throw new Error("Yjs updates response is missing data");
+            }
+            if (updates.length === 0) break;
             for (const row of updates) {
                 const update = new Uint8Array(Buffer.from(row.update_data, "base64"));
                 Y.applyUpdate(ydoc, update);
+                lastUpdateId = row.id;
             }
+            updateCount += updates.length;
+        }
+        if (updateCount > 0) {
             logger.info(
-                `Applied ${updates.length} incremental updates for ${documentId.slice(0, 8)}...`,
+                `Applied ${updateCount} incremental updates for ${documentId.slice(0, 8)}...`,
             );
         }
 
         return { ydoc, stateVector };
     } catch (e) {
-        logger.error("Error loading Yjs state:", e);
-        // Return empty doc on error
-        return { ydoc, stateVector: null };
+        ydoc.destroy();
+        logger.error(`Error loading Yjs state for ${documentId}:`, e);
+        throw e;
     }
 }
 

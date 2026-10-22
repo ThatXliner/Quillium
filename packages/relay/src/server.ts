@@ -149,10 +149,12 @@ export function createRelayServer(): {
         const httpClosed = new Promise<void>((resolve, reject) => {
             httpServer.close((error) => (error ? reject(error) : resolve()));
         });
-        closing = (async () => {
-            await Promise.all([socketsClosed, httpClosed, ...initializingConnections]);
-            await flushAllDocumentUpdates();
-        })();
+        closing = Promise.all([
+            flushAllDocumentUpdates(),
+            ...initializingConnections,
+            socketsClosed,
+            httpClosed,
+        ]).then(() => undefined);
         return closing;
     };
 

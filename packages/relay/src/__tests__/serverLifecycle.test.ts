@@ -16,6 +16,7 @@ vi.mock("../persistence/yjsUpdates.js", () => ({
 }));
 
 import { authenticateWebSocket } from "../auth/middleware.js";
+import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
 import {
     clearYjsUpdates,
     loadYjsState,
@@ -70,18 +71,17 @@ describe("relay connection lifecycle", () => {
 
     async function start(): Promise<{
         server: ReturnType<typeof createRelayServer>;
-        connect: () => WebSocket;
+        connect: (roomId?: string) => WebSocket;
     }> {
         const server = createRelayServer();
         servers.push(server);
         await new Promise<void>((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
         const address = server.httpServer.address();
         if (!address || typeof address === "string") throw new Error("Missing server address");
-        const url = `ws://127.0.0.1:${address.port}/${documentId}?auth=token`;
         return {
             server,
-            connect: () => {
-                const client = new WebSocket(url);
+            connect: (roomId = documentId) => {
+                const client = new WebSocket(`ws://127.0.0.1:${address.port}/${roomId}?auth=token`);
                 client.on("error", () => {});
                 clients.push(client);
                 return client;
@@ -153,9 +153,11 @@ describe("relay connection lifecycle", () => {
         expect(server.wss.clients.size).toBe(0);
     });
 
-    it("stops message producers before waiting for the final persistence write", async () => {
+    it("drains accepted edits while a peer has not answered shutdown and ignores later messages", async () => {
         const write = deferred<Awaited<ReturnType<typeof persistYjsUpdates>>>();
-        vi.mocked(persistYjsUpdates).mockReturnValueOnce(write.promise);
+        vi.mocked(persistYjsUpdates)
+            .mockResolvedValueOnce({ success: false, error: "temporary write failure" })
+            .mockReturnValueOnce(write.promise);
         const { server, connect } = await start();
         const client = connect();
         await once(client, "message");
@@ -170,24 +172,91 @@ describe("relay connection lifecycle", () => {
                 "accepted edit",
             );
         });
-
+        await expect(flushDocumentUpdates(documentId)).rejects.toThrow("temporary write failure");
+        const peer = Array.from(server.wss.clients)[0];
+        if (!peer) throw new Error("Expected server connection");
+        client.pause();
         let finished = false;
         const closed = server.close().then(() => {
             finished = true;
         });
-        await vi.waitFor(() => expect(persistYjsUpdates).toHaveBeenCalledTimes(1));
-        expect(client.readyState).toBe(WebSocket.CLOSED);
-        expect(getYjsRoom(documentId)?.clients.size).toBe(0);
-        expect(finished).toBe(false);
         const persisted = new Y.Doc();
-        for (const [, updates] of vi.mocked(persistYjsUpdates).mock.calls) {
-            for (const update of updates) Y.applyUpdate(persisted, update);
+        try {
+            const lateMessage = once(peer, "message");
+            ydoc.getText("document").insert(13, " ignored");
+            const lateEncoder = encoding.createEncoder();
+            encoding.writeVarUint(lateEncoder, MESSAGE_SYNC);
+            syncProtocol.writeUpdate(lateEncoder, Y.encodeStateAsUpdate(ydoc));
+            client.send(encoding.toUint8Array(lateEncoder));
+            await lateMessage;
+
+            await vi.waitFor(() => expect(persistYjsUpdates).toHaveBeenCalledTimes(2));
+            expect(peer.readyState).toBe(WebSocket.CLOSING);
+            expect(client.readyState).toBe(WebSocket.OPEN);
+            expect(finished).toBe(false);
+            expect(getYjsRoom(documentId)?.ydoc.getText("document").toString()).toBe(
+                "accepted edit",
+            );
+            for (const [, updates] of vi.mocked(persistYjsUpdates).mock.calls) {
+                for (const update of updates) Y.applyUpdate(persisted, update);
+            }
+            expect(persisted.getText("document").toString()).toBe("accepted edit");
+        } finally {
+            write.resolve({ success: true });
+            client.resume();
+            await closed;
+            ydoc.destroy();
+            persisted.destroy();
         }
-        expect(persisted.getText("document").toString()).toBe("accepted edit");
-        write.resolve({ success: true });
-        await closed;
-        ydoc.destroy();
-        persisted.destroy();
+    });
+
+    it("drains accepted edits while another room is still initializing", async () => {
+        vi.mocked(persistYjsUpdates).mockResolvedValueOnce({
+            success: false,
+            error: "temporary write failure",
+        });
+        const { server, connect } = await start();
+        const established = connect();
+        await once(established, "message");
+        const ydoc = new Y.Doc();
+        ydoc.getText("document").insert(0, "accepted before shutdown");
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, MESSAGE_SYNC);
+        syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(ydoc));
+        established.send(encoding.toUint8Array(encoder));
+        await vi.waitFor(() => {
+            expect(getYjsRoom(documentId)?.ydoc.getText("document").toString()).toBe(
+                "accepted before shutdown",
+            );
+        });
+        await expect(flushDocumentUpdates(documentId)).rejects.toThrow("temporary write failure");
+
+        const load = deferred<Awaited<ReturnType<typeof loadYjsState>>>();
+        vi.mocked(loadYjsState).mockReturnValueOnce(load.promise);
+        const pendingDocumentId = "123e4567-e89b-12d3-a456-426614174001";
+        const initializing = connect(pendingDocumentId);
+        await once(initializing, "open");
+        await vi.waitFor(() => expect(loadYjsState).toHaveBeenCalledWith(pendingDocumentId));
+        let finished = false;
+        const closed = server.close().then(() => {
+            finished = true;
+        });
+        const persisted = new Y.Doc();
+        try {
+            await vi.waitFor(() => expect(persistYjsUpdates).toHaveBeenCalledTimes(2));
+            expect(finished).toBe(false);
+            expect(getYjsRoom(pendingDocumentId)).toBeUndefined();
+            for (const [, updates] of vi.mocked(persistYjsUpdates).mock.calls.slice(1)) {
+                for (const update of updates) Y.applyUpdate(persisted, update);
+            }
+            expect(persisted.getText("document").toString()).toBe("accepted before shutdown");
+        } finally {
+            load.resolve({ ydoc: new Y.Doc(), stateVector: null });
+            await closed;
+            ydoc.destroy();
+            persisted.destroy();
+        }
+        expect(getYjsRoom(pendingDocumentId)?.clients.size).toBe(0);
     });
 
     it("delays a real WebSocket rejoin until room compaction finishes", async () => {
