@@ -1,4 +1,4 @@
-# Monorepo Guide
+# Monorepo guide
 
 Quillium is a Bun workspace monorepo. All packages live under `packages/*`; the
 repository root owns dependency installation, shared tooling, Supabase migrations,
@@ -6,7 +6,7 @@ and cross-package scripts.
 
 Architecture decision: [app-neutral editor capabilities](./adr/0009-app-neutral-editor-capabilities.md).
 
-## Package Layout
+## Package layout
 
 | Path | Package | Purpose |
 |------|---------|---------|
@@ -17,7 +17,7 @@ Architecture decision: [app-neutral editor capabilities](./adr/0009-app-neutral-
 | `packages/e2e` | `@quillium/e2e` | Cross-package integration and browser tests |
 | `supabase` | n/a | Single source for Omni schema and migrations |
 
-## Dependency Rules
+## Dependency rules
 
 Run `bun install` from the repository root. The root `bun.lock` is the only Bun
 lockfile that should be committed.
@@ -28,7 +28,7 @@ Use `workspace:*` for local package dependencies such as `@quillium/share`.
 Do not commit generated package outputs such as `.svelte-kit`, `.vercel`, `build`,
 `dist`, `coverage`, or `packages/desktop/src-tauri/target`.
 
-## Common Commands
+## Common commands
 
 Run commands from the root unless a package README says otherwise:
 
@@ -56,7 +56,7 @@ For package-local one-offs, use `bun run --cwd packages/<name> <script>`.
 `test:all` runs the default Vitest suites; service-backed and browser verification
 have additional setup and commands in [packages/e2e/README.md](../packages/e2e/README.md).
 
-## Shared Package
+## Shared package
 
 `@quillium/share` is intentionally app-neutral. It can contain:
 
@@ -77,65 +77,25 @@ desktop package, while state restoration and read-only rendering are shared.
 
 ### Shared editor surface architecture
 
-Editor presentation shared by Desktop, Web Preview, and Version History follows
-three compositional layers:
+Shared presentation lives in `packages/share/src/core`, `cards`, `modals`, and
+`layout`. Desktop adapters supply mutation, persistence, analytics, and
+modal-stack navigation. `Readonly*` adapters compose the same presentation for
+Web Preview and Version History without persistence or mutation capabilities.
+Selection, modal navigation, and revision-version previews remain available.
 
-```mermaid
-flowchart TD
-    Core["1. Shared core and presentation<br/>core/, cards/, modals/, layout/"]
-    Adapters["2. Surface capability adapters<br/>Desktop adapters and Readonly* adapters"]
-    Surfaces["3. Consuming surfaces<br/>Desktop editor, Web Preview, Version History"]
+Keep neutral presentation in the shared package and app services in desktop
+adapters. Do not copy a desktop card into a second read-only implementation.
+`ReadonlyDocument` and `ReadonlyEditorHost` compose shared components; they do
+not subclass the desktop editor. See
+[ADR-0009](adr/0009-app-neutral-editor-capabilities.md).
 
-    Core --> Adapters --> Surfaces
-```
+`LegacyReadonlyDocument` handles old public payloads without serialized editor
+state and valid v2 payloads with no tabs. Its removal depends on the production
+compatibility checks in [issue #339](https://github.com/ThatXliner/Quillium/issues/339).
+The [collaboration guide](collaboration.md#web-preview-publication) owns payload
+validation and rendering behavior.
 
-1. **Shared core and presentation** owns app-neutral annotation state, editor
-   extensions, cards, modal content, threads, diffs, and layout. Presentation
-   components accept optional capabilities through callbacks and snippets.
-2. **Surface capability adapters** compose those shared pieces for a particular
-   environment. Desktop adapters provide mutation, persistence, analytics, and
-   modal-stack capabilities. `Readonly*` adapters deliberately omit mutation
-   capabilities while retaining safe local interactions such as selection,
-   modal navigation, and revision-version previewing.
-3. **Consuming surfaces** mount the configured adapters. The desktop editor is
-   editable; Web Preview and Version History are non-persisting read-only hosts.
-
-This is composition, not inheritance: there is no base Svelte document component
-that `ReadonlyDocument` subclasses. `ReadonlyDocument` and `ReadonlyEditorHost`
-are orchestration adapters around the same shared state and presentation used by
-editable surfaces. The `Readonly` prefix should be reserved for this capability
-boundary, not used for a second visual implementation of a shared component.
-
-Use these placement rules when changing the UI:
-
-- Put neutral visuals and state behavior in `core/`, `cards/`, `modals/`, or
-  `layout/` inside `packages/share`.
-- Keep desktop-only mutations and application services in `packages/desktop`.
-- Put non-mutating surface orchestration in a `Readonly*` adapter only when it
-  configures multiple shared pieces or owns read-only lifecycle behavior.
-- Do not create separate editable and read-only lookalikes when optional
-  capabilities can express the difference.
-
-The read-only Svelte UI should visually track the desktop annotation components
-first. Use these desktop files as the source of truth when changing shared share
-components:
-
-- `packages/desktop/src/lib/editor/plugins/annotations/Comment.svelte`
-- `packages/desktop/src/lib/editor/plugins/annotations/Suggestion.svelte`
-- `packages/desktop/src/lib/editor/plugins/annotations/Revision.svelte`
-- `packages/desktop/src/lib/editor/plugins/annotations/Thread.svelte`
-- `packages/desktop/src/lib/editor/plugins/annotations/ThreadMessage.svelte`
-
-When presentation exists on both surfaces, extract it into `packages/share` and
-keep a thin desktop capability adapter. Do not create a second read-only lookalike
-inside the Web Preview. State-backed shares and revision modals use
-`ReadonlyEditorHost`; only pre-migration payloads without serialized CodeMirror
-state use `LegacyReadonlyDocument` and the static annotated-text fallback.
-That fallback is a temporary data-compatibility boundary, not a fourth
-architectural layer; removal is tracked in
-[GitHub issue #339](https://github.com/ThatXliner/Quillium/issues/339).
-
-## Environment Files
+## Environment files
 
 Runtime env examples live with the package that consumes them:
 
@@ -153,15 +113,15 @@ project root. The landing package imports `@quillium/share` through the Bun
 workspace.
 
 The relay build type-checks its sources and bundles the shared Live Room contract
-into `dist/index.js` with Node and esbuild. The production runtime uses Node
-22.23.4 or a newer patched release. Its Docker build copies `packages/share/src`
-to resolve that workspace dependency.
+into `dist/index.js` with Node and esbuild. The Dockerfile pins the production Node
+version; the root manifest lists supported local Node versions. The Docker build
+copies `packages/share/src` to resolve that workspace dependency.
 
-Until a stable Bun release includes the eMudhra CA fix, Docker and release CI
-bootstrap the verified `1.4.4-canary.1+963452075` installer with pinned archive
-SHA256 values. Node downloads and verifies the archive; certificate probes gate
-its use. A changed or unavailable canary archive fails the build and requires a
-reviewed pin update. The production relay runs patched Node, without Bun.
+Docker and release builds pin verified runtime versions and archive hashes.
+[`scripts/install-secure-bun.mjs`](../scripts/install-secure-bun.mjs) owns the
+local and release Bun installer; the relay Dockerfile pins its downloads directly. The pin is an eMudhra CA incident mitigation;
+keep it until a reviewed runtime update replaces it. A changed or unavailable
+canary archive fails the hash check. The production relay uses Node, without Bun.
 
 For local dependency work during this incident, use the same verified installer:
 
@@ -178,45 +138,28 @@ install the filtered workspace. Run Fly commands from the root and keep
 Supabase migrations stay in the root `supabase` directory. Do not create
 package-local schema sources.
 
-### Release Rust caches
+### Release orchestration and Rust caches
 
-[Build Release](../.github/workflows/build.yml) receives `v*` and `mas-v*` tag
-pushes. Its dispatcher starts the same workflow on the repository's default
-branch. The dispatched run validates the release tag and its expected commit
-before any job uses signing secrets. Both build jobs check out that exact commit.
-Publication names and updater versions use the validated tag, not the execution
-branch. The dispatcher summary links to the downstream runs. A successful
-dispatch does not mean that the release has finished.
+[Build Release](../.github/workflows/build.yml) receives `v*` and `mas-v*` tags
+and dispatches the release on the default branch. The dispatched run validates
+the tag and expected commit before using signing secrets. Build jobs check out
+that commit, while the workflow definition comes from the default branch. A
+successful dispatch means the downstream run started, not that publication
+succeeded. Rerunning an older tag's workflow retains its historical definition.
 
-GitHub scopes caches to the workflow execution ref, independently of checkout.
-Tag-scoped caches cannot be reused by another tag. Default-branch execution lets
-releases reuse earlier release dependencies without an extra compilation job.
-The workflow definition comes from the current default branch while source comes
-from the tag. Tags created before the dispatcher was added retain their historical
-workflow when rerun. To use current orchestration for an older tag, dispatch it
-explicitly with its exact commit.
+Default-branch execution lets releases reuse dependency caches across tags.
+The public and Mac App Store builds share cache keys because their native Rust
+dependencies and release profiles match. If a variant changes Cargo features,
+flags, or profiles, separate its key or include that configuration in the key.
+Compiler and dependency changes can still cause valid cache misses.
 
-The public and MAS builds share `v2-release` and `desktop` cache keys. Both use
-the same native Rust dependency graph and release profile. MAS signing and bundle
-configuration do not change dependency compilation. Swatinem still derives keys
-from OS, architecture, Rust compiler, compiler environment, manifests, Cargo.lock,
-and Cargo configuration. Cargo checks restored dependency fingerprints and
-Swatinem removes workspace build products before saving. If a variant adds
-incompatible Cargo features, flags, or profiles, separate its shared key or include
-that configuration in the cache key.
+[The cache workflow](../.github/workflows/rust-cache.yml) periodically restores
+existing caches without compiling or saving them, including on a miss. Releases
+seed new caches. Scheduled restores reduce idle eviction but cannot prevent
+storage pressure or scheduler delays. No CI usage reduction has been measured.
 
-[Keep release Rust caches available](../.github/workflows/rust-cache.yml) restores
-existing caches at most five days apart, subject to scheduler delays. These native
-jobs install Rust and restore the archives. They do not compile or save caches,
-including on a miss. Real restores refresh access during long release gaps. GitHub can evict caches after seven days
-without access, under storage pressure, or when scheduled runs are delayed.
-The first release with a new key compiles dependencies and seeds the default-branch
-cache. Stable Rust updates and other compiler or dependency changes can still
-cause valid misses. Scheduled restores consume runner time and transfer archives.
-Reductions in CI usage have not been measured.
-
-To check dispatch validation without building or publishing, use an existing tag
-and its commit SHA. The dispatch ref must be the repository's default branch.
+To validate dispatch without building or publishing, choose an existing tag and
+its exact commit:
 
 ```bash
 release_tag=v0.25.0
@@ -226,15 +169,15 @@ gh workflow run build.yml --ref "$default_branch" \
   -f release_tag="$release_tag" -f release_sha="$release_sha" -F validate_only=true
 ```
 
-Run the local workflow checks with `bun .github/scripts/release-workflow.test.mjs`.
-After a release seeds caches, dispatch `rust-cache.yml` on the default branch to
-inspect actual restores without publication. Compare cache `last_accessed_at`
-before and after that run. A keepalive miss cannot prove compiled dependency reuse.
+Local workflow checks run with `bun .github/scripts/release-workflow.test.mjs`.
+After a release seeds caches, a manual `rust-cache.yml` dispatch can check actual
+restores without publication. A cache miss does not prove dependency reuse.
 
-GitHub documents [cache scope and eviction](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
-Swatinem documents [key derivation and workspace cleanup](https://github.com/Swatinem/rust-cache/tree/v2.9.1).
+The repository currently has no pull-request test workflow. The
+[visual verification guide](visual-regression.md) describes the checked-in local
+suites and report settings.
 
-## Verification Checklist
+## Verification checklist
 
 Before merging monorepo-affecting changes, run the smallest relevant set:
 
