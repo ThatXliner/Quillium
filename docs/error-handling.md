@@ -1,103 +1,85 @@
-# Error Handling and Crash Recovery
+# Error handling and recovery
 
-A writing app that loses user text is catastrophic. The event log is crash-safe for normal operations, but two scenarios need special handling:
-1. A bug that silently deletes large chunks of text
-2. A JavaScript crash that prevents persistence
+The normal save path is the [SQLite event log](persistence.md). Recovery snapshots
+and localStorage backups provide additional copies when they can be written.
+They cannot guarantee recovery after a failed database write or storage failure.
 
-## Suspicious Change Detection
+## Failed saves
 
-`errorGuard.ts` runs `isSuspiciousDeletion(oldText, newText)` in `listeners.ts` **before** persisting a transaction.
+An event append failure remains attached to the loaded draft. The save indicator
+shows an error, and persistence flushes reject. Navigation, draft switches, named
+checkpoints, and going live must respect that rejection. A later successful append
+does not clear the failure or allow a snapshot over the uncertain event history.
 
-Trigger conditions:
-- Single transaction batch deletes ≥20% of document
-- AND deletes ≥100 characters
+The current text stays in memory. Copy the writing somewhere safe before a forced
+reload or restart. The app does not retry failed appends automatically because the
+native call can fail after inserting an event. Reloading can restore only the
+state that reached storage.
 
-When triggered:
-1. Pre-deletion state saved as named snapshot: "Before large deletion (auto)"
-2. Error banner directs user to `/history` for restore
+The owner of this behavior is
+[listeners.ts](../packages/desktop/src/lib/editor/listeners.ts). The ordinary
+error banner uses `goToHistory()`, which flushes persistence before navigating.
+If the flush fails, the editor and banner remain visible.
 
-Thresholds are conservative: false positives just mean an extra snapshot.
+## Recovery snapshots
 
-## Crash Backup
+The persistence listener saves selected pre-change states and checks for
+suspicious text or annotation loss before appending the change:
 
-`saveEmergencyBackup(reason)` captures `$documentContent` at crash time. Called from three places in `hooks.client.ts`:
+- Deleting at least 20 characters or four words creates a pre-change snapshot.
+  Undo, redo, crash restoration, and revision-internal swaps are excluded.
+- Revision creation gets a named pre-change snapshot. Comment creation gets a
+  named post-change snapshot.
+- A text loss of at least 100 characters and 20% of the draft triggers a named
+  recovery snapshot and a warning, unless all changes were explicit deletes or
+  crash restoration.
+- Mass annotation removal and the loss of deeply nested annotation content also
+  trigger recovery snapshots and warnings.
 
-| Handler | Trigger |
-|---------|---------|
-| `window.addEventListener("error", ...)` | Uncaught errors |
-| `window.addEventListener("unhandledrejection", ...)` | Unhandled promise rejections |
-| `handleError` | SvelteKit route-level errors |
+[deletionHistory.ts](../packages/desktop/src/lib/editor/deletionHistory.ts)
+owns the deletion thresholds and rolling reminder policy.
+[errorGuard.ts](../packages/desktop/src/lib/errorGuard.ts) owns the suspicious-loss
+predicates. These snapshots are best effort; a storage error can prevent them.
+They do not stop the accepted editor transaction.
 
-Skips Svelte's benign `effect_orphan` error.
+## Crash backups
 
-Backup goes to `"quillium_backup_crash"` in localStorage.
+[hooks.client.ts](../packages/desktop/src/hooks.client.ts) handles uncaught errors,
+unhandled promise rejections, and SvelteKit route errors. The rejection handler
+keeps `PersistenceError` on the save-failure path and excludes known nonfatal
+Svelte, auth-lock, and network failures from the crash banner. The predicates
+live in the hook rather than in the banner component.
 
-### Why localStorage for Crash Backups
+`saveEmergencyBackup()` copies the `documentContent` mirror, document title,
+timestamp, and reason to `quillium_backup_crash` in localStorage. This synchronous
+write can still work when asynchronous Tauri calls cannot finish. If storage is
+full, the function tries progressively smaller tails of the text and records the
+truncation in the reason. The backup contains plain text, not full editor state.
 
-SQLite writes go through Tauri's IPC, which may not complete if the JavaScript runtime is broken. localStorage writes are synchronous and handled by the webview engine — more likely to succeed during a crash.
+The hooks also request an emergency editor snapshot through
+`persistNamedVersion()`. A persistence failure blocks that snapshot without
+preventing the independent localStorage attempt.
 
-## Crash Restoration (`restore.ts`)
+## Restoring a crash backup
 
-When user clicks "Restore previous":
+[ErrorBanner.svelte](../packages/desktop/src/lib/ErrorBanner.svelte) offers backup
+restoration in the editor, text or JSON downloads, history, and reload actions.
+Its crash history action performs a full navigation because a crashed Svelte
+boundary may have destroyed the page router. This differs from ordinary warning
+navigation, which must flush persistence first.
 
-1. `restoreBackup(view, documentText)` replaces entire document with backup
-2. Each annotation's anchor text extracted before swap
-3. Re-matched in restored document using `SearchCursor`
-4. If found: placed at match position
-5. If not found: placed at position 0 with console warning
-6. Nested annotations in `VersionState` blobs also healed
+[restore.ts](../packages/desktop/src/lib/editor/restore.ts) replaces the prose and
+tries to reattach the editor's existing annotations using their anchor text.
+It uses the first matching passage; an unmatched anchor moves to position zero.
+It also repairs ranges in serialized nested annotations. This is best-effort
+placement, not a reconstruction of annotations from the plain-text backup.
+The replacement transaction carries `input.restore` so it does not trigger the
+suspicious-deletion warning again.
 
-Transaction tagged with `userEvent: "input.restore"` so suspicious-change detector skips it.
+## Diagnostics
 
-## Error Banner
-
-`ErrorBanner.svelte` has two appearances:
-
-### Crash (Red)
-
-- Icon: `OctagonAlert`
-- Actions:
-  - "Restore previous" — push backup text to editor
-  - "Save copy" — download as plain text
-  - "Reload app"
-- "Show details" reveals stack trace
-
-### Suspicious Deletion (Amber)
-
-- Icon: `AlertTriangle`
-- Actions:
-  - "View version history" — navigate to `/history`
-
-## Comment Modals
-
-`CommentModal.svelte` is the full-screen overlay for comment threads. Uses the same `modalStack` and `modalAnnotationStores` pattern as revision modals:
-- Root-level modals read from `$annotationsStore`
-- Deeper modals read from `modalAnnotationStores[stackIndex - 1]`
-
-Includes AI suggestion feature — prompt building and streaming extracted to `commentAi.ts`.
-
-## Revision Modal Keyguard
-
-`revisionModalKeyguard.ts` exports `shouldHandleRevisionModalKeydown(event)`.
-
-The modal listens for `Ctrl-[`, `Ctrl-]`, `Mod+Enter` at the `<dialog>` level. If a CodeMirror editor inside already handled the key, the modal shouldn't also handle it.
-
-Checks:
-- `event.defaultPrevented`
-- Target is inside `.cm-editor`
-- Target is `<input>` or `<textarea>`
-
-## PostHog Error Events
-
-| Event | When |
-|-------|------|
-| `crash_backup_restored` | User restores from backup |
-| `crash_backup_downloaded` | User downloads backup |
-| `crash_banner_dismissed` | User dismisses banner |
-| `crash_app_reloaded` | User clicks "Reload app" |
-| `editor_replay_event_failed` | Single event fails during replay |
-| `editor_replay_completed_with_failures` | Replay finishes with failures |
-
-## Handled AI failures
-
-AI stream and chat failures are handled by the AI client, so they do not reach the global error hooks. The AI paths explicitly write the original error and bounded provider context to the native app log while keeping prompts, credentials, and request bodies out of diagnostics.
+Recovery actions and replay failures emit the events listed in the
+[PostHog catalog](posthog-events.md). AI request failures are handled in the AI
+client rather than by global hooks. Those paths log the original error and bounded
+provider context to the native app log, excluding prompts, credentials, and
+request bodies.
