@@ -84,7 +84,7 @@ onMount(() => {
 
 		{#if selectedTab}
 			<ReadonlyDocument serializedState={selectedTab.state} indented />
-		{:else if share.state}
+		{:else if share.state && !multiTabState}
 			<!-- New path: render through the real read-only CodeMirror editor. -->
 			<ReadonlyDocument serializedState={share.state} indented />
 		{:else}

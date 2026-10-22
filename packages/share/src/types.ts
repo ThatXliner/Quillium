@@ -1,91 +1,132 @@
-import type { AiGenerationProvenance } from "./core/models";
+/** types.ts. Validated public Web Preview payloads and their inferred types. */
+import { z } from "zod";
+import {
+    AiGenerationProvenanceSchema,
+    RawAnnotationSchema,
+    SuggestionReplacementSchema,
+    ThreadMessageSchema,
+    VersionGroupsSchema,
+    VersionStateSchema,
+} from "./core/models";
 
-export type SerializedThreadMessage = {
-    message: string;
-    author: string;
-    time: number;
-};
+export type SerializedThreadMessage = z.infer<typeof ThreadMessageSchema>;
+export type SerializedAiGenerationProvenance = z.infer<typeof AiGenerationProvenanceSchema>;
 
-export type SerializedAiGenerationProvenance = AiGenerationProvenance;
+const PublishedAnnotationBaseSchema = z.object({
+    id: z.string(),
+    type: z.enum(["comment", "suggestion", "revision"]),
+    from: z.number().int().nonnegative(),
+    to: z.number().int().nonnegative(),
+    selectedText: z.string(),
+    thread: z.array(ThreadMessageSchema),
+    aiProvenance: AiGenerationProvenanceSchema.optional(),
+});
 
-export type SerializedAnnotationBase = {
-    id: string;
-    type: "comment" | "suggestion" | "revision";
-    from: number;
-    to: number;
-    selectedText: string;
-    thread: SerializedThreadMessage[];
-    aiProvenance?: SerializedAiGenerationProvenance;
-};
+const PublishedCommentSchema = PublishedAnnotationBaseSchema.extend({ type: z.literal("comment") });
+const PublishedSuggestionSchema = PublishedAnnotationBaseSchema.extend({
+    type: z.literal("suggestion"),
+    replacements: z.array(SuggestionReplacementSchema),
+    author: z.string().optional(),
+});
+const PublishedRevisionSchema = PublishedAnnotationBaseSchema.extend({
+    type: z.literal("revision"),
+    activeVersionIndex: z.number().int().nonnegative(),
+    versions: z.array(
+        z.object({
+            index: z.number().int().nonnegative(),
+            // Legacy flat shares omit versionId.
+            versionId: z.string().optional(),
+            text: z.string(),
+            label: z.string().optional(),
+            provenance: z.enum(["human", "ai", "mixed"]).optional(),
+            aiProvenance: AiGenerationProvenanceSchema.optional(),
+            group: z
+                .object({
+                    id: z.string(),
+                    label: z.string(),
+                    memberCount: z.number().int().nonnegative(),
+                    color: z.string(),
+                })
+                .optional(),
+            get annotations(): z.ZodArray<typeof PublishedAnnotationSchema> {
+                return z.array(PublishedAnnotationSchema);
+            },
+        }),
+    ),
+});
 
-export type SerializedCommentAnnotation = SerializedAnnotationBase & {
-    type: "comment";
-};
+export const PublishedAnnotationSchema = z.discriminatedUnion("type", [
+    PublishedCommentSchema,
+    PublishedSuggestionSchema,
+    PublishedRevisionSchema,
+]);
+export type SerializedAnnotationBase = z.infer<typeof PublishedAnnotationBaseSchema>;
+export type SerializedCommentAnnotation = z.infer<typeof PublishedCommentSchema>;
+export type SerializedSuggestionAnnotation = z.infer<typeof PublishedSuggestionSchema>;
+export type SerializedRevisionAnnotation = z.infer<typeof PublishedRevisionSchema>;
+export type SerializedAnnotation = z.infer<typeof PublishedAnnotationSchema>;
 
-export type SerializedSuggestionAnnotation = SerializedAnnotationBase & {
-    type: "suggestion";
-    replacements: { text: string; rationale?: string }[];
-    author?: string;
-};
+const [RawCommentSchema, RawSuggestionSchema, RawRevisionSchema] = RawAnnotationSchema.options;
+const PublishedVersionStateSchema = VersionStateSchema.extend({
+    get annotationField(): z.ZodOptional<typeof PublishedRawAnnotationsSchema> {
+        return PublishedRawAnnotationsSchema.optional();
+    },
+    versionGroupField: VersionGroupsSchema.optional(),
+});
+const PublishedRawAnnotationSchema = z.discriminatedUnion("_type", [
+    RawCommentSchema,
+    RawSuggestionSchema,
+    RawRevisionSchema.extend({
+        get versions(): z.ZodArray<typeof PublishedVersionStateSchema> {
+            return z.array(PublishedVersionStateSchema).min(1);
+        },
+    }),
+]);
+const PublishedRawAnnotationsSchema = z.record(z.string(), PublishedRawAnnotationSchema);
+export const ReadonlyEditorStateSchema = PublishedVersionStateSchema.pick({
+    doc: true,
+    annotationField: true,
+    versionGroupField: true,
+});
+export type ReadonlyEditorState = z.infer<typeof ReadonlyEditorStateSchema>;
 
-export type SerializedRevisionAnnotation = SerializedAnnotationBase & {
-    type: "revision";
-    activeVersionIndex: number;
-    versions: {
-        index: number;
-        /** Stable identity used by linked revision groups; absent on legacy flat shares. */
-        versionId?: string;
-        text: string;
-        label?: string;
-        provenance?: "human" | "ai" | "mixed";
-        aiProvenance?: SerializedAiGenerationProvenance;
-        /** Read-only presentation metadata for a linked version group. */
-        group?: {
-            id: string;
-            label: string;
-            memberCount: number;
-            color: string;
-        };
-        annotations: SerializedAnnotation[];
-    }[];
-};
+const ReadonlyShareTabSchema = z.object({
+    id: z.string(),
+    label: z.string(),
+    draftId: z.string(),
+    state: ReadonlyEditorStateSchema,
+});
+export type ReadonlyShareTab = z.infer<typeof ReadonlyShareTabSchema>;
 
-export type SerializedAnnotation =
-    | SerializedCommentAnnotation
-    | SerializedSuggestionAnnotation
-    | SerializedRevisionAnnotation;
+export const ReadonlyShareStateV2Schema = z.object({
+    kind: z.literal("quillium-readonly-share"),
+    version: z.literal(2),
+    // Early v2 shares omitted scope and published only the current tab.
+    scope: z.enum(["current-tab", "all-tabs"]).optional(),
+    activeTabId: z.string().nullable(),
+    tabs: z.array(ReadonlyShareTabSchema),
+});
+export type ReadonlyShareStateV2 = z.infer<typeof ReadonlyShareStateV2Schema>;
+export type ReadonlyShareScope = NonNullable<ReadonlyShareStateV2["scope"]>;
 
-export type ReadonlyShareTab = {
-    id: string;
-    label: string;
-    draftId: string;
-    state: Record<string, unknown>;
-};
-
-export type ReadonlyShareScope = "current-tab" | "all-tabs";
-
-export type ReadonlyShareStateV2 = {
-    kind: "quillium-readonly-share";
-    version: 2;
-    /** Missing only on early v2 payloads, which behaved like current-tab shares. */
-    scope?: ReadonlyShareScope;
-    activeTabId: string | null;
-    tabs: ReadonlyShareTab[];
-};
+export const ReadonlyShareStateSchema = z.union([
+    ReadonlyShareStateV2Schema,
+    ReadonlyEditorStateSchema.refine((state) => state.kind !== "quillium-readonly-share"),
+]);
 
 export function isReadonlyShareStateV2(value: unknown): value is ReadonlyShareStateV2 {
-    if (!value || typeof value !== "object") return false;
-    const candidate = value as Partial<ReadonlyShareStateV2>;
-    return (
-        candidate.kind === "quillium-readonly-share" &&
-        candidate.version === 2 &&
-        Array.isArray(candidate.tabs)
-    );
+    return ReadonlyShareStateV2Schema.safeParse(value).success;
 }
 
+const ReadonlyShareHeaderSchema = ReadonlyShareStateV2Schema.pick({
+    kind: true,
+    version: true,
+    scope: true,
+});
+
 export function readonlyShareScopeOf(value: unknown): ReadonlyShareScope {
-    if (!isReadonlyShareStateV2(value)) return "current-tab";
-    return value.scope === "all-tabs" ? "all-tabs" : "current-tab";
+    const header = ReadonlyShareHeaderSchema.safeParse(value);
+    return header.success && header.data.scope === "all-tabs" ? "all-tabs" : "current-tab";
 }
 
 export function includesReadonlyShareTab(
@@ -102,13 +143,6 @@ export type ReadonlyShareDocument = {
     excerpt: string;
     content: string;
     annotations: SerializedAnnotation[];
-    /**
-     * Serialized CodeMirror editor state (`state.toJSON(readonlySavedFields)`),
-     * carrying doc + annotationField + versionGroupField. When present, the
-     * share renders through the real read-only EditorView (exact annotation
-     * fidelity + linked revisions). Absent for pre-migration shares, which fall
-     * back to the flat `annotations` renderer.
-     */
     state: Record<string, unknown> | null;
     authorName: string | null;
     publishedAt: string | null;

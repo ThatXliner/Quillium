@@ -239,9 +239,16 @@ Shares published before serialized state was added are isolated behind
 `LegacyReadonlyDocument`. That compatibility path keeps index-style active
 revision state and the static annotated-text renderer; new behavior should not be
 added there unless an old payload specifically requires it.
-The legacy path is retained only for rows where `published_state` is absent and
-is scheduled for removal after the production compatibility prerequisites in
-[GitHub issue #339](https://github.com/ThatXliner/Quillium/issues/339) are satisfied.
+
+The landing RPC boundary validates the published state, recursive flat annotations,
+and displayed metadata before rendering. Invalid stored payloads return the same
+not-found page as unavailable shares. Early v2 envelopes without a scope and
+pre-envelope editor states remain supported. Unknown editor extension fields are
+preserved. Empty v2 tab lists use the validated flat content and annotations.
+
+The legacy path is retained for rows where `published_state` is absent or has an
+empty v2 tab list. Removal requires satisfying the production compatibility prerequisites in
+[GitHub issue #339](https://github.com/ThatXliner/Quillium/issues/339).
 
 Modal presentation shared with desktop lives in `@quillium/share`: context
 viewport lifecycle, modal frame/header sizing, revision breadcrumbs, suggestion
