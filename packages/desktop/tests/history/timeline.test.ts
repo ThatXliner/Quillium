@@ -3,6 +3,7 @@ import {
     buildTimelineItems,
     coordinateForItem,
     describeDocEvent,
+    groupByDate,
     headingForDate,
     reconstructPreviewStructure,
     reconstructStructureAsOf,
@@ -455,5 +456,54 @@ describe("headingForDate", () => {
         const now = new Date(2026, 5, 26, 12, 0).getTime(); // Jun 26, noon
         const future = new Date(2026, 5, 27, 1, 0).getTime(); // Jun 27, 1am (ahead of now)
         expect(headingForDate(future, now)).toBe("Today");
+    });
+
+    it("uses an exact date instead of merging older entries into a monthly bucket", () => {
+        const now = new Date(2026, 5, 26, 12, 0).getTime();
+        const older = new Date(2026, 5, 8, 12, 0).getTime();
+
+        expect(headingForDate(older, now)).toBe("June 8");
+    });
+});
+
+// ── groupByDate (nested calendar-day and hour sections) ──────────────
+
+describe("groupByDate", () => {
+    it("groups versions first by calendar day and then by local hour", () => {
+        const now = new Date(2026, 5, 26, 17, 0).getTime();
+        const items = buildTimelineItems(
+            [
+                snapshot(1, "d", new Date(2026, 5, 26, 15, 5).getTime()),
+                snapshot(2, "d", new Date(2026, 5, 26, 15, 45).getTime()),
+                snapshot(3, "d", new Date(2026, 5, 26, 14, 30).getTime()),
+                snapshot(4, "d", new Date(2026, 5, 25, 23, 30).getTime()),
+            ],
+            [],
+        );
+
+        const groups = groupByDate(items, now);
+
+        expect(groups.map((group) => group.heading)).toEqual(["Today", "Yesterday"]);
+        expect(groups[0].hours.map((hour) => hour.items.map((item) => item.id))).toEqual([
+            ["snapshot:2", "snapshot:1"],
+            ["snapshot:3"],
+        ]);
+        expect(groups[1].hours[0].items.map((item) => item.id)).toEqual(["snapshot:4"]);
+    });
+
+    it("keeps different calendar dates in different groups", () => {
+        const now = new Date(2026, 5, 26, 12, 0).getTime();
+        const items = buildTimelineItems(
+            [
+                snapshot(1, "d", new Date(2025, 5, 8, 10, 0).getTime()),
+                snapshot(2, "d", new Date(2024, 5, 8, 10, 0).getTime()),
+            ],
+            [],
+        );
+
+        const groups = groupByDate(items, now);
+
+        expect(groups).toHaveLength(2);
+        expect(groups.map((group) => group.key)).toEqual(["2025-06-08", "2024-06-08"]);
     });
 });

@@ -441,18 +441,58 @@ export function reconstructPreviewStructure(
 
 // ── Date grouping ───────────────────────────────────────────────────
 
-export type TimelineGroup = { heading: string; items: TimelineItem[] };
+export type TimelineHourGroup = {
+    key: string;
+    heading: string;
+    items: TimelineItem[];
+};
+
+export type TimelineGroup = {
+    key: string;
+    heading: string;
+    hours: TimelineHourGroup[];
+};
+
+function localDateKey(ms: number): string {
+    const date = new Date(ms);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function localHourKey(ms: number): string {
+    return `${localDateKey(ms)}:${String(new Date(ms).getHours()).padStart(2, "0")}`;
+}
+
+export function headingForHour(ms: number): string {
+    return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric" });
+}
 
 export function groupByDate(items: TimelineItem[], now: number): TimelineGroup[] {
     const groups: TimelineGroup[] = [];
-    let lastHeading = "";
     for (const item of items) {
-        const heading = headingForDate(item.createdAt, now);
-        if (heading !== lastHeading) {
-            groups.push({ heading, items: [] });
-            lastHeading = heading;
+        const dayKey = localDateKey(item.createdAt);
+        let day = groups.at(-1);
+        if (day?.key !== dayKey) {
+            day = {
+                key: dayKey,
+                heading: headingForDate(item.createdAt, now),
+                hours: [],
+            };
+            groups.push(day);
         }
-        groups[groups.length - 1].items.push(item);
+
+        const hourKey = localHourKey(item.createdAt);
+        let hour = day.hours.at(-1);
+        if (hour?.key !== hourKey) {
+            hour = {
+                key: hourKey,
+                heading: headingForHour(item.createdAt),
+                items: [],
+            };
+            day.hours.push(hour);
+        }
+        hour.items.push(item);
     }
     return groups;
 }
@@ -470,9 +510,11 @@ export function headingForDate(ms: number, now: number): string {
     if (diffDays <= 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
-    if (d.getMonth() === nowDate.getMonth() && d.getFullYear() === nowDate.getFullYear())
-        return "This month";
-    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    return d.toLocaleDateString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: d.getFullYear() === nowDate.getFullYear() ? undefined : "numeric",
+    });
 }
 
 export function formatTime(ms: number): string {
