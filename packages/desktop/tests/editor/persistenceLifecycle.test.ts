@@ -77,6 +77,42 @@ describe("persistence lifecycle", () => {
         });
     });
 
+    it("prevents duplicate native destruction while closing and after the flush succeeds", async () => {
+        let finish!: () => void;
+        mocks.flush.mockReturnValue(
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+        );
+        cleanup = startPersistenceLifecycle();
+        const firstEvent = { preventDefault: vi.fn() };
+        const repeatedEvent = { preventDefault: vi.fn() };
+        const closing = mocks.close.mock.calls[0][0](firstEvent);
+        await mocks.close.mock.calls[0][0](repeatedEvent);
+        expect(repeatedEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(mocks.flush).toHaveBeenCalledOnce();
+        finish();
+        await closing;
+        const afterFlushEvent = { preventDefault: vi.fn() };
+        await mocks.close.mock.calls[0][0](afterFlushEvent);
+        expect(afterFlushEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(firstEvent.preventDefault).not.toHaveBeenCalled();
+        expect(mocks.flush).toHaveBeenCalledOnce();
+    });
+
+    it("allows a native close retry after its first flush fails", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        mocks.flush.mockRejectedValueOnce(new Error("disk full"));
+        cleanup = startPersistenceLifecycle();
+        const failedEvent = { preventDefault: vi.fn() };
+        await mocks.close.mock.calls[0][0](failedEvent);
+        const retryEvent = { preventDefault: vi.fn() };
+        await mocks.close.mock.calls[0][0](retryEvent);
+        expect(mocks.flush).toHaveBeenCalledTimes(2);
+        expect(failedEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(retryEvent.preventDefault).not.toHaveBeenCalled();
+    });
+
     it("cleans up asynchronous registrations after disposal", async () => {
         const stopFocus = vi.fn();
         const stopClose = vi.fn();

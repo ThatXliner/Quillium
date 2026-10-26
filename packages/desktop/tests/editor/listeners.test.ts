@@ -149,6 +149,57 @@ describe("listeners integration", () => {
         expect(snapshots[1].upToEventId).toBe(2);
     });
 
+    it("drains overlapping close requests together and includes edits accepted while waiting", async () => {
+        const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];
+        let release!: () => void;
+        let eventId = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: ++eventId, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") {
+                snapshots.push(args as (typeof snapshots)[number]);
+                if (snapshots.length === 1)
+                    return new Promise<void>((resolve) => {
+                        release = resolve;
+                    });
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        const firstClose = flushPersistenceForClose();
+        const secondClose = flushPersistenceForClose();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        view.dispatch({ changes: { from: 12, insert: " Last edit." } });
+        release();
+        await Promise.all([firstClose, secondClose]);
+        expect(snapshots).toHaveLength(2);
+        expect(JSON.parse(snapshots[1].stateJson).doc).toBe("Hello world! Last edit.");
+        expect(snapshots[1].upToEventId).toBe(2);
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " Another edit." } });
+        await flushPersistenceForClose();
+        expect(snapshots).toHaveLength(3);
+        expect(snapshots[2].upToEventId).toBe(3);
+    });
+
+    it("allows another close flush after a shared checkpoint failure", async () => {
+        let attempts = 0;
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot" && ++attempts === 1) throw new Error("disk full");
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        const results = await Promise.allSettled([
+            flushPersistenceForClose(),
+            flushPersistenceForClose(),
+        ]);
+        expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
+        expect(attempts).toBe(1);
+        await flushPersistenceForClose();
+        expect(attempts).toBe(2);
+    });
+
     it("checkpoints after 30 seconds of idle and resets the break on the next edit", async () => {
         vi.useFakeTimers();
         const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];

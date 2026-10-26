@@ -5,6 +5,7 @@ import { flushPersistence, flushPersistenceForClose } from "./listeners";
 
 export function startPersistenceLifecycle(): () => void {
     let disposed = false;
+    let closing = false;
     const cleanup: Array<() => void> = [];
     const reportFailure = (error: unknown): void => {
         console.error("[persistenceLifecycle] checkpoint failed", error);
@@ -36,9 +37,15 @@ export function startPersistenceLifecycle(): () => void {
         void register(
             window.onCloseRequested(async (event) => {
                 if (disposed) return;
+                if (closing) {
+                    event.preventDefault();
+                    return;
+                }
+                closing = true;
                 try {
                     await flushPersistenceForClose();
                 } catch (error) {
+                    closing = false;
                     event.preventDefault();
                     reportFailure(error);
                 }

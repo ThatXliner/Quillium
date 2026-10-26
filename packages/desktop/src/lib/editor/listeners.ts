@@ -121,6 +121,7 @@ let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 // DB completion order.
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
+let closeFlush: Promise<void> | null = null;
 const deletionBurstTracker = new DeletionBurstTracker();
 
 type PendingCheckpoint = {
@@ -1099,13 +1100,19 @@ export async function flushPersistence(): Promise<void> {
 }
 
 /** Closing a native window must include edits accepted while earlier writes were pending. */
-export async function flushPersistenceForClose(): Promise<void> {
-    let barrier: Promise<void>;
-    do {
-        const flush = flushPersistence();
-        barrier = persistQueue;
-        await flush;
-    } while (persistQueue !== barrier);
+export function flushPersistenceForClose(): Promise<void> {
+    if (closeFlush) return closeFlush;
+    closeFlush = (async () => {
+        let barrier: Promise<void>;
+        do {
+            const flush = flushPersistence();
+            barrier = persistQueue;
+            await flush;
+        } while (persistQueue !== barrier);
+    })().finally(() => {
+        closeFlush = null;
+    });
+    return closeFlush;
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
