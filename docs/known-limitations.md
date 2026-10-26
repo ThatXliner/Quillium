@@ -24,7 +24,7 @@ code to confirm a limitation before designing around it; planned work belongs in
 | Limitation | Impact |
 |------------|--------|
 | **Live Room mode only** | Session ends when owner disconnects. Persistent shared-document ownership deferred. |
-| **Manual Live Room IDs** | Joiners paste a draft UUID manually. Invite links and room permissions are deferred. |
+| **Manual Live Room IDs** | Joiners paste a document ID manually. Invite links and room permissions are deferred. |
 | **No local persistence for joiners** | Joiners restored to prior local draft/library after leaving. |
 | **No offline queue** | If reconnect attempts exhausted, session enters `error` and must restart. |
 | **One draft per Web Preview tab** | Public links can include all draft tabs, but publish one selected draft state per tab rather than every run and draft. |

@@ -35,7 +35,7 @@ let joinIdInput = $state("");
 
 function copyId() {
     navigator.clipboard.writeText(currentId);
-    toast.success("Document ID copied");
+    toast.success("Room ID copied");
 }
 
 async function joinById() {
@@ -108,13 +108,13 @@ async function joinById() {
                     <input
                         readonly
                         value={currentId}
-                        aria-label="Current document room ID"
+                        aria-label="Live Room ID"
                         class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-blue-600/[0.04] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
                     />
                     <button
                         onclick={copyId}
                         disabled={!currentId}
-                        aria-label="Copy document room ID"
+                        aria-label="Copy Live Room ID"
                         class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
                     >
                         <Copy size={14} />
@@ -134,7 +134,7 @@ async function joinById() {
                     <input
                         id="join-id"
                         bind:value={joinIdInput}
-                        placeholder="Paste UUID..."
+                        placeholder="Paste a room ID"
                         autocomplete="off"
                         class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-black/[0.035] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
                     />

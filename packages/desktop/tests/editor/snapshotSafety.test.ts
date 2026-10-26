@@ -222,3 +222,56 @@ describe.each(["crash", "go live"] as const)("%s snapshots", (action) => {
         if (action === "go live") expect(collab.enableCollab).toHaveBeenCalledOnce();
     });
 });
+
+it("uses the document room while snapshots and owner edits stay on the active draft", async () => {
+    const snapshots: unknown[] = [];
+    const events: unknown[] = [];
+    mockIPC((cmd, args) => {
+        if (cmd === "cmd_create_named_snapshot") {
+            snapshots.push(args);
+            return 12;
+        }
+        if (cmd === "cmd_append_event") {
+            events.push(args);
+            return { eventId: 7, needsSnapshot: false };
+        }
+        return null;
+    });
+    const controller = new LiveSessionController();
+    await controller.toggle();
+
+    expect(controller.isLive).toBe(true);
+    expect(collab.registerDocumentForCollab).toHaveBeenCalledWith("doc-1", "owner-1", "Untitled");
+    expect(collab.enableCollab).toHaveBeenCalledWith(view, "doc-1", "owner-1");
+    expect(snapshots).toEqual([
+        expect.objectContaining({ draftId: "draft-1", label: "Before going live (auto)" }),
+    ]);
+    expect(get(currentDraftId)).toBe("draft-1");
+    view.dispatch({ changes: { from: view.state.doc.length, insert: " while live" } });
+    await flushPersistQueue();
+    expect(events).toEqual([expect.objectContaining({ draftId: "draft-1" })]);
+});
+
+it.each(["document", "draft"])(
+    "does not start if the active %s changes during registration",
+    async (target) => {
+        collab.registerDocumentForCollab.mockImplementationOnce(async () => {
+            if (target === "document") currentDocumentId.set("doc-2");
+            else currentDraftId.set("draft-2");
+        });
+        mockIPC((cmd) => (cmd === "cmd_create_named_snapshot" ? 12 : null));
+        const controller = new LiveSessionController();
+        await controller.toggle();
+        expect(collab.enableCollab).not.toHaveBeenCalled();
+        expect(controller.isLive).toBe(false);
+    },
+);
+
+it("does not start without a document identity even when a draft is open", async () => {
+    currentDocumentId.set(null);
+    const controller = new LiveSessionController();
+    await controller.toggle();
+    expect(collab.registerDocumentForCollab).not.toHaveBeenCalled();
+    expect(collab.enableCollab).not.toHaveBeenCalled();
+    expect(controller.isLive).toBe(false);
+});

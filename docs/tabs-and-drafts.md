@@ -231,3 +231,11 @@ fails. Unmount cancels pending loads and tab refreshes.
 Iterations and branches seed from the live state when their source is open,
 otherwise from snapshot and event replay. Both paths preserve the document's undo
 policy; reconstructed seeds omit the source draft's lock.
+
+## Live Rooms
+
+Live Rooms use the document ID as the stable network room key. The owner shares
+one active draft from one tab when starting the room. Safety snapshots, content
+events, and SQLite persistence stay draft-scoped. Joiners receive that shared
+view and restore their prior local view on leaving. Simultaneous multi-tab and
+multi-draft sharing remains future work. See [collaboration](collaboration.md).

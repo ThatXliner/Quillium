@@ -26,7 +26,7 @@ import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
 import { flushPersistQueue, persistNamedVersion } from "$lib/editor/listeners";
 import posthog, { captureException } from "$lib/posthog";
-import { currentDraftId, editorView } from "$lib/stores";
+import { currentDocumentId, currentDraftId, editorView } from "$lib/stores";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 
@@ -92,12 +92,11 @@ export class LiveSessionController {
         this.#prevCollabState = state;
     }
 
-    /** Join another writer's room by draft UUID (as an ephemeral joiner). */
     async join(rawId: string) {
         const id = rawId.trim();
         if (!id) return false;
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-            toast.error("Invalid document ID format");
+            toast.error("Invalid room ID");
             return false;
         }
 
@@ -196,10 +195,11 @@ export class LiveSessionController {
             try {
                 const view = get(editorView);
                 const draftId = get(currentDraftId);
+                const documentId = get(currentDocumentId);
                 const user = getUser();
                 const session = getSession();
 
-                if (!view || !draftId || !user || !session) {
+                if (!view || !documentId || !draftId || !user || !session) {
                     throw new Error("Missing required state");
                 }
 
@@ -209,18 +209,25 @@ export class LiveSessionController {
                     draftId,
                     stateJson,
                     "Before going live (auto)",
-                    () => get(editorView) === view && get(currentDraftId) === draftId,
+                    () =>
+                        get(editorView) === view &&
+                        get(currentDraftId) === draftId &&
+                        get(currentDocumentId) === documentId,
                 );
                 if (snapshotId === null) return;
 
-                // Register document with relay's sync_documents table (auto-creates if missing)
-                await registerDocumentForCollab(draftId, user.id, "Untitled");
+                await registerDocumentForCollab(documentId, user.id, "Untitled");
                 await flushPersistQueue();
-                if (get(editorView) !== view || get(currentDraftId) !== draftId) return;
+                if (
+                    get(editorView) !== view ||
+                    get(currentDraftId) !== draftId ||
+                    get(currentDocumentId) !== documentId
+                )
+                    return;
 
                 // Per D-50: clientID is user.id for per-user undo
                 // Version comes from relay's initial state
-                await enableCollab(view, draftId, user.id);
+                await enableCollab(view, documentId, user.id);
 
                 this.isLive = true;
                 toast.success("You're live!");

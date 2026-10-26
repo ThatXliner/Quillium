@@ -35,6 +35,8 @@ import {
     serializeAnnotations,
     serializeShareState,
 } from "$lib/collab/sharePayload";
+import { getLiveRelayRoomId } from "$lib/collab/roomIdentity";
+import { collabSession, isCollabJoiner } from "$lib/collab/store";
 import { withoutTransientShareSelection } from "$lib/collab/shareState";
 import { getActiveDraft, listTabDrafts, listTabs, loadDocumentState } from "$lib/db";
 import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
@@ -83,8 +85,13 @@ function shouldShowForScreenshot(): boolean {
 
 const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured || shouldShowForScreenshot());
-// Live-collab room key: still per-draft (the live room mirrors one editor view).
-const currentId = $derived($currentDraftId ?? "");
+const currentId = $derived(
+    getLiveRelayRoomId({
+        documentId: $currentDocumentId,
+        isJoiner: $isCollabJoiner,
+        activeRoomId: $collabSession?.docId,
+    }),
+);
 // Web Preview key: one stable share per document. The versioned payload chooses
 // the current tab or all tabs, so republishing can change the visible draft set
 // without minting a new link.

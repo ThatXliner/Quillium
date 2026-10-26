@@ -8,11 +8,11 @@ Omni provides two ways to share writing:
   The owner's SQLite draft remains authoritative. Joiners are ephemeral, and
   the session ends when the owner leaves.
 
-The desktop currently uses the active **draft ID** as its Live Room key. The
-relay protocol and `sync_documents` table call that key `documentId`; it is not
-the document ID used for Web Preview. See the decisions on
-[owner-led rooms](adr/0008-owner-led-yjs-live-rooms.md) and
-[document-keyed previews](adr/0010-document-keyed-web-preview.md).
+Live Rooms use the **document ID** as their network room key. Each room mirrors
+only the active draft when the owner starts it; sharing multiple tabs or drafts
+at once remains future work. Owner snapshots and events stay attached to that
+active draft. See the decisions on [owner-led rooms](adr/0008-owner-led-yjs-live-rooms.md)
+and [document-keyed previews](adr/0010-document-keyed-web-preview.md).
 
 ## State ownership
 
@@ -44,9 +44,9 @@ The desktop implementation lives in
 ## Live Room lifecycle
 
 When the owner starts a room, `LiveSessionController` queues a named snapshot,
-**Before going live (auto)**, behind pending local edits. It registers the draft
+**Before going live (auto)**, behind pending local edits. It registers the document
 with Supabase, checks persistence again, and starts collaboration only if the
-same editor and draft are still active. A local persistence failure blocks this
+same editor, document, and draft are still active. A local persistence failure blocks this
 transition. See [persistence](persistence.md) for the save-failure boundary.
 
 After the provider synchronizes, the owner seeds the shared text, annotations,
