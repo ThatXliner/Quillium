@@ -45,7 +45,7 @@ import {
     captureCommentEditorPosition,
     restoreCommentEditorPosition,
 } from "./commentFocus";
-import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
+import { clearDraft, getCommentDraftScope, getDraft, setDraft } from "./drafts.svelte";
 
 const {
     commentId,
@@ -106,10 +106,7 @@ const docContext = $derived.by((): AnnotationContextViewLayer | null => {
 const contextLayers = $derived(docContext ? [docContext] : []);
 
 // ── Reply box state ──────────────────────────────────────────
-// Reply draft lives in the shared drafts store (keyed by annotation id) so
-// it hands off to/from the inline composers when the layout switches
-// between floating cards and this modal (#247).
-const newMessage = $derived(getDraft(commentId));
+const newMessage = $derived(getDraft(parentView, commentId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const currentUserName = $derived(getCurrentUserName());
@@ -119,9 +116,13 @@ const sendActive = $derived(!!newMessage.trim() && !submission?.pending);
 async function send(): Promise<void> {
     if (!newMessage.trim() || !comment || submission?.pending) return;
     const submitted = newMessage;
+    const submittedScope = getCommentDraftScope(parentView);
     if (submission) {
         if (await submission.send(submitted.trim())) {
-            if (getDraft(commentId) === submitted) clearDraft(commentId);
+            if (
+                getCommentDraftScope(parentView) === submittedScope &&
+                getDraft(parentView, commentId) === submitted
+            ) clearDraft(parentView, commentId);
         }
         return;
     }
@@ -129,7 +130,7 @@ async function send(): Promise<void> {
         ...comment.thread,
         { message: submitted.trim(), author: currentUserName, time: Date.now() },
     ]);
-    clearDraft(commentId);
+    clearDraft(parentView, commentId);
 }
 
 function autoResize(el: HTMLTextAreaElement) {
@@ -289,7 +290,8 @@ let restoreSize = $state<(() => void) | undefined>();
                             ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
                             <textarea
                                 bind:this={textareaEl}
-                                bind:value={() => newMessage, (v) => setDraft(commentId, v)}
+                                bind:value={() => newMessage, (v) => setDraft(parentView, commentId, v)}
+                                disabled={submission?.pending && comment.status === "pending"}
                                 placeholder="Reply…"
                                 rows="3"
                                 class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none

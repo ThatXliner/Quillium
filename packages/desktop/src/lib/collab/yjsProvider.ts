@@ -81,25 +81,36 @@ export function getCollabRole(): LiveRole {
     return currentRole;
 }
 
-export async function sendCommentCommand(input: CommentInput): Promise<void> {
+export type CommentOperation = () => Promise<void>;
+
+export function prepareCommentOperation(input: CommentInput): CommentOperation {
     const provider = currentProvider;
-    if (
-        !provider?.ws ||
-        provider.ws.readyState !== WebSocket.OPEN ||
-        !currentRoomEpoch ||
-        currentRole === "viewer"
-    )
+    const epoch = currentRoomEpoch;
+    if (!provider || !epoch || currentRole === "viewer")
         throw new Error("Comment access is unavailable");
     const requestId = crypto.randomUUID();
-    const command = { ...input, requestId, roomEpoch: currentRoomEpoch };
-    await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            pendingComments.delete(requestId);
-            reject(new Error("The comment could not be confirmed. Try again."));
-        }, 10000);
-        pendingComments.set(requestId, { resolve, reject, timer });
-        provider.ws?.send(encodeCommentCommand(command));
-    });
+    const encoded = encodeCommentCommand({ ...input, requestId, roomEpoch: epoch });
+    return async (): Promise<void> => {
+        if (currentProvider !== provider || currentRoomEpoch !== epoch || currentRole === "viewer")
+            throw new Error("This Live Room session has ended");
+        if (!provider.ws || provider.ws.readyState !== WebSocket.OPEN)
+            throw new Error("Comment access is unavailable");
+        if (pendingComments.has(requestId)) throw new Error("This comment is still being sent");
+        await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                pendingComments.delete(requestId);
+                reject(new Error("The comment could not be confirmed. Try again."));
+            }, 10000);
+            pendingComments.set(requestId, { resolve, reject, timer });
+            try {
+                provider.ws?.send(encoded);
+            } catch (error) {
+                clearTimeout(timer);
+                pendingComments.delete(requestId);
+                reject(error);
+            }
+        });
+    };
 }
 
 // ── Reconnection tracking ───────────────────────────────────────────────────

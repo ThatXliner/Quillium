@@ -28,7 +28,7 @@ import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
 import { removeAnnotation, updateThread } from "./annotationField";
 import { captureCommentEditorPosition, restoreCommentEditorPosition } from "./commentFocus";
-import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
+import { clearDraft, getCommentDraftScope, getDraft, setDraft } from "./drafts.svelte";
 import { type Annotations, type GenericAnnotation, isAnnotationOfType } from "./models";
 import { canCreateNewComment } from "./utils";
 
@@ -69,10 +69,7 @@ function resolvePendingComment() {
 
 const pendingComment = $derived(resolvePendingComment());
 
-// Draft text lives in the shared drafts store (keyed by annotation id) so
-// it survives this component unmounting — e.g. when a window resize swaps
-// the floating card layout for the comment modal (#247).
-const commentText = $derived(pendingComment ? getDraft(pendingComment.id) : "");
+const commentText = $derived(pendingComment ? getDraft(view, pendingComment.id) : "");
 const submission = $derived(pendingComment ? getCommentSubmission(view, pendingComment.id) : undefined);
 
 // Auto-focus the textarea when a pending (unsaved) comment exists
@@ -109,10 +106,14 @@ const selectedText = $derived(
 async function addComment(): Promise<void> {
     if (!pendingComment || !isAnnotationOfType(pendingComment, "comment") || submission?.pending) return;
     const submitted = commentText;
+    const submittedScope = getCommentDraftScope(view);
     const submittedId = pendingComment.id;
     if (submission) {
         if (await submission.send(submitted.trim())) {
-            if (getDraft(submittedId) === submitted) clearDraft(submittedId);
+            if (
+                getCommentDraftScope(view) === submittedScope &&
+                getDraft(view, submittedId) === submitted
+            ) clearDraft(view, submittedId);
         }
         return;
     }
@@ -145,7 +146,7 @@ async function addComment(): Promise<void> {
             selection: { anchor: from, head: to },
         }),
     );
-    clearDraft(annotationId);
+    clearDraft(view, annotationId);
 }
 
 function dismissComposer() {
@@ -165,7 +166,7 @@ function cancelComment() {
             effects: [removeAnnotation.of(pendingComment)],
         }),
     );
-    clearDraft(annotationId);
+    clearDraft(view, annotationId);
 }
 </script>
 
@@ -192,7 +193,7 @@ function cancelComment() {
             bind:this={textarea}
             bind:value={
                 () => commentText,
-                (v) => pendingComment && setDraft(pendingComment.id, v)
+                (v) => pendingComment && setDraft(view, pendingComment.id, v)
             }
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {

@@ -36,6 +36,7 @@ jobs:
       - name: Install verified Bun runtime
         run: node scripts/install-secure-bun.mjs /tmp/quillium-access-bun
       - uses: supabase/setup-cli@v1
+        id: supabase
         with:
           version: 2.121.0
       - run: bun install --frozen-lockfile
@@ -47,5 +48,5 @@ jobs:
       - name: Verify grants and hostile relay clients
         run: bun packages/relay/scripts/testAccessLocal.ts
       - name: Stop local services
-        if: always()
+        if: always() && steps.supabase.outcome == 'success'
         run: supabase stop --no-backup

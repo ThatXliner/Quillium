@@ -6,6 +6,7 @@ import {
     removeAnnotation,
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
+import { commentDraftScopeBridge } from "$lib/editor/plugins/annotations/drafts.svelte";
 import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
 import { modalStack } from "$lib/stores";
@@ -16,19 +17,20 @@ import { getCommentSubmission, registerCommentSubmissions } from "./commentSubmi
 import { type RoleContext, roleContext } from "./roleContext";
 import { yjsAnnotationSync } from "./yjsAnnotations";
 import { yjsAnnotation } from "./yjsBinding";
+import type { CommentOperation } from "./yjsProvider";
 import { yjsVersionGroupSync } from "./yjsVersionGroups";
 
 export function createRolePermissions(context: RoleContext): Extension {
     let view: EditorView | undefined;
     const pending = new Set<number>();
-    const submit = async (annotationId: number, message: string): Promise<void> => {
+    const prepare = (annotationId: number, message: string): CommentOperation => {
         if (!view) throw new Error("The comment editor has closed");
         const annotation = view.state.field(annotationField)[annotationId];
         if (!annotation || !isAnnotationOfType(annotation, "comment"))
             throw new Error("Comment not found");
         if (pending.has(annotationId)) {
             const range = annotation.selection.main;
-            await context.send({
+            const operation = context.prepareComment({
                 kind: "createComment",
                 scope: context.scope,
                 start: Array.from(
@@ -43,31 +45,34 @@ export function createRolePermissions(context: RoleContext): Extension {
                 ),
                 message,
             });
-            if (!view) return;
-            const current = view.state.field(annotationField)[annotationId];
-            if (current && pending.has(annotationId)) {
-                pending.delete(annotationId);
-                const pendingKey = context.ids.getYjsId(annotationId);
-                if (pendingKey) context.ids.remove(pendingKey);
-                modalStack.removeComment(view, annotationId);
-                view.dispatch({
-                    effects: removeAnnotation.of(current),
-                    annotations: yjsAnnotationSync.of(true),
-                });
-            }
-        } else {
-            const id = context.ids.getYjsId(annotationId);
-            if (!id) throw new Error("Comment not found");
-            await context.send({
-                kind: "replyToComment",
-                scope: context.scope,
-                annotationId: id,
-                message,
-            });
+            return async (): Promise<void> => {
+                await operation();
+                if (!view) return;
+                const current = view.state.field(annotationField)[annotationId];
+                if (current && pending.has(annotationId)) {
+                    pending.delete(annotationId);
+                    const pendingKey = context.ids.getYjsId(annotationId);
+                    if (pendingKey) context.ids.remove(pendingKey);
+                    modalStack.removeComment(view, annotationId);
+                    view.dispatch({
+                        effects: removeAnnotation.of(current),
+                        annotations: yjsAnnotationSync.of(true),
+                    });
+                }
+            };
         }
+        const id = context.ids.getYjsId(annotationId);
+        if (!id) throw new Error("Comment not found");
+        return context.prepareComment({
+            kind: "replyToComment",
+            scope: context.scope,
+            annotationId: id,
+            message,
+        });
     };
     return [
         roleContext.of(context),
+        commentDraftScopeBridge,
         ...(context.role === "editor"
             ? []
             : [
@@ -168,7 +173,7 @@ export function createRolePermissions(context: RoleContext): Extension {
                 constructor(editor: EditorView) {
                     view = editor;
                     if (context.role === "commenter")
-                        this.unregister = registerCommentSubmissions(editor, submit);
+                        this.unregister = registerCommentSubmissions(editor, prepare);
                 }
                 destroy(): void {
                     this.unregister?.();

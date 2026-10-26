@@ -793,6 +793,7 @@ let restoreSize = $state<(() => void) | undefined>();
             thread={revisionThread}
             updateThread={dispatchUpdateThread}
             annotationId={revisionId}
+            {view}
             accentClass="text-purple-600/80 hover:text-purple-700"
             focusRingClass="focus-within:ring-purple-300/50"
           />

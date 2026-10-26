@@ -173,7 +173,10 @@ above. Changes through administrative database credentials outside this API are
 not a supported live management path.
 
 Comment commands carry a room epoch and request ID. Repeating the same command
-within that room session applies it once. Reusing an ID with a different command,
+within that room session applies it once. The desktop prepares an immutable
+command before sending and retains it after an unconfirmed submission. Retrying
+unchanged text reuses its request ID, epoch, and encoded anchors, including after
+a transport reconnect. A changed message starts a new command. Reusing an ID with a different command,
 using anchors in another text scope, or replying to a suggestion or revision is
 rejected. Presence IDs belong to their sending connection and never authorize
 access. The desktop forwards only its own awareness ID and never echoes

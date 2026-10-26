@@ -49,8 +49,10 @@ function createView(doc: string, selection: EditorSelection): EditorView {
 
 afterEach(() => {
     cleanup();
-    clearDraft(299);
-    for (const view of views) view.destroy();
+    for (const view of views) {
+        clearDraft(view, 299);
+        view.destroy();
+    }
     views = [];
 });
 
@@ -89,7 +91,7 @@ describe("comment editor position restoration", () => {
         view.dispatch({ selection: EditorSelection.cursor(8) });
         await fireEvent.keyDown(textarea, { key: "Escape" });
 
-        expect(getDraft(299)).toBe("Unsent reply");
+        expect(getDraft(view, 299)).toBe("Unsent reply");
         expect(view.state.selection.main.anchor).toBe(origin.main.anchor);
         expect(view.state.selection.main.head).toBe(origin.main.head);
         expect(document.activeElement).toBe(view.contentDOM);
@@ -145,7 +147,7 @@ describe("comment editor position restoration", () => {
         await fireEvent.input(textarea, { target: { value: "Unsent reply" } });
         await fireEvent.keyDown(textarea, { key: "Escape" });
 
-        expect(getDraft(299)).toBe("Unsent reply");
+        expect(getDraft(view, 299)).toBe("Unsent reply");
         expect(view.state.selection.main.anchor).toBe(origin.main.anchor);
         expect(view.state.selection.main.head).toBe(origin.main.head);
         expect(document.activeElement).toBe(view.contentDOM);

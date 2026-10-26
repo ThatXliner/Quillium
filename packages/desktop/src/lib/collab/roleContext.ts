@@ -2,7 +2,7 @@ import { Facet } from "@codemirror/state";
 import type { CommentScope, LiveRole } from "@quillium/share/collab-contract";
 import type * as Y from "yjs";
 import { AnnotationIdMap } from "./annotationSchema";
-import type { CommentInput } from "./yjsProvider";
+import type { CommentInput, CommentOperation } from "./yjsProvider";
 
 export type RoleContext = {
     role: LiveRole;
@@ -10,7 +10,7 @@ export type RoleContext = {
     annotations: Y.Map<Y.Map<unknown>>;
     ids: AnnotationIdMap;
     scope: CommentScope;
-    send: (command: CommentInput) => Promise<void>;
+    prepareComment: (command: CommentInput) => CommentOperation;
 };
 export const roleContext = Facet.define<RoleContext, RoleContext | undefined>({
     combine: (values) => values[0],

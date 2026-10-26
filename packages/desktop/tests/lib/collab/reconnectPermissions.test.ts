@@ -1,10 +1,15 @@
+import { webcrypto } from "node:crypto";
 import { once } from "node:events";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { collabCompartment, disableCollab, enableCollab } from "$lib/collab";
 import { roleContext } from "$lib/collab/roleContext";
-import { collabSession, isCollabJoiner, joinerPriorView } from "$lib/collab/store";
-import { accessChangedSignal, disconnectYjsProvider } from "$lib/collab/yjsProvider";
+import { collabSession, collabState, isCollabJoiner, joinerPriorView } from "$lib/collab/store";
+import {
+    accessChangedSignal,
+    disconnectYjsProvider,
+    prepareCommentOperation,
+} from "$lib/collab/yjsProvider";
 import { historyCompartment } from "$lib/editor/extensions";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
@@ -130,3 +135,103 @@ it("restores the local draft instead of retaining editor capabilities after offl
         vi.unstubAllGlobals();
     }
 }, 15000);
+
+it("retries the same immutable comment operation after its acknowledgment is lost", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { WebSocket, WebSocketServer } = createRequire(
+        path.resolve(process.cwd(), "../relay/package.json"),
+    )("ws") as {
+        WebSocket: unknown;
+        WebSocketServer: new (options: { port: number; host: string }) => RelayServer;
+    };
+    vi.stubGlobal("WebSocket", WebSocket);
+    const server = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing local server address");
+    runtime.relayUrl = `ws://127.0.0.1:${address.port}`;
+    const doc = new Y.Doc();
+    const awareness = new Awareness(doc);
+    awareness.setLocalState(null);
+    doc.getText("document").insert(0, "Authoritative text");
+    const room = {
+        documentId: "retry-room",
+        ydoc: doc,
+        awareness,
+        clients: new Set<RelaySocket>(),
+        cleanupTimer: null,
+        isOwnerConnected: true,
+        ownerId: "owner",
+    };
+    let connections = 0;
+    let currentSocket: RelaySocket | undefined;
+    let loseAcknowledgment = true;
+    server.on("connection", (socket) => {
+        connections++;
+        currentSocket = socket;
+        setupYjsConnection(socket, room, {
+            userId: "joiner",
+            documentId: room.documentId,
+            isOwner: false,
+            isAnonymous: true,
+            role: "commenter",
+        });
+    });
+    doc.on("update", () => {
+        if (loseAcknowledgment && doc.getMap("annotations").size === 1) {
+            loseAcknowledgment = false;
+            currentSocket?.terminate();
+        }
+    });
+    const view = new EditorView({
+        parent: document.body,
+        state: EditorState.create({
+            extensions: [
+                annotationField,
+                versionGroupField,
+                collabCompartment.of([]),
+                historyCompartment.of([]),
+            ],
+        }),
+    });
+    try {
+        await enableCollab(view, room.documentId, "joiner", false, {
+            token: "invitation",
+            role: "commenter",
+        });
+        const context = view.state.facet(roleContext);
+        if (!context) throw new Error("Missing role context");
+        const operation = prepareCommentOperation({
+            kind: "createComment",
+            scope: [],
+            start: Array.from(
+                Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(context.text, 0)),
+            ),
+            end: Array.from(
+                Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(context.text, 5)),
+            ),
+            message: "Apply once",
+        });
+        const first = operation().then(
+            () => "confirmed",
+            () => "unconfirmed",
+        );
+        await vi.waitFor(() => expect(doc.getMap("annotations").size).toBe(1));
+        await vi.waitFor(() => expect(connections).toBe(2), { timeout: 5000 });
+        await vi.waitFor(() => expect(get(collabState)).toBe("connected"), { timeout: 5000 });
+        expect(await first).toBe("unconfirmed");
+        await operation();
+        expect(doc.getMap("annotations").size).toBe(1);
+        const comment = Array.from(doc.getMap<Y.Map<unknown>>("annotations").values())[0];
+        expect((comment.get("thread") as Y.Array<unknown>).length).toBe(1);
+    } finally {
+        disconnectYjsProvider();
+        view.destroy();
+        collabSession.set(null);
+        for (const socket of server.clients) socket.terminate();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        awareness.destroy();
+        doc.destroy();
+        vi.unstubAllGlobals();
+    }
+}, 25000);

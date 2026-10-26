@@ -34,7 +34,7 @@ import { colorForClient, createAwarenessExtension } from "./awareness";
 import { createRolePermissions } from "./rolePermissions";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { createYjsBinding } from "./yjsBinding";
-import { type InvitationAccess, getCollabRole, sendCommentCommand } from "./yjsProvider";
+import { type InvitationAccess, getCollabRole, prepareCommentOperation } from "./yjsProvider";
 import {
     createYjsProvider,
     disconnectYjsProvider,
@@ -296,7 +296,7 @@ export async function enableCollab(
         annotations: ymap,
         ids: mainIdMap,
         scope: [],
-        send: sendCommentCommand,
+        prepareComment: prepareCommentOperation,
     });
     const collabExts = [
         binding,

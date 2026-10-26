@@ -93,6 +93,7 @@ function trackDiff(index: number) {
         thread={replyThread}
         updateThread={updateReplyThread}
         annotationId={suggestion.id}
+        {view}
     />
 {/snippet}
 

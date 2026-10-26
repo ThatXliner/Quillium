@@ -41,7 +41,14 @@ function fixture(role: LiveRole) {
                 versionGroupField,
                 createYjsBinding(text, true),
                 createAnnotationSyncPlugin(text, annotations, "guest", ids, true),
-                createRolePermissions({ role, text, annotations, ids, scope: [], send }),
+                createRolePermissions({
+                    role,
+                    text,
+                    annotations,
+                    ids,
+                    scope: [],
+                    prepareComment: (command) => () => send(command),
+                }),
             ],
         }),
     });

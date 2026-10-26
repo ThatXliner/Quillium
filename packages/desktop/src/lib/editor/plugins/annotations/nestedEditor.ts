@@ -1,3 +1,4 @@
+import { commentDraftScope, getNestedCommentDraftScope } from "./drafts.svelte";
 /**
  * nestedEditor.ts — Shared utilities for nested CodeMirror editors
  * inside revision cards (inline) and modals.
@@ -148,6 +149,7 @@ export function createNestedEditorState(
               ? createRolePermissions({ ...parentContext, role: "viewer" })
               : [];
     const extensions = [
+        commentDraftScope.of(getNestedCommentDraftScope(parentView, revisionId, version.id)),
         permissions,
         // Install nested command routing before the shared editor extensions.
         // Both layers watch the same physical comment chord at highest precedence;

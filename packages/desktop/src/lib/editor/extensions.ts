@@ -62,6 +62,7 @@ import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
 import { versionGroupField } from "./plugins/annotations";
 import { annotationHistoryScope } from "./plugins/annotations/annotationField";
+import { commentDraftScope, commentDraftScopeBridge } from "./plugins/annotations/drafts.svelte";
 import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
@@ -138,6 +139,8 @@ export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
     const persistHistory = options?.persistHistory ?? true;
     return [
+        commentDraftScope.of({}),
+        commentDraftScopeBridge,
         highlightSpecialChars(),
         // Read-only previews and nested editors omit history entirely. Mark
         // them non-persistent too so event replay never attempts an undo/redo
