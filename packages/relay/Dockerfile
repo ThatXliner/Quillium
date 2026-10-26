@@ -4,15 +4,15 @@ FROM python:3.13-slim@sha256:cf50a4f6ac4f026458b08d5222023d700ac806410dff5e9ca87
 ARG TARGETARCH
 ADD --checksum=sha256:f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9 https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-arm64.tar.gz /archives/node-arm64.tar.gz
 ADD --checksum=sha256:b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406 https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.gz /archives/node-amd64.tar.gz
-ADD --checksum=sha256:7341c3b1572c4c1c7f372360b5a17313180cac11dd670e0a2f6a3aec1ce40d05 https://github.com/oven-sh/bun/releases/download/canary/bun-linux-aarch64.zip /archives/bun-arm64.zip
-ADD --checksum=sha256:aacef5036f5551631006d20deb11338452064dc32ab25f8ceba8f378d7faf45b https://github.com/oven-sh/bun/releases/download/canary/bun-linux-x64.zip /archives/bun-amd64.zip
+ADD --checksum=sha256:baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-aarch64.zip /archives/bun-arm64.zip
+ADD --checksum=sha256:bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip /archives/bun-amd64.zip
 COPY scripts/unpack-relay-runtime.py /bootstrap/unpack.py
 RUN python3 /bootstrap/unpack.py "$TARGETARCH" /out
 
 FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS deps
 COPY --from=runtime-unpack /out/node /usr/local
 COPY --from=runtime-unpack /out/bun /usr/local/bin/bun
-RUN test "$(node --version)" = 'v22.23.4' && test "$(bun --revision)" = '1.4.4-canary.1+963452075'
+RUN test "$(node --version)" = 'v22.23.4' && test "$(bun --revision)" = '1.4.4+38afee6c8'
 
 WORKDIR /app
 COPY package.json bun.lock ./
