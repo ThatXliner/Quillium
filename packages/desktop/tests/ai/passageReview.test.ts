@@ -125,24 +125,19 @@ describe("review history", () => {
         expect(messages[0].parts[0].type).toBe("tool-reviewPassages");
     });
 
-    it.each(["input-streaming", "input-available", "output-error", "output-available"] as const)(
-        "never promotes incomplete or invalid %s input into a shown review",
-        (state) => {
-            const message: UIMessage = {
-                id: "assistant",
-                role: "assistant",
-                parts: [
-                    {
-                        type: "tool-reviewPassages",
-                        toolCallId: "review",
-                        state,
-                        input,
-                        output: { status: "invalid", reason: "source-mismatch" },
-                        errorText: "Failed",
-                    },
-                ],
-            };
-            expect(sanitizeOutboundMessages([message])).toEqual([]);
+    const common = { type: "tool-reviewPassages", toolCallId: "review", input } as const;
+    const unfinished: UIMessage["parts"] = [
+        { ...common, state: "input-streaming" },
+        { ...common, state: "input-available" },
+        { ...common, state: "output-error", errorText: "Failed" },
+        {
+            ...common,
+            state: "output-available",
+            output: { status: "invalid", reason: "source-mismatch" },
         },
-    );
+    ];
+    it.each(unfinished)("never promotes an incomplete or invalid $state review", (part) => {
+        const message: UIMessage = { id: "assistant", role: "assistant", parts: [part] };
+        expect(sanitizeOutboundMessages([message])).toEqual([]);
+    });
 });
