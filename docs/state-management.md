@@ -89,15 +89,24 @@ Live Room commenters keep pending composers outside the shared Yjs document.
 `commentSubmission.svelte.ts` shares pending and error state between inline and
 modal composers. Drafts belong to an editor scope and annotation ID: local root
 editors have distinct scopes, nested local editors include the revision version,
-and Live Room editors use their shared annotation map as the scope. The scope
+and joiners use their shared annotation map as the scope. Owners retain their
+local scope when starting or ending a room. The scope
 bridge updates mounted composers when a view joins or leaves a room. Inline and
 modal editors of the same passage share drafts. An acknowledgment clears a draft
 only when its scope and text still match the submitted draft.
 
+`pendingComments.ts` owns each commenter's unsent annotations and relative anchors
+by shared annotation scope and stable pending ID. CodeMirror views project that
+private state, including after a nested editor reopens or its parent synchronizes.
+Committed transactions update it; cancellation and acknowledgment remove it even
+when the originating view has closed. These records never enter the shared Yjs
+document or the writer's SQLite history.
+
 Retry state belongs to the shared annotation map and stable annotation ID, so
 closing a nested editor preserves an unconfirmed operation and cancelling a
 pending comment cannot reuse its anchors for a new comment. Retries reuse the
-prepared command, including its request ID, epoch, and encoded anchors. Accepted comments arrive through the normal CodeMirror projection.
+prepared command, including its request ID, epoch, and encoded anchors. Accepted
+comments arrive through the normal CodeMirror projection.
 Removing the pending composer also removes its modal by parent view and local
 annotation ID, preserving ancestor modal stores. Root comment dialogs read the
 root annotation mirror even when another root dialog precedes them in the stack.

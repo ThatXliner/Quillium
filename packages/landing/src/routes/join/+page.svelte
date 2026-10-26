@@ -29,13 +29,13 @@ onMount(() => {
         <div class="mb-5 grid size-11 place-items-center rounded-xl bg-blue-50 text-blue-700">
             <Radio size={22} />
         </div>
-        <p class="mb-2 text-xs font-semibold tracking-wide text-black/45">QUILLIUM LIVE ROOM</p>
+        <p class="mb-2 text-xs font-semibold tracking-wide text-black/65">QUILLIUM LIVE ROOM</p>
         <h1 class="mb-4 text-3xl font-semibold leading-tight">
             {ready && !token ? "This invitation link doesn't work" : "Write together in Quillium"}
         </h1>
-        {#if !ready}<p role="status" class="text-sm text-black/55">
+        {#if !ready}<p role="status" class="text-sm text-black/65">
                 Reading your invitation.
-            </p>{:else if token}<p class="mb-6 text-sm leading-relaxed text-black/55">
+            </p>{:else if token}<p class="mb-6 text-sm leading-relaxed text-black/65">
                 Open this invitation in the desktop app. The owner needs to keep the Live Room open
                 while you join.
             </p>
@@ -43,13 +43,13 @@ onMount(() => {
                 class="ph-no-capture flex min-h-11 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
                 href={`quillium://join/${token}`}>Open in Quillium</a
             >
-            <p class="mt-5 text-xs leading-relaxed text-black/45">
+            <p class="mt-5 text-xs leading-relaxed text-black/65">
                 Don't have Quillium yet? <a
                     href="https://github.com/ThatXliner/quillium-releases/releases/latest"
                     rel="noreferrer"
                     class="font-semibold text-blue-700 hover:underline">Download the desktop app</a
                 >, then return to this invitation.
-            </p>{:else}<p class="text-sm leading-relaxed text-black/55">
+            </p>{:else}<p class="text-sm leading-relaxed text-black/65">
                 Check that you copied the whole invitation link, or ask the owner for a new one.
             </p>{/if}
     </section>

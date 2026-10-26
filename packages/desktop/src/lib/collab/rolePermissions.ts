@@ -10,19 +10,29 @@ import { commentDraftScopeBridge } from "$lib/editor/plugins/annotations/drafts.
 import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
 import { modalStack } from "$lib/stores";
-import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView, ViewPlugin } from "@codemirror/view";
+import {
+    Annotation,
+    EditorState,
+    type Extension,
+    StateEffect,
+    Transaction,
+} from "@codemirror/state";
+import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import * as Y from "yjs";
 import { getCommentSubmission, registerCommentSubmissions } from "./commentSubmission.svelte";
+import { pendingCommentsFor } from "./pendingComments";
 import { type RoleContext, roleContext } from "./roleContext";
 import { yjsAnnotationSync } from "./yjsAnnotations";
 import { yjsAnnotation } from "./yjsBinding";
 import type { CommentOperation } from "./yjsProvider";
 import { yjsVersionGroupSync } from "./yjsVersionGroups";
 
+const pendingProjection = Annotation.define<boolean>();
+const sendComment = StateEffect.define<{ annotationId: number; message: string }>();
+
 export function createRolePermissions(context: RoleContext): Extension {
     let view: EditorView | undefined;
-    const pending = new Set<number>();
+    const pending = pendingCommentsFor(context);
     const prepare = (annotationId: number, message: string): CommentOperation => {
         if (!view) throw new Error("The comment editor has closed");
         const annotation = view.state.field(annotationField)[annotationId];
@@ -56,16 +66,7 @@ export function createRolePermissions(context: RoleContext): Extension {
         });
     };
     const accepted = (annotationId: number, target: string): void => {
-        if (!view || context.ids.getYjsId(annotationId) !== target) return;
-        const current = view.state.field(annotationField)[annotationId];
-        if (!current || !pending.has(annotationId)) return;
-        pending.delete(annotationId);
-        context.ids.remove(target);
-        modalStack.removeComment(view, annotationId);
-        view.dispatch({
-            effects: removeAnnotation.of(current),
-            annotations: yjsAnnotationSync.of(true),
-        });
+        if (context.ids.getYjsId(annotationId) === target) pending.remove(target);
     };
     return [
         roleContext.of(context),
@@ -81,7 +82,8 @@ export function createRolePermissions(context: RoleContext): Extension {
                           transaction.annotation(yjsAnnotation) ||
                           transaction.annotation(yjsAnnotationSync) ||
                           transaction.annotation(yjsVersionGroupSync) ||
-                          transaction.annotation(parentSyncEdit)
+                          transaction.annotation(parentSyncEdit) ||
+                          transaction.annotation(pendingProjection)
                       )
                           return transaction;
                       if (
@@ -95,13 +97,14 @@ export function createRolePermissions(context: RoleContext): Extension {
                       )
                           return transaction;
                       if (transaction.docChanged || context.role === "viewer") return [];
-                      const pendingBefore = new Set(pending);
-                      let allowLocal = true;
+                      const pendingBefore = pending.ids();
+                      const allowedPending = new Set(pendingBefore);
+                      const requests: ReturnType<typeof sendComment.of>[] = [];
                       for (const effect of transaction.effects) {
                           if (effect.is(addAnnotation)) {
                               if (
                                   transaction.startState.field(annotationField)[effect.value.id] &&
-                                  !pending.has(effect.value.id)
+                                  !allowedPending.has(effect.value.id)
                               )
                                   return [];
                               if (
@@ -110,13 +113,10 @@ export function createRolePermissions(context: RoleContext): Extension {
                                   effect.value.thread.length !== 0
                               )
                                   return [];
-                              pending.add(effect.value.id);
-                              context.ids.getOrCreateYjsId(effect.value.id, "pending-comment");
+                              allowedPending.add(effect.value.id);
                           } else if (effect.is(removeAnnotation)) {
-                              if (!pending.has(effect.value.id)) return [];
-                              pending.delete(effect.value.id);
-                              const pendingKey = context.ids.getYjsId(effect.value.id);
-                              if (pendingKey) context.ids.remove(pendingKey);
+                              if (!allowedPending.has(effect.value.id)) return [];
+                              allowedPending.delete(effect.value.id);
                           } else if (effect.is(updateThread)) {
                               const annotation =
                                   transaction.startState.field(annotationField)[
@@ -133,51 +133,166 @@ export function createRolePermissions(context: RoleContext): Extension {
                                   return [];
                               const message = thread.at(-1)?.message;
                               if (!message?.trim()) return [];
-                              const id = annotation.id;
-                              queueMicrotask(() => {
-                                  if (view) void getCommentSubmission(view, id)?.send(message);
-                              });
-                              allowLocal = false;
+                              requests.push(
+                                  sendComment.of({ annotationId: annotation.id, message }),
+                              );
                           }
                       }
-                      if (!allowLocal) return [];
+                      const effects = transaction.effects.filter(
+                          (effect) => !effect.is(updateThread),
+                      );
+                      const projected = requests.length
+                          ? transaction.startState.update({ effects, filter: false }).state
+                          : transaction.state;
                       const before = transaction.startState.field(annotationField);
-                      const after = transaction.state.field(annotationField);
+                      const after = projected.field(annotationField);
                       for (const [id, annotation] of Object.entries(before)) {
                           if (
                               !pendingBefore.has(Number(id)) &&
-                              !pending.has(Number(id)) &&
+                              !allowedPending.has(Number(id)) &&
                               JSON.stringify(annotation) !== JSON.stringify(after[Number(id)])
                           )
                               return [];
                       }
                       for (const [id, annotation] of Object.entries(after)) {
-                          if (!before[Number(id)] && !pending.has(Number(id))) return [];
+                          if (!before[Number(id)] && !allowedPending.has(Number(id))) return [];
                           if (
-                              pending.has(Number(id)) &&
+                              allowedPending.has(Number(id)) &&
                               (!isAnnotationOfType(annotation, "comment") ||
                                   annotation.status !== "pending" ||
                                   annotation.thread.length !== 0)
                           )
                               return [];
                       }
-                      return transaction;
+                      return requests.length
+                          ? {
+                                effects: [...effects, ...requests],
+                                selection: transaction.selection,
+                                annotations: Transaction.addToHistory.of(false),
+                            }
+                          : transaction;
                   }),
               ]),
+        ...(context.role === "commenter"
+            ? [
+                  EditorState.transactionExtender.of((transaction) => {
+                      if (
+                          transaction.annotation(pendingProjection) ||
+                          !(
+                              transaction.annotation(parentSyncEdit) ||
+                              transaction.annotation(yjsAnnotation) ||
+                              transaction.annotation(yjsAnnotationSync)
+                          )
+                      )
+                          return null;
+                      return {
+                          effects: pending
+                              .project()
+                              .map((annotation) => addAnnotation.of(annotation)),
+                      };
+                  }),
+              ]
+            : []),
         ViewPlugin.fromClass(
             class {
                 private unregister: (() => void) | undefined;
-                constructor(editor: EditorView) {
+                private unsubscribe: (() => void) | undefined;
+                private destroyed = false;
+                private scheduled = false;
+                private visible = new Set<number>();
+                constructor(private readonly editor: EditorView) {
                     view = editor;
-                    if (context.role === "commenter")
+                    if (context.role === "commenter") {
                         this.unregister = registerCommentSubmissions(editor, prepare, {
                             scope: context.annotations,
                             keyForAnnotationId: (id) => context.ids.getYjsId(id),
                             onAccepted: accepted,
                         });
+                        this.unsubscribe = pending.subscribe(() => this.scheduleProjection());
+                        this.scheduleProjection();
+                    }
+                }
+                update(update: ViewUpdate): void {
+                    if (context.role !== "commenter") return;
+                    for (const transaction of update.transactions) {
+                        if (
+                            transaction.annotation(parentSyncEdit) ||
+                            transaction.annotation(yjsAnnotation) ||
+                            transaction.annotation(yjsAnnotationSync) ||
+                            transaction.annotation(pendingProjection)
+                        )
+                            continue;
+                        for (const effect of transaction.effects) {
+                            if (
+                                effect.is(addAnnotation) &&
+                                isAnnotationOfType(effect.value, "comment") &&
+                                effect.value.status === "pending" &&
+                                effect.value.thread.length === 0
+                            ) {
+                                const committed =
+                                    update.state.field(annotationField)[effect.value.id];
+                                if (committed && isAnnotationOfType(committed, "comment"))
+                                    pending.add(committed);
+                            } else if (effect.is(removeAnnotation)) {
+                                const key = context.ids.getYjsId(effect.value.id);
+                                if (key && pending.has(effect.value.id)) pending.remove(key);
+                            } else if (effect.is(sendComment)) {
+                                const { annotationId, message } = effect.value;
+                                const key = context.ids.getYjsId(annotationId);
+                                queueMicrotask(() => {
+                                    if (
+                                        !this.destroyed &&
+                                        key &&
+                                        context.ids.getYjsId(annotationId) === key
+                                    )
+                                        void getCommentSubmission(this.editor, annotationId)?.send(
+                                            message,
+                                        );
+                                });
+                            }
+                        }
+                    }
+                    this.visible = new Set([...this.visible, ...pending.ids()]);
+                }
+                private scheduleProjection(): void {
+                    if (this.scheduled || this.destroyed) return;
+                    this.scheduled = true;
+                    queueMicrotask(() => {
+                        this.scheduled = false;
+                        if (this.destroyed) return;
+                        const current = this.editor.state.field(annotationField);
+                        const annotations = pending.project();
+                        const next = new Set(annotations.map((annotation) => annotation.id));
+                        const effects: StateEffect<unknown>[] = [];
+                        for (const id of this.visible) {
+                            if (!next.has(id) && current[id]) {
+                                effects.push(removeAnnotation.of(current[id]));
+                                modalStack.removeComment(this.editor, id);
+                            }
+                        }
+                        for (const annotation of annotations) {
+                            const previous = current[annotation.id];
+                            if (
+                                !previous ||
+                                JSON.stringify(previous) !== JSON.stringify(annotation)
+                            )
+                                effects.push(addAnnotation.of(annotation));
+                        }
+                        this.visible = next;
+                        if (effects.length)
+                            this.editor.dispatch({
+                                effects,
+                                annotations: [
+                                    pendingProjection.of(true),
+                                    Transaction.addToHistory.of(false),
+                                ],
+                            });
+                    });
                 }
                 destroy(): void {
+                    this.destroyed = true;
                     this.unregister?.();
+                    this.unsubscribe?.();
                     view = undefined;
                 }
             },
