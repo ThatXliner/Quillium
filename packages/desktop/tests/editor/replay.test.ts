@@ -1,4 +1,5 @@
 import type { EventRecord } from "$lib/db/types";
+import { getExtensions } from "$lib/editor/extensions";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -6,7 +7,8 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
 } from "$lib/editor/plugins/annotations/models";
-import { replayEvents } from "$lib/editor/replay";
+import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
+import { reconstructStateWithStatus, replayEvents } from "$lib/editor/replay";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
@@ -251,5 +253,100 @@ describe("replayEvents", () => {
             makeRecord(0, { type: "annotation_remove", annotationId: 999 }),
         ]);
         expect(result.doc.toString()).toBe("Hello");
+    });
+});
+
+describe("reconstruction completeness", () => {
+    it.each(["annotation_add", "annotation_update"])(
+        "marks a skipped malformed %s as incomplete",
+        (type) => {
+            const result = reconstructStateWithStatus(
+                JSON.stringify(createBaseState("hello").toJSON()),
+                [makeRecord(1, { type, annotation: { id: 7 } })],
+                annotationExtensions(),
+            );
+            expect(result.state.doc.toString()).toBe("hello");
+            expect(result.complete).toBe(false);
+        },
+    );
+
+    it("preserves compound prose while marking skipped annotations incomplete", () => {
+        const result = reconstructStateWithStatus(
+            JSON.stringify(createBaseState("hello").toJSON()),
+            [
+                makeRecord(1, {
+                    type: "compound",
+                    docChanges: [{ from: 5, insert: " world" }],
+                    annotationEvents: [{ type: "annotation_add", annotation: { id: 7 } }],
+                    selection: EditorSelection.single(11).toJSON(),
+                }),
+            ],
+            annotationExtensions(),
+        );
+        expect(result.state.doc.toString()).toBe("hello world");
+        expect(result.complete).toBe(false);
+    });
+
+    it.each(["annotationField", "versionGroupField"])(
+        "marks a silently reset snapshot %s incomplete",
+        (fieldName) => {
+            const result = reconstructStateWithStatus(
+                JSON.stringify({
+                    doc: "saved prose",
+                    selection: EditorSelection.single(0).toJSON(),
+                    [fieldName]: { broken: { id: "bad" } },
+                }),
+                [],
+                annotationExtensions(),
+            );
+            expect(result.state.doc.toString()).toBe("saved prose");
+            expect(result.complete).toBe(false);
+        },
+    );
+
+    it.each([
+        ["annotations", annotationField],
+        ["groups", versionGroupField],
+    ])("validates semantic fields under the %s snapshot alias", (name, field) => {
+        const result = reconstructStateWithStatus(
+            JSON.stringify({ doc: "saved prose", [name]: { broken: {} } }),
+            [],
+            annotationExtensions(),
+            { [name]: field },
+        );
+        expect(result.state.doc.toString()).toBe("saved prose");
+        expect(result.complete).toBe(false);
+    });
+
+    it("accepts normalized legacy revisions as complete", () => {
+        const result = reconstructStateWithStatus(
+            JSON.stringify(createBaseState("hello").toJSON()),
+            [
+                makeRecord(1, {
+                    type: "annotation_add",
+                    annotation: {
+                        id: 0,
+                        _type: "revision",
+                        thread: [],
+                        selection: EditorSelection.single(0, 5).toJSON(),
+                        activeVersionIndex: 0,
+                        versions: [{ doc: "hello" }],
+                    },
+                }),
+            ],
+            annotationExtensions(),
+        );
+        expect(result.complete).toBe(true);
+        expect(Object.values(result.state.field(annotationField))).toHaveLength(1);
+    });
+
+    it("allows an intentional undo-history reset without marking prose recovery incomplete", () => {
+        const result = reconstructStateWithStatus(
+            JSON.stringify({ doc: "saved prose", historyField: { unsupported: true } }),
+            [],
+            getExtensions({ persist: false }),
+        );
+        expect(result.state.doc.toString()).toBe("saved prose");
+        expect(result.complete).toBe(true);
     });
 });

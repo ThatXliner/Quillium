@@ -150,6 +150,23 @@ describe("DocumentLoader", () => {
         expect(persistence.flushPersistence).toHaveBeenCalledTimes(1);
     });
 
+    it("does not checkpoint a tail with a silently skipped legacy annotation", async () => {
+        const loaded = saved("hello", 7);
+        loaded.eventsSince = [
+            {
+                id: 8,
+                eventType: "annotation_add",
+                payload: JSON.stringify({ type: "annotation_add", annotation: { id: 7 } }),
+                createdAt: 1,
+            },
+        ];
+        db.loadDocumentState.mockResolvedValue(loaded);
+        const result = await loader.load({ documentId: "doc-1" });
+        expect(result?.state.doc.toString()).toBe("hello");
+        expect(result?.recoveredChanges).toBe(false);
+        expect(persistence.flushPersistence).toHaveBeenCalledTimes(1);
+    });
+
     it("does not checkpoint an event tail over a corrupt snapshot", async () => {
         db.loadDocumentState.mockResolvedValue({
             snapshotStateJson: "broken",
