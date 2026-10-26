@@ -176,21 +176,12 @@ export async function enableCollab(
     let authoritativeContent: string;
 
     if (asOwner) {
-        // Owner ALWAYS seeds with local content (D-55: owner's local is source of truth)
-        // Clear any stale relay content first, then insert local
-        if (remoteContent.length > 0 || localDoc.length > 0) {
-            console.log(
-                `[collab] Owner replacing relay content (remote=${remoteContent.length}, local=${localDoc.length})`,
-            );
-            ydoc.transact(() => {
-                if (ytext.length > 0) {
-                    ytext.delete(0, ytext.length);
-                }
-                if (localDoc.length > 0) {
-                    ytext.insert(0, localDoc);
-                }
-            }, "init");
-        }
+        ydoc.transact(() => {
+            ymap.clear();
+            yVersionGroups.clear();
+            if (ytext.length > 0) ytext.delete(0, ytext.length);
+            if (localDoc.length > 0) ytext.insert(0, localDoc);
+        }, "init");
         authoritativeContent = localDoc;
     } else if (remoteContent.length > 0) {
         // Joiner: relay content is authoritative (owner already seeded it)
