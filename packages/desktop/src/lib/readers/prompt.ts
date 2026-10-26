@@ -3,12 +3,13 @@ import type { Chattiness, ReaderPersona } from "./presets";
 const CHATTINESS_DIRECTIVES: Record<Chattiness, string> = {
     quiet: "IMPORTANT: Only comment if you genuinely have something worth saying. Flag only issues that significantly harm the writing. If the passage is solid, say nothing.",
     normal: "Comment on issues worth the writer's attention. Be selective but don't hold back on meaningful observations.",
-    verbose: "Be thorough. Flag everything you notice from your perspective, even minor issues.",
+    verbose:
+        "Be thorough about meaningful patterns and tradeoffs, but skip minor preferences that would distract the writer.",
 };
 
 /**
- * Build the persona prefix to prepend to a mode's system prompt.
- * Returns the identity block + chattiness directive as a single string.
+ * Build the writer-selected reader lens sent ahead of the context packet.
+ * The lens cannot change the system policy or the task's action permissions.
  */
 export function buildPersonaPrompt(persona: ReaderPersona): string {
     const instruction = persona.instruction.trim();

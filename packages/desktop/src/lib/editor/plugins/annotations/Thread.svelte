@@ -4,6 +4,7 @@ import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { editorView } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
+import { ThreadList, type ThreadMessageView } from "@quillium/share";
 /**
  * Thread.svelte — Renders a message list, reply textarea, and optional
  * AI suggest button for a comment/revision/suggestion thread.
@@ -29,6 +30,11 @@ import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
 import ThreadMessage from "./ThreadMessage.svelte";
+import {
+    type CommentEditorPosition,
+    captureCommentEditorPosition,
+    restoreCommentEditorPosition,
+} from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 
 let {
@@ -40,6 +46,8 @@ let {
     previewOnly = false,
     // When provided, renders the AI suggest button in the reply footer
     onAiSuggest = undefined,
+    aiSuggestDisabled = false,
+    onDisabledAiSuggest = undefined,
     // Accent colour class for the Send button; defaults to blue
     accentClass = "text-blue-600/80 hover:text-blue-700",
     // Pill bg/text classes for the send pill (active state)
@@ -49,6 +57,8 @@ let {
     // When true, hides the reply input so the caller can render it
     // separately (e.g. anchored to the bottom of a modal column)
     hideReply = false,
+    originPosition = undefined,
+    onRestoreOrigin = undefined,
 }: {
     thread: ThreadType;
     updateThread: (thread: ThreadType) => void;
@@ -56,10 +66,14 @@ let {
     view?: EditorView | undefined;
     previewOnly?: boolean;
     onAiSuggest?: (() => void) | undefined;
+    aiSuggestDisabled?: boolean;
+    onDisabledAiSuggest?: (() => void) | undefined;
     accentClass?: string;
     sendPillClass?: string;
     focusRingClass?: string;
     hideReply?: boolean;
+    originPosition?: CommentEditorPosition;
+    onRestoreOrigin?: () => void;
 } = $props();
 
 // Reply draft lives in the shared drafts store (keyed by annotation id) so
@@ -68,17 +82,29 @@ let {
 const newMessage = $derived(getDraft(annotationId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
+let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 const hasText = $derived(!!newMessage.trim());
 const sendActive = $derived(hasText);
 function blurToEditor() {
     textareaEl?.blur();
-    (view ?? $editorView)?.focus();
+    const owningView = view ?? $editorView;
+    const position = originPosition ?? originSelection;
+    if (!owningView || !position) return;
+    restoreCommentEditorPosition(owningView, position);
+    onRestoreOrigin?.();
+}
+
+function captureOrigin() {
+    const owningView = view ?? $editorView;
+    if (!owningView) return;
+    originSelection = originPosition ?? captureCommentEditorPosition(owningView);
 }
 
 $effect(() => {
     return annotationEventBus.on("annotation-focus-reply", (event) => {
         if (event.annotationId !== annotationId) return;
+        captureOrigin();
         textareaEl?.focus();
     });
 });
@@ -93,38 +119,16 @@ function send() {
 }
 </script>
 
-<!-- Messages -->
-{#if thread.length > 0}
-    <div class="space-y-3 {previewOnly ? '' : 'mb-0'}">
-        {#each thread as message, i}
-            {#if i === 0}
-                <ThreadMessage
-                    {message}
-                    index={i}
-                    {updateThread}
-                    {thread}
-                    truncate={previewOnly && i === 0}
-                />
-            {:else if !previewOnly}
-                <div transition:slide={{ duration: 180, easing: cubicOut }}>
-                    <ThreadMessage
-                        {message}
-                        index={i}
-                        {updateThread}
-                        {thread}
-                        truncate={false}
-                    />
-                </div>
-            {/if}
-        {/each}
+{#snippet threadMessage(message: ThreadMessageView, index: number, truncate: boolean)}
+    <ThreadMessage {message} {index} {thread} {updateThread} {truncate} />
+{/snippet}
 
-        {#if previewOnly && thread.length > 1}
-            <p transition:slide={{ duration: 180, easing: cubicOut }} class="text-[10px] text-black/40 pl-9">
-                {thread.length - 1} more repl{thread.length === 2 ? "y" : "ies"}
-            </p>
-        {/if}
-    </div>
-{/if}
+<!-- Messages -->
+<ThreadList
+    {thread}
+    {previewOnly}
+    messageRenderer={threadMessage}
+/>
 
 <!-- Reply input — hidden in previewOnly or hideReply mode -->
 {#if !previewOnly && !hideReply}
@@ -138,7 +142,10 @@ function send() {
             rows="2"
             class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
                 text-black/70 placeholder:text-black/30"
-            onfocus={() => (isFocused = true)}
+            onfocus={() => {
+                captureOrigin();
+                isFocused = true;
+            }}
             onblur={() => (isFocused = false)}
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -146,6 +153,7 @@ function send() {
                     send();
                 } else if (e.key === "Escape") {
                     e.preventDefault();
+                    e.stopPropagation();
                     blurToEditor();
                 }
             }}
@@ -154,11 +162,18 @@ function send() {
             <div class="flex items-center gap-1">
                 {#if onAiSuggest}
                     <button
-                        aria-label="Get AI suggestion"
-                        title="Get AI suggestion"
+                        aria-label={aiSuggestDisabled
+                            ? "Get AI suggestion — add an API key in AI settings"
+                            : "Get AI suggestion"}
+                        aria-disabled={aiSuggestDisabled}
+                        title={aiSuggestDisabled
+                            ? "Add an API key in AI settings to get a suggestion"
+                            : "Get AI suggestion"}
                         class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium
-                            text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
-                        onclick={onAiSuggest}
+                            transition-colors {aiSuggestDisabled
+                                ? 'text-black/20 cursor-pointer'
+                                : 'text-black/35 hover:text-black/60 hover:bg-white/50'}"
+                        onclick={aiSuggestDisabled ? onDisabledAiSuggest : onAiSuggest}
                     >
                         <SparklesIcon size={11} />
                         <span>Suggest</span>

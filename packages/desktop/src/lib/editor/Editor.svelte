@@ -1,48 +1,21 @@
 <script lang="ts">
-import {
-    branchDraft,
-    cascadeDeleteDraft,
-    createDocument,
-    createDraft,
-    createSnapshot,
-    createTab,
-    deleteDraft,
-    deleteTab,
-    deregisterOpenDoc,
-    getActiveDraft,
-    getActiveTab,
-    getDocumentMeta,
-    iterateDraft,
-    listDocuments,
-    listTabDrafts,
-    listTabs,
-    loadDocumentState,
-    orphanAndDeleteDraft,
-    registerOpenDoc,
-    renameDraft,
-    renameTab,
-    reorderTabs,
-    reparentDraft,
-    restoreDraft,
-    restoreTab,
-    setActiveDraft,
-    setActiveTab,
-    setDraftLocked,
-    updateDocumentMeta,
-} from "$lib/db";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { logAppEvent } from "$lib/appLog";
+import { connectMcpEditor } from "$lib/ai/mcpConnection";
+import { researchFingerprint } from "$lib/college/researchModel";
+import type { PassageLink } from "@quillium/share";
+import { deregisterOpenDoc, registerOpenDoc } from "$lib/db";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
     currentDocumentId,
-    currentDocumentTitle,
     currentDraftId,
     currentTabId,
+    modalStack,
     documentContent,
     editorView,
-    lastPersistedEventId,
-    lastSavedAt,
     selectedText,
     selectedTextRange,
     versionGroups,
@@ -53,11 +26,11 @@ import {
  * for the writing surface.
  *
  * Role: Bootstraps a CodeMirror 6 EditorView, wires it into
- * Svelte stores, and orchestrates persistence (load/save via Tauri).
+ * Svelte stores, and renders the writing surface. DocumentLoader owns loading.
  *
  * Key dependencies:
  *   - CodeMirror 6 (EditorState, EditorView) — core editing engine
- *   - $lib/db — Tauri invoke wrappers for event-log persistence
+ *   - documentLoader.ts — bootstrap, load cancellation, and draft commits
  *   - extensions.ts — assembles the full CodeMirror extension stack
  *   - listeners.ts — persistence & change-reaction listeners
  *   - $lib/stores — Svelte stores that expose editor state to the
@@ -70,131 +43,325 @@ import {
  *   - The Annotations panel and AI sidebar read from those stores;
  *     they never touch the EditorView directly.
  */
-import { EditorState } from "@codemirror/state";
+import { currentTabLabel, currentDraftLabel } from "$lib/stores";
+import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { isTauri } from "@tauri-apps/api/core";
+import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
-import { getExtensions, savedFields } from "./extensions";
+import NameVersionPrompt from "./NameVersionPrompt.svelte";
 import { loadUserDictionary } from "./harper/harperLinter";
 import "./plugins/annotations/default.css";
 import "./harper/harper.css";
-import { createModel } from "$lib/ai/provider";
-import {
-    aiSettings,
-    beginAiTask,
-    endAiTask,
-    ensureApiKeyLoaded,
-    getAiAbortSignal,
-    hasApiKey,
-} from "$lib/ai/settings.svelte";
-import type { DraftMeta, EventRecord, TabMeta } from "$lib/db/types";
-import { goToHistory } from "$lib/navigation";
-import { appSettings } from "$lib/settings.svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
+import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 import type { ViewUpdate } from "@codemirror/view";
-import { generateText } from "ai";
-import { GitBranchIcon, LockIcon, Pencil, SparklesIcon } from "lucide-svelte";
-import { toast } from "svelte-sonner";
+import {
+    ClipboardPasteIcon,
+    CopyIcon,
+    GitBranchIcon,
+    LockIcon,
+    Maximize2Icon,
+    MessageSquareIcon,
+    Minimize2Icon,
+    ScanTextIcon,
+    ScissorsIcon,
+} from "lucide-svelte";
+import { DocumentLoader } from "./documentLoader";
+import DocumentOutline from "./DocumentOutline.svelte";
+import { getDocumentOutline } from "./documentOutline";
 import DocumentTabs from "./DocumentTabs.svelte";
+import DocumentTitleBar from "./DocumentTitleBar.svelte";
 import DraftDeleteModal from "./DraftDeleteModal.svelte";
 import DraftTreePanel from "./DraftTreePanel.svelte";
-import StatusBar from "./StatusBar.svelte";
-import { collectSubtree, hasLiveChildren } from "./draftTree";
+import {
+    DRAFT_PANEL_DEFAULT_WIDTH,
+    DRAFT_PANEL_MIN_WIDTH,
+    clampDraftPanelWidth,
+    getDraftPanelMaxWidth,
+    getDraftPanelWidthFromKey,
+} from "./draftPanelResize";
 import type { ListenerOptions } from "./listeners";
-import { flushMetaDebounces, flushPersistQueue } from "./listeners";
-import { annotationField, versionGroupField } from "./plugins/annotations";
+import {
+    annotationField,
+    createCommentFromSelection,
+    createRevisionFromSelection,
+    versionGroupField,
+} from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
-import { replayEvents } from "./replay";
-import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
+
+let {
+    showSample = false,
+    focusMode = false,
+    focusControlsVisible = false,
+}: {
+    showSample?: boolean;
+    focusMode?: boolean;
+    focusControlsVisible?: boolean;
+} = $props();
 
 // ── Multi-window ────────────────────────────────────────────────
 const windowLabel = getCurrentWebviewWindow().label;
 
 // ── Local UI state ──────────────────────────────────────────────
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const modKey = isMac ? "⌘" : "Ctrl";
-
 let element = $state<HTMLDivElement>();
-let titleEditing = $state(false);
-let titleInputEl = $state<HTMLInputElement | undefined>();
-let titleDraft = $state("");
-let titleSuggesting = $state(false);
+let showOutline = $derived(appSettings.showDocumentOutline);
+let outlineHeadings = $derived(showOutline ? getDocumentOutline($documentContent) : []);
+let outlineCursor = $state(0);
 
-export function startEditingTitle() {
-    titleDraft = $currentDocumentTitle;
-    titleEditing = true;
-    // Focus input on next tick after it mounts
-    setTimeout(() => titleInputEl?.select(), 0);
+function jumpToHeading(from: number): void {
+    const view = $editorView;
+    if (!view) return;
+    view.dispatch({
+        selection: { anchor: from },
+        effects: EditorView.scrollIntoView(from, { y: "start", yMargin: 100 }),
+    });
+    view.focus();
+}
+let viewportWidth = $state(typeof window === "undefined" ? 1280 : window.innerWidth);
+let resizingDraftPanel = $state(false);
+let draftPanelDragStartWidth = 0;
+let contextMenu = $state<{ x: number; y: number } | null>(null);
+let contextMenuItem = $state<HTMLButtonElement>();
+let nativeContextMenu: Menu | undefined;
+
+const CONTEXT_MENU_WIDTH = 208;
+const CONTEXT_MENU_HEIGHT = 286;
+const CONTEXT_MENU_MARGIN = 8;
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const commentShortcutLabel = isMac ? "⌘⇧C" : "Ctrl+Shift+C";
+const revisionShortcutLabel = isMac ? "⌘⌥K" : "Ctrl+Alt+K";
+
+function closeContextMenu(): void {
+    contextMenu = null;
 }
 
-async function suggestTitle() {
-    const text = $editorView?.state.doc.toString() ?? "";
-    if (!text.trim() || titleSuggesting) return;
-    titleSuggesting = true;
-    const task = beginAiTask("title-suggestion");
-    const abortSignal = getAiAbortSignal();
+function openFallbackContextMenu(x: number, y: number): void {
+    const maxX = Math.max(
+        CONTEXT_MENU_MARGIN,
+        window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN,
+    );
+    const maxY = Math.max(
+        CONTEXT_MENU_MARGIN,
+        window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN,
+    );
+    contextMenu = {
+        x: Math.min(Math.max(x, CONTEXT_MENU_MARGIN), maxX),
+        y: Math.min(Math.max(y, CONTEXT_MENU_MARGIN), maxY),
+    };
+    tick().then(() => contextMenuItem?.focus());
+}
+
+async function showNativeContextMenu(): Promise<boolean> {
+    if (!isTauri()) return false;
     try {
-        await ensureApiKeyLoaded();
-        const model = createModel(
-            aiSettings.provider,
-            aiSettings.apiKey,
-            aiSettings.model,
-            aiSettings.baseURL,
-        );
-        const { text: suggested } = await generateText({
-            model,
-            abortSignal,
-            prompt: `Suggest a single short, evocative title for this piece of writing. Reply with only the title — no quotes, no explanation, no punctuation at the end.\n\n${text.slice(0, 1000)}`,
+        nativeContextMenu ??= await Menu.new({
+            items: [
+                { item: "Cut", text: "Cut" },
+                { item: "Copy", text: "Copy" },
+                { item: "Paste", text: "Paste" },
+                { item: "Separator" },
+                { item: "SelectAll", text: "Select All" },
+                { item: "Separator" },
+                {
+                    id: "editor-context-add-comment",
+                    text: "Add Comment",
+                    action: () => addCommentFromContextMenu(),
+                },
+                {
+                    id: "editor-context-add-revision",
+                    text: "Add Revision",
+                    action: () => addRevisionFromContextMenu(),
+                },
+            ],
         });
-        const newTitle = suggested.trim().slice(0, 40);
-        if (newTitle) {
-            currentDocumentTitle.set(newTitle);
-            const docId = get(currentDocumentId);
-            if (docId) {
-                const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-                updateDocumentMeta(
-                    docId,
-                    newTitle,
-                    wordCount,
-                    text.slice(0, 200),
-                    "[]",
-                    text,
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        void logAppEvent("info", "editor-context-menu", "native context menu opened", {
+            selectionLength:
+                ($editorView?.state.selection.main.to ?? 0) -
+                ($editorView?.state.selection.main.from ?? 0),
+        });
+        await nativeContextMenu.popup();
+        return true;
+    } catch (error) {
+        void logAppEvent("warn", "editor-context-menu", "native context menu failed", {
+            error,
+        });
+        return false;
+    }
+}
+
+async function handleEditorContextMenu(event: MouseEvent): Promise<void> {
+    const view = $editorView;
+    if (!view || view.state.readOnly) return;
+
+    const selection = view.state.selection.main;
+    if (selection.empty) return;
+
+    const clickedPosition = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (
+        clickedPosition === null ||
+        clickedPosition < selection.from ||
+        clickedPosition > selection.to
+    ) {
+        return;
+    }
+
+    event.preventDefault();
+    if (await showNativeContextMenu()) return;
+    openFallbackContextMenu(event.clientX, event.clientY);
+}
+
+function editorContextMenu(node: HTMLElement): { destroy: () => void } {
+    node.addEventListener("contextmenu", handleEditorContextMenu);
+    return {
+        destroy: () => node.removeEventListener("contextmenu", handleEditorContextMenu),
+    };
+}
+
+function handleContextMenuKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && contextMenu) {
+        event.preventDefault();
+        closeContextMenu();
+        $editorView?.focus();
+    }
+}
+
+function addCommentFromContextMenu(): void {
+    const view = $editorView;
+    closeContextMenu();
+    if (view) createCommentFromSelection(view, "context-menu");
+}
+
+function addRevisionFromContextMenu(): void {
+    const view = $editorView;
+    closeContextMenu();
+    if (view) createRevisionFromSelection(view);
+}
+
+type EditorEditCommand = "copy" | "cut" | "paste" | "selectAll";
+
+async function runContextMenuEditCommand(command: EditorEditCommand): Promise<void> {
+    const view = $editorView;
+    closeContextMenu();
+    if (!view) return;
+
+    view.focus();
+    const browserCommand = command === "selectAll" ? "selectAll" : command;
+    if (document.execCommand(browserCommand)) {
+        void logAppEvent("info", "editor-context-menu", "browser edit command handled", {
+            command,
+            path: "exec-command",
+        });
+        return;
+    }
+
+    // This path is only used in browser preview or if a native menu cannot be
+    // created. The packaged app normally uses native Cut/Copy/Paste roles, which
+    // preserve Quillium's annotation-aware clipboard events.
+    try {
+        const selection = view.state.selection.main;
+        if (command === "selectAll") {
+            view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+        } else if (command === "paste") {
+            const text = await navigator.clipboard.readText();
+            view.dispatch({
+                changes: { from: selection.from, to: selection.to, insert: text },
+                selection: { anchor: selection.from + text.length },
+                userEvent: "input.paste",
+            });
+        } else {
+            const text = view.state.sliceDoc(selection.from, selection.to);
+            await navigator.clipboard.writeText(text);
+            if (command === "cut") {
+                view.dispatch({
+                    changes: { from: selection.from, to: selection.to, insert: "" },
+                    selection: { anchor: selection.from },
+                    userEvent: "delete.cut",
                 });
             }
         }
-    } catch (e) {
-        if (!abortSignal.aborted) {
-            console.error("[suggestTitle]", e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-        }
-    } finally {
-        titleSuggesting = false;
-        endAiTask(task);
+        void logAppEvent("warn", "editor-context-menu", "edit command used plain-text fallback", {
+            command,
+        });
+    } catch (error) {
+        void logAppEvent("error", "editor-context-menu", "edit command failed", {
+            command,
+            error,
+        });
+        toast.error(`${command === "selectAll" ? "Select all" : command} failed`);
     }
 }
 
-async function commitTitle() {
-    if (!titleEditing) return;
-    titleEditing = false;
-    const newTitle = titleDraft.trim() || "Untitled";
-    if (newTitle === $currentDocumentTitle) return;
-    currentDocumentTitle.set(newTitle);
-    const docId = get(currentDocumentId);
-    if (docId) {
-        const text = $editorView?.state.doc.toString() ?? "";
-        const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]", text).catch(
-            (e) => {
-                console.error(e);
-                posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-            },
+let draggedDraftPanelWidth = $state<number | null>(null);
+const effectiveDraftPanelWidth = $derived(
+    clampDraftPanelWidth(draggedDraftPanelWidth ?? appSettings.draftPanelWidth, viewportWidth),
+);
+const draftPanelMaxWidth = $derived(getDraftPanelMaxWidth(viewportWidth));
+const draftPanelIsFullWidth = $derived(effectiveDraftPanelWidth === draftPanelMaxWidth);
+
+const draftPanelDragOptions: PointerDragOptions = {
+    cursor: "ew-resize",
+    onStart: () => {
+        resizingDraftPanel = true;
+        draftPanelDragStartWidth = effectiveDraftPanelWidth;
+    },
+    onMove: (dx) => {
+        draggedDraftPanelWidth = clampDraftPanelWidth(
+            draftPanelDragStartWidth - dx,
+            viewportWidth,
         );
-    }
+    },
+    onEnd: () => {
+        resizingDraftPanel = false;
+        if (draggedDraftPanelWidth !== null) {
+            updateSettings({ draftPanelWidth: draggedDraftPanelWidth });
+            draggedDraftPanelWidth = null;
+        }
+    },
+};
+
+function handleDraftPanelResizeKeydown(event: KeyboardEvent): void {
+    const width = getDraftPanelWidthFromKey(
+        event.key,
+        effectiveDraftPanelWidth,
+        viewportWidth,
+        event.shiftKey,
+    );
+    if (width === null) return;
+    event.preventDefault();
+    updateSettings({ draftPanelWidth: width });
+}
+
+function resetDraftPanelWidth(): void {
+    updateSettings({ draftPanelWidth: DRAFT_PANEL_DEFAULT_WIDTH });
+}
+
+function toggleDraftPanelFullWidth(): void {
+    updateSettings({
+        draftPanelWidth: draftPanelIsFullWidth ? DRAFT_PANEL_DEFAULT_WIDTH : draftPanelMaxWidth,
+    });
+}
+
+$effect(() => {
+    const updateViewportWidth = () => {
+        viewportWidth = window.innerWidth;
+    };
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+});
+
+// Title editing lives in DocumentTitleBar; this delegate keeps the
+// component's public API (used by +page.svelte for the Cmd+L shortcut).
+let titleBar = $state<{ startEditing: () => void }>();
+export function startEditingTitle() {
+    titleBar?.startEditing();
+}
+
+export function createNewTab(): Promise<void> {
+    return drafts.handleTabCreate();
 }
 
 function getWordCount(doc: string): number {
@@ -223,22 +390,39 @@ function computeWritingStats(doc: string, selText: string) {
 // from CodeMirror's updateListener on every transaction, manually pushing
 // the new state into Svelte-reactive stores so the rest of the UI can
 // react normally. $effect is not used here; the hook is CodeMirror's own.
-function syncStoresToEditorState(state: EditorState) {
-    const doc = state.doc.toString();
-    const selection = state.selection.main;
-    const selText = extractSelectedText(state);
-    writingStats.set(computeWritingStats(doc, selText));
-    $annotations = state.field(annotationField);
-    $versionGroups = state.field(versionGroupField);
-    $activeAnnotation = getActiveAnnotation(state);
-    $documentContent = doc;
-    $selectedText = selText;
-    $selectedTextRange = selection.empty
-        ? undefined
-        : {
-              from: selection.from,
-              to: selection.to,
-          };
+function syncStoresToEditorState(state: EditorState, previous?: EditorState) {
+    const docChanged = !previous || state.doc !== previous.doc;
+    const selectionChanged = !previous || !state.selection.eq(previous.selection);
+    if (docChanged || selectionChanged) outlineCursor = state.selection.main.head;
+    const nextAnnotations = state.field(annotationField);
+    const annotationsChanged = !previous || nextAnnotations !== previous.field(annotationField);
+    const nextGroups = state.field(versionGroupField);
+    if (annotationsChanged) $annotations = nextAnnotations;
+    if (!previous || nextGroups !== previous.field(versionGroupField)) $versionGroups = nextGroups;
+    if (docChanged || selectionChanged || annotationsChanged) {
+        $activeAnnotation = getActiveAnnotation(state);
+    }
+    if (docChanged || selectionChanged) {
+        const selection = state.selection.main;
+        const selText = extractSelectedText(state);
+        if (docChanged) {
+            // Keep action-time consumers current, but never flatten the draft
+            // again just because the cursor or viewport moved.
+            const doc = state.doc.toString();
+            $documentContent = doc;
+            writingStats.set(computeWritingStats(doc, selText));
+        } else {
+            writingStats.set({
+                ...get(writingStats),
+                selWords: selText ? getWordCount(selText) : 0,
+                selChars: selText.length,
+            });
+        }
+        $selectedText = selText;
+        $selectedTextRange = selection.empty
+            ? undefined
+            : { from: selection.from, to: selection.to };
+    }
 }
 
 // ── Keyboard shortcut telemetry ─────────────────────────────────
@@ -259,747 +443,378 @@ function trackKeyboardActions(update: ViewUpdate) {
 // ── Update listener ─────────────────────────────────────────────
 const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
-        syncStoresToEditorState(update.state);
+        syncStoresToEditorState(update.state, update.startState);
+        loader.drafts.history.observe(update);
         trackKeyboardActions(update);
     },
 };
 
-// ── Tabs & draft tree state (#160) ──────────────────────────────
-let tabs = $state<TabMeta[]>([]);
-let tabDrafts = $state<DraftMeta[]>([]);
-let forking = $state(false);
-// Set while the orphan-vs-cascade prompt is open for a draft with children.
-let pendingDelete = $state<{ id: string; label: string; descendants: number } | null>(null);
-
-const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
-const isLocked = $derived(currentDraft?.locked ?? false);
-// A draft locks automatically when a newer iteration supersedes it (it has a
-// live iteration after it in its run); otherwise the lock was manual.
-const currentIsSuperseded = $derived(
-    !!currentDraft && tabDrafts.some((d) => d.parentDraftId === currentDraft.id),
-);
-
-/** Flushes queued events + debounced meta writes before switching context. */
-async function flushPendingPersist(): Promise<void> {
-    flushMetaDebounces();
-    await flushPersistQueue();
-}
-
-// ── Helpers ─────────────────────────────────────────────────────
-
-/**
- * Resolves the active tab + draft for a document, creating a default
- * "Main" tab (with its root draft) for documents that have none yet.
- * Refreshes the local tab/draft-tree state and the currentTabId store.
- */
-async function refreshTabState(docId: string): Promise<{ tabId: string; draftId: string } | null> {
-    let tabList = await listTabs(docId);
-    if (tabList.length === 0) {
-        tabList = [await createTab(docId, "Main")];
-    }
-    const persistedTab = await getActiveTab(docId);
-    const activeTab = tabList.find((t) => t.id === persistedTab) ?? tabList[0];
-
-    let drafts = await listTabDrafts(activeTab.id);
-    if (drafts.length === 0) {
-        // Should not happen (createTab seeds a root draft; deleting the
-        // last draft of a tab is rejected) — heal with a fresh tab.
-        const fresh = await createTab(docId, "Main");
-        tabList = [...tabList, fresh];
-        drafts = await listTabDrafts(fresh.id);
-        await setActiveTab(docId, fresh.id);
-    }
-    const persistedDraft = await getActiveDraft(activeTab.id);
-    const activeDraft = drafts.find((d) => d.id === persistedDraft) ?? drafts[0];
-
-    tabs = tabList;
-    tabDrafts = drafts;
-    currentTabId.set(activeTab.id);
-    return activeDraft ? { tabId: activeTab.id, draftId: activeDraft.id } : null;
-}
-
-/**
- * Builds an EditorState from a LoadResult, restoring from the
- * latest snapshot and replaying any events that occurred after it.
- * Locked drafts get a read-only state; unlocking rebuilds it.
- */
-function buildStateFromLoad(
-    snapshotJson: string | null,
-    eventsSince: EventRecord[],
-    readOnly = false,
-): EditorState {
-    const extensions = readOnly
-        ? [getExtensions(getExtensionOptions), EditorState.readOnly.of(true)]
-        : getExtensions(getExtensionOptions);
-    let base: EditorState;
-    if (snapshotJson && snapshotJson !== "{}") {
-        try {
-            base = EditorState.fromJSON(JSON.parse(snapshotJson), { extensions }, savedFields);
-        } catch {
-            base = EditorState.create({ extensions });
-        }
+let view: EditorView | undefined;
+const loader = new DocumentLoader(getExtensionOptions, ({ state }) => {
+    if (view) {
+        view.setState(state);
     } else {
-        base = EditorState.create({ extensions });
-    }
-
-    if (eventsSince.length === 0) return base;
-
-    console.log(`[Editor] Replaying ${eventsSince.length} event(s) since last snapshot.`);
-    return replayEvents(base, eventsSince);
-}
-
-// ── State restoration ───────────────────────────────────────────
-const fromSave = (async () => {
-    const docId = get(currentDocumentId);
-
-    if (docId) {
-        // Document already set (e.g. navigated from library)
-        const doc = await getDocumentMeta(docId);
-        if (doc) {
-            currentDocumentTitle.set(doc.title);
-        }
-        const resolved = await refreshTabState(docId);
-        currentDraftId.set(resolved?.draftId ?? null);
-        if (resolved) {
-            const loaded = await loadDocumentState(docId, resolved.draftId);
-            const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
-            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
-        }
-    } else {
-        // No document set — load the most-recently-updated document
-        const docs = await listDocuments();
-        if (docs.length > 0) {
-            const doc = docs[0];
-            currentDocumentId.set(doc.id);
-            currentDocumentTitle.set(doc.title);
-
-            const resolved = await refreshTabState(doc.id);
-            currentDraftId.set(resolved?.draftId ?? null);
-            if (resolved) {
-                const loaded = await loadDocumentState(doc.id, resolved.draftId);
-                const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
-                return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
-            }
-        }
-    }
-
-    // Blank editor (new installation).
-    // Create an initial document + draft so the event log can record
-    // edits immediately without waiting for the user to visit the library.
-    // Pre-fill with sample content if the user hasn't seen the tutorial yet,
-    // so they have real text to work with during the guided tour.
-    const isFirstTime = !localStorage.getItem("quillium_tutorial_seen");
-    const title = isFirstTime ? SAMPLE_DOCUMENT_TITLE : "Untitled";
-    const content = isFirstTime ? SAMPLE_DOCUMENT_CONTENT : "";
-    const newDocId = await createDocument(title);
-    // createDraft also creates the document's "Main" tab when none exists.
-    const newDraftId = await createDraft(newDocId, "main");
-    await refreshTabState(newDocId);
-    const state = EditorState.create({
-        doc: content,
-        extensions: getExtensions(getExtensionOptions),
-    });
-    if (isFirstTime) {
-        // Persist the initial content immediately so it survives app restarts
-        // before the user makes any edits.
-        const stateJson = JSON.stringify(state.toJSON(savedFields));
-        await createSnapshot(newDraftId, stateJson, -1);
-        await updateDocumentMeta(
-            newDocId,
-            title,
-            getWordCount(content),
-            content.slice(0, 200),
-            "",
-            content,
-        );
-    }
-    // Set stores after snapshot is written to avoid a race where the
-    // currentDocumentId subscription triggers loadDocument before the
-    // snapshot exists, resulting in an empty editor.
-    currentDocumentId.set(newDocId);
-    currentDocumentTitle.set(title);
-    currentDraftId.set(newDraftId);
-    return state;
-})();
-
-function extractTitleFromStateJson(stateJson: string): string {
-    try {
-        const parsed = JSON.parse(stateJson) as { doc?: string | string[] };
-        const firstLine = Array.isArray(parsed.doc)
-            ? (parsed.doc[0] ?? "")
-            : String(parsed.doc ?? "");
-        return firstLine.trim().slice(0, 40) || "Untitled";
-    } catch {
-        return "Unknown";
-    }
-}
-
-/**
- * Reloads the current document from the DB.
- * Used by the debug panel after writing a scenario.
- */
-export async function reload() {
-    const docId = get(currentDocumentId);
-    if (!docId || !$editorView) return;
-    await loadDocument(docId);
-}
-
-/**
- * Loads a specific document from SQLite into the editor.
- * Called by the library when the user opens a document.
- */
-let loadGeneration = 0;
-export async function loadDocument(id: string) {
-    if (!$editorView) return;
-
-    const gen = ++loadGeneration;
-
-    // Clear stale pending selections from the previous document so they
-    // can't be consumed by a new document whose annotations share the same IDs.
-    annotationEventBus.clearPendingSelections();
-
-    const resolved = await refreshTabState(id);
-    if (gen !== loadGeneration) return;
-    currentDraftId.set(resolved?.draftId ?? null);
-    lastPersistedEventId.set(-1);
-    lastSavedAt.set(null);
-
-    if (!resolved) {
-        currentDocumentTitle.set("Untitled");
-        const state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
-        $editorView.setState(state);
-        return;
-    }
-
-    const [loaded, docMeta] = await Promise.all([
-        loadDocumentState(id, resolved.draftId),
-        getDocumentMeta(id),
-    ]);
-    if (gen !== loadGeneration) return;
-    currentDocumentTitle.set(docMeta?.title ?? "Untitled");
-
-    // Seed lastPersistedEventId from the loaded state so named checkpoints
-    // can be created immediately without requiring a new edit first.
-    const latestEventId =
-        loaded.eventsSince.length > 0
-            ? loaded.eventsSince[loaded.eventsSince.length - 1].id
-            : loaded.snapshotEventId >= 0
-              ? loaded.snapshotEventId
-              : -1;
-    lastPersistedEventId.set(latestEventId);
-
-    const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
-    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
-    $editorView.setState(state);
-    syncStoresToEditorState(state);
-}
-
-// ── Tab & draft-tree actions (#160) ─────────────────────────────
-
-/**
- * Loads a draft of the current document into the editor view.
- * Shared by tab switching, draft switching, fork, and lock toggling.
- */
-async function switchToDraft(draftId: string): Promise<void> {
-    const docId = get(currentDocumentId);
-    const tabId = get(currentTabId);
-    if (!docId || !$editorView) return;
-
-    const gen = ++loadGeneration;
-    await flushPendingPersist();
-    annotationEventBus.clearPendingSelections();
-    if (tabId) await setActiveDraft(tabId, draftId);
-    currentDraftId.set(draftId);
-    lastPersistedEventId.set(-1);
-    lastSavedAt.set(null);
-
-    const loaded = await loadDocumentState(docId, draftId);
-    if (gen !== loadGeneration) return;
-    const latestEventId =
-        loaded.eventsSince.length > 0
-            ? loaded.eventsSince[loaded.eventsSince.length - 1].id
-            : loaded.snapshotEventId >= 0
-              ? loaded.snapshotEventId
-              : -1;
-    lastPersistedEventId.set(latestEventId);
-
-    const locked = tabDrafts.find((d) => d.id === draftId)?.locked ?? false;
-    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
-    $editorView.setState(state);
-    const text = state.doc.toString();
-    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
-}
-
-async function handleTabSelect(tabId: string) {
-    const docId = get(currentDocumentId);
-    if (!docId || tabId === get(currentTabId)) return;
-    await flushPendingPersist();
-    await setActiveTab(docId, tabId);
-    currentTabId.set(tabId);
-
-    const drafts = await listTabDrafts(tabId);
-    tabDrafts = drafts;
-    const persisted = await getActiveDraft(tabId);
-    const draft = drafts.find((d) => d.id === persisted) ?? drafts[0];
-    if (draft) await switchToDraft(draft.id);
-    posthog.capture("tab_switched");
-}
-
-async function handleTabCreate() {
-    const docId = get(currentDocumentId);
-    if (!docId) return;
-    const tab = await createTab(docId, `Tab ${tabs.length + 1}`);
-    tabs = [...tabs, tab];
-    posthog.capture("tab_created");
-    await handleTabSelect(tab.id);
-}
-
-async function handleTabRename(tabId: string, label: string) {
-    await renameTab(tabId, label).catch(console.error);
-    tabs = tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
-    posthog.capture("tab_renamed");
-}
-
-async function handleTabReorder(orderedIds: string[]) {
-    const docId = get(currentDocumentId);
-    if (!docId) return;
-    // Optimistically apply the new order, then persist. If persistence
-    // fails, reload from the DB so the bar reflects the true stored order.
-    const byId = new Map(tabs.map((t) => [t.id, t]));
-    tabs = orderedIds.map((id) => byId.get(id)).filter((t): t is TabMeta => t !== undefined);
-    try {
-        await reorderTabs(docId, orderedIds);
-        posthog.capture("tab_reordered");
-    } catch (e) {
-        console.error("[Editor] reorder tabs failed", e);
-        tabs = await listTabs(docId);
-    }
-}
-
-async function handleTabDelete(tabId: string) {
-    if (tabs.length <= 1) return;
-    const tab = tabs.find((t) => t.id === tabId);
-    await flushPendingPersist();
-    try {
-        await deleteTab(tabId);
-    } catch (e) {
-        console.error("[Editor] delete tab failed", e);
-        return;
-    }
-    const idx = tabs.findIndex((t) => t.id === tabId);
-    tabs = tabs.filter((t) => t.id !== tabId);
-    posthog.capture("tab_deleted");
-    if (get(currentTabId) === tabId) {
-        const next = tabs[Math.min(Math.max(idx, 0), tabs.length - 1)];
-        currentTabId.set(null); // force handleTabSelect to run for the neighbour
-        if (next) await handleTabSelect(next.id);
-    }
-    // Soft delete: the tab and all its drafts survive in the DB and can
-    // come back from here or from the document's version history.
-    toast(`Deleted tab “${tab?.label ?? "Tab"}”`, {
-        duration: 8000,
-        action: {
-            label: "Undo",
-            onClick: async () => {
-                await restoreTab(tabId).catch(console.error);
-                const docId = get(currentDocumentId);
-                if (docId) tabs = await listTabs(docId);
-                posthog.capture("tab_restored");
-            },
-        },
-        cancel: {
-            label: "View in history",
-            onClick: () => {
-                posthog.capture("delete_toast_view_history", { kind: "tab" });
-                goToHistory().catch(console.error);
-            },
-        },
-    });
-}
-
-async function handleDraftSelect(draftId: string) {
-    if (draftId === get(currentDraftId)) return;
-    await switchToDraft(draftId);
-    posthog.capture("draft_switched");
-}
-
-/**
- * Serializes a draft's current state to seed a new draft: the live view if
- * it's the open draft, otherwise rebuilt from its snapshot + events.
- */
-async function seedStateJson(sourceDraftId: string): Promise<string> {
-    const view = $editorView;
-    if (view && sourceDraftId === get(currentDraftId)) {
-        return JSON.stringify(view.state.toJSON(savedFields));
-    }
-    const docId = get(currentDocumentId);
-    const loaded = await loadDocumentState(docId ?? "", sourceDraftId);
-    const sourceState = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
-    return JSON.stringify(sourceState.toJSON(savedFields));
-}
-
-/**
- * Iterate (the common verb): the next version in `sourceId`'s run, seeded
- * from its state. Renders flat; the source locks (superseded), the new tip
- * stays editable.
- */
-async function handleDraftIterate(sourceId: string) {
-    const tabId = get(currentTabId);
-    if (!tabId || forking) return;
-    forking = true;
-    try {
-        await flushPendingPersist();
-        const stateJson = await seedStateJson(sourceId);
-        const next = await iterateDraft(sourceId, `v${tabDrafts.length}`, stateJson);
-        tabDrafts = await listTabDrafts(tabId);
-        posthog.capture("draft_iterated");
-        await switchToDraft(next.id);
-    } catch (e) {
-        console.error("[Editor] iterate draft failed", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-        forking = false;
-    }
-}
-
-/**
- * Branch (the rare verb): a different take off `sourceId`, seeded from its
- * state. Renders indented; nothing locks — source and branch are parallel
- * live explorations.
- */
-async function handleDraftBranch(sourceId: string) {
-    const tabId = get(currentTabId);
-    if (!tabId || forking) return;
-    forking = true;
-    try {
-        await flushPendingPersist();
-        const stateJson = await seedStateJson(sourceId);
-        const branch = await branchDraft(sourceId, "new take", stateJson);
-        tabDrafts = await listTabDrafts(tabId);
-        posthog.capture("draft_branched");
-        await switchToDraft(branch.id);
-    } catch (e) {
-        console.error("[Editor] branch draft failed", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-        forking = false;
-    }
-}
-
-async function handleDraftRename(draftId: string, label: string) {
-    await renameDraft(draftId, label).catch(console.error);
-    tabDrafts = tabDrafts.map((d) => (d.id === draftId ? { ...d, label } : d));
-}
-
-async function handleDraftDelete(draftId: string) {
-    // A childless draft deletes straight away; one with children prompts for
-    // orphan vs cascade (the modal then calls the matching handler).
-    if (!hasLiveChildren(draftId, tabDrafts)) {
-        await performDraftDelete(draftId, [draftId], "leaf");
-        return;
-    }
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    const descendants = collectSubtree(draftId, tabDrafts).length - 1;
-    pendingDelete = { id: draftId, label: draft?.label ?? "draft", descendants };
-}
-
-/**
- * Switches the editor off `doomed` (the ids about to be soft-deleted) when the
- * open draft is among them, landing on a surviving draft so the editor never
- * points at a hidden one. Returns false if there's no survivor to land on
- * (shouldn't happen — the backend refuses emptying a tab — but guards anyway).
- */
-async function ensureEditorOffDeleted(doomed: string[]): Promise<boolean> {
-    if (!doomed.includes(get(currentDraftId) ?? "")) {
-        await flushPendingPersist();
-        return true;
-    }
-    const doomedSet = new Set(doomed);
-    const survivor = tabDrafts.find((d) => !doomedSet.has(d.id));
-    if (!survivor) return false;
-    await switchToDraft(survivor.id);
-    return true;
-}
-
-/** Soft-deletes a childless draft (or its subtree root) and offers Undo. */
-async function performDraftDelete(draftId: string, doomed: string[], mode: "leaf" | "cascade") {
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    if (!(await ensureEditorOffDeleted(doomed))) return;
-    try {
-        if (mode === "cascade") {
-            await cascadeDeleteDraft(draftId);
-        } else {
-            await deleteDraft(draftId);
-        }
-    } catch (e) {
-        console.error("[Editor] delete draft failed", e);
-        return;
-    }
-    await refreshDraftsAndCurrentLock();
-    posthog.capture("draft_deleted", { mode });
-    // Soft delete: each draft's text and history survive in the DB, so Undo
-    // restores the whole set (root + any cascaded descendants).
-    toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
-        duration: 8000,
-        action: {
-            label: "Undo",
-            onClick: async () => {
-                // Restore parents before children so links land on live rows.
-                for (const id of doomed) {
-                    await restoreDraft(id).catch(console.error);
-                }
-                await refreshDraftsAndCurrentLock();
-                posthog.capture("draft_restored");
-            },
-        },
-    });
-}
-
-/** Cascade branch of the delete prompt: remove the draft and its whole subtree. */
-async function handleDeleteCascade(draftId: string) {
-    pendingDelete = null;
-    const doomed = collectSubtree(draftId, tabDrafts);
-    await performDraftDelete(draftId, doomed, "cascade");
-}
-
-/** Orphan branch of the delete prompt: keep the children, re-attaching them. */
-async function handleDeleteOrphan(draftId: string) {
-    pendingDelete = null;
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    // Only the draft itself vanishes; its children survive re-attached.
-    if (!(await ensureEditorOffDeleted([draftId]))) return;
-    let rewrites: Awaited<ReturnType<typeof orphanAndDeleteDraft>>;
-    try {
-        rewrites = await orphanAndDeleteDraft(draftId);
-    } catch (e) {
-        console.error("[Editor] orphan-delete draft failed", e);
-        return;
-    }
-    await refreshDraftsAndCurrentLock();
-    posthog.capture("draft_deleted", { mode: "orphan" });
-    toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
-        duration: 8000,
-        action: {
-            label: "Undo",
-            onClick: async () => {
-                // Restore the parent first, then re-point each moved child back
-                // at it (reversing the orphan rewrite).
-                await restoreDraft(draftId).catch(console.error);
-                for (const r of rewrites) {
-                    await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom).catch(
-                        console.error,
-                    );
-                }
-                await refreshDraftsAndCurrentLock();
-                posthog.capture("draft_restored");
-            },
-        },
-        cancel: {
-            label: "View in history",
-            onClick: () => {
-                posthog.capture("delete_toast_view_history", { kind: "draft" });
-                goToHistory().catch(console.error);
-            },
-        },
-    });
-}
-
-/**
- * Re-reads the active tab's drafts and rebuilds the editor state when the
- * open draft's lock changed underneath it.
- */
-async function refreshDraftsAndCurrentLock() {
-    const tabId = get(currentTabId);
-    if (!tabId) return;
-    const wasLocked = isLocked;
-    tabDrafts = await listTabDrafts(tabId);
-    const current = get(currentDraftId);
-    const nowLocked = tabDrafts.find((d) => d.id === current)?.locked ?? false;
-    if (current && nowLocked !== wasLocked) {
-        await switchToDraft(current);
-    }
-}
-
-/** Toggles the soft lock and rebuilds the editor state's read-only flag. */
-async function handleDraftToggleLock(draftId: string, locked: boolean) {
-    await setDraftLocked(draftId, locked).catch(console.error);
-    tabDrafts = tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
-    posthog.capture(locked ? "draft_locked" : "draft_unlocked");
-    if (draftId === get(currentDraftId)) {
-        await switchToDraft(draftId);
-    }
-}
-
-onMount(() => {
-    fromSave.then((state) => {
-        $editorView = new EditorView({
-            state,
-            parent: element,
-        });
-        syncStoresToEditorState(state);
+        view = new EditorView({ state, parent: element });
+        $editorView = view;
         loadUserDictionary();
         posthog.capture("app_session_started", {
             word_count: getWordCount(state.doc.toString()),
         });
-    });
+    }
+    syncStoresToEditorState(state);
+    loader.drafts.history.loaded();
+});
+let nameVersionTarget = $state<ReturnType<DocumentLoader["namedVersionTarget"]>>();
+$effect(() =>
+    appEventBus.on("name-version", () => {
+        if (!nameVersionTarget) nameVersionTarget = loader.namedVersionTarget();
+    }),
+);
 
-    // Watch for document switches (e.g. navigating from library to a new/different doc).
-    // fromSave only runs once at init, so we need to reload when currentDocumentId changes.
-    let initialised = false;
+const drafts = loader.drafts;
+$effect(() => appEventBus.on("open-passage", (event) => {
+    void openPassage(event.passage).catch((error) => toast.error(String(error)));
+}));
+async function openPassage(passage: PassageLink): Promise<void> {
+    if (passage.documentId !== $currentDocumentId || !drafts.tabs.some((tab) => tab.id === passage.tabId)) {
+        toast.info("This supporting essay is no longer available in this document.");
+        return;
+    }
+    if ($currentTabId !== passage.tabId) await drafts.handleTabSelect(passage.tabId);
+    if ($currentDocumentId !== passage.documentId || $currentTabId !== passage.tabId) return;
+    if (!drafts.tabDrafts.some((draft) => draft.id === passage.draftId)) {
+        toast.info("This supporting draft was removed.");
+        return;
+    }
+    if ($currentDraftId !== passage.draftId) await drafts.handleDraftSelect(passage.draftId);
+    if ($currentDocumentId !== passage.documentId || $currentTabId !== passage.tabId || $currentDraftId !== passage.draftId || !$editorView) return;
+    modalStack.clear();
+    const text = $editorView.state.doc.toString();
+    if (researchFingerprint(text) !== passage.fingerprint || text.slice(passage.from, passage.to) !== passage.quote) {
+        $editorView.dispatch({ selection: { anchor: 0 } });
+        toast.info("This draft changed since the comment. The old passage is no longer selected.");
+        return;
+    }
+    $editorView.dispatch({ selection: { anchor: passage.from, head: passage.to }, effects: EditorView.scrollIntoView(passage.from, { y: "center" }) });
+    $editorView.focus();
+}
+$effect(() => appEventBus.on("college-tabs-created", event => {
+    void drafts.acceptCreatedCollegeTabs(event.documentId, event.tabs, event.selectFirst).catch(error => toast.error(String(error)));
+}));
+const currentDraft = $derived(drafts.tabDrafts.find((d) => d.id === $currentDraftId));
+$effect(() => {
+    currentTabLabel.set(drafts.tabs.find((tab) => tab.id === $currentTabId)?.label ?? "");
+    currentDraftLabel.set(currentDraft?.label ?? "");
+});
+const isLocked = $derived(currentDraft?.locked ?? false);
+// A draft locks automatically when a newer iteration supersedes it (it has a
+// live iteration after it in its run); otherwise the lock was manual.
+const currentIsSuperseded = $derived(
+    !!currentDraft && drafts.tabDrafts.some((d) => d.parentDraftId === currentDraft.id),
+);
+
+/** Reload after the debug panel writes a scenario. */
+export async function reload(): Promise<void> {
+    const documentId = get(currentDocumentId);
+    if (documentId) await loader.load({ documentId });
+}
+
+onMount(() => {
+    const disconnectHistory = drafts.history.listen();
+    const disconnectMcp = connectMcpEditor(() => loader.isReady());
     const unsubscribe = currentDocumentId.subscribe((id) => {
-        if (!initialised) {
-            initialised = true;
-            // Register the initial document so other windows know it's open here.
-            if (id) registerOpenDoc(id, windowLabel).catch(console.error);
-            return; // skip loadDocument — fromSave already handles the initial value
-        }
-        // Deregister the previous document, register the new one.
         deregisterOpenDoc(windowLabel).catch(console.error);
-        if (id) {
-            registerOpenDoc(id, windowLabel).catch(console.error);
-            fromSave.then(() => loadDocument(id));
-        }
+        if (id) registerOpenDoc(id, windowLabel).catch(console.error);
     });
+    loader.start(showSample);
 
     return () => {
+        disconnectMcp();
+        disconnectHistory();
         unsubscribe();
+        loader.dispose();
+        view?.destroy();
+        view = undefined;
         deregisterOpenDoc(windowLabel).catch(console.error);
+        if (nativeContextMenu) {
+            void nativeContextMenu.close().catch((error) => {
+                void logAppEvent("warn", "editor-context-menu", "context menu cleanup failed", {
+                    error,
+                });
+            });
+            nativeContextMenu = undefined;
+        }
     };
 });
 </script>
 
-<div class="w-full h-full overflow-y-auto relative">
-    <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
+<svelte:window
+    onkeydown={handleContextMenuKeydown}
+    onresize={closeContextMenu}
+    onscroll={closeContextMenu}
+/>
+
+<div class="editor-shell w-full h-full overflow-y-auto relative" class:focus-mode={focusMode}>
+    <div
+        class="focus-chrome sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none"
+        class:focus-chrome-visible={focusControlsVisible}
+    >
         <div class="pointer-events-auto">
-            <StatusBar titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
-                {#snippet children()}
-                    <div class="flex items-center justify-center py-1.5 px-4 mx-auto mb-3 rounded-full {appSettings.titleVisibility !== 'always' ? 'max-w-full' : ''}">
-                        {#if titleEditing}
-                            <input
-                                bind:this={titleInputEl}
-                                bind:value={titleDraft}
-                                onblur={commitTitle}
-                                onkeydown={(e) => {
-                                    if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
-                                    if (e.key === "Escape") { titleEditing = false; }
-                                }}
-                                class="text-sm font-medium text-black/70 bg-transparent border-none outline-none min-w-[8rem] max-w-[28rem] text-center placeholder:text-black/30"
-                                aria-label="Document title"
-                            />
-                        {:else}
-                            <button
-                                onclick={startEditingTitle}
-                                title="Rename title ({modKey}L)"
-                                class="flex items-center gap-2 text-sm font-medium text-black/60 hover:text-black/80 transition-colors {appSettings.titleVisibility !== 'always' ? 'max-w-[28rem]' : ''}"
-                            >
-                                <span class={appSettings.titleVisibility !== 'always' ? 'truncate' : ''}>{$currentDocumentTitle}</span>
-                                <Pencil size={14} class="shrink-0 text-black/40" />
-                                <Kbd keys={[modKey, "L"]} />
-                            </button>
-                        {/if}
-                        {#if appSettings.aiEnabled && hasApiKey()}
-                            <div class="w-px h-3.5 bg-black/20 shrink-0 mx-1.5"></div>
-                            <button
-                                onclick={suggestTitle}
-                                disabled={titleSuggesting}
-                                title="Suggest a title with AI"
-                                class="flex items-center gap-1 pr-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                            >
-                                <SparklesIcon size={11} />
-                                <span>{titleSuggesting ? "…" : "Suggest"}</span>
-                            </button>
-                        {/if}
-                    </div>
-                {/snippet}
-            </StatusBar>
+            <DocumentTitleBar bind:this={titleBar} />
         </div>
     </div>
 
-    {#await fromSave then}
+    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
         <DocumentTabs
-            {tabs}
+            tabs={drafts.tabs}
             activeTabId={$currentTabId}
-            ontabselect={handleTabSelect}
-            ontabcreate={handleTabCreate}
-            ontabrename={handleTabRename}
-            ontabdelete={handleTabDelete}
-            ontabreorder={handleTabReorder}
+            ontabselect={(id) => { void drafts.handleTabSelect(id).catch(error => toast.error(String(error))); }}
+            ontabcreate={() => drafts.handleTabCreate()}
+            ontabrename={(id, label) => drafts.handleTabRename(id, label)}
+            ontabdelete={(id) => drafts.handleTabDelete(id)}
+            ontabreorder={(ids) => drafts.handleTabReorder(ids)}
         />
+    </div>
 
-        <!-- Draft tree for the active tab — hugs the document's left edge,
-             hidden on viewports too narrow to fit beside it. -->
-        {#if tabDrafts.length > 0}
-            <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
-                <div
-                    class="pointer-events-auto absolute w-48"
-                    style="right: calc(50% + 408px + 1rem)"
-                >
-                    <DraftTreePanel
-                        drafts={tabDrafts}
-                        activeDraftId={$currentDraftId}
-                        ondraftselect={handleDraftSelect}
-                        ondraftiterate={handleDraftIterate}
-                        ondraftbranch={handleDraftBranch}
-                        ondraftrename={handleDraftRename}
-                        ondraftdelete={handleDraftDelete}
-                        ontogglelock={handleDraftToggleLock}
+    <!-- Drafts and outline share a column without replacing each other. -->
+    {#if drafts.tabDrafts.length > 0 || showOutline}
+        <div
+            class="focus-chrome sticky top-36 z-30 h-0 pointer-events-none min-[1281px]:top-24"
+            class:focus-chrome-visible={focusControlsVisible}
+        >
+            <div
+                data-annotation-occluder
+                class="outline-panel pointer-events-auto absolute"
+                style:width="{effectiveDraftPanelWidth}px"
+            >
+                <div class="draft-panel-resize-controls" class:is-resizing={resizingDraftPanel}>
+                    <div
+                        role="slider"
+                        tabindex="0"
+                        aria-label="Resize drafts panel"
+                        aria-orientation="horizontal"
+                        aria-valuemin={DRAFT_PANEL_MIN_WIDTH}
+                        aria-valuemax={draftPanelMaxWidth}
+                        aria-valuenow={effectiveDraftPanelWidth}
+                        aria-valuetext="{effectiveDraftPanelWidth} pixels"
+                        title="Drag to resize. Use arrow keys for precise control; double-click to reset."
+                        class="draft-panel-resize-handle"
+                        use:pointerDrag={draftPanelDragOptions}
+                        onkeydown={handleDraftPanelResizeKeydown}
+                        ondblclick={resetDraftPanelWidth}
+                    ></div>
+                    <button
+                        type="button"
+                        aria-label={draftPanelIsFullWidth
+                            ? "Restore default drafts panel width"
+                            : "Expand drafts panel to available width"}
+                        title={draftPanelIsFullWidth ? "Restore default width" : "Fill available width"}
+                        class="draft-panel-full-width-button"
+                        onpointerdown={(event) => event.stopPropagation()}
+                        onclick={(event) => {
+                            event.stopPropagation();
+                            toggleDraftPanelFullWidth();
+                        }}
+                    >
+                        {#if draftPanelIsFullWidth}
+                            <Minimize2Icon size={12} />
+                        {:else}
+                            <Maximize2Icon size={12} />
+                        {/if}
+                    </button>
+                </div>
+                <div class="max-h-[calc(100vh-11rem)] space-y-3 overflow-y-auto -m-2 p-2">
+                    {#if drafts.tabDrafts.length > 0}
+                        <DraftTreePanel
+                            expanded={appSettings.showDrafts}
+                            ontoggle={() => updateSettings({ showDrafts: !appSettings.showDrafts })}
+                            drafts={drafts.tabDrafts}
+                            activeDraftId={$currentDraftId}
+                            ondraftselect={(id) => drafts.handleDraftSelect(id)}
+                            ondraftiterate={(id) => drafts.handleDraftIterate(id)}
+                            ondraftbranch={(id) => drafts.handleDraftBranch(id)}
+                            ondraftrename={(id, label) => drafts.handleDraftRename(id, label)}
+                            ondraftdelete={(id) => drafts.handleDraftDelete(id)}
+                            ontogglelock={(id, locked) => drafts.handleDraftToggleLock(id, locked)}
+                        />
+                    {/if}
+                    <DocumentOutline
+                        headings={outlineHeadings}
+                        cursor={outlineCursor}
+                        onselect={jumpToHeading}
+                        expanded={showOutline}
+                        ontoggle={() => updateSettings({ showDocumentOutline: !showOutline })}
                     />
                 </div>
             </div>
-        {/if}
-
-        {#if pendingDelete}
-            <DraftDeleteModal
-                label={pendingDelete.label}
-                descendants={pendingDelete.descendants}
-                onorphan={() => handleDeleteOrphan(pendingDelete!.id)}
-                oncascade={() => handleDeleteCascade(pendingDelete!.id)}
-                oncancel={() => (pendingDelete = null)}
-            />
-        {/if}
-
-        <!--
-            Document width is fluid below 816px (shrinks to fit narrow
-            tablet/phone webviews) but capped at 816px on desktop, so the
-            desktop layout is byte-for-byte identical to the previous
-            `w-[816px]`. The mx-3 horizontal inset only has an effect once
-            the viewport is narrower than 816px + margins; on desktop the
-            max-w cap wins and mx-auto centers it unchanged.
-            Top-left corner is square so the tab strip sits flush (#160).
-        -->
-        <div
-            id="editor-document"
-            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
-        >
-            {#if isLocked}
-                <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
-                <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
-                    <LockIcon size={11} class="shrink-0 text-amber-700/60" />
-                    <span class="flex-1 min-w-0 truncate">{currentIsSuperseded ? "This is an older version." : "This draft is locked."}</span>
-                    <button
-                        onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
-                        class="shrink-0 font-medium hover:text-amber-950 transition-colors"
-                    >Edit anyway</button>
-                    <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
-                    <button
-                        onclick={() => currentDraft && handleDraftBranch(currentDraft.id)}
-                        disabled={forking}
-                        class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
-                    >
-                        <GitBranchIcon size={11} />
-                        <span>New take</span>
-                    </button>
-                </div>
-            {/if}
-            <div bind:this={element}></div>
         </div>
-    {/await}
+    {/if}
+
+    {#if drafts.pendingDelete}
+        <DraftDeleteModal
+            label={drafts.pendingDelete.label}
+            descendants={drafts.pendingDelete.descendants}
+            onorphan={() => drafts.handleDeleteOrphan(drafts.pendingDelete!.id)}
+            oncascade={() => drafts.handleDeleteCascade(drafts.pendingDelete!.id)}
+            oncancel={() => (drafts.pendingDelete = null)}
+        />
+    {/if}
+
+    <!--
+        Document width is fluid below 816px (shrinks to fit narrow
+        tablet/phone webviews) but capped at 816px on desktop, so the
+        desktop layout is byte-for-byte identical to the previous
+        `w-[816px]`. The mx-3 horizontal inset only has an effect once
+        the viewport is narrower than 816px + margins; on desktop the
+        max-w cap wins and mx-auto centers it unchanged.
+        Top-left corner is square so the tab strip sits flush (#160).
+    -->
+    <div
+        id="editor-document"
+        class="editor-document mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
+        use:editorContextMenu
+    >
+        {#if isLocked}
+            <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
+            <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
+                <LockIcon size={11} class="shrink-0 text-amber-700/60" />
+                <span class="flex-1 min-w-0 truncate">{currentIsSuperseded ? "This is an older version." : "This draft is locked."}</span>
+                <button
+                    onclick={() => currentDraft && drafts.handleDraftToggleLock(currentDraft.id, false)}
+                    class="shrink-0 font-medium hover:text-amber-950 transition-colors"
+                >Edit anyway</button>
+                <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
+                <button
+                    onclick={() => currentDraft && drafts.handleDraftBranch(currentDraft.id)}
+                    disabled={drafts.forking}
+                    class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
+                >
+                    <GitBranchIcon size={11} />
+                    <span>New take</span>
+                </button>
+            </div>
+        {/if}
+        <div bind:this={element}></div>
+    </div>
+
+    {#if contextMenu}
+        <button
+            type="button"
+            aria-label="Close editor menu"
+            class="fixed inset-0 z-[89] cursor-default border-0 bg-transparent p-0"
+            onclick={closeContextMenu}
+        ></button>
+        <div
+            role="menu"
+            aria-label="Editor actions"
+            class="fixed z-[90] min-w-52 rounded-xl shadow-xl border border-white/40 bg-white/90 p-1 backdrop-blur-md"
+            style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+        >
+            <button
+                bind:this={contextMenuItem}
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("cut")}
+            >
+                <ScissorsIcon size={15} class="text-black/40" />
+                <span class="flex-1">Cut</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘X" : "Ctrl+X"}</span>
+            </button>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("copy")}
+            >
+                <CopyIcon size={15} class="text-black/40" />
+                <span class="flex-1">Copy</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘C" : "Ctrl+C"}</span>
+            </button>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("paste")}
+            >
+                <ClipboardPasteIcon size={15} class="text-black/40" />
+                <span class="flex-1">Paste</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘V" : "Ctrl+V"}</span>
+            </button>
+            <div role="separator" class="mx-2 my-1 h-px bg-black/[0.07]"></div>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void runContextMenuEditCommand("selectAll")}
+            >
+                <ScanTextIcon size={15} class="text-black/40" />
+                <span class="flex-1">Select All</span>
+                <span class="text-[11px] text-black/30">{isMac ? "⌘A" : "Ctrl+A"}</span>
+            </button>
+            <div role="separator" class="mx-2 my-1 h-px bg-black/[0.07]"></div>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={addCommentFromContextMenu}
+            >
+                <MessageSquareIcon size={15} class="text-amber-500" />
+                <span class="flex-1">Add Comment</span>
+                <span class="text-[11px] text-black/30">{commentShortcutLabel}</span>
+            </button>
+            <button
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={addRevisionFromContextMenu}
+            >
+                <GitBranchIcon size={15} class="text-violet-500" />
+                <span class="flex-1">Add Revision</span>
+                <span class="text-[11px] text-black/30">{revisionShortcutLabel}</span>
+            </button>
+        </div>
+    {/if}
 
 
-    <Annotations />
+    <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
+        <Annotations />
+    </div>
 </div>
 
 <style>
+    .outline-panel { right: calc(50% + 408px + 1rem); }
+    @media (max-width: 1280px) {
+        .outline-panel { left: 4.75rem; right: auto; max-width: calc(100vw - 5.5rem); }
+    }
+
+    .focus-chrome {
+        transition:
+            opacity 240ms ease,
+            visibility 240ms ease;
+    }
+    .focus-mode .focus-chrome:not(.focus-chrome-visible) {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .focus-mode .editor-document {
+        min-height: calc(100vh - 2rem);
+        margin-bottom: 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 8px 30px rgb(0 0 0 / 8%);
+        transition:
+            min-height 240ms ease,
+            margin 240ms ease,
+            border-radius 240ms ease,
+            box-shadow 240ms ease;
+    }
     :global(.cm-editor.cm-focused) {
         outline: none;
     }
@@ -1016,4 +831,90 @@ onMount(() => {
     :global(.cm-content) {
         text-indent: 2em;
     }
+    .draft-panel-resize-controls {
+        position: absolute;
+        inset-block: 0;
+        left: -10px;
+        z-index: 1;
+        width: 12px;
+        min-height: 3rem;
+    }
+    .draft-panel-resize-handle {
+        position: absolute;
+        inset: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: ew-resize;
+        touch-action: none;
+    }
+    .draft-panel-resize-handle::after {
+        position: absolute;
+        top: 50%;
+        left: 5px;
+        width: 2px;
+        height: 2.5rem;
+        border-radius: 9999px;
+        background: rgb(0 0 0 / 12%);
+        content: "";
+        transform: translateY(-50%);
+        transition:
+            width 120ms ease,
+            background-color 120ms ease;
+    }
+    .draft-panel-resize-controls:hover .draft-panel-resize-handle::after,
+    .draft-panel-resize-handle:focus-visible::after,
+    .draft-panel-resize-controls.is-resizing .draft-panel-resize-handle::after {
+        width: 3px;
+        background: rgb(217 119 6 / 65%);
+    }
+    .draft-panel-resize-handle:focus-visible {
+        outline: 2px solid rgb(245 158 11 / 55%);
+        outline-offset: 1px;
+        border-radius: 9999px;
+    }
+    .draft-panel-full-width-button {
+        position: absolute;
+        bottom: 8px;
+        left: -4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 1px solid rgb(0 0 0 / 10%);
+        border-radius: 9999px;
+        background: white;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+        color: rgb(0 0 0 / 35%);
+        cursor: pointer;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+            opacity 180ms ease,
+            color 180ms ease,
+            background 180ms ease;
+    }
+    .draft-panel-resize-controls:hover .draft-panel-full-width-button,
+    .draft-panel-resize-controls:focus-within .draft-panel-full-width-button {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .draft-panel-full-width-button:hover,
+    .draft-panel-full-width-button:focus-visible {
+        background: rgb(245 158 11 / 10%);
+        color: rgb(180 83 9 / 80%);
+    }
 </style>
+
+{#if nameVersionTarget}
+    <NameVersionPrompt
+        save={nameVersionTarget.save}
+        onclose={async () => {
+            nameVersionTarget = undefined;
+            await tick();
+            view?.focus();
+        }}
+    />
+{/if}

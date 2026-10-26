@@ -3,7 +3,7 @@
 
     This is the sole route in the SvelteKit app (static SPA for Tauri).
     It assembles the three main panels:
-      1. <AiSidebar />    — left panel (AI writing assistant)
+      1. <Sidebar />      — left panel (writing tools)
       2. <Editor />        — center panel (CodeMirror document)
       3. Annotations panel — rendered inside Editor.svelte
 
@@ -20,13 +20,21 @@
 -->
 <script lang="ts">
 import { page } from "$app/state";
-import AiSidebar from "$lib/ai/AISidebar.svelte";
-import { getConnectionState, initAuth, isLoading, isOffline, reconnectAuth } from "$lib/auth";
+import Sidebar from "$lib/sidebar/Sidebar.svelte";
+import { logAppEvent } from "$lib/appLog";
+import {
+    getConnectionState,
+    hasAuthStateToReset,
+    initAuth,
+    isLoading,
+    isOffline,
+    reconnectAuth,
+    signOut,
+} from "$lib/auth";
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
-import { APP_STORE_URL } from "$lib/constants";
-import type { EventPayload } from "$lib/db/events";
+import { APP_STORE_URL, LATEST_DESKTOP_RELEASE_URL } from "$lib/constants";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
@@ -38,14 +46,16 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { authorshipEnabled, novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import {
     maybeShowAutoSurvey,
     recordWordCount,
     registerSurveyLifecycleListeners,
 } from "$lib/feedback/autoSurvey";
+import { FOCUS_CONTROLS_HIDE_DELAY_MS, isFocusModeShortcut } from "$lib/focusMode";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
-import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     currentDocumentId,
     editorView,
@@ -56,7 +66,9 @@ import {
     writingStats,
 } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { invoke } from "@tauri-apps/api/core";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
@@ -84,7 +96,9 @@ import changelog from "$lib/changelog.json";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import type { ExportFormat } from "$lib/export";
+import WritingGoalTracker from "$lib/goals/WritingGoalTracker.svelte";
 import posthog from "$lib/posthog";
+import WritingSprint from "$lib/sprint/WritingSprint.svelte";
 import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
@@ -94,11 +108,13 @@ import MobileFormatBar from "$lib/ui/MobileFormatBar.svelte";
 import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
+import { performUpdateInstall, updateFailureDescription } from "$lib/updater/install";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
-import { Toaster, toast } from "svelte-sonner";
+import { executableDir } from "@tauri-apps/api/path";
+import { toast } from "svelte-sonner";
 
 // If opened as a secondary window with a specific document (URL `/?doc=<id>`),
-// set it immediately so Editor.svelte's fromSave picks it up on mount.
+// set it immediately so the document loader picks it up on mount.
 const initialDocId = page.url.searchParams.get("doc");
 if (initialDocId) {
     currentDocumentId.set(initialDocId);
@@ -113,21 +129,59 @@ let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
+let updateError = $state("");
 // DEV only: allows the debug panel to simulate the banner in either mode.
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 let authReconnecting = $state(false);
+let focusModeAvailable = $state(false);
+let authorshipAvailable = $state(false);
+let focusMode = $state(false);
+let focusControlsVisible = $state(false);
+let focusControlsTimer: ReturnType<typeof setTimeout> | undefined;
 const authLoading = $derived(isLoading());
 const authOffline = $derived(isOffline());
 const authConnectionState = $derived(getConnectionState());
+// Deliberately NOT isAuthenticated(): failed session loads null the
+// in-memory user before landing offline, but the persisted session is
+// still there and the stuck user needs the Sign out escape hatch.
+const authCanReset = $derived(hasAuthStateToReset());
 
-let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
+$effect(() => {
+    const available = $novelNovemberEnabled;
+    focusModeAvailable = available;
+    if (!available && focusMode) void setFocusMode(false);
+    if (typeof window !== "undefined" && !IS_MOBILE && "__TAURI_INTERNALS__" in window) {
+        invoke("cmd_set_focus_mode_available", { available }).catch((error) => {
+            console.warn("[focusMode] Unable to update native menu availability", error);
+        });
+    }
+});
+
+// The Authorship Report menu item ships disabled; the flag turns it on.
+$effect(() => {
+    const available = $authorshipEnabled;
+    authorshipAvailable = available;
+    if (typeof window !== "undefined" && !IS_MOBILE && "__TAURI_INTERNALS__" in window) {
+        invoke("cmd_set_authorship_available", { available }).catch((error) => {
+            console.warn("[authorship] Unable to update native menu availability", error);
+        });
+    }
+});
+
+let editorComponent = $state<{
+    reload: () => Promise<void>;
+    startEditingTitle: () => void;
+    createNewTab: () => Promise<void>;
+}>();
+
+const showSample = !localStorage.getItem("quillium_tutorial_seen");
 
 const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
 /** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
-    if (!localStorage.getItem("quillium_tutorial_seen")) {
+    if (showSample) {
         $tutorialActive = true;
     } else if (!betaAccepted()) {
         // Tutorial already seen (e.g. returning user from private beta),
@@ -208,7 +262,63 @@ function handleChangelogDismiss() {
     $editorView?.focus();
 }
 
+function revealFocusControls() {
+    if (!focusMode) return;
+    focusControlsVisible = true;
+    clearTimeout(focusControlsTimer);
+    focusControlsTimer = setTimeout(() => {
+        focusControlsVisible = false;
+    }, FOCUS_CONTROLS_HIDE_DELAY_MS);
+}
+
+async function setFocusMode(enabled: boolean) {
+    if (enabled && !focusModeAvailable) return;
+    focusMode = enabled;
+    clearTimeout(focusControlsTimer);
+    focusControlsVisible = enabled;
+
+    try {
+        await getCurrentWindow().setFullscreen(enabled);
+    } catch (error) {
+        // Browser-only development and component tests have no Tauri window.
+        // Keep the distraction-free layout useful even without native fullscreen.
+        if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+            console.warn("[focusMode] Unable to change native fullscreen state", error);
+        }
+    }
+
+    if (enabled) revealFocusControls();
+    $editorView?.focus();
+    posthog.capture(enabled ? "focus_mode_entered" : "focus_mode_exited");
+}
+
+function toggleFocusMode() {
+    void setFocusMode(!focusMode);
+}
+
 function handleKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (!e.repeat) appEventBus.emit({ type: "name-version" });
+        return;
+    }
+    if (focusMode && e.key === "Tab") revealFocusControls();
+    if (isFocusModeShortcut(e)) {
+        if (!focusModeAvailable) return;
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+    }
+    if (focusMode && e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        void setFocusMode(false);
+        return;
+    }
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        void editorComponent?.createNewTab();
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "o") {
         e.preventDefault();
         goToLibrary();
@@ -233,19 +343,13 @@ function handleKeydown(e: KeyboardEvent) {
     if (e.metaKey || e.ctrlKey) {
         if (e.key === "=" || e.key === "+") {
             e.preventDefault();
-            appSettings.uiZoom = Math.round(Math.min(2, appSettings.uiZoom + 0.1) * 10) / 10;
-            applySettings(appSettings);
-            persistSettings();
+            updateSettings({ uiZoom: appSettings.uiZoom + 0.1 });
         } else if (e.key === "-") {
             e.preventDefault();
-            appSettings.uiZoom = Math.round(Math.max(0.5, appSettings.uiZoom - 0.1) * 10) / 10;
-            applySettings(appSettings);
-            persistSettings();
+            updateSettings({ uiZoom: appSettings.uiZoom - 0.1 });
         } else if (e.key === "0") {
             e.preventDefault();
-            appSettings.uiZoom = 1;
-            applySettings(appSettings);
-            persistSettings();
+            updateSettings({ uiZoom: 1 });
         }
     }
 }
@@ -262,26 +366,51 @@ async function installUpdate() {
         await openUrl(APP_STORE_URL);
         return;
     }
+
     updateInstalling = true;
-    try {
-        if (updateReady) {
-            posthog.capture("update_relaunched", { version: updateVersion });
-            await relaunch();
-        } else {
-            posthog.capture("update_started", { version: updateVersion });
-            const update = await check();
-            if (update) {
-                await update.downloadAndInstall();
-                updateReady = true;
-                posthog.capture("update_ready", { version: updateVersion });
-            }
-            updateInstalling = false;
-        }
-    } catch (e) {
-        console.error("Update install failed:", e);
-        posthog.capture("update_failed", { version: updateVersion, error: String(e) });
-        updateInstalling = false;
+    updateError = "";
+    const wasReady = updateReady;
+    posthog.capture(wasReady ? "update_relaunched" : "update_started", {
+        version: updateVersion,
+    });
+
+    const result = await performUpdateInstall({
+        ready: wasReady,
+        checkForUpdate: check,
+        relaunchApp: relaunch,
+        getExecutableDir: executableDir,
+    });
+
+    if (result.status === "ready") {
+        updateReady = true;
+        posthog.capture("update_ready", { version: updateVersion });
+    } else if (result.status === "not-available") {
+        updateAvailable = false;
+        toast.info("Quillium is already up to date");
+    } else if (result.status === "failed") {
+        const description = updateFailureDescription(result.failure);
+        updateError = description;
+        console.error("[updater] update install failed", result.failure);
+        void logAppEvent("error", "updater", "update install failed", {
+            version: updateVersion,
+            kind: result.failure.kind,
+            error: result.failure.technicalMessage,
+        });
+        posthog.capture("update_failed", {
+            version: updateVersion,
+            kind: result.failure.kind,
+            error: result.failure.technicalMessage,
+        });
+        toast.error("Update couldn’t be installed", {
+            description,
+            action: {
+                label: "Manual Download",
+                onClick: () => void openUrl(LATEST_DESKTOP_RELEASE_URL),
+            },
+        });
     }
+
+    updateInstalling = false;
 }
 
 async function handleAuthReconnect() {
@@ -295,6 +424,17 @@ async function handleAuthReconnect() {
         toast.error("Still offline");
     } finally {
         authReconnecting = false;
+    }
+}
+
+// Escape hatch: the offline pill replaces the account menu, so without
+// this there is no way to reset auth while stuck reconnecting.
+async function handleOfflineSignOut() {
+    try {
+        await signOut();
+        toast.success("Logged out");
+    } catch {
+        toast.error("Failed to log out");
     }
 }
 
@@ -315,6 +455,7 @@ onMount(() => {
                     if (skipped === update.version) return;
                     updateAvailable = true;
                     updateVersion = update.version;
+                    updateError = "";
                     posthog.capture("update_available", { version: update.version });
                 }
             })
@@ -346,6 +487,7 @@ onMount(() => {
         updateAvailable = true;
         updateReady = false;
         updateInstalling = false;
+        updateError = "";
         debugMasMode = mas;
     }
 
@@ -365,6 +507,11 @@ onMount(() => {
     const unsubShowLicenses = appEventBus.on("show-licenses", () => {
         licensesOpen = true;
     });
+    const unsubAchievement = appEventBus.on("achievement-unlocked", (event) => {
+        toast.success(`Achievement unlocked: ${event.achievement.title}`, {
+            description: event.achievement.description,
+        });
+    });
 
     // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
     // cumulative-words engagement signal, then check whether the user is
@@ -383,10 +530,16 @@ onMount(() => {
         if (!destroyed) goToHistory();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:authorship", () => {
-        if (!destroyed) goToAuthorship();
+        if (!destroyed && authorshipAvailable) goToAuthorship();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:focus-mode", () => {
+        if (!destroyed && focusModeAvailable) toggleFocusMode();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:library", () => {
         if (!destroyed) goToLibrary();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:new-tab", () => {
+        if (!destroyed) void editorComponent?.createNewTab();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:licenses", () => {
         if (!destroyed) licensesOpen = !licensesOpen;
@@ -394,6 +547,7 @@ onMount(() => {
     listen("menu:feedback", () => {
         if (!destroyed) showFeedbackSurvey("menu");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    // menu:app-logs is handled globally in +layout.svelte
     listen("menu:export-txt", () => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "txt");
@@ -414,6 +568,14 @@ onMount(() => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "pdf");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-docx", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "docx");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-docx-annotations", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "docx+annotations");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:export-pdf-annotations", () => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "pdf+annotations");
@@ -427,8 +589,10 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubAchievement();
         unsubSurveyLifecycle();
         unsubWordCount();
+        clearTimeout(focusControlsTimer);
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -438,21 +602,7 @@ onMount(() => {
 if (import.meta.env.DEV) {
     onMount(async () => {
         const { scenarios } = await import("$lib/debug/scenarios");
-        const { EditorState } = await import("@codemirror/state");
-        const { EditorView } = await import("@codemirror/view");
-        const { getExtensions, savedFields } = await import("$lib/editor/extensions");
-        const {
-            resetDb,
-            createDocument,
-            createDraft,
-            appendEvent,
-            createSnapshot,
-            updateDocumentMeta,
-        } = await import("$lib/db");
-        const { buildEventPayload } = await import("$lib/editor/listeners");
-        const { currentDocumentId, currentDocumentTitle, currentDraftId } = await import(
-            "$lib/stores"
-        );
+        const { loadScenario } = await import("$lib/debug/loadScenario");
 
         const { createRevision } = await import("$lib/editor/plugins/annotations");
 
@@ -470,55 +620,7 @@ if (import.meta.env.DEV) {
                 return false;
             }
             try {
-                const collectedPayloads: EventPayload[] = [];
-
-                const tempState = EditorState.create({
-                    doc: scenario.doc,
-                    extensions: getExtensions({
-                        persist: false,
-                        updateListener(update) {
-                            const payload = buildEventPayload(update);
-                            if (payload) collectedPayloads.push(payload);
-                        },
-                    }),
-                });
-                const tempParent = document.createElement("div");
-                const tempView = new EditorView({ state: tempState, parent: tempParent });
-                scenario.setup(tempView);
-                const finalState = tempView.state;
-                tempView.destroy();
-
-                await resetDb();
-                const docId = await createDocument(scenario.label);
-                const draftId = await createDraft(docId, "Draft");
-
-                let lastEventId = -1;
-                for (const payload of collectedPayloads) {
-                    const result = await appendEvent(draftId, JSON.stringify(payload));
-                    lastEventId = result.eventId;
-                }
-
-                const stateJson = JSON.stringify(finalState.toJSON(savedFields));
-                await createSnapshot(draftId, stateJson, lastEventId);
-
-                const docText = finalState.doc.toString();
-                const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
-                await updateDocumentMeta(
-                    docId,
-                    scenario.label,
-                    wordCount,
-                    docText.slice(0, 200),
-                    "[]",
-                    docText,
-                );
-
-                // Set stores after snapshot is written to avoid a race
-                // where the Editor subscription loads an empty state.
-                currentDocumentId.set(docId);
-                currentDocumentTitle.set(scenario.label);
-                currentDraftId.set(draftId);
-
-                await editorComponent?.reload();
+                await loadScenario(scenario, () => editorComponent?.reload());
                 return true;
             } catch (e) {
                 console.error("[screenshot] runScenario failed:", e);
@@ -529,53 +631,82 @@ if (import.meta.env.DEV) {
 }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window
+    onkeydown={handleKeydown}
+    onpointermove={revealFocusControls}
+    onfocus={revealFocusControls}
+/>
 
-{#if appSettings.aiEnabled}
-    <AiSidebar />
-{/if}
+<div class="app-shell">
+
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <Sidebar />
+</div>
 <DictionaryPopover />
 <HarperTooltip />
 
 <!-- In-app overflow menu — only visible on small/touch viewports (<900px).
-     Reaches Settings / Library / History / Licenses / Export, the same
-     actions the desktop-only native menu bar triggers. -->
-<MobileMenu
-    onsettings={() => ($settingsOpen = !$settingsOpen)}
-    onlibrary={goToLibrary}
-    onhistory={goToHistory}
-    onexport={handleMobileExport}
-/>
+     Reaches Settings / Library / History / Export plus gated mobile actions. -->
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <MobileMenu
+        onsettings={() => ($settingsOpen = !$settingsOpen)}
+        onlibrary={goToLibrary}
+        onhistory={goToHistory}
+        onexport={handleMobileExport}
+    />
+</div>
 
 <!-- Keyboard accessory toolbar — floats on top of the on-screen keyboard so
      formatting + annotation commands are reachable without a hardware keyboard.
      Only active on mobile; hides itself when the keyboard is closed. -->
-<MobileFormatBar enabled={IS_MOBILE} />
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <MobileFormatBar enabled={IS_MOBILE} />
+</div>
 
 <div class="h-screen w-full">
-    <Editor bind:this={editorComponent} />
+    <Editor bind:this={editorComponent} {showSample} {focusMode} {focusControlsVisible} />
 </div>
+
+{#if focusMode}
+    <button
+        type="button"
+        class="focus-exit fixed top-7 right-7 z-[60] rounded-full bg-white/75 px-4 py-2 text-xs font-medium text-black/55 shadow-lg ring-1 ring-black/[0.06] backdrop-blur-md hover:bg-white hover:text-black/75 focus-visible:opacity-100"
+        class:focus-exit-visible={focusControlsVisible}
+        onclick={() => setFocusMode(false)}
+        aria-label="Exit focus mode"
+        title="Exit focus mode (Esc or Command/Ctrl+Shift+F)"
+    >
+        Exit focus mode
+    </button>
+{/if}
 
 <!-- Update banner — shown when a new version is available -->
 {#if updateAvailable}
-    <UpdateBanner
-        version={updateVersion}
-        installing={updateInstalling}
-        ready={updateReady}
-        masMode={effectiveMasMode}
-        oninstall={installUpdate}
-        ondismiss={() => {
-            posthog.capture("update_dismissed", { version: updateVersion });
-            localStorage.setItem("quillium_skipped_update", updateVersion);
-            updateAvailable = false;
-            debugMasMode = null;
-        }}
-    />
+    <div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+        <UpdateBanner
+            version={updateVersion}
+            installing={updateInstalling}
+            ready={updateReady}
+            error={updateError}
+            masMode={effectiveMasMode}
+            oninstall={installUpdate}
+            ondismiss={() => {
+                posthog.capture("update_dismissed", { version: updateVersion });
+                localStorage.setItem("quillium_skipped_update", updateVersion);
+                updateAvailable = false;
+                updateError = "";
+                debugMasMode = null;
+            }}
+        />
+    </div>
 {/if}
 
 <!-- Stats modal -->
 {#if $statsOpen}
-    <StatsModal onclose={() => ($statsOpen = false)} />
+    <StatsModal
+        writingGoalsEnabled={$novelNovemberEnabled}
+        onclose={() => ($statsOpen = false)}
+    />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -609,6 +740,7 @@ if (import.meta.env.DEV) {
     />
 {/if}
 
+
 <!-- Debug panel — DEV only, never rendered in production builds -->
 {#if import.meta.env.DEV && $debugPanelActive}
     <DebugPanel
@@ -617,16 +749,27 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
-<BottomLeftStack>
-    {#if appSettings.aiEnabled}
-        <AutoAIWidget />
-    {/if}
-    <WordCountOverlay />
-</BottomLeftStack>
-<Toaster position="bottom-right" />
+<div class="focus-chrome" class:focus-chrome-hidden={focusMode && !focusControlsVisible}>
+    <BottomLeftStack>
+        {#if $novelNovemberEnabled}
+            <WritingSprint />
+        {/if}
+        {#if appSettings.aiEnabled}
+            <AutoAIWidget />
+        {/if}
+        <WordCountOverlay />
+        {#if $novelNovemberEnabled}
+            <WritingGoalTracker />
+        {/if}
+    </BottomLeftStack>
+</div>
 
 <!-- Top-right collab + account entry points -->
-<div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+<div
+    data-annotation-occluder
+    class="focus-chrome fixed top-8 right-8 z-40 flex items-center gap-3"
+    class:focus-chrome-hidden={focusMode && !focusControlsVisible}
+>
     {#if authLoading && authConnectionState === "connecting" && authReconnecting}
         <button
             disabled
@@ -636,10 +779,23 @@ if (import.meta.env.DEV) {
         >
             Reconnecting
         </button>
+        {#if authCanReset}
+            <button
+                onclick={handleOfflineSignOut}
+                class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
+                    rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                    hover:text-black/70 hover:bg-white/60 transition-colors"
+            >
+                Sign out
+            </button>
+        {/if}
     {:else if authLoading}
         <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
         <div class="h-8 w-[84px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
-    {:else if authOffline}
+    {:else if authOffline && authCanReset}
+        <!-- Offline with a session to recover. Once signed out there is
+             nothing to reconnect — fall through to the normal signed-out
+             UI instead of nagging with a Reconnect pill. -->
         <button
             onclick={handleAuthReconnect}
             class="px-4 py-2 text-xs font-semibold text-red-700 bg-red-50/90 backdrop-blur-md
@@ -648,6 +804,16 @@ if (import.meta.env.DEV) {
         >
             Reconnect
         </button>
+        {#if authCanReset}
+            <button
+                onclick={handleOfflineSignOut}
+                class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
+                    rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                    hover:text-black/70 hover:bg-white/60 transition-colors"
+            >
+                Sign out
+            </button>
+        {/if}
     {:else}
         <AuthButton onauthclick={() => (authModalOpen = true)} />
         <GoLiveButton onauthclick={() => (authModalOpen = true)} />
@@ -668,11 +834,39 @@ if (import.meta.env.DEV) {
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
     {:else if entry.type === "comment"}
-        <CommentModal commentId={entry.commentId} parentView={entry.parentView} stackIndex={i} />
+        <CommentModal
+            commentId={entry.commentId}
+            parentView={entry.parentView}
+            stackIndex={i}
+            originSelection={entry.originSelection}
+        />
     {/if}
 {/each}
+</div>
 
 <style>
+    .app-shell {
+        min-height: 100vh;
+    }
+    .focus-chrome {
+        transition:
+            opacity 240ms ease,
+            visibility 240ms ease;
+    }
+    .focus-chrome-hidden {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .focus-exit {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 240ms ease;
+    }
+    .focus-exit-visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
     :global(html) {
         background-color: #e5e7eb; /* gray-200 */
     }

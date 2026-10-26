@@ -31,7 +31,7 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { normalizeSerializedSelection } from "$lib/editor/plugins/annotations/nestedEditor";
-import { history, redo, undo } from "@codemirror/commands";
+import { history, redo, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -141,6 +141,7 @@ function rawSelection(from: number, to: number) {
 function nestedComment(id: number, from: number, to: number) {
     return {
         _type: "comment",
+        status: "active" as const,
         id,
         selection: rawSelection(from, to),
         thread: [],
@@ -155,6 +156,7 @@ function nestedSuggestion(
 ) {
     return {
         _type: "suggestion",
+        status: "active" as const,
         id,
         selection: rawSelection(from, to),
         thread: [],
@@ -383,6 +385,7 @@ describe("nested annotation creation enters parent undo history via version stat
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -438,6 +441,7 @@ describe("nested annotation creation enters parent undo history via version stat
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -486,6 +490,7 @@ describe("nested annotation creation enters parent undo history via version stat
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -557,6 +562,7 @@ describe("nested annotation creation enters parent undo history via version stat
                 annotationField: {
                     0: {
                         _type: "comment",
+                        status: "active" as const,
                         id: 0,
                         selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
                         thread: [],
@@ -570,6 +576,7 @@ describe("nested annotation creation enters parent undo history via version stat
                 annotationField: {
                     0: {
                         _type: "comment",
+                        status: "active" as const,
                         id: 0,
                         selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
                         thread: [],
@@ -589,6 +596,7 @@ describe("nested annotation creation enters parent undo history via version stat
                 annotationField: {
                     0: {
                         _type: "comment",
+                        status: "active" as const,
                         id: 0,
                         selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
                         thread: [],
@@ -604,6 +612,52 @@ describe("nested annotation creation enters parent undo history via version stat
 // ── NestedEditorController sync gap regressions ─────────────────────────────
 
 describe("NestedEditorController annotation flush regressions", () => {
+    it("keeps a plain inline edit in the active version instead of syncing stale text back", () => {
+        const revId = addRevision(view, 0, 11, "hello world");
+        const mounted = mountNestedController(view, revId);
+
+        try {
+            mounted.editor.dispatch({ changes: { from: 5, to: 11, insert: "!" } });
+
+            expect(view.state.doc.toString()).toBe("hello!");
+            expect(getVersionDoc(view, revId)).toBe("hello!");
+
+            // Mirror a lagging Revision.svelte reactive parent → nested pass.
+            // Before the fix the version itself still contained this pre-edit
+            // text, and the sync restored it, making typing and Backspace look
+            // inert. The controller now also rejects stale snapshots.
+            mounted.controller.syncFromParent("hello world");
+            expect(mounted.editor.state.doc.toString()).toBe("hello!");
+        } finally {
+            mounted.destroy();
+        }
+    });
+
+    it("keeps nested annotation remaps atomic across repeated undo and redo", () => {
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: {
+                0: nestedComment(0, 1, 2),
+            },
+        });
+        const mounted = mountNestedController(view, revId);
+
+        mounted.editor.dispatch({ changes: { from: 0, insert: "X" } });
+        expect(view.state.doc.toString()).toBe("Xhello world");
+        expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([2, 3]);
+        mounted.destroy();
+
+        for (let cycle = 0; cycle < 3; cycle++) {
+            undo(view);
+            expect(view.state.doc.toString()).toBe("hello world");
+            expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([1, 2]);
+
+            redo(view);
+            expect(view.state.doc.toString()).toBe("Xhello world");
+            expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([2, 3]);
+        }
+    });
+
     it("flushes when a doc change removes the last nested annotation", () => {
         const revId = addRevision(view, 0, 11, {
             doc: "hello world",
@@ -635,12 +689,20 @@ describe("NestedEditorController annotation flush regressions", () => {
         try {
             const transaction = applySuggestion(mounted.editor.state, 0, 0);
             expect(transactionsHaveAnnotationMutationEffect([transaction])).toBe(true);
+            const depthBefore = undoDepth(view.state);
 
             mounted.editor.dispatch(transaction);
+            expect(undoDepth(view.state)).toBe(depthBefore + 1);
+            expect(view.state.doc.toString()).toBe("hi world");
             expect(getVersionAnnotation(view, revId, 0)).toBeUndefined();
 
             undo(view);
+            expect(view.state.doc.toString()).toBe("hello world");
             expect(getVersionAnnotation(view, revId, 0)).toBeDefined();
+
+            redo(view);
+            expect(view.state.doc.toString()).toBe("hi world");
+            expect(getVersionAnnotation(view, revId, 0)).toBeUndefined();
         } finally {
             mounted.destroy();
         }
@@ -787,6 +849,7 @@ describe("multiple version state flushes are independently undoable", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -814,6 +877,7 @@ describe("multiple version state flushes are independently undoable", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -823,6 +887,7 @@ describe("multiple version state flushes are independently undoable", () => {
                 },
                 1: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 1,
                     selection: {
                         ranges: [{ anchor: 6, head: 11 }],
@@ -909,6 +974,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -940,6 +1006,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -973,6 +1040,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 0, head: 5 }],
@@ -1009,6 +1077,7 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
             annotationField: {
                 0: {
                     _type: "comment",
+                    status: "active" as const,
                     id: 0,
                     selection: {
                         ranges: [{ anchor: 6, head: 11 }],

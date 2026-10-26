@@ -29,29 +29,43 @@ Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
 provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
+import McpConnection from "$lib/ai/McpConnection.svelte";
 import ModelGuideModal from "$lib/ai/ModelGuideModal.svelte";
+import type { EditorialPreferences } from "$lib/ai/editorialPolicy";
+import {
+    disconnectOpenAI,
+    getStoredOpenAISession,
+    listOpenAIModels,
+    signInWithChatGPT,
+} from "$lib/ai/openaiOAuth";
 import type { Provider } from "$lib/ai/provider";
 import {
     HAS_API_KEY_KEY,
     aiSettings,
+    editorialPreferences,
+    getEffectiveEditorialPreferences,
     hasApiKey,
     loadApiKeyForProvider,
     persistBaseUrl,
+    persistEditorialPreferences,
     resetApiKeyLoadPromise,
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
-import posthog from "$lib/posthog";
+import CollegeContext from "$lib/college/CollegeContext.svelte";
+import CollegeInvitation from "$lib/college/CollegeInvitation.svelte";
+import { collegeState, getActiveCollegeSetup, updateActiveCollegeSetup } from "$lib/college/state.svelte";
+import posthog, { captureException } from "$lib/posthog";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
+import HelpModal from "$lib/ui/HelpModal.svelte";
+import InfoButton from "$lib/ui/InfoButton.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import {
-    CheckIcon,
-    ChevronDownIcon,
-    EyeIcon,
-    EyeOffIcon,
-    InfoIcon,
-    KeyRoundIcon,
-} from "lucide-svelte";
+import { CheckIcon, EyeIcon, EyeOffIcon, InfoIcon, KeyRoundIcon } from "lucide-svelte";
+import { EDITORIAL_HELP_TABS } from "./helpContent";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session, onCollegeSetup }: SidebarPanelProps = $props();
 
 type TabProvider = "openai" | "anthropic" | "google" | "deepseek";
 
@@ -63,32 +77,41 @@ const PROVIDERS: { id: TabProvider; label: string }[] = [
 ];
 
 let showModelGuide = $state(false);
+let editorialHelpTab = $state<string | null>(null);
 
 const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; description: string }[]> = {
     openai: [
-        { id: "gpt-5.5", label: "GPT-5.5", description: "Most capable" },
         {
-            id: "gpt-5.4-mini",
-            label: "GPT-5.4 Mini",
-            description: "Fast and efficient",
+            id: "gpt-5.6-sol",
+            label: "GPT-5.6 Sol",
+            description: "Best OpenAI quality",
         },
-        { id: "gpt-5.4-nano", label: "GPT-5.4 Nano", description: "Fastest, most cost-efficient" },
+        {
+            id: "gpt-5.6-luna",
+            label: "GPT-5.6 Luna",
+            description: "Fast and economical",
+        },
+        {
+            id: "gpt-5.6-terra",
+            label: "GPT-5.6 Terra",
+            description: "Balanced intelligence and cost",
+        },
     ],
     anthropic: [
         {
-            id: "claude-opus-4-8",
-            label: "Claude Opus 4.8",
-            description: "Most capable",
+            id: "claude-opus-5-5",
+            label: "Claude Opus 5.5",
+            description: "Newest; early reports are very positive",
+        },
+        {
+            id: "claude-opus-4-6",
+            label: "Claude Opus 4.6",
+            description: "Proven Claude choice for prose",
         },
         {
             id: "claude-sonnet-4-6",
             label: "Claude Sonnet 4.6",
-            description: "Fast and capable",
-        },
-        {
-            id: "claude-haiku-4-5-20251001",
-            label: "Claude Haiku 4.5",
-            description: "Fastest, most compact",
+            description: "Opus-style writing at lower cost",
         },
     ],
     google: [
@@ -128,9 +151,11 @@ const MODEL_KEY = "quillium-ai-model";
 function loadTabProvider(): TabProvider {
     if (typeof localStorage === "undefined") return "openai";
     const stored = localStorage.getItem(PROVIDER_KEY) ?? "openai";
-    // "openai-codex" and "openai-compatible" both show the OpenAI tab
+    // OpenAI's alternate connection modes all live under the OpenAI tab.
     // with the custom endpoint toggle enabled.
-    if (stored === "openai-codex" || stored === "openai-compatible") return "openai";
+    if (stored === "openai-codex" || stored === "openai-compatible" || stored === "openai-oauth") {
+        return "openai";
+    }
     if (stored === "anthropic" || stored === "google" || stored === "deepseek") return stored;
     return "openai";
 }
@@ -138,17 +163,31 @@ function loadTabProvider(): TabProvider {
 function loadUseCustomEndpoint(): boolean {
     if (typeof localStorage === "undefined") return false;
     const stored = localStorage.getItem(PROVIDER_KEY);
-    return stored === "openai-compatible" || stored === "openai-codex";
+    return stored === "openai-compatible" || stored === "openai-codex" || stored === "openai-oauth";
+}
+
+function loadUseChatGPT(): boolean {
+    if (typeof localStorage === "undefined") return false;
+    return localStorage.getItem(PROVIDER_KEY) === "openai-oauth";
 }
 
 function loadModel(): string {
-    if (typeof localStorage === "undefined") return "gpt-5.5";
-    return localStorage.getItem(MODEL_KEY) ?? "gpt-5.5";
+    if (typeof localStorage === "undefined") return "gpt-5.6-sol";
+    return localStorage.getItem(MODEL_KEY) ?? "gpt-5.6-sol";
 }
 
-let selectedTab = $state<TabProvider>(loadTabProvider());
+function isCuratedModel(provider: TabProvider, model: string): boolean {
+    return MODEL_OPTIONS[provider].some((option) => option.id === model);
+}
+
+const initialTab = loadTabProvider();
+const initialModel = loadModel();
+
+let selectedTab = $state<TabProvider>(initialTab);
 let useCustomEndpoint = $state(loadUseCustomEndpoint());
-let selectedModel = $state(loadModel());
+let useChatGPT = $state(loadUseChatGPT());
+let selectedModel = $state(initialModel);
+let useCustomModel = $state(!isCuratedModel(initialTab, initialModel));
 let baseUrl = $state(aiSettings.baseURL);
 
 let apiKey = $state(aiSettings.apiKey);
@@ -158,18 +197,88 @@ let saveStatus = $state<"idle" | "saved" | "error">("idle");
 let saveTimer: ReturnType<typeof setTimeout>;
 let canSave = $derived(!!apiKey.trim() || hasApiKey());
 
+function initialOAuthStatus(): "checking" | "signed-out" {
+    return loadUseChatGPT() ? "checking" : "signed-out";
+}
+
+let oauthStatus = $state<"checking" | "signed-out" | "starting" | "signed-in" | "error">(
+    initialOAuthStatus(),
+);
+let oauthError = $state("");
+let oauthModels = $state<string[]>([]);
+let oauthModelsStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
+let oauthModelsError = $state("");
+
 let effectiveProvider = $derived<Provider>(
-    selectedTab === "openai" && useCustomEndpoint ? "openai-compatible" : selectedTab,
+    selectedTab === "openai" && useChatGPT
+        ? "openai-oauth"
+        : selectedTab === "openai" && useCustomEndpoint
+          ? "openai-compatible"
+          : selectedTab,
 );
 
 $effect(() => {
     const provider = effectiveProvider;
     aiSettings.provider = provider;
     localStorage.setItem(PROVIDER_KEY, provider);
+    if (provider === "openai-oauth") {
+        keyLoading = false;
+        return;
+    }
+});
+
+$effect(() => {
+    if (!useChatGPT) return;
+    let cancelled = false;
+    getStoredOpenAISession()
+        .then((session) => {
+            if (!cancelled) oauthStatus = session ? "signed-in" : "signed-out";
+        })
+        .catch((error) => {
+            if (cancelled) return;
+            oauthStatus = "error";
+            oauthError = String(error);
+        });
+    return () => {
+        cancelled = true;
+    };
+});
+
+$effect(() => {
+    if (!useChatGPT || oauthStatus !== "signed-in") {
+        oauthModels = [];
+        oauthModelsStatus = "idle";
+        oauthModelsError = "";
+        return;
+    }
+    let cancelled = false;
+    oauthModelsStatus = "loading";
+    oauthModelsError = "";
+    listOpenAIModels()
+        .then((models) => {
+            if (cancelled) return;
+            oauthModels = models;
+            oauthModelsStatus = "ready";
+            if (!models.includes(selectedModel)) selectModel(models[0]);
+        })
+        .catch((error) => {
+            if (cancelled) return;
+            oauthModelsStatus = "error";
+            oauthModelsError = String(error);
+        });
+    return () => {
+        cancelled = true;
+    };
 });
 
 $effect(() => {
     const provider = effectiveProvider;
+    // OAuth sessions have their own keychain entry and lifecycle. Loading that
+    // entry through the API-key path would put serialized tokens in apiSettings.
+    if (provider === "openai-oauth") {
+        keyLoading = false;
+        return;
+    }
     // Only query the keychain if the user has previously saved an API key
     // (avoids the keychain prompt before AI is configured).
     if (!localStorage.getItem(HAS_API_KEY_KEY)) {
@@ -187,7 +296,7 @@ $effect(() => {
         .catch((e) => {
             if (cancelled) return;
             console.error("get_api_key error:", e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            captureException(e);
             apiKey = "";
         })
         .finally(() => {
@@ -200,8 +309,10 @@ $effect(() => {
 
 function selectTab(id: TabProvider) {
     selectedTab = id;
+    useCustomModel = false;
     if (id !== "openai") {
         useCustomEndpoint = false;
+        useChatGPT = false;
     }
     const first = MODEL_OPTIONS[id][0];
     selectedModel = first.id;
@@ -210,18 +321,43 @@ function selectTab(id: TabProvider) {
     posthog.capture("ai_settings_provider_changed", { provider: effectiveProvider });
 }
 
-function toggleCustomEndpoint(enabled: boolean) {
-    useCustomEndpoint = enabled;
-    if (enabled) {
-        // Switch to freeform model — keep whatever the user types.
-        posthog.capture("ai_settings_provider_changed", { provider: "openai-compatible" });
-    } else {
+function selectOpenAIConnection(connection: "api" | "endpoint" | "chatgpt") {
+    useCustomEndpoint = connection !== "api";
+    useChatGPT = connection === "chatgpt";
+    if (connection === "api") {
         // Reset to first OpenAI model.
+        useCustomModel = false;
         const first = MODEL_OPTIONS.openai[0];
         selectedModel = first.id;
         localStorage.setItem(MODEL_KEY, first.id);
         aiSettings.model = first.id;
-        posthog.capture("ai_settings_provider_changed", { provider: "openai" });
+    }
+    if (useChatGPT && !selectedModel.trim()) selectModel("gpt-5.6-luna");
+    const provider =
+        connection === "api" ? "openai" : useChatGPT ? "openai-oauth" : "openai-compatible";
+    posthog.capture("ai_settings_provider_changed", { provider });
+}
+
+async function toggleChatGPTSignIn() {
+    oauthError = "";
+    if (oauthStatus === "signed-in") {
+        try {
+            await disconnectOpenAI();
+            oauthStatus = "signed-out";
+        } catch (error) {
+            oauthStatus = "error";
+            oauthError = String(error);
+        }
+        return;
+    }
+    oauthStatus = "starting";
+    try {
+        await signInWithChatGPT();
+        oauthStatus = "signed-in";
+    } catch (error) {
+        oauthStatus = "error";
+        oauthError = String(error);
+        captureException(error);
     }
 }
 
@@ -233,6 +369,11 @@ function selectModel(id: string) {
         provider: effectiveProvider,
         model: id,
     });
+}
+
+function selectCuratedModel(id: string) {
+    useCustomModel = false;
+    selectModel(id);
 }
 
 function updateBaseUrl(url: string) {
@@ -269,13 +410,28 @@ async function saveApiKey() {
         saveStatus = "error";
         saveError = String(e);
         console.error("saveApiKey failed:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     }
     saveTimer = setTimeout(() => {
         saveStatus = "idle";
     }, 3000);
 }
+
+const effectivePreferences = $derived(getEffectiveEditorialPreferences());
+async function changeEditorialPreference(key: keyof EditorialPreferences, value: string): Promise<void> {
+    const preferences = { ...getEffectiveEditorialPreferences(), [key]: value } as EditorialPreferences;
+    if (getActiveCollegeSetup()) {
+        try { await updateActiveCollegeSetup({ preferences }); }
+        catch (error) { collegeState.error = error instanceof Error ? error.message : "Could not save editorial preferences."; }
+    } else {
+        Object.assign(editorialPreferences, preferences);
+        persistEditorialPreferences();
+    }
+}
+
 </script>
+
+<CollegeContext />
 
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">
     <!-- No API key banner -->
@@ -283,10 +439,78 @@ async function saveApiKey() {
         <div class="flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200/60 px-3 py-2.5">
             <KeyRoundIcon size={13} class="text-amber-500 shrink-0 mt-0.5" />
             <p class="text-[11px] text-amber-700/90 leading-snug">
-                Add an API key below to enable Chat, Feedback, and Revise.
+                {useChatGPT
+                    ? "Connect your ChatGPT account to enable Chat, Feedback, and Revise."
+                    : useCustomEndpoint
+                      ? "Add a local endpoint URL to enable Chat, Feedback, and Revise."
+                    : "Add an API key below to enable Chat, Feedback, and Revise."}
             </p>
         </div>
     {/if}
+
+    <div class="rounded-xl border border-black/8 bg-white/35 p-3">
+        <div class="flex items-center gap-1">
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+                Editorial approach
+            </p>
+            <InfoButton title="Editorial approach" onclick={() => (editorialHelpTab = "stance")} />
+        </div>
+        <p class="mt-1 text-[10px] leading-relaxed text-black/35">
+            These guide feedback and proposals. They never let AI replace your draft directly.
+        </p>
+
+        <div class="mt-3 grid gap-2">
+            <div class="flex items-center justify-between gap-3">
+                <label for="editorial-stance" class="text-xs font-medium text-black/55">Stance</label>
+                <select
+                    id="editorial-stance"
+                    value={effectivePreferences.stance}
+                    disabled={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}
+                    onchange={(event) => changeEditorialPreference("stance", event.currentTarget.value)}
+                    class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
+                >
+                    <option value="author-first">Author-first</option>
+                    <option value="collaborative">Collaborative</option>
+                    <option value="exploratory">Exploratory</option>
+                </select>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+                <label for="feedback-density" class="text-xs font-medium text-black/55">Feedback density</label>
+                <select
+                    id="feedback-density"
+                    value={effectivePreferences.feedbackDensity}
+                    disabled={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}
+                    onchange={(event) => changeEditorialPreference("feedbackDensity", event.currentTarget.value)}
+                    class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
+                >
+                    <option value="quiet">Quiet</option>
+                    <option value="focused">Focused</option>
+                    <option value="thorough">Thorough</option>
+                </select>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+                <label for="voice-latitude" class="text-xs font-medium text-black/55">Voice latitude</label>
+                <select
+                    id="voice-latitude"
+                    value={effectivePreferences.voiceLatitude}
+                    disabled={collegeState.hostEnabled && (collegeState.saving || ["loading", "error", "unsupported"].includes(collegeState.status))}
+                    onchange={(event) => changeEditorialPreference("voiceLatitude", event.currentTarget.value)}
+                    class="w-32 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 text-xs text-black/70 outline-none focus:border-blue-400"
+                >
+                    <option value="preserve">Preserve</option>
+                    <option value="adapt">Adapt</option>
+                    <option value="transform">Transform</option>
+                </select>
+            </div>
+            <CollegeInvitation {onCollegeSetup} />
+        </div>
+    </div>
+
+    <div>
+        <McpConnection />
+    </div>
 
     <!-- Provider -->
     <div>
@@ -345,44 +569,37 @@ async function saveApiKey() {
         </div>
     </div>
 
-    <!-- Custom endpoint toggle (OpenAI tab only) -->
+    <!-- OpenAI connection method -->
     {#if selectedTab === "openai"}
-        <div class="flex flex-col gap-2">
-            <div
-                onclick={() => toggleCustomEndpoint(!useCustomEndpoint)}
-                class="flex items-center gap-2 rounded-lg bg-white/50 border border-black/10 px-3 py-2.5 text-left transition-colors hover:bg-white/70 cursor-pointer"
-            >
-                <ChevronDownIcon
-                    size={13}
-                    class="text-black/40 shrink-0 transition-transform duration-200
-                        {useCustomEndpoint ? 'rotate-0' : '-rotate-90'}"
-                />
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-medium text-black/70 leading-tight">Custom endpoint</p>
-                    <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
-                        {#if useCustomEndpoint}
-                            Using <span class="font-mono text-black/50">{baseUrl || "http://localhost:11434/v1"}</span>
-                        {:else}
-                            Use a compatible API (Ollama, LM Studio, etc.)
-                        {/if}
-                    </p>
-                </div>
+        <div>
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+                Connection
+            </p>
+            <div class="grid grid-cols-3 gap-1 rounded-xl border border-black/8 bg-black/[0.035] p-1">
                 <button
-                    role="switch"
-                    aria-checked={useCustomEndpoint}
-                    aria-label="Use custom endpoint"
-                    onclick={(e) => { e.stopPropagation(); toggleCustomEndpoint(!useCustomEndpoint); }}
-                    class="relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200
-                        {useCustomEndpoint ? 'bg-blue-500' : 'bg-black/15'}"
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
-                            {useCustomEndpoint ? 'translate-x-3.5' : 'translate-x-0'}"
-                    ></span>
-                </button>
+                    onclick={() => selectOpenAIConnection("api")}
+                    class="rounded-lg px-1.5 py-2 text-[10px] font-medium transition-all
+                        {!useCustomEndpoint
+                        ? 'bg-white text-black/75 shadow-sm ring-1 ring-black/5'
+                        : 'text-black/38 hover:text-black/60'}"
+                >API key</button>
+                <button
+                    onclick={() => selectOpenAIConnection("endpoint")}
+                    class="rounded-lg px-1.5 py-2 text-[10px] font-medium transition-all
+                        {useCustomEndpoint && !useChatGPT
+                        ? 'bg-white text-black/75 shadow-sm ring-1 ring-black/5'
+                        : 'text-black/38 hover:text-black/60'}"
+                >Local</button>
+                <button
+                    onclick={() => selectOpenAIConnection("chatgpt")}
+                    class="rounded-lg px-1.5 py-2 text-[10px] font-medium transition-all
+                        {useChatGPT
+                        ? 'bg-white text-black/75 shadow-sm ring-1 ring-black/5'
+                        : 'text-black/38 hover:text-black/60'}"
+                >ChatGPT</button>
             </div>
-            {#if useCustomEndpoint}
-                <div class="flex flex-col gap-2 pl-1">
+            {#if useCustomEndpoint && !useChatGPT}
+                <div class="mt-2 rounded-xl border border-black/8 bg-white/35 p-2.5">
                     <div>
                         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1.5">
                             Base URL
@@ -397,7 +614,7 @@ async function saveApiKey() {
                             />
                         </div>
                         <p class="text-[10px] text-black/35 mt-1 leading-relaxed">
-                            Endpoint for any OpenAI-compatible API.
+                            OpenAI-compatible endpoint for Ollama, LM Studio, or another local server.
                         </p>
                     </div>
                 </div>
@@ -406,11 +623,37 @@ async function saveApiKey() {
     {/if}
 
     <!-- Model -->
+    {#if !useChatGPT || oauthStatus === "signed-in"}
     <div>
         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
             Model
         </p>
-        {#if useCustomEndpoint}
+        {#if useChatGPT}
+            {#if oauthModelsStatus === "ready"}
+                <div class="relative rounded-lg border border-black/10 bg-white/50 focus-within:border-blue-400">
+                    <select
+                        value={selectedModel}
+                        onchange={(event) => selectModel(event.currentTarget.value)}
+                        class="w-full appearance-none bg-transparent px-3 py-2.5 pr-8 text-xs text-black/70 outline-none"
+                    >
+                        {#each oauthModels as model}
+                            <option value={model}>{model}</option>
+                        {/each}
+                    </select>
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-black/35">⌄</span>
+                </div>
+                <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                    Models available to your connected ChatGPT account.
+                </p>
+            {:else if oauthModelsStatus === "error"}
+                <div class="rounded-lg border border-red-200/70 bg-red-50/60 px-3 py-2.5">
+                    <p class="text-[10px] text-red-700/80 leading-relaxed">{oauthModelsError}</p>
+                </div>
+            {:else}
+                <div class="h-10 animate-pulse rounded-lg border border-black/5 bg-black/5"></div>
+                <p class="text-[10px] text-black/30 mt-1.5">Loading available models…</p>
+            {/if}
+        {:else if useCustomEndpoint}
             <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
                 <input
                     type="text"
@@ -427,9 +670,9 @@ async function saveApiKey() {
             <div class="flex flex-col gap-1">
                 {#each MODEL_OPTIONS[selectedTab] as option}
                     <button
-                        onclick={() => selectModel(option.id)}
+                        onclick={() => selectCuratedModel(option.id)}
                         class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors
-                            {selectedModel === option.id
+                            {!useCustomModel && selectedModel === option.id
                             ? 'bg-white/70 shadow-sm border border-black/8'
                             : 'hover:bg-white/40 border border-transparent'}"
                     >
@@ -439,14 +682,45 @@ async function saveApiKey() {
                             </div>
                             <div class="text-xs text-black/40 mt-0.5">{option.description}</div>
                         </div>
-                        {#if selectedModel === option.id}
+                        {#if !useCustomModel && selectedModel === option.id}
                             <div class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></div>
                         {/if}
                     </button>
                 {/each}
             </div>
+            {#if useCustomModel}
+                <div class="mt-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.035] p-2.5">
+                    <label
+                        for="custom-model-id"
+                        class="block text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1.5"
+                    >Custom model ID</label>
+                    <div class="flex items-center gap-1.5 rounded-lg bg-white/70 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                        <input
+                            id="custom-model-id"
+                            type="text"
+                            bind:value={selectedModel}
+                            oninput={() => selectModel(selectedModel)}
+                            placeholder="Enter the provider's model ID"
+                            class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                        />
+                    </div>
+                    <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                        Quillium will send this ID directly to {PROVIDERS.find((provider) => provider.id === selectedTab)?.label}.
+                    </p>
+                </div>
+            {:else}
+                <button
+                    onclick={() => (useCustomModel = true)}
+                    class="mt-2 text-[10px] text-black/35 underline underline-offset-2 hover:text-black/60 transition-colors"
+                >Use a custom model ID</button>
+            {/if}
+            <button
+                onclick={() => (showModelGuide = true)}
+                class="block mt-2 text-[10px] text-black/28 hover:text-black/50 transition-colors"
+            >Why aren't these the latest models?</button>
         {/if}
     </div>
+    {/if}
 
     <!-- API Key -->
     {#if !useCustomEndpoint}
@@ -512,6 +786,49 @@ async function saveApiKey() {
                 </p>
             {/if}
         </div>
+    {:else if useChatGPT}
+        <div class="rounded-xl border border-black/8 bg-white/45 p-3 shadow-sm">
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+                ChatGPT account
+            </p>
+            <button
+                onclick={() => {
+                    if (oauthStatus !== "signed-in") void toggleChatGPTSignIn();
+                }}
+                disabled={
+                    oauthStatus === "checking" ||
+                    oauthStatus === "starting" ||
+                    oauthStatus === "signed-in"
+                }
+                class="flex items-center justify-center gap-2 w-full rounded-full border border-black/15 bg-white px-4 py-3 text-sm font-medium text-black/80 shadow-sm transition-colors hover:bg-black/[0.02] disabled:opacity-50"
+            >
+                {#if oauthStatus === "signed-in"}
+                    <CheckIcon size={16} class="text-green-600" />
+                    Connected to ChatGPT
+                {:else if oauthStatus === "starting"}
+                    Signing in…
+                {:else if oauthStatus === "checking"}
+                    Checking connection…
+                {:else}
+                    Sign in with ChatGPT
+                {/if}
+            </button>
+            {#if oauthStatus === "signed-in"}
+                <button
+                    onclick={toggleChatGPTSignIn}
+                    class="mt-2 w-full text-[10px] text-black/35 underline underline-offset-2 hover:text-black/60"
+                >Disconnect account</button>
+            {:else}
+                <p class="text-[10px] text-black/35 mt-2 text-center leading-relaxed">
+                    Opens ChatGPT in your browser. Credentials stay in your system keychain.
+                </p>
+            {/if}
+            {#if oauthError}
+                <p class="text-[10px] text-red-600/80 mt-1.5 leading-relaxed break-all">
+                    {oauthError}
+                </p>
+            {/if}
+        </div>
     {:else}
         <!-- Optional API Key for custom endpoint -->
         <div>
@@ -554,7 +871,12 @@ async function saveApiKey() {
     <p class="text-[10px] text-black/30 leading-relaxed px-0.5">
         By using AI features, your writing is sent directly to
         {#if useCustomEndpoint}
-            your custom endpoint. Check its terms and privacy policy.
+            {#if useChatGPT}
+                OpenAI through your ChatGPT account. This beta integration uses the unofficial
+                openai-oauth package. Check OpenAI's terms and privacy policy.
+            {:else}
+                your custom endpoint. Check its terms and privacy policy.
+            {/if}
         {:else if selectedTab === "openai"}
             OpenAI. You agree to their
             <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>privacy policy</button>.
@@ -573,4 +895,14 @@ async function saveApiKey() {
 
 {#if showModelGuide}
     <ModelGuideModal onclose={() => (showModelGuide = false)} />
+{/if}
+
+{#if editorialHelpTab}
+    <HelpModal
+        title="Editorial approach"
+        tabs={EDITORIAL_HELP_TABS}
+        initialTab={editorialHelpTab}
+        footer="These settings guide feedback and proposed revisions. You choose which changes to accept."
+        onclose={() => (editorialHelpTab = null)}
+    />
 {/if}

@@ -6,46 +6,35 @@ metadata:
   version: 1.8.1
 ---
 
-# PostHog integration for SvelteKit
+# PostHog in Quillium
 
-This skill helps you add PostHog analytics to SvelteKit applications.
+Quillium already has PostHog integrations. Use this workflow when adding or
+changing analytics. The metadata above records the original imported skill;
+these instructions replace its initial setup wizard.
 
-## Workflow
+1. Read the [event catalog](../../../docs/posthog-events.md) for event names,
+   properties, privacy rules, and source locations. Search existing captures
+   before adding an event.
+2. Read the affected initializer. Desktop uses
+   [`src/lib/posthog.ts`](../../../packages/desktop/src/lib/posthog.ts).
+   Landing uses [`src/hooks.client.ts`](../../../packages/landing/src/hooks.client.ts).
+   Keep initialization in those modules and use their existing public environment
+   variables. Do not hardcode keys or add a second client.
+3. Add only events needed for the requested change. In desktop code, use the
+   `capture` and `captureException` helpers from `$lib/posthog`. Keep document text,
+   prompts, credentials, and personal form fields out of event properties and
+   exception messages. The capture helper removes only specific property names;
+   it does not sanitize arbitrary content.
+4. Preserve analytics opt-out and session replay masking. Account identification
+   belongs in [`auth.svelte.ts`](../../../packages/desktop/src/lib/auth/auth.svelte.ts).
+   It identifies non-anonymous account IDs and resets on sign-out. Do not add
+   identification on form submission or identify anonymous sessions.
+5. Update the event catalog in the same change. Run the affected package checks
+   from [CONTRIBUTING.md](../../../CONTRIBUTING.md#verify-your-change) and inspect
+   the emitted properties and opt-out behavior. Development analytics are
+   normally disabled, so a quiet network alone does not verify opt-out.
 
-Follow these steps in order to complete the integration:
-
-1. `basic-integration-1.0-begin.md` - PostHog Setup - Begin ← **Start here**
-2. `basic-integration-1.1-edit.md` - PostHog Setup - Edit
-3. `basic-integration-1.2-revise.md` - PostHog Setup - Revise
-4. `basic-integration-1.3-conclude.md` - PostHog Setup - Conclusion
-
-## Reference files
-
-- `EXAMPLE.md` - SvelteKit example project code
-- `svelte.md` - Svelte - docs
-- `identify-users.md` - Identify users - docs
-- `basic-integration-1.0-begin.md` - PostHog setup - begin
-- `basic-integration-1.1-edit.md` - PostHog setup - edit
-- `basic-integration-1.2-revise.md` - PostHog setup - revise
-- `basic-integration-1.3-conclude.md` - PostHog setup - conclusion
-
-The example project shows the target implementation pattern. Consult the documentation for API details.
-
-## Key principles
-
-- **Environment variables**: Always use environment variables for PostHog keys. Never hardcode them.
-- **Minimal changes**: Add PostHog code alongside existing integrations. Don't replace or restructure existing code.
-- **Match the example**: Your implementation should follow the example project's patterns as closely as possible.
-
-## Framework guidelines
-
-- Set paths.relative to false in svelte.config.js — this is required for PostHog session replay to work correctly with SSR and is easy to miss
-- Use the Svelte MCP server tools to check Svelte documentation (list-sections, get-documentation) and validate components (svelte-autofixer) — always run svelte-autofixer on new or modified .svelte files before finishing
-
-## Identifying users
-
-Identify users during login and signup events. Refer to the example code and documentation for the correct identify pattern for this framework. If both frontend and backend code exist, pass the client-side session and distinct ID using `X-POSTHOG-DISTINCT-ID` and `X-POSTHOG-SESSION-ID` headers to maintain correlation.
-
-## Error tracking
-
-Add PostHog error tracking to relevant files, particularly around critical user flows and API boundaries.
+For a new SDK capability, consult current official PostHog documentation and the
+installed dependency. The old copied example app and SDK reference snapshots
+are no longer maintained here. Dashboard creation and broad instrumentation
+sweeps are separate tasks, not part of every analytics change.

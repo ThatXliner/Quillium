@@ -1,7 +1,9 @@
 <script lang="ts">
-import { avatarColor, initials } from "$lib/auth/avatarUtils";
+import { parsePassageLink, serializePassageLink } from "@quillium/share";
+import { appEventBus } from "$lib/events/appEventBus";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 import { readersSettings } from "$lib/readers/settings.svelte";
+import { ThreadMessage as ThreadMessageView } from "@quillium/share";
 /**
  * ThreadMessage.svelte — Renders a single message within an
  * annotation thread (avatar, author, timestamp, body).
@@ -42,82 +44,33 @@ let {
 
 /** Look up persona metadata by author name for emoji-in-circle avatar. */
 const persona = $derived(readersSettings.personas.find((p) => p.name === message.author));
-
-let editing = $state(false);
-let editMessage = $state(message.message);
+const passage = $derived(parsePassageLink(message.message));
 
 /** Commit the in-place edit back to the parent via updateThread. */
-function saveEdit() {
+function saveEdit(editMessage: string) {
     const newThread = [...thread];
-    newThread[index] = { ...thread[index], message: editMessage };
+    newThread[index] = {
+        ...thread[index],
+        message: editMessage + (passage.link ? "\n" + serializePassageLink(passage.link) : ""),
+    };
     updateThread(newThread);
-    editing = false;
-}
-
-/** Format a unix-ms timestamp into a short human-readable string. */
-function formatTime(ts: number) {
-    return new Intl.DateTimeFormat("default", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-    }).format(new Date(ts));
 }
 </script>
 
-<div class="flex gap-2.5">
-    {#if persona}
-        <div
-            class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-            style="background: {lightTint(persona.color)}; border: 1.5px solid {mediumTint(persona.color)};"
-        >
-            {persona.emoji}
-        </div>
-    {:else}
-        <div
-            class="shrink-0 w-7 h-7 rounded-full shadow-sm flex items-center justify-center text-white text-xs font-semibold"
-            style="background: {avatarColor(message.author)};"
-            title={message.author}
-        >
-            {initials(message.author)}
-        </div>
-    {/if}
-    <div class="flex-1 min-w-0">
-        <div class="flex items-baseline gap-1.5">
-            <span class="text-xs font-semibold text-black/80">{message.author}</span>
-            <span class="text-[10px] text-black/40">{formatTime(message.time)}</span>
-        </div>
-
-        {#if editing}
-            <textarea
-                bind:value={editMessage}
-                class="mt-1 w-full text-xs rounded-lg bg-white/40 border border-white/30 p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400/50 text-black/70"
-                rows="3"
-                onkeydown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && editMessage) {
-                        saveEdit();
-                    }
-                }}
-            ></textarea>
-            <div class="flex gap-2 mt-1">
-                <button
-                    onclick={saveEdit}
-                    disabled={!editMessage}
-                    class="text-xs font-medium text-blue-600/80 hover:text-blue-700 disabled:opacity-50"
-                >Save</button>
-                <button
-                    onclick={() => { editing = false; editMessage = message.message; }}
-                    class="text-xs text-black/40 hover:text-black/60"
-                >Cancel</button>
-            </div>
-        {:else}
-            <p class="text-xs text-black/70 mt-0.5 leading-relaxed {truncate ? 'truncate' : 'whitespace-pre-wrap'}">{message.message}</p>
-            {#if !truncate}
-                <button
-                    onclick={() => (editing = true)}
-                    class="text-[10px] text-black/30 hover:text-black/50 mt-0.5"
-                >Edit</button>
-            {/if}
-        {/if}
-    </div>
-</div>
+<ThreadMessageView
+    message={{ ...message, message: passage.text }}
+    {truncate}
+    persona={persona
+        ? {
+              emoji: persona.emoji,
+              background: lightTint(persona.color),
+              border: mediumTint(persona.color),
+          }
+        : undefined}
+    onEdit={saveEdit}
+/>
+{#if passage.link}
+    <button title={passage.link.quote} class="ml-9 mt-1 text-xs text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600" onclick={() => { if (passage.link) appEventBus.emit({ type: "open-passage", passage: passage.link }); }}>
+        Supporting passage ↗
+    </button>
+{/if}

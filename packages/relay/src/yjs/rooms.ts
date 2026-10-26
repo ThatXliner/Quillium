@@ -5,10 +5,11 @@ import { Awareness, removeAwarenessStates } from "y-protocols/awareness";
  * Per D-71: Rooms hold Y.Doc instead of @codemirror/state Text.
  * Per D-37: Room cleanup delay (45 seconds after last client leaves).
  */
-import * as Y from "yjs";
+import type * as Y from "yjs";
 import { createLogger } from "../logger.js";
 import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
 import { clearYjsUpdates, loadYjsState, persistYjsState } from "../persistence/yjsUpdates.js";
+import { migrateYjsDoc } from "./migrations.js";
 import type { YjsRoom } from "./types.js";
 
 const logger = createLogger("yjs/rooms");
@@ -16,78 +17,103 @@ const logger = createLogger("yjs/rooms");
 /** Per D-37: Room cleanup delay (45 seconds) */
 const ROOM_CLEANUP_DELAY_MS = 45_000;
 
-/** In-memory room storage */
-const rooms = new Map<string, YjsRoom>();
+type RoomSlot =
+    | { kind: "opening"; ready: Promise<YjsRoom> }
+    | { kind: "ready"; room: YjsRoom }
+    | { kind: "cleaning"; room: YjsRoom; finished: Promise<void> };
 
-/**
- * Get or create a Yjs room.
- * Loads state from database if room doesn't exist in memory.
- *
- * @param documentId - Document ID (room name)
- */
+const rooms = new Map<string, RoomSlot>();
+
 export async function getOrCreateYjsRoom(documentId: string): Promise<YjsRoom> {
-    let room = rooms.get(documentId);
+    while (true) {
+        const slot = rooms.get(documentId);
+        if (slot?.kind === "ready") {
+            cancelRoomCleanup(slot.room);
+            return slot.room;
+        }
+        if (slot?.kind === "opening") return slot.ready;
+        if (slot?.kind === "cleaning") {
+            await slot.finished;
+            continue;
+        }
 
-    if (!room) {
-        // Load state from DB
-        const { ydoc } = await loadYjsState(documentId);
-        const awareness = new Awareness(ydoc);
-
-        room = {
-            documentId,
-            ydoc,
-            awareness,
-            clients: new Set(),
-            cleanupTimer: null,
-            isOwnerConnected: false,
-            ownerId: null,
+        const opening: Extract<RoomSlot, { kind: "opening" }> = {
+            kind: "opening",
+            ready: Promise.resolve().then(async () => {
+                let ydoc: Y.Doc | undefined;
+                try {
+                    ({ ydoc } = await loadYjsState(documentId));
+                    const migration = migrateYjsDoc(ydoc);
+                    if (migration.changed) {
+                        const persisted = await persistYjsState(documentId, ydoc);
+                        if (persisted.success) await clearYjsUpdates(documentId);
+                        logger.info(
+                            `Migrated room ${documentId.slice(0, 8)}... to Yjs schema v${migration.currentVersion}`,
+                        );
+                    }
+                    const room: YjsRoom = {
+                        documentId,
+                        ydoc,
+                        awareness: new Awareness(ydoc),
+                        clients: new Set(),
+                        cleanupTimer: null,
+                        isOwnerConnected: false,
+                        ownerId: null,
+                    };
+                    rooms.set(documentId, { kind: "ready", room });
+                    logger.info(`Created room ${documentId.slice(0, 8)}...`);
+                    return room;
+                } catch (error) {
+                    ydoc?.destroy();
+                    if (rooms.get(documentId) === opening) rooms.delete(documentId);
+                    throw error;
+                }
+            }),
         };
-
-        rooms.set(documentId, room);
-        logger.info(`Created room ${documentId.slice(0, 8)}...`);
+        rooms.set(documentId, opening);
+        return opening.ready;
     }
+}
 
-    // Cancel any pending cleanup
+export function getYjsRoom(documentId: string): YjsRoom | undefined {
+    const slot = rooms.get(documentId);
+    return slot?.kind === "ready" ? slot.room : undefined;
+}
+
+export function scheduleRoomCleanup(room: YjsRoom): void {
+    const current = rooms.get(room.documentId);
+    if (current?.kind !== "ready" || current.room !== room) return;
     cancelRoomCleanup(room);
 
-    return room;
-}
+    room.cleanupTimer = setTimeout(() => {
+        room.cleanupTimer = null;
+        if (room.clients.size > 0 || rooms.get(room.documentId) !== current) return;
 
-/**
- * Get existing room (or undefined).
- */
-export function getYjsRoom(documentId: string): YjsRoom | undefined {
-    return rooms.get(documentId);
-}
-
-/**
- * Schedule room cleanup after delay.
- * Per D-37: Prevents thrashing during brief network hiccups.
- */
-export function scheduleRoomCleanup(room: YjsRoom): void {
-    if (room.cleanupTimer) {
-        clearTimeout(room.cleanupTimer);
-    }
-
-    room.cleanupTimer = setTimeout(async () => {
-        // Verify room is still empty
-        if (room.clients.size === 0) {
-            // Persist final state before cleanup
-            await flushDocumentUpdates(room.documentId);
-            await persistYjsState(room.documentId, room.ydoc);
-            await clearYjsUpdates(room.documentId);
-
-            // Cleanup Y.Doc and Awareness
-            room.awareness.destroy();
-            room.ydoc.destroy();
-
-            rooms.delete(room.documentId);
-            logger.info(`Cleaned up room ${room.documentId.slice(0, 8)}...`);
-        } else {
-            logger.info(
-                `Skipped cleanup for ${room.documentId.slice(0, 8)}... (${room.clients.size} clients)`,
-            );
-        }
+        const cleaning: Extract<RoomSlot, { kind: "cleaning" }> = {
+            kind: "cleaning",
+            room,
+            finished: Promise.resolve().then(async () => {
+                try {
+                    await flushDocumentUpdates(room.documentId);
+                    const persisted = await persistYjsState(room.documentId, room.ydoc);
+                    if (!persisted.success) {
+                        throw new Error(persisted.error ?? "Failed to persist room snapshot");
+                    }
+                    await clearYjsUpdates(room.documentId);
+                    room.awareness.destroy();
+                    room.ydoc.destroy();
+                    if (rooms.get(room.documentId) === cleaning) rooms.delete(room.documentId);
+                    logger.info(`Cleaned up room ${room.documentId.slice(0, 8)}...`);
+                } catch (error) {
+                    logger.error(`Cleanup failed for ${room.documentId.slice(0, 8)}...`, error);
+                    if (rooms.get(room.documentId) === cleaning) {
+                        rooms.set(room.documentId, { kind: "ready", room });
+                        scheduleRoomCleanup(room);
+                    }
+                }
+            }),
+        };
+        rooms.set(room.documentId, cleaning);
     }, ROOM_CLEANUP_DELAY_MS);
 }
 
@@ -130,6 +156,7 @@ export function clearRoomState(room: YjsRoom): void {
         }
         const ymap = ydoc.getMap("annotations");
         ymap.clear();
+        ydoc.getMap("versionGroups").clear();
     }, "owner-disconnect");
 
     logger.info(`Cleared state for room ${room.documentId.slice(0, 8)}...`);
@@ -139,7 +166,9 @@ export function clearRoomState(room: YjsRoom): void {
  * Clear all rooms (for testing).
  */
 export function _clearAllRooms(): void {
-    for (const room of rooms.values()) {
+    for (const slot of rooms.values()) {
+        if (slot.kind === "opening") continue;
+        const { room } = slot;
         if (room.cleanupTimer) {
             clearTimeout(room.cleanupTimer);
         }

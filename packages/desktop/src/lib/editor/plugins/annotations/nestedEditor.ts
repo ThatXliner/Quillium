@@ -30,18 +30,32 @@
  */
 
 import { dev } from "$app/environment";
+import { logAppEvent } from "$lib/appLog";
 import { createAwarenessExtension } from "$lib/collab/awareness";
 import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { redo, undo } from "@codemirror/commands";
-import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
-import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import { isolateHistory, redo, undo } from "@codemirror/commands";
+import {
+    EditorSelection,
+    EditorState,
+    Prec,
+    type StateEffect,
+    Transaction,
+} from "@codemirror/state";
+import { type EditorView, type ViewUpdate, drawSelection, keymap } from "@codemirror/view";
+import {
+    VERSION_PREVIEW_MAX_LENGTH,
+    formatVersionPreviewText,
+} from "@quillium/share/versionPreview";
 import { get } from "svelte/store";
 import {
     _nestedEditRevision,
+    _updateRevisionVersionState,
+    aiEditProvenance,
     annotationField,
     nestedEditorEdit,
+    revisionProvenance,
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
@@ -50,10 +64,9 @@ import {
     activeVersion,
     activeVersionIndex,
     isAnnotationOfType,
+    provenanceAfterHumanEdit,
     versionText,
 } from "./models";
-
-const VERSION_PREVIEW_MAX = 34;
 
 /**
  * Creates a nested EditorState for a revision version.
@@ -72,8 +85,7 @@ export function createNestedEditorState(
     revisionId: number,
     historyView?: EditorView,
 ): EditorState {
-    // Phase 10: Collab subtree bindings removed. Nested editors always use
-    // local-only mode. Phase 11 will rebuild unified sync.
+    // Nested edits sync through the parent; presence maps into the shared text.
     const session = get(collabSession);
     const nestedAwareness =
         session === null
@@ -110,9 +122,15 @@ export function createNestedEditorState(
                   ),
               ];
     const extensions = [
-        ...getExtensions({ persist: false, history: false, updateListener }),
-        ...nestedAwareness,
+        // Install nested command routing before the shared editor extensions.
+        // Both layers watch the same physical comment chord at highest precedence;
+        // extension order ensures the nested route wins instead of creating a
+        // comment in the nested editor's non-persistent annotation field.
         makeParentUndoKeymap(historyView ?? parentView, revisionId),
+        ...getExtensions({ persist: false, history: false, updateListener }),
+        // WebKit can focus an empty revision without painting its native caret.
+        drawSelection(),
+        ...nestedAwareness,
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
 
@@ -306,10 +324,22 @@ function hasSerializedNestedState(
  * annotationField).
  */
 export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
-    function openNestedAnnotation(type: "comment" | "revision") {
+    function openNestedAnnotation(
+        type: "comment" | "revision",
+        source: "keyboard-primary" | "unknown" = "unknown",
+    ) {
         return (view: EditorView) => {
             const sel = view.state.selection.main;
-            if (sel.empty) return false;
+            if (sel.empty) {
+                if (type === "comment") {
+                    void logAppEvent("warn", "comment-command", "nested comment command rejected", {
+                        source,
+                        outcome: "empty-selection",
+                        revisionId,
+                    });
+                }
+                return false;
+            }
             annotationEventBus.emit({
                 type: "nested-annotation-create",
                 sourceView: parentView,
@@ -320,11 +350,19 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                     selectionTo: sel.to,
                 },
             });
+            if (type === "comment") {
+                void logAppEvent("info", "comment-command", "nested comment command emitted", {
+                    source,
+                    outcome: "nested-annotation-event-emitted",
+                    revisionId,
+                    selectionLength: sel.to - sel.from,
+                });
+            }
             return true;
         };
     }
 
-    return Prec.highest(
+    const parentKeymap = Prec.highest(
         keymap.of([
             {
                 key: "Mod-z",
@@ -353,7 +391,13 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 : []),
             {
                 key: "Mod-y",
-                mac: "Mod-Shift-z",
+                run() {
+                    return redo(parentView);
+                },
+                preventDefault: true,
+            },
+            {
+                key: "Mod-Shift-z",
                 run() {
                     return redo(parentView);
                 },
@@ -429,45 +473,39 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                   ]
                 : []),
             {
-                key: "Mod-Alt-m",
-                run: openNestedAnnotation("comment"),
-                preventDefault: true,
-            },
-            ...(dev
-                ? [
-                      {
-                          key: "Ctrl-Alt-m",
-                          run: openNestedAnnotation("comment"),
-                          preventDefault: true,
-                      },
-                      {
-                          key: "Meta-Alt-m",
-                          run: openNestedAnnotation("comment"),
-                          preventDefault: true,
-                      },
-                  ]
-                : []),
-            {
                 key: "Mod-Alt-k",
                 run: openNestedAnnotation("revision"),
                 preventDefault: true,
             },
-            ...(dev
-                ? [
-                      {
-                          key: "Ctrl-Alt-k",
-                          run: openNestedAnnotation("revision"),
-                          preventDefault: true,
-                      },
-                      {
-                          key: "Meta-Alt-k",
-                          run: openNestedAnnotation("revision"),
-                          preventDefault: true,
-                      },
-                  ]
-                : []),
+            {
+                key: "Ctrl-Alt-k",
+                run: openNestedAnnotation("revision"),
+                preventDefault: true,
+            },
+            {
+                key: "Meta-Alt-k",
+                run: openNestedAnnotation("revision"),
+                preventDefault: true,
+            },
+            {
+                key: "Mod-Shift-c",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
+                preventDefault: true,
+            },
+            {
+                key: "Ctrl-Shift-c",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
+                preventDefault: true,
+            },
+            {
+                key: "Meta-Shift-c",
+                run: openNestedAnnotation("comment", "keyboard-primary"),
+                preventDefault: true,
+            },
         ]),
     );
+
+    return [parentKeymap];
 }
 
 /**
@@ -543,13 +581,15 @@ export function translateAndDispatch(
     update: ViewUpdate,
     parentView: EditorView,
     revisionId: number,
+    versionUpdate?: { versionId: string; versionState: VersionState },
 ): boolean {
     if (!update.docChanged) return false;
 
-    const rev = parentView.state.field(annotationField)[revisionId] as
-        | import("./models").Annotation<"revision">
-        | undefined;
-    if (!rev) return false;
+    // Ids are sequential integers, so a remote collab sync can reassign this
+    // id to a non-revision annotation between mount and dispatch. Bail rather
+    // than writing nested edits into an unrelated annotation's range.
+    const rev = parentView.state.field(annotationField)[revisionId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) return false;
 
     const offset = rev.selection.main.from;
 
@@ -574,11 +614,88 @@ export function translateAndDispatch(
     // ensures the cursor is restored inside the revision, which triggers
     // reactivation of the inline nested editor. The nested editor has focus
     // during these dispatches, so the parent cursor move is invisible.
+    const effects: StateEffect<unknown>[] = [_nestedEditRevision.of(revisionId)];
+    const currentVersion = activeVersion(rev);
+    const sourceAiGenerations = update.transactions
+        .filter((transaction) => transaction.docChanged)
+        .flatMap((transaction) => transaction.annotation(aiEditProvenance) ?? []);
+    const allAiChanges = update.transactions
+        .filter((transaction) => transaction.docChanged)
+        .every((transaction) => {
+            const origin = transaction.annotation(revisionProvenance);
+            return (
+                (transaction.annotation(aiEditProvenance)?.length ?? 0) > 0 &&
+                origin !== "mixed" &&
+                origin !== "human"
+            );
+        });
+    const replacesWholeVersion =
+        parentChanges.length === 1 &&
+        parentChanges[0].from === offset &&
+        parentChanges[0].to === rev.selection.main.to;
+    const editProvenance = sourceAiGenerations.length
+        ? allAiChanges && replacesWholeVersion
+            ? "ai"
+            : "mixed"
+        : provenanceAfterHumanEdit(currentVersion);
+    if (versionUpdate) {
+        effects.push(
+            _updateRevisionVersionState.of({
+                annotationId: revisionId,
+                versionId: versionUpdate.versionId,
+                versionState: {
+                    ...versionUpdate.versionState,
+                    provenance: editProvenance,
+                    ...(sourceAiGenerations.length
+                        ? { aiProvenance: sourceAiGenerations.at(-1) }
+                        : {}),
+                },
+            }),
+        );
+    } else {
+        effects.push(
+            _updateRevisionVersionState.of({
+                annotationId: revisionId,
+                versionId: currentVersion.id,
+                versionState: {
+                    ...currentVersion,
+                    // This explicit effect makes annotationField Phase 3 skip
+                    // the revision, so it must carry the post-edit text itself.
+                    // Keeping the pre-edit doc here makes the reactive parent →
+                    // nested sync immediately undo every inline keystroke.
+                    doc: update.state.doc.toString(),
+                    provenance: editProvenance,
+                    ...(sourceAiGenerations.length
+                        ? { aiProvenance: sourceAiGenerations.at(-1) }
+                        : {}),
+                },
+            }),
+        );
+    }
+
+    const userEvent = update.transactions
+        .map((transaction) => transaction.annotation(Transaction.userEvent))
+        .find((event) => event !== undefined);
+
+    // Accepting a suggestion is a distinct undo step even in a nested viewport.
+    const sourceIsolation = update.transactions
+        .map((transaction) => transaction.annotation(isolateHistory))
+        .find((isolation) => isolation !== undefined);
+
     parentView.dispatch({
         changes: parentChanges,
         selection: EditorSelection.cursor(offset),
-        effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
+        effects,
+        annotations: [
+            nestedEditorEdit.of(revisionId),
+            revisionProvenance.of(
+                allAiChanges && sourceAiGenerations.length ? "ai" : editProvenance,
+            ),
+            ...(sourceAiGenerations.length ? [aiEditProvenance.of(sourceAiGenerations)] : []),
+            Transaction.addToHistory.of(true),
+            ...(userEvent ? [Transaction.userEvent.of(userEvent)] : []),
+            ...(sourceIsolation ? [isolateHistory.of(sourceIsolation)] : []),
+        ],
     });
     return true;
 }
@@ -587,8 +704,9 @@ export function translateAndDispatch(
  * Returns a short preview string for a version's text content,
  * suitable for labels in version pills or breadcrumb dropdowns.
  */
-export function previewVersionText(version: VersionState, maxLen = VERSION_PREVIEW_MAX): string {
-    const flattened = versionText(version).replace(/\s+/g, " ").trim();
-    if (!flattened) return "(empty)";
-    return flattened.length > maxLen ? `${flattened.slice(0, maxLen)}…` : flattened;
+export function previewVersionText(
+    version: VersionState,
+    maxLen = VERSION_PREVIEW_MAX_LENGTH,
+): string {
+    return formatVersionPreviewText(versionText(version), maxLen);
 }

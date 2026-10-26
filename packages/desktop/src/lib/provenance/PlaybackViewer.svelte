@@ -15,13 +15,15 @@
  *
  * Owned by the authorship-proof feature; rendered by /authorship.
  */
-import { listDraftEvents, resolveActiveDraftId } from "$lib/db";
+import { listDraftEvents, listSnapshots, loadSnapshotState, resolveActiveDraftId } from "$lib/db";
 import type { ChangeSpec, EventPayload, Provenance } from "$lib/db/events";
 import type { EventRecord } from "$lib/db/types";
 import { getExtensions } from "$lib/editor/extensions";
-import { replayEvents } from "$lib/editor/replay";
+import { reconstructState } from "$lib/editor/replay";
 import { goToEditor } from "$lib/navigation";
 import { type ProvenanceReport, generateProvenanceReport } from "$lib/provenance/report";
+import { type TextOrigin, buildTextOrigin } from "$lib/provenance/textOrigin";
+import { selectPlaybackBaseline } from "$lib/provenance/timeline";
 import { currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { EditorState, RangeSetBuilder } from "@codemirror/state";
@@ -63,6 +65,18 @@ const ORIGIN_STYLES: Record<string, OriginStyle> = {
         dot: "bg-purple-500",
         mark: "rgba(168, 85, 247, 0.22)",
     },
+    "human-revision": {
+        label: "Human revision",
+        badge: "bg-emerald-100 text-emerald-700",
+        dot: "bg-emerald-500",
+        mark: "rgba(16, 185, 129, 0.22)",
+    },
+    "mixed-revision": {
+        label: "Mixed revision",
+        badge: "bg-fuchsia-100 text-fuchsia-700",
+        dot: "bg-fuchsia-500",
+        mark: "rgba(217, 70, 239, 0.22)",
+    },
     format: {
         label: "Formatting",
         badge: "bg-blue-100 text-blue-700",
@@ -77,7 +91,15 @@ const ORIGIN_STYLES: Record<string, OriginStyle> = {
     },
 };
 
-const LEGEND_ORDER = ["type", "paste", "ai-revision", "format", "other"] as const;
+const LEGEND_ORDER = [
+    "type",
+    "paste",
+    "human-revision",
+    "ai-revision",
+    "mixed-revision",
+    "format",
+    "other",
+] as const;
 
 /** Map a raw provenance origin to one of the five presentation buckets. */
 function styleKeyForOrigin(origin: Provenance["origin"] | undefined): string {
@@ -88,6 +110,10 @@ function styleKeyForOrigin(origin: Provenance["origin"] | undefined): string {
             return "paste";
         case "ai-revision":
             return "ai-revision";
+        case "human-revision":
+            return "human-revision";
+        case "mixed-revision":
+            return "mixed-revision";
         case "format":
             return "format";
         default:
@@ -106,6 +132,18 @@ let events = $state<EventRecord[]>([]);
 let loading = $state(true);
 let draftId = $state<string | null>(null);
 let report = $state<ProvenanceReport | null>(null);
+let baselineStateJson = $state<string | null>(null);
+let usingSnapshotBaseline = $state(false);
+let loadError = $state(false);
+
+let showTextOrigin = $state(false);
+let originUnavailable = $state(false);
+const TEXT_ORIGINS: Record<TextOrigin, string> = {
+    human: "Writer wording",
+    ai: "Quillium AI wording",
+    "edited-ai": "Writer edits to AI wording",
+    unknown: "Unknown origin / pasted",
+};
 
 let position = $state(0); // number of events applied (0..events.length)
 let playing = $state(false);
@@ -228,6 +266,7 @@ $effect(() => {
     // Track reactive deps explicitly so the effect re-runs on every step.
     void position;
     void events;
+    void baselineStateJson;
 
     previewView?.destroy();
 
@@ -235,11 +274,28 @@ $effect(() => {
 
     // Pass 1: reconstruct just to learn the inserted range of the current event
     // against the final document (positions depend on the rebuilt doc length).
-    const probe =
-        slice.length > 0
-            ? replayEvents(EditorState.create({ extensions: probeExtensions }), slice)
-            : EditorState.create({ extensions: probeExtensions });
-    const deco = currentEditDecorations(probe);
+    const probe = reconstructState(baselineStateJson, slice, probeExtensions);
+    let deco = currentEditDecorations(probe);
+    originUnavailable = false;
+    if (showTextOrigin) {
+        try {
+            const baseline = reconstructState(baselineStateJson, [], probeExtensions).doc.toString();
+            const origin = buildTextOrigin(slice, baseline);
+            if (origin.text !== probe.doc.toString()) throw new Error("Origin preview differs from replay");
+            const builder = new RangeSetBuilder<Decoration>();
+            for (const span of origin.spans) {
+                builder.add(span.from, span.to, Decoration.mark({
+                    class: `cm-text-origin-${span.origin}`,
+                    attributes: { title: TEXT_ORIGINS[span.origin], "aria-label": TEXT_ORIGINS[span.origin] },
+                }));
+            }
+            deco = builder.finish();
+        } catch (error) {
+            console.warn("[textOrigin] Could not reconstruct wording lineage", error);
+            originUnavailable = true;
+            deco = Decoration.none;
+        }
+    }
 
     // Pass 2: rebuild the real state with the static decoration facet included
     // from the start, so the highlight and the editor's own annotation
@@ -250,12 +306,19 @@ $effect(() => {
         currentEditTheme,
         EditorView.decorations.of(deco),
     ];
-    const state =
-        slice.length > 0
-            ? replayEvents(EditorState.create({ extensions: liveExtensions }), slice)
-            : EditorState.create({ extensions: liveExtensions });
+    const state = reconstructState(baselineStateJson, slice, liveExtensions);
 
-    previewView = new EditorView({ state, parent: previewEl });
+    previewView = new EditorView({
+        state,
+        parent: previewEl,
+        // Read-only state stops typing, but custom commands can still dispatch.
+        // Permit inspection selections while refusing all preview mutations.
+        dispatchTransactions(transactions, view) {
+            if (transactions.every((tr) => !tr.docChanged && tr.effects.length === 0)) {
+                view.update(transactions);
+            }
+        },
+    });
     // Tint color follows the current origin.
     previewView.dom.style.setProperty("--provenance-mark", currentStyle.mark);
 
@@ -346,9 +409,24 @@ onMount(async () => {
     try {
         draftId = await resolveDraftId();
         if (!draftId) return;
-        events = await listDraftEvents(draftId);
+        const [allEvents, snapshots] = await Promise.all([
+            listDraftEvents(draftId),
+            listSnapshots(draftId),
+        ]);
+        const baseline = selectPlaybackBaseline(allEvents, snapshots);
+        if (baseline) {
+            baselineStateJson = await loadSnapshotState(baseline.id);
+            usingSnapshotBaseline = baselineStateJson !== null;
+        }
+        events =
+            baseline && usingSnapshotBaseline
+                ? allEvents.filter((event) => event.id > baseline.upToEventId)
+                : allEvents;
         position = events.length; // Open showing the finished document.
         report = await generateProvenanceReport(draftId, get(currentDocumentTitle));
+    } catch (error) {
+        console.error("[provenance] Could not load authorship playback", error);
+        loadError = true;
     } finally {
         loading = false;
     }
@@ -446,6 +524,23 @@ function handleKeydown(e: KeyboardEvent) {
         {/if}
     </div>
 
+    <div class="px-5 py-3 text-xs text-black/70 space-y-2">
+        <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" bind:checked={showTextOrigin} />
+            Show text origin
+        </label>
+        {#if showTextOrigin}
+            <p>Tracks wording added by accepted AI suggestions and chosen revisions. Pending suggestions do not change text origin. Pasted text has unknown origin.</p>
+            <div class="flex flex-wrap gap-4" aria-label="Text origin key">
+                {#each Object.entries(TEXT_ORIGINS) as [origin, label]}
+                    <span class="cm-text-origin-{origin}">{label}</span>
+                {/each}
+            </div>
+            <p>Writer edits highlights your replacements of AI wording; it does not measure how much an idea came from AI. Unrecorded moves and restored history may have unknown origin.</p>
+            {#if originUnavailable}<p role="status">Text origin is unavailable for this history. No wording has been labeled.</p>{/if}
+        {/if}
+    </div>
+
     <!-- Body -->
     <div class="flex flex-1 overflow-hidden flex-col">
         <!-- Document preview -->
@@ -454,7 +549,16 @@ function handleKeydown(e: KeyboardEvent) {
                 <div class="flex items-center justify-center w-full text-black/30 text-sm">
                     Loading…
                 </div>
-            {:else if total === 0}
+            {:else if loadError}
+                <div class="flex flex-col items-center justify-center w-full gap-3 text-center">
+                    <FileText size={36} class="text-black/15" />
+                    <p class="text-sm text-black/45">Couldn’t load writing history.</p>
+                    <p class="text-xs text-black/30 leading-relaxed max-w-xs">
+                        Your document is unchanged. Return to the editor and try opening Authorship
+                        Playback again.
+                    </p>
+                </div>
+            {:else if total === 0 && !baselineStateJson}
                 <div class="flex flex-col items-center justify-center w-full gap-3 text-center">
                     <FileText size={36} class="text-black/15" />
                     <p class="text-sm text-black/45">No writing history yet.</p>
@@ -466,7 +570,7 @@ function handleKeydown(e: KeyboardEvent) {
             {:else}
                 <div
                     class="provenance-preview w-[816px] min-h-full bg-white rounded-lg shadow-xl
-                           py-3 px-1 pointer-events-none select-none"
+                           py-3 px-1"
                     bind:this={previewEl}
                 ></div>
             {/if}
@@ -557,6 +661,12 @@ function handleKeydown(e: KeyboardEvent) {
 
                     <!-- Legend -->
                     <div class="flex items-center gap-3 flex-1 min-w-0">
+                        {#if usingSnapshotBaseline}
+                            <span class="text-[11px] text-black/35">
+                                Starts at earliest saved baseline
+                            </span>
+                            <div class="w-px h-3 bg-black/10"></div>
+                        {/if}
                         {#each LEGEND_ORDER as key}
                             {@const style = ORIGIN_STYLES[key]}
                             <span class="flex items-center gap-1.5 text-[11px] text-black/45">
@@ -581,9 +691,10 @@ function handleKeydown(e: KeyboardEvent) {
     :global(.provenance-preview .cm-provenance-current-edit) {
         background-color: var(--provenance-mark, transparent);
     }
-    :global(.provenance-preview .cm-editor) {
-        pointer-events: none;
-    }
+    :global(.cm-text-origin-human) { text-decoration: underline solid #4b5563; text-underline-offset: 3px; }
+    :global(.cm-text-origin-ai) { background: #f3e8ff; text-decoration: underline double #7e22ce; text-underline-offset: 3px; }
+    :global(.cm-text-origin-edited-ai) { background: #faf5ff; text-decoration: underline dashed #7e22ce; text-underline-offset: 3px; }
+    :global(.cm-text-origin-unknown) { text-decoration: underline dotted #6b7280; text-underline-offset: 3px; }
     :global(.provenance-preview .cm-cursor) {
         display: none !important;
     }

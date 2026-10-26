@@ -1,12 +1,22 @@
+import { recordWritingActivity } from "$lib/achievements/store";
 import { isCollabJoiner } from "$lib/collab/store";
-import { appendEvent, createNamedSnapshot, createSnapshot, updateDocumentMeta } from "$lib/db";
+import {
+    appendEvent,
+    createNamedSnapshot,
+    createSnapshot,
+    updateDocumentContentMetadata,
+} from "$lib/db";
+import { replayHistoryIsolationOf } from "$lib/db/events";
 import type {
     AnnotationEvent,
     ChangeOrigin,
     ChangeSpec,
     EventPayload,
+    PersistedStateFallback,
     Provenance,
     SelectionJSON,
+    TransactionReplayEntry,
+    TransactionReplayTrace,
 } from "$lib/db/events";
 import {
     isDeepAnnotationLoss,
@@ -14,7 +24,7 @@ import {
     isSuspiciousDeletion,
 } from "$lib/errorGuard";
 import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import posthog, { captureException } from "$lib/posthog";
 import { classifyOrigin } from "$lib/provenance/classify";
 import {
     currentDocumentId,
@@ -25,9 +35,24 @@ import {
     lastSavedAt,
     saveStatus,
 } from "$lib/stores";
-import { Transaction } from "@codemirror/state";
+import { recordWritingActivity as recordReminderWritingActivity } from "$lib/writingReminders";
+import { historyField, isolateHistory } from "@codemirror/commands";
+import {
+    type Annotation,
+    ChangeSet,
+    EditorSelection,
+    type EditorState,
+    Transaction,
+} from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { isEqual } from "lodash-es";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
+import {
+    type DeletionAmount,
+    DeletionBurstTracker,
+    shouldSaveBeforeDeletion,
+} from "./deletionHistory";
 /**
  * listeners.ts — CodeMirror update listeners for event-log persistence.
  *
@@ -37,22 +62,35 @@ import { get } from "svelte/store";
  *   1. Build an EventPayload from the transaction(s).
  *   2. Call `appendEvent` (Rust) to store it in the event log.
  *   3. If `needsSnapshot`, call `createSnapshot` with the full state.
- *   4. Debounce `updateDocumentMeta` for the library metadata.
+ *   4. Debounce `updateDocumentContentMetadata` for the library metadata.
  *
  * Key dependencies:
  *   - ./extensions (savedFields) — which StateFields are snapshotted
- *   - $lib/db (appendEvent, createSnapshot, updateDocumentMeta)
+ *   - $lib/db (appendEvent, createSnapshot, updateDocumentContentMetadata)
  *   - ./plugins/annotations (addAnnotation, removeAnnotation, updateThread,
  *     annotationsChanged)
  */
+import { documentMetadata, titleForDocument } from "./documentMetadata";
 import { savedFields } from "./extensions";
+import { PersistenceError } from "./persistenceError";
 import {
+    deserializeHistoryEffect,
+    historyDoneBranchIsSelectionSentinel,
+    historyDoneTopInfo,
+    serializeHistoryEffect,
+    transactionStartsNewHistoryGroup,
+} from "./persistentHistory";
+import {
+    type AiGenerationProvenance,
     type GenericAnnotation,
+    _revisionCleanup,
     addAnnotation,
-    annotationsChanged,
+    aiEditProvenance,
+    isRawAnnotationOfType,
     nestedEditorEdit,
     removeAnnotation,
     revisionInternalEdit,
+    revisionProvenance,
     updateThread,
 } from "./plugins/annotations";
 
@@ -60,32 +98,57 @@ export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
     persist?: boolean;
     history?: boolean;
+    /** Whether this document stores undo history in snapshots and event replay. */
+    persistHistory?: boolean;
 }
 
 // ── Debounce timers ───────────────────────────────────────────────
 type PendingMeta = {
     timer: ReturnType<typeof setTimeout>;
+    title: string;
     docText: string;
     wordCount: number;
     previewText: string;
 };
 const metaDebounceTimers = new Map<string, PendingMeta>();
+const metaWrites = new Set<Promise<void>>();
 // Only show "Saving…" if the write takes longer than this threshold.
 // This keeps the indicator on "Saved" during normal fast writes.
 let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── Write serialisation queue ─────────────────────────────────────
 // Ensures appendEvent calls are ordered by transaction order, not
-// DB completion order, and that saveStatus reflects the last write.
+// DB completion order.
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
+const deletionBurstTracker = new DeletionBurstTracker();
 
-function extractSelection(update: ViewUpdate): SelectionJSON {
-    const sel = update.state.selection;
+type PendingCheckpoint = {
+    draftId: string;
+    eventId: number;
+    state: EditorState;
+};
+
+type PersistenceBookkeeping = {
+    lastEventId: number;
+    pendingCheckpoint: PendingCheckpoint | null;
+    failure: PersistenceError | null;
+};
+let persistence: PersistenceBookkeeping = {
+    lastEventId: -1,
+    pendingCheckpoint: null,
+    failure: null,
+};
+
+function serializeSelection(sel: EditorSelection): SelectionJSON {
     return {
         ranges: sel.ranges.map((r) => ({ anchor: r.anchor, head: r.head })),
         main: sel.mainIndex,
     };
+}
+
+function extractSelection(update: ViewUpdate): SelectionJSON {
+    return serializeSelection(update.state.selection);
 }
 
 /**
@@ -106,13 +169,17 @@ function extractChanges(tr: Transaction): ChangeSpec[] {
  */
 function txProvenance(tr: Transaction): {
     origin: ChangeOrigin;
+    hasRevisionInternalEdit: boolean;
     userEvent: string | undefined;
     insertedChars: number;
     removedChars: number;
+    aiGenerations: AiGenerationProvenance[] | undefined;
 } {
     const userEvent = tr.annotation(Transaction.userEvent);
     const hasRevisionInternalEdit = !!tr.annotation(revisionInternalEdit);
     const hasNestedEditorEdit = tr.annotation(nestedEditorEdit) != null;
+    const explicitRevisionProvenance = tr.annotation(revisionProvenance);
+    const aiGenerations = tr.annotation(aiEditProvenance);
 
     let insertedChars = 0;
     let removedChars = 0;
@@ -121,8 +188,21 @@ function txProvenance(tr: Transaction): {
         removedChars += toA - fromA;
     });
 
-    const origin = classifyOrigin({ userEvent, hasRevisionInternalEdit, hasNestedEditorEdit });
-    return { origin, userEvent, insertedChars, removedChars };
+    const origin = classifyOrigin({
+        userEvent,
+        hasRevisionInternalEdit,
+        hasNestedEditorEdit,
+        hasAiEdit: (aiGenerations?.length ?? 0) > 0,
+        revisionProvenance: explicitRevisionProvenance,
+    });
+    return {
+        origin,
+        hasRevisionInternalEdit,
+        userEvent,
+        insertedChars,
+        removedChars,
+        aiGenerations,
+    };
 }
 
 /**
@@ -178,13 +258,17 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     // replaces doc text AND updates activeVersionIndex). Without the
     // revisionInternalEdit check, version switches and similar operations would
     // not be persisted to the event log.
-    if (!tr.docChanged || tr.annotation(revisionInternalEdit)) {
+    if (
+        !tr.docChanged ||
+        tr.annotation(revisionInternalEdit) ||
+        tr.annotation(nestedEditorEdit) !== undefined
+    ) {
         const before = tr.startState.field(annotationField);
         const after = tr.state.field(annotationField);
         for (const [idStr, ann] of Object.entries(after)) {
             const id = Number(idStr);
             if (explicitlyHandled.has(id)) continue;
-            if (before[id] !== ann) {
+            if (!isEqual(before[id], ann)) {
                 events.push({
                     type: "annotation_update",
                     annotation: serializeAnnotation(ann),
@@ -196,6 +280,175 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     return events;
 }
 
+function persistedFieldParts(state: Transaction["state"]): {
+    annotations: unknown;
+    versionGroups: unknown;
+} {
+    const json = state.toJSON({
+        annotationField: savedFields.annotationField,
+        versionGroupField: savedFields.versionGroupField,
+    });
+    return {
+        annotations: json.annotationField,
+        versionGroups: json.versionGroupField,
+    };
+}
+
+function changesPersistedState(tr: Transaction): boolean {
+    if (tr.docChanged) return true;
+    const before = persistedFieldParts(tr.startState);
+    const after = persistedFieldParts(tr.state);
+    return !isEqual(before, after);
+}
+
+function replayAnnotationsOf(tr: Transaction): TransactionReplayEntry & { kind: "transaction" } {
+    const historyRuntimeDisabled =
+        tr.startState.field(historyField, false) === undefined ||
+        tr.state.field(historyField, false) === undefined;
+    const doneTopSelectionsAfter = historyDoneTopInfo(tr.startState)?.selectionsAfter;
+    const annotations = {
+        // A missing historyField means the live transaction could not have
+        // entered CodeMirror history, regardless of its annotation default.
+        addToHistory: !historyRuntimeDisabled && tr.annotation(Transaction.addToHistory) !== false,
+        historyRuntimeDisabled: historyRuntimeDisabled ? (true as const) : undefined,
+        time: tr.annotation(Transaction.time),
+        userEvent: tr.annotation(Transaction.userEvent),
+        isolateHistory: tr.annotation(isolateHistory),
+        startsNewHistoryGroup: transactionStartsNewHistoryGroup(tr),
+        startsWithSelectionSentinel:
+            historyDoneBranchIsSelectionSentinel(tr.startState) || undefined,
+        doneTopSelectionsAfter:
+            doneTopSelectionsAfter && doneTopSelectionsAfter.length > 0
+                ? doneTopSelectionsAfter.map(serializeSelection)
+                : undefined,
+        revisionInternalEdit: tr.annotation(revisionInternalEdit),
+        revisionProvenance: tr.annotation(revisionProvenance),
+        aiGenerations: tr.annotation(aiEditProvenance),
+        nestedEditorEdit: tr.annotation(nestedEditorEdit),
+        revisionCleanup: tr.annotation(_revisionCleanup),
+    };
+    return {
+        kind: "transaction",
+        changeSet: tr.changes.toJSON(),
+        effects: tr.effects.flatMap((effect) => {
+            const serialized = serializeHistoryEffect(effect);
+            return serialized ? [serialized] : [];
+        }),
+        startSelection: serializeSelection(tr.startState.selection),
+        selection: serializeSelection(tr.state.selection),
+        annotations,
+    };
+}
+
+function codeMirrorAnnotationsOf(
+    entry: TransactionReplayEntry & { kind: "transaction" },
+): Annotation<unknown>[] {
+    const annotations: Annotation<unknown>[] = [
+        Transaction.addToHistory.of(entry.annotations.addToHistory),
+    ];
+    if (entry.annotations.time !== undefined) {
+        annotations.push(Transaction.time.of(entry.annotations.time));
+    }
+    if (entry.annotations.userEvent !== undefined) {
+        annotations.push(Transaction.userEvent.of(entry.annotations.userEvent));
+    }
+    const historyIsolation = replayHistoryIsolationOf(entry.annotations);
+    if (historyIsolation !== undefined) {
+        annotations.push(isolateHistory.of(historyIsolation));
+    }
+    if (entry.annotations.revisionInternalEdit !== undefined) {
+        annotations.push(revisionInternalEdit.of(entry.annotations.revisionInternalEdit));
+    }
+    if (entry.annotations.revisionProvenance !== undefined) {
+        annotations.push(revisionProvenance.of(entry.annotations.revisionProvenance));
+    }
+    if (entry.annotations.aiGenerations !== undefined) {
+        annotations.push(aiEditProvenance.of(entry.annotations.aiGenerations));
+    }
+    if (entry.annotations.nestedEditorEdit !== undefined) {
+        annotations.push(nestedEditorEdit.of(entry.annotations.nestedEditorEdit));
+    }
+    if (entry.annotations.revisionCleanup !== undefined) {
+        annotations.push(_revisionCleanup.of(entry.annotations.revisionCleanup));
+    }
+    return annotations;
+}
+
+/**
+ * Guard the trace codec against newly-added persistent effects. Re-applying the
+ * encoded transaction must reproduce the exact document, annotation map, and
+ * version-group map before it is allowed into the event log.
+ */
+function verifyTransactionReplay(
+    tr: Transaction,
+    entry: TransactionReplayEntry & { kind: "transaction" },
+): void {
+    const effects = entry.effects.map((serialized) => {
+        const effect = deserializeHistoryEffect(serialized);
+        if (!effect) throw new Error(`Unsupported persistent effect: ${serialized.type}`);
+        return effect;
+    });
+    const replayed = tr.startState.update({
+        changes: ChangeSet.fromJSON(entry.changeSet),
+        effects,
+        selection: entry.selection ? EditorSelection.fromJSON(entry.selection) : undefined,
+        annotations: codeMirrorAnnotationsOf(entry),
+        filter: false,
+    }).state;
+    if (!replayed.doc.eq(tr.state.doc)) {
+        throw new Error("Transaction replay codec produced a different document");
+    }
+    if (!replayed.selection.eq(tr.state.selection)) {
+        throw new Error("Transaction replay codec produced a different selection");
+    }
+    const expectedFields = persistedFieldParts(tr.state);
+    const replayedFields = persistedFieldParts(replayed);
+    if (!isEqual(expectedFields.annotations, replayedFields.annotations)) {
+        throw new Error("Transaction replay codec produced different annotations");
+    }
+    if (!isEqual(expectedFields.versionGroups, replayedFields.versionGroups)) {
+        throw new Error("Transaction replay codec produced different version groups");
+    }
+}
+
+function buildTransactionReplay(update: ViewUpdate): TransactionReplayTrace | undefined {
+    const transactions: TransactionReplayEntry[] = [];
+    for (const tr of update.transactions) {
+        if (!changesPersistedState(tr)) continue;
+        if (tr.isUserEvent("undo")) {
+            const fallback = replayAnnotationsOf(tr);
+            verifyTransactionReplay(tr, fallback);
+            transactions.push({ kind: "undo", fallback });
+        } else if (tr.isUserEvent("redo")) {
+            const fallback = replayAnnotationsOf(tr);
+            verifyTransactionReplay(tr, fallback);
+            transactions.push({ kind: "redo", fallback });
+        } else {
+            const entry = replayAnnotationsOf(tr);
+            verifyTransactionReplay(tr, entry);
+            transactions.push(entry);
+        }
+    }
+    return transactions.length > 0 ? { version: 1, transactions } : undefined;
+}
+
+function buildStateFallback(update: ViewUpdate): PersistedStateFallback {
+    const json = update.state.toJSON({
+        annotationField: savedFields.annotationField,
+        versionGroupField: savedFields.versionGroupField,
+    });
+    const annotations =
+        json.annotationField && typeof json.annotationField === "object"
+            ? (json.annotationField as PersistedStateFallback["annotations"])
+            : {};
+    return {
+        doc: update.state.doc.toString(),
+        annotations,
+        versionGroups: json.versionGroupField ?? {},
+        selection: extractSelection(update),
+    };
+}
+
 /**
  * Builds a single EventPayload from all transactions in a ViewUpdate.
  * Returns null if there is nothing worth persisting.
@@ -205,49 +458,80 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
     let allAnnotationEvents: AnnotationEvent[] = [];
 
     // Aggregate one event-level provenance across all doc-changing transactions:
-    //   - origin: "ai-revision" if ANY tr is a revision-internal edit, else
-    //     "nested-edit" if ANY tr is a nested-editor edit, else the origin of
-    //     the LAST doc-changing transaction.
+    //   - origin: the combined revision origin for revision-internal edits,
+    //     otherwise "nested-edit" for nested editor changes, otherwise the
+    //     origin of the last doc-changing transaction. Applied AI suggestions
+    //     identify themselves through aiEditProvenance.
     //   - userEvent: the userEvent of that same last doc-changing transaction.
     //   - inserted/removedChars: summed across all doc-changing transactions.
+    //   - aiGenerations: unique request records across those transactions.
     let anyRevisionInternal = false;
+    const revisionOrigins = new Set<ChangeOrigin>();
     let anyNestedEdit = false;
     let lastOrigin: ChangeOrigin = "unknown";
     let lastUserEvent: string | undefined;
     let totalInserted = 0;
     let totalRemoved = 0;
+    const aiGenerations = new Map<string, NonNullable<Provenance["aiGenerations"]>[number]>();
 
     for (const tr of update.transactions) {
         if (tr.docChanged) {
             allDocChanges = allDocChanges.concat(extractChanges(tr));
             const prov = txProvenance(tr);
-            if (prov.origin === "ai-revision") anyRevisionInternal = true;
+            if (prov.hasRevisionInternalEdit) {
+                anyRevisionInternal = true;
+                revisionOrigins.add(prov.origin);
+            }
             if (prov.origin === "nested-edit") anyNestedEdit = true;
             lastOrigin = prov.origin;
             lastUserEvent = prov.userEvent;
             totalInserted += prov.insertedChars;
             totalRemoved += prov.removedChars;
+            for (const generation of prov.aiGenerations ?? []) {
+                aiGenerations.set(generation.requestId, generation);
+            }
         }
         allAnnotationEvents = allAnnotationEvents.concat(extractAnnotationEvents(tr));
+    }
+
+    const hasPersistedStateChange = update.transactions.some(changesPersistedState);
+    let transactionReplay: TransactionReplayTrace | undefined;
+    let stateFallback: PersistedStateFallback | undefined;
+    try {
+        transactionReplay = buildTransactionReplay(update);
+    } catch (error) {
+        console.error("[listeners] Could not encode exact transaction replay", error);
+        if (hasPersistedStateChange) stateFallback = buildStateFallback(update);
     }
 
     const hasDocChange = allDocChanges.length > 0;
     const hasAnnotationChange = allAnnotationEvents.length > 0;
 
-    if (!hasDocChange && !hasAnnotationChange) return null;
+    if (!hasDocChange && !hasAnnotationChange) {
+        return transactionReplay || stateFallback
+            ? { type: "state_transaction", transactionReplay, stateFallback }
+            : null;
+    }
 
     const selection = extractSelection(update);
+
+    let revisionOrigin: ChangeOrigin = "unknown";
+    if (revisionOrigins.size === 1) revisionOrigin = [...revisionOrigins][0];
+    else if (revisionOrigins.size > 1 && !revisionOrigins.has("unknown")) {
+        revisionOrigin = "mixed-revision";
+    }
 
     const provenance: Provenance | undefined = hasDocChange
         ? {
               origin: anyRevisionInternal
-                  ? "ai-revision"
+                  ? revisionOrigin
                   : anyNestedEdit
                     ? "nested-edit"
                     : lastOrigin,
               userEvent: lastUserEvent,
               insertedChars: totalInserted,
               removedChars: totalRemoved,
+              ...(aiGenerations.size > 0 ? { aiGenerations: [...aiGenerations.values()] } : {}),
           }
         : undefined;
 
@@ -258,6 +542,8 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
             annotationEvents: allAnnotationEvents,
             selection,
             provenance,
+            transactionReplay,
+            stateFallback,
         };
     }
 
@@ -267,13 +553,15 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
             changes: allDocChanges,
             selection,
             provenance,
+            transactionReplay,
+            stateFallback,
         };
     }
 
     // Annotation-only: return the first annotation event directly
     // (multiple annotation events are wrapped as compound if alongside doc changes)
     if (allAnnotationEvents.length === 1) {
-        return allAnnotationEvents[0] as EventPayload;
+        return { ...allAnnotationEvents[0], transactionReplay, stateFallback } as EventPayload;
     }
 
     // Multiple annotation-only events: wrap as compound with no doc changes
@@ -282,6 +570,8 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
         docChanges: [],
         annotationEvents: allAnnotationEvents,
         selection,
+        transactionReplay,
+        stateFallback,
     };
 }
 
@@ -299,8 +589,16 @@ function persistTransaction(update: ViewUpdate): void {
 
     const enqueueDocId = get(currentDocumentId);
     const enqueueDraftId = get(currentDraftId);
+    const enqueueTitle = get(currentDocumentTitle);
+    const bookkeeping = persistence;
     persistQueue = persistQueue
-        .then(() => doAppend(update, enqueueDocId, enqueueDraftId))
+        .then(() =>
+            doAppend(
+                update,
+                { docId: enqueueDocId, draftId: enqueueDraftId, title: enqueueTitle },
+                bookkeeping,
+            ),
+        )
         .catch(() => {});
 }
 
@@ -311,27 +609,206 @@ function persistTransaction(update: ViewUpdate): void {
  * library re-reads metadata.
  */
 export function flushPersistQueue(): Promise<void> {
-    return persistQueue.catch(() => {});
+    const bookkeeping = persistence;
+    return persistQueue.then(() => requireDurableHistory(bookkeeping));
 }
 
-async function doAppend(
-    update: ViewUpdate,
-    enqueueDocId: string | null,
-    enqueueDraftId: string | null,
-) {
-    if (!enqueueDocId || !enqueueDraftId) return;
-    if (get(currentDocumentId) !== enqueueDocId) return;
-    const docId = enqueueDocId;
-    const draftId = enqueueDraftId;
+/** Queue the captured state immediately after its edits, before any later edits. */
+export function persistNamedVersion(
+    draftId: string,
+    stateJson: string,
+    label: string,
+    isCurrent: () => boolean,
+): Promise<number | null> {
+    const bookkeeping = persistence;
+    const write = persistQueue.then(async () => {
+        if (!isCurrent()) return null;
+        requireDurableHistory(bookkeeping);
+        const eventId = bookkeeping.lastEventId;
+        const snapshotId = await createNamedSnapshot(draftId, stateJson, eventId, label);
+        clearPendingCheckpoint(bookkeeping, draftId, eventId);
+        return snapshotId;
+    });
+    // Navigation and subsequent edits must wait for this snapshot too.
+    persistQueue = write.then(
+        () => {},
+        () => {},
+    );
+    return write;
+}
 
-    const payload = buildEventPayload(update);
-    if (!payload) return;
+function requireDurableHistory(bookkeeping: PersistenceBookkeeping): void {
+    if (!bookkeeping.failure) return;
+    if (bookkeeping === persistence) {
+        saveStatus.set("error");
+        if (get(errorBanner)?.backupType !== "crash") {
+            errorBanner.set({
+                message: bookkeeping.failure.message,
+                hasBackup: false,
+                backupType: "auto",
+            });
+        }
+    }
+    throw bookkeeping.failure;
+}
+
+function annotationEventsForPayload(payload: EventPayload): AnnotationEvent[] {
+    if (payload.type === "compound") return payload.annotationEvents;
+    if (
+        payload.type === "annotation_add" ||
+        payload.type === "annotation_remove" ||
+        payload.type === "annotation_update"
+    ) {
+        return [payload];
+    }
+    return [];
+}
+
+function payloadAddsAnnotationOfType(payload: EventPayload, type: "comment" | "revision"): boolean {
+    return annotationEventsForPayload(payload).some(
+        (event) => event.type === "annotation_add" && isRawAnnotationOfType(event.annotation, type),
+    );
+}
+
+function isUndoRedoUpdate(update: ViewUpdate): boolean {
+    return update.transactions.some((tr) => tr.isUserEvent("undo") || tr.isUserEvent("redo"));
+}
+
+/**
+ * Counts removed text that should receive a history checkpoint. Replacements count because
+ * the old passage should remain recoverable; restores and revision-internal swaps already
+ * preserve their content elsewhere and must not create redundant snapshots.
+ */
+function deletionAmount(update: ViewUpdate, directUserEditsOnly = false): DeletionAmount {
+    let chars = 0;
+    let words = 0;
+
+    for (const tr of update.transactions) {
+        if (!tr.docChanged) continue;
+        if (tr.isUserEvent("undo") || tr.isUserEvent("redo") || tr.isUserEvent("input.restore")) {
+            continue;
+        }
+        if (tr.annotation(revisionInternalEdit)) continue;
+        if (
+            directUserEditsOnly &&
+            ((!tr.isUserEvent("delete") && !tr.isUserEvent("input")) ||
+                tr.annotation(nestedEditorEdit) !== undefined)
+        ) {
+            continue;
+        }
+
+        tr.changes.iterChanges((fromA, toA) => {
+            if (toA <= fromA) return;
+            const removedText = tr.startState.doc.sliceString(fromA, toA);
+            chars += removedText.length;
+            words += removedText.match(/\p{L}[\p{L}\p{N}'’-]*/gu)?.length ?? 0;
+        });
+    }
+
+    return { chars, words };
+}
+
+/**
+ * Suspicious-change guard action: write a named recovery snapshot of the
+ * pre-change state (fire-and-forget) and surface a banner pointing the user
+ * at version history. Shared by the deletion/annotation-loss guards below.
+ */
+function snapshotAndWarn(
+    draftId: string,
+    update: ViewUpdate,
+    eventId: number,
+    label: string,
+    message: string,
+): void {
+    const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
+    createNamedSnapshot(draftId, preStateJson, eventId, label).catch((e) => {
+        console.error(e);
+        captureException(e);
+    });
+    setTimeout(() => {
+        errorBanner.set({ message, hasBackup: false, backupType: "auto" });
+    }, 0);
+}
+
+async function createAutosaveSnapshot(
+    draftId: string,
+    stateJson: string,
+    eventId: number,
+    label: string,
+): Promise<boolean> {
+    try {
+        await createNamedSnapshot(draftId, stateJson, eventId, label);
+        return true;
+    } catch (e) {
+        console.error(e);
+        captureException(e);
+        return false;
+    }
+}
+
+function autosavePolicy(
+    update: ViewUpdate,
+    payload: EventPayload,
+): {
+    beforeRevision: boolean;
+    beforeDeletion: boolean;
+    afterComment: boolean;
+} {
+    const isUndoRedo = isUndoRedoUpdate(update);
+    return {
+        beforeRevision: !isUndoRedo && payloadAddsAnnotationOfType(payload, "revision"),
+        beforeDeletion: shouldSaveBeforeDeletion(deletionAmount(update)),
+        afterComment: !isUndoRedo && payloadAddsAnnotationOfType(payload, "comment"),
+    };
+}
+
+async function snapshotBeforeChange(
+    update: ViewUpdate,
+    draftId: string,
+    eventId: number,
+    policy: ReturnType<typeof autosavePolicy>,
+): Promise<void> {
+    if (policy.beforeRevision) {
+        await createAutosaveSnapshot(
+            draftId,
+            JSON.stringify(update.startState.toJSON(savedFields)),
+            eventId,
+            "Before revision creation (auto)",
+        );
+    }
+
+    if (policy.beforeDeletion && !policy.beforeRevision) {
+        await createSnapshot(
+            draftId,
+            JSON.stringify(update.startState.toJSON(savedFields)),
+            eventId,
+        ).catch((e) => {
+            console.error("[listeners] pre-deletion snapshot failed", e);
+            captureException(e);
+        });
+    }
+}
+
+function guardRecovery(
+    update: ViewUpdate,
+    draftId: string,
+    eventId: number,
+    beforeRevision: boolean,
+): void {
+    if (deletionBurstTracker.record(draftId, deletionAmount(update, true))) {
+        toast.info("Deleting a lot of text?", {
+            description:
+                "Try a revision to keep alternate passages close at hand instead of digging through version history.",
+            duration: 12_000,
+            closeButton: true,
+        });
+    }
 
     // Guard: check for suspiciously large deletions before writing to DB.
     // If suspicious, snapshot the pre-deletion state so version history
     // has a guaranteed recovery point. Skip if every doc-changing
     // transaction is an explicit user delete or a crash-restore operation.
-    if (update.docChanged) {
+    if (update.docChanged && !beforeRevision) {
         const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
             .every((tr) => tr.isUserEvent("delete") || tr.isUserEvent("input.restore"));
@@ -340,26 +817,13 @@ async function doAppend(
             const newText = update.state.doc.toString();
             if (isSuspiciousDeletion(oldText, newText)) {
                 // Snapshot the pre-deletion state so /history has a recovery point.
-                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-                const eventId = get(lastPersistedEventId);
-                createNamedSnapshot(
+                snapshotAndWarn(
                     draftId,
-                    preStateJson,
+                    update,
                     eventId,
                     "Before large deletion (auto)",
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-
-                setTimeout(() => {
-                    errorBanner.set({
-                        message:
-                            "A large deletion was detected. A recovery snapshot has been saved to your version history.",
-                        hasBackup: false,
-                        backupType: "auto",
-                    });
-                }, 0);
+                    "A large deletion was detected. A recovery snapshot has been saved to your version history.",
+                );
             }
         }
     }
@@ -377,144 +841,210 @@ async function doAppend(
             let triggered = false;
 
             if (isSuspiciousAnnotationChange(oldCount, newCount)) {
-                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-                const eventId = get(lastPersistedEventId);
-                createNamedSnapshot(
+                snapshotAndWarn(
                     draftId,
-                    preStateJson,
+                    update,
                     eventId,
                     "Before mass annotation removal (auto)",
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-
-                setTimeout(() => {
-                    errorBanner.set({
-                        message:
-                            "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
-                        hasBackup: false,
-                        backupType: "auto",
-                    });
-                }, 0);
+                    "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
+                );
                 triggered = true;
             }
 
             // Guard: check for removal of annotations with deep nested content.
             // A single revision with many sub-annotations represents significant work.
             if (!triggered && isDeepAnnotationLoss(oldAnnotations, newAnnotations)) {
-                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-                const eventId = get(lastPersistedEventId);
-                createNamedSnapshot(
+                snapshotAndWarn(
                     draftId,
-                    preStateJson,
+                    update,
                     eventId,
                     "Before nested annotation loss (auto)",
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-
-                setTimeout(() => {
-                    errorBanner.set({
-                        message:
-                            "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
-                        hasBackup: false,
-                        backupType: "auto",
-                    });
-                }, 0);
+                    "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
+                );
             }
         }
     }
+}
 
-    // Only flip to "Saving…" if the write hasn't resolved within 150 ms.
-    // Fast writes (the common case) stay on "Saved" the whole time.
+function isActiveDraft(docId: string, draftId: string): boolean {
+    return get(currentDocumentId) === docId && get(currentDraftId) === draftId;
+}
+
+function clearSavingIndicator(): void {
     if (savingIndicatorTimer !== null) clearTimeout(savingIndicatorTimer);
-    const scheduledDocId = docId;
-    const scheduledDraftId = draftId;
+    savingIndicatorTimer = null;
+}
+
+function showSavingAfterDelay(
+    docId: string,
+    draftId: string,
+    bookkeeping: PersistenceBookkeeping,
+): void {
+    clearSavingIndicator();
     savingIndicatorTimer = setTimeout(() => {
-        try {
-            // Guard: abort if the user has navigated to a different document or draft.
-            if (
-                get(currentDocumentId) !== scheduledDocId ||
-                get(currentDraftId) !== scheduledDraftId
-            ) {
-                return;
-            }
+        savingIndicatorTimer = null;
+        if (bookkeeping === persistence && !bookkeeping.failure && isActiveDraft(docId, draftId))
             saveStatus.set("saving");
-        } finally {
-            savingIndicatorTimer = null;
-        }
     }, 150);
+}
+
+function clearPendingCheckpoint(
+    bookkeeping: PersistenceBookkeeping,
+    draftId: string,
+    eventId: number,
+): void {
+    const checkpoint = bookkeeping.pendingCheckpoint;
+    if (checkpoint?.draftId === draftId && checkpoint.eventId === eventId) {
+        bookkeeping.pendingCheckpoint = null;
+    }
+}
+
+async function persistPendingCheckpoint(bookkeeping: PersistenceBookkeeping): Promise<void> {
+    requireDurableHistory(bookkeeping);
+
+    const checkpoint = bookkeeping.pendingCheckpoint;
+    if (!checkpoint) return;
+
+    try {
+        await createSnapshot(
+            checkpoint.draftId,
+            JSON.stringify(checkpoint.state.toJSON(savedFields)),
+            checkpoint.eventId,
+        );
+        if (bookkeeping.pendingCheckpoint === checkpoint) bookkeeping.pendingCheckpoint = null;
+    } catch (error) {
+        console.error("[listeners] flush snapshot failed:", error);
+        captureException(error);
+        throw error;
+    }
+}
+
+/** Call after draining persistence and loading a draft's snapshot and events. */
+export function seedPersistenceBookkeeping(eventId = -1): void {
+    persistence = { lastEventId: eventId, pendingCheckpoint: null, failure: null };
+    clearSavingIndicator();
+    lastPersistedEventId.set(eventId);
+    lastSavedAt.set(null);
+    saveStatus.set("saved");
+}
+
+async function snapshotAfterChange(
+    update: ViewUpdate,
+    draftId: string,
+    result: { eventId: number; needsSnapshot: boolean },
+    afterComment: boolean,
+    bookkeeping: PersistenceBookkeeping,
+): Promise<void> {
+    const wroteCommentSnapshot = afterComment
+        ? await createAutosaveSnapshot(
+              draftId,
+              JSON.stringify(update.state.toJSON(savedFields)),
+              result.eventId,
+              "After comment annotation (auto)",
+          )
+        : false;
+
+    if (wroteCommentSnapshot) {
+        clearPendingCheckpoint(bookkeeping, draftId, result.eventId);
+    }
+
+    if (result.needsSnapshot && !wroteCommentSnapshot) {
+        const stateJson = JSON.stringify(update.state.toJSON(savedFields));
+        try {
+            await createSnapshot(draftId, stateJson, result.eventId);
+            clearPendingCheckpoint(bookkeeping, draftId, result.eventId);
+        } catch (e) {
+            console.error("[listeners] post-change snapshot failed:", e);
+            captureException(e);
+        }
+    }
+}
+
+async function doAppend(
+    update: ViewUpdate,
+    { docId, draftId, title }: { docId: string | null; draftId: string | null; title: string },
+    bookkeeping: PersistenceBookkeeping,
+): Promise<void> {
+    if (!docId || !draftId) return;
+    const payload = buildEventPayload(update);
+    if (!payload) return;
+    const policy = autosavePolicy(update, payload);
+    if (!bookkeeping.failure) {
+        await snapshotBeforeChange(update, draftId, bookkeeping.lastEventId, policy);
+        guardRecovery(update, draftId, bookkeeping.lastEventId, policy.beforeRevision);
+        showSavingAfterDelay(docId, draftId, bookkeeping);
+    }
+
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
-        if (savingIndicatorTimer !== null) {
-            clearTimeout(savingIndicatorTimer);
-            savingIndicatorTimer = null;
+        bookkeeping.lastEventId = result.eventId;
+        if (bookkeeping === persistence) clearSavingIndicator();
+        if (bookkeeping === persistence && isActiveDraft(docId, draftId)) {
+            lastPersistedEventId.set(result.eventId);
+            if (!bookkeeping.failure) lastSavedAt.set(Date.now());
         }
-
-        lastPersistedEventId.set(result.eventId);
-        lastSavedAt.set(Date.now());
-
-        if (result.needsSnapshot) {
-            const stateJson = JSON.stringify(update.state.toJSON(savedFields));
-            await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
-                console.error(e);
-                posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-            });
+        if (!bookkeeping.failure) {
+            bookkeeping.pendingCheckpoint = {
+                draftId,
+                eventId: result.eventId,
+                state: update.state,
+            };
+            await snapshotAfterChange(update, draftId, result, policy.afterComment, bookkeeping);
+            if (bookkeeping === persistence && isActiveDraft(docId, draftId))
+                saveStatus.set("saved");
         }
-
-        saveStatus.set("saved");
-    } catch (e) {
-        console.error("[listeners] appendEvent failed:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-        if (savingIndicatorTimer !== null) {
-            clearTimeout(savingIndicatorTimer);
-            savingIndicatorTimer = null;
+    } catch (error) {
+        bookkeeping.failure ??= new PersistenceError(error);
+        console.error("[listeners] appendEvent failed:", error);
+        captureException(error);
+        if (bookkeeping === persistence) {
+            clearSavingIndicator();
+            if (isActiveDraft(docId, draftId)) saveStatus.set("error");
         }
-        saveStatus.set("error");
         return;
     }
 
+    if (!bookkeeping.failure) scheduleMetadata(update, docId, title);
+}
+
+function scheduleMetadata(update: ViewUpdate, docId: string, title: string): void {
     // Debounce metadata update (title, word count, preview).
     // Capture derived values now so the timer closure doesn't read
     // update.view.state, which may belong to a different document by
     // the time the 500 ms fires.
     const docText = update.state.doc.toString();
-    const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
-    const previewText = docText.slice(0, 200);
+    const { wordCount, previewText } = documentMetadata(docText);
+    if (update.docChanged) recordWritingActivity(wordCount);
     const prev = metaDebounceTimers.get(docId);
     if (prev !== undefined) clearTimeout(prev.timer);
     const timer = setTimeout(() => {
         metaDebounceTimers.delete(docId);
         // Guard: abort if the user has navigated to a different document.
         if (get(currentDocumentId) !== docId) return;
-        writeMeta(docId, docText, wordCount, previewText);
+        void writeMeta(docId, { title, docText, wordCount, previewText });
     }, 500);
-    metaDebounceTimers.set(docId, { timer, docText, wordCount, previewText });
+    metaDebounceTimers.set(docId, { timer, title, docText, wordCount, previewText });
 }
 
-function writeMeta(docId: string, docText: string, wordCount: number, previewText: string): void {
-    // Auto-derive title once from the first line, but only while the
-    // title is still "Untitled" and the first line looks ready:
-    //   - user pressed Enter (first line ends / second line exists), OR
-    //   - first line has at least 4 words (enough to be a real title)
-    // After this fires once, the title is owned by the user/AI.
-    let title = get(currentDocumentTitle);
-    if (title === "Untitled") {
-        const firstLine = docText.split("\n")[0].trim();
-        const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
-        const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
-        if (firstLineComplete && firstLine) {
-            title = firstLine.slice(0, 40);
-            currentDocumentTitle.set(title);
-        }
-    }
+function writeMeta(docId: string, pending: Omit<PendingMeta, "timer">): Promise<void> {
+    const { docText, wordCount, previewText } = pending;
+    const active = get(currentDocumentId) === docId;
+    const currentTitle = active ? get(currentDocumentTitle) : pending.title;
+    const title = titleForDocument(currentTitle, docText);
+    if (active && title !== currentTitle) currentDocumentTitle.set(title);
     // docText doubles as the search-index body (FTS + semantic chunks).
-    updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch((e) => {
+    const write = updateDocumentContentMetadata(docId, {
+        wordCount,
+        previewText,
+        bodyText: docText,
+        automaticTitle: currentTitle === "Untitled" && title !== currentTitle ? title : undefined,
+    }).catch((e) => {
         console.error(e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     });
+    metaWrites.add(write);
+    void write.finally(() => metaWrites.delete(write));
+    return write;
 }
 
 /**
@@ -523,12 +1053,26 @@ function writeMeta(docId: string, docText: string, wordCount: number, previewTex
  * so the library view reflects the latest edits without waiting for
  * the 500 ms debounce.
  */
-export function flushMetaDebounces(): void {
+export async function flushMetaDebounces(): Promise<void> {
     for (const [docId, pending] of metaDebounceTimers) {
         clearTimeout(pending.timer);
-        writeMeta(docId, pending.docText, pending.wordCount, pending.previewText);
+        void writeMeta(docId, pending);
     }
     metaDebounceTimers.clear();
+    await Promise.all(metaWrites);
+}
+
+/** Checkpoint pending edits before leaving; appends can also schedule metadata debounces. */
+export async function flushPersistence(): Promise<void> {
+    const bookkeeping = persistence;
+    const checkpoint = persistQueue.then(() => persistPendingCheckpoint(bookkeeping));
+    // Queue synchronously so later edits and concurrent flushes retain their order.
+    persistQueue = checkpoint.catch(() => {});
+    try {
+        await checkpoint;
+    } finally {
+        await flushMetaDebounces();
+    }
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
@@ -568,7 +1112,8 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
 
 // ── Auto-save listener ────────────────────────────────────────────
 const save = EditorView.updateListener.of((update: ViewUpdate) => {
-    if (update.docChanged || annotationsChanged(update)) {
+    if (update.docChanged) recordReminderWritingActivity();
+    if (update.transactions.some(changesPersistedState)) {
         persistTransaction(update);
     }
 });

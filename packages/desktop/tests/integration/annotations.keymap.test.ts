@@ -11,7 +11,7 @@ import {
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { appSettings } from "$lib/settings.svelte";
+import { updateSettings } from "$lib/settings.svelte";
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -71,8 +71,10 @@ let view: EditorView | undefined;
 let unsubs: (() => void)[] = [];
 
 beforeEach(() => {
-    appSettings.atomicRevisions = true;
-    appSettings.showNestedEditor = false;
+    updateSettings({ atomicRevisions: true });
+    updateSettings({ showNestedEditor: false });
+    updateSettings({ selectTextInNestedEditor: true });
+    updateSettings({ autoVersionOnRevisionCreate: true });
 });
 
 afterEach(() => {
@@ -80,6 +82,7 @@ afterEach(() => {
     unsubs = [];
     view?.destroy();
     view = undefined;
+    annotationEventBus.clearPendingSelections();
 });
 
 describe("annotation keymap integration", () => {
@@ -107,14 +110,14 @@ describe("annotation keymap integration", () => {
         );
     });
 
-    it("redirects Mod-Alt-m to nested editor when cursor is inside revision", () => {
+    it("redirects the comment shortcut when cursor is inside revision", () => {
         const spy = vi.fn();
         unsubs.push(annotationEventBus.on("revision-request-modal", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
         view.dispatch({ selection: { anchor: 7 } });
-        const consumed = runKey(view, "Mod-Alt-m");
+        const consumed = runKey(view, "Mod-Shift-c");
 
         expect(consumed).toBe(true);
         expect(spy).toHaveBeenCalledWith(
@@ -207,16 +210,45 @@ describe("annotation keymap integration", () => {
         expect(isAnnotationOfType(annotations[0], "revision")).toBe(true);
     });
 
-    it("Mod-Alt-m creates comment when not inside any revision", () => {
+    it("Mod-Alt-k requests a caret even when automatic selection is disabled", () => {
+        updateSettings({ selectTextInNestedEditor: false });
         view = createView("Alpha Beta Gamma");
 
         view.dispatch({ selection: { anchor: 0, head: 5 } });
-        const consumed = runKey(view, "Mod-Alt-m");
+        const consumed = runKey(view, "Mod-Alt-k");
+        const revision = Object.values(view.state.field(annotationField)).find((annotation) =>
+            isAnnotationOfType(annotation, "revision"),
+        );
+
+        expect(consumed).toBe(true);
+        expect(revision).toBeDefined();
+        expect(annotationEventBus.consumePendingSelection(revision!.id)).toEqual({
+            type: "pending-nested-editor-selection",
+            annotationId: revision!.id,
+            from: 0,
+            to: 0,
+            focus: true,
+        });
+    });
+
+    it("the comment shortcut creates a comment when not inside any revision", () => {
+        view = createView("Alpha Beta Gamma");
+
+        view.dispatch({ selection: { anchor: 0, head: 5 } });
+        const consumed = runKey(view, "Mod-Shift-c");
 
         expect(consumed).toBe(true);
         const annotations = Object.values(view.state.field(annotationField));
         expect(annotations).toHaveLength(1);
         expect(isAnnotationOfType(annotations[0], "comment")).toBe(true);
+    });
+
+    it("does not handle retired Mod-Shift-m", () => {
+        view = createView("Alpha Beta Gamma");
+        view.dispatch({ selection: { anchor: 0, head: 5 } });
+
+        expect(runKey(view, "Mod-Shift-m")).toBe(false);
+        expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
     });
 
     it("Delete at revision start deletes adjacent revision range", () => {

@@ -1,9 +1,11 @@
-# Document Tabs & Draft Trees
+# Document tabs and draft trees
 
-Implements the unified tab/draft architecture from issue #160: a document is a
-container of **tabs**, and each draft-type tab holds drafts related by two
-distinct moves — **iterate** (the next version) and **branch** (a different
-take).
+A document contains tabs. Each draft tab contains drafts related by iteration
+and branching. An iteration continues a run; a branch starts an alternate run.
+
+Architecture decisions: [iteration and alternate-run lineage](./adr/0002-separate-iteration-and-branch-lineage.md),
+[activity and content history](./adr/0003-separate-activity-from-content-history.md),
+[Web Preview identity](./adr/0010-document-keyed-web-preview.md).
 
 ```
 Document (one card in Library)
@@ -15,38 +17,33 @@ Document (one card in Library)
         main
 ```
 
-## Two relations: iterate vs branch
+## Iteration and branching
 
-The crux of the model (and the resolution of much UX confusion) is that a
-draft is created by one of *two* moves, stored as two separate links:
+Each draft uses at most one of two links:
 
-- **Iterate** — "the next version, continuing from this draft." The common
-  action. Linked by `parent_draft_id`. An iteration chain (a **run**)
-  renders **flat** — same indent, oldest→newest — so a hundred iterations
-  stay a readable list, never a hundred-deep tree. Iterating **locks the
-  source** (it's superseded); only the newest live draft in a run (the
-  **tip**) is editable.
-- **Branch** — "a different take on the same idea." The rarer action. Linked
-  by `branched_from`. A branch renders **indented** one level under its
-  source and starts its own run. Branching **locks nothing** — the source
-  and the branch are parallel live explorations. Branching is allowed from
-  any live draft, including `main` and another branch's root.
+- `parent_draft_id` records iteration within a run. The run renders flat, oldest
+  first. Iterating locks superseded drafts and leaves the new head editable.
+- `branched_from` starts an alternate run. It renders one level below its source
+  and does not lock the source. Any live draft can be a branch source, including
+  a locked draft or another branch's root.
 
-Why iterations are flat and branches nested (inverted from the obvious
-parent=child reading): the frequent action gets the cheap visual (a list),
-the rare action gets the expensive one (indentation). See the #160 thread.
+The first draft in the initial run has neither link. The
+[domain glossary](../CONTEXT.md) owns the definitions of document, tab, draft,
+run, branch, and lock.
 
-## Concepts
+## Tab actions
 
-| Concept | What it is | UI |
-|---------|-----------|----|
-| Document | Container of tabs; one Library card | Library grid |
-| Tab | A piece of content within a document (`tab_type: "draft"`; future types e.g. canvas share the bar) | `DocumentTabs.svelte` above the document card |
-| Draft | One editable text + its own event log/snapshots | `DraftTreePanel.svelte`, hugging the document's left edge |
-| Run | An iteration chain (`parent_draft_id` links) — renders flat | A flat group of rows in the panel |
-| Branch | A different take (`branched_from`) — its own run, indented | An indented sub-group |
-| Lock | Soft read-only state: a superseded iteration, or set manually | Amber strip inside the page; read-only state |
-| Document activity | Audit log of all structural ops (tab CRUD, iterate/branch, locks, checkpoints) | Unified history timeline, with Restore actions |
+Right-click a tab, or focus it and press Shift+F10 or the context-menu key, to
+open Rename tab and Close tab. Opening the menu leaves the active tab unchanged.
+Rename focuses the existing inline editor. Close uses the same soft-delete,
+Undo toast, and history restoration as the tab's × button; the final tab cannot
+be closed. Read-only tab bars omit the menu. Duplicate is omitted because there
+is no tab-level operation that copies a complete draft tree.
+
+Use arrow keys or Home/End within the menu. Escape or Tab dismisses it and returns
+focus to the originating tab; outside interaction also dismisses it.
+
+![Tab context menu](screenshots/tab-context-menu.png)
 
 ## Schema
 
@@ -61,64 +58,59 @@ A draft sets at most one of `parent_draft_id` (iteration) / `branched_from`
 (branch). The storyline root (`main`) sets neither; branch roots set
 `branched_from` and no `parent_draft_id`.
 
-Events and snapshots stay **draft-scoped** (unchanged) — every draft has an
+Events and snapshots are draft-scoped. Every draft has an
 independent event log and version history. `_meta` keys `active_tab:{doc_id}`
 and `active_draft:{tab_id}` persist the user's position.
 
-**Nothing structural is ever destroyed.** Tab and draft deletion is a soft
-delete (`deleted_at`); the rows, their events, and their snapshots all
-survive. Deletion offers an Undo toast, and the version history's
-unified timeline can restore any deleted tab or draft later.
-Every structural operation appends a `doc_events` row (#160: "version
-history is document-wide — one linear audit log tracks everything").
+Tab and draft deletion is a soft delete through `deleted_at`. Their rows, events,
+and snapshots remain available while the document exists. Permanently deleting
+or purging the document removes its stored content. Tab and draft deletion offers
+an Undo toast and session keyboard undo. The history timeline can restore those
+soft-deleted rows later.
+Structural operations append `doc_events` rows for the document-wide timeline.
 
-Migrations are idempotent numbered entries (`migrations.rs`): #6
-`tabs_and_draft_tree` adds the tabs/draft-tree columns and attaches
-pre-existing drafts to a per-document "Main" tab; #7 `draft_branch_relation`
-adds `branched_from` and reinterprets any old fork-as-child link as a branch
-(preserving the existing tree shape).
+The [migration definitions](../packages/desktop/src-tauri/src/db/migrations.rs)
+include upgrades that attach pre-tab drafts to a Main tab and translate older
+fork links into `branched_from`. See [persistence](persistence.md#schema-migrations)
+for the migration rules.
 
-## Iterate & branch
+## Iterate and branch
 
 `cmd_iterate_draft(source_draft_id, label, state_json)` and
 `cmd_branch_draft(source_draft_id, label, state_json)` both:
 
-1. Take the source's current state, serialized by the frontend — the live
-   `EditorView` if the source is open, otherwise rebuilt from snapshot +
-   event replay (`seedStateJson` → `buildStateFromLoad`).
+1. Take the source's current state, serialized by the frontend. This uses the live
+   `EditorView` if the source is open, otherwise rebuilt from a snapshot
+   and event replay through `seedStateJson()` and `buildStateFromLoad()`.
 2. Create the new draft and plant that state as a snapshot labeled
    **"Branch point"** (`up_to_event_id = -1`). Labeled snapshots are exempt
-   from auto-prune, so the seed can never be garbage-collected. The new
-   draft's event log starts empty, so restore-to-"Branch point" returns it
-   exactly to its seed.
+   from snapshot pruning. The new draft's event log starts empty. History previews use the seed before the first
+   later snapshot; internal branch-point seeds are hidden from the timeline.
 
 They differ only in the link and the lock side effect:
 
 - **iterate** sets `parent_draft_id = source` and relocks the run so only the
-  new tip is editable (the source, now superseded, locks).
+  new head is editable (the source, now superseded, locks).
 - **branch** sets `branched_from = source` and locks nothing. Any live draft
   can be the source, including the storyline root (`main`) and branch roots.
 
 ## Deleting drafts
 
-Any **unlocked** draft that isn't the tab's last live draft can be deleted —
-not just leaves. The lock is the only protection (so locked rows hide the
-delete action; unlock first). Three soft-delete paths, all reversible:
+Any unlocked draft that is not the tab's last live draft can be deleted,
+including a parent. Locked rows hide the delete action. The three paths are:
 
-- **Leaf** — `cmd_delete_draft(draft_id)` soft-deletes the one draft (refused
+- For a leaf, `cmd_delete_draft(draft_id)` soft-deletes the one draft (refused
   only if it's the tab's last live draft).
-- **Orphan** (a draft *with* children, "Keep the children") —
-  `cmd_orphan_and_delete_draft(draft_id)` re-attaches every live child so the
-  tree stays valid, then soft-deletes the draft. An iteration child splices
+- For a parent with **Keep the children**, `cmd_orphan_and_delete_draft(draft_id)`
+  reattaches every live child so the tree stays valid, then soft-deletes the draft. An iteration child splices
   the draft out of the run (adopts its `parent_draft_id`); a branch child
   re-points to the draft's anchor. When deleting a branch root, its iteration
   children become branch roots off the deleted root's original source. It
   returns the list of link rewrites so Undo can reverse them via
   `cmd_reparent_draft` (after the parent is restored). Logs
   `draft_deleted {mode: "orphan"}` + one `draft_reparented` per moved child.
-- **Cascade** (a draft *with* children, "Delete all N") —
-  `cmd_cascade_delete_draft(draft_id)` soft-deletes the draft and its whole
-  subtree (iterations + branches, transitively) in one transaction; refused
+- For a parent with **Delete all N**, `cmd_cascade_delete_draft(draft_id)`
+  soft-deletes the draft and its whole subtree (iterations + branches, transitively) in one transaction; refused
   if that would empty the tab. Returns the deleted ids so one Undo restores
   the lot. Logs `draft_deleted {mode: "cascade", ids}`.
 
@@ -127,17 +119,35 @@ draft skips it. The editor switches off any draft about to vanish first, so it
 never points at a hidden draft (for cascade, it lands on a draft *outside* the
 deleted subtree).
 
+### Keyboard undo and redo
+
+`Cmd/Ctrl-Z` restores the most recent draft or tab deletion, including cascade and
+orphan operations. `Cmd-Shift-Z`, `Ctrl-Shift-Z`, and `Cmd/Ctrl-Y` redo it. The Undo toast consumes the same
+entry, so it cannot restore an already-undone deletion twice. The current surviving
+draft stays selected; structural undo also works when that draft is locked. Only
+the latest deletion toast is kept, so older restores cannot bypass deletion order.
+Undo dismisses that action and briefly names the restored item. Redo offers Undo again.
+
+Newer content edits undo before the deletion. Switching drafts starts a new boundary
+against the selected draft's content history. Relocking a parent during restore
+preserves its text undo and redo. A locked survivor restores the deletion while
+leaving inaccessible prose unchanged. Additional structural gestures are declined until the
+current operation finishes. Text inputs retain native undo, and
+Live Rooms retain Yjs keyboard undo. Deletion entries last for the open editor session;
+after leaving it or changing documents, use Version History to restore deletions.
+See [the session undo decision](adr/0012-session-undo-for-deletions.md).
+
 ## Locking
 
 A draft is locked when either is true:
 
-- **Superseded** — it has a newer live iteration in its run. `relock_run`
+- A superseded draft has a newer live iteration in its run. `relock_run`
   re-derives this on every iterate/delete/restore: each run locks all live
-  members except the tip. Runs are independent, so each branch line has its
-  own editable tip.
-- **Manual** — locked from its row in the panel. (Edge: the run re-derivation
-  on delete/restore also clears a manual lock if that draft becomes the tip;
-  re-lock from the panel if needed.)
+  members except the head. Runs are independent, so each alternate run has its
+  own editable head.
+- A manual lock is set from the row in the panel. Recalculating a run after
+  deletion or restoration clears a manual lock if that draft becomes the head.
+  The writer can lock it again from the panel.
 
 While locked, the editor state is built with `EditorState.readOnly.of(true)`.
 An amber strip inside the page reads "This is an older version." (superseded)
@@ -149,7 +159,8 @@ keyboard commands and the programmatic `createComment`/`createSuggestion`/
 `createRevision` entry points (used by the AI sidebar and AutoAI) all bail on
 `state.readOnly`, and the AutoAI engine skips reviewing read-only drafts
 entirely. Event replay dispatches raw effects, so loading locked drafts is
-unaffected. The DB never rejects writes — replay and collab are unaffected.
+unaffected. The database does not enforce the editor lock on event writes; replay and
+collaboration use their existing write paths.
 
 ## Resolution order
 
@@ -157,23 +168,15 @@ Opening a document without an explicit draft id resolves:
 active tab (`_meta`) → first tab by position → that tab's active draft
 (`_meta`) → first draft by `created_at` → legacy pre-tabs fallbacks.
 This logic lives in Rust (`load.rs → resolve_default_draft`) and is mirrored
-for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
+for the frontend by `resolveActiveDraftId()` in `packages/desktop/src/lib/db/index.ts`
 (used by export, the library preview, and version-history bootstrap).
 
-## Invariants
+## Structural invariants
 
-- Every tab has ≥ 1 live draft (`create_tab` seeds a root "main" draft;
-  deleting a tab's last live draft is rejected).
-- Every document has ≥ 1 live tab (deleting the last live tab is rejected;
-  `create_draft` legacy path creates a "Main" tab when none exists).
-- Any unlocked draft that isn't the tab's last live draft is deletable
-  (including parents). Deleting a draft with children prompts orphan (keep
-  them, re-attached) vs cascade (delete the subtree). All deletions are soft
-  and reversible (Undo toast immediately, version-history timeline later).
-- Locking is derived from supersession or set manually; iterate locks the
-  source, branch locks nothing. Branching from a locked draft does not unlock
-  the source, but the new branch starts editable. A locked draft can't be
-  deleted until unlocked.
+Every live document must keep a live tab, and every live tab must keep a live
+draft. Creation seeds the initial rows. Deletion rejects operations that would
+empty either container. Locks are enforced by the editing commands, while
+supersession is recalculated when run membership changes.
 
 ## Key files
 
@@ -182,39 +185,57 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `packages/desktop/src-tauri/src/db/tabs.rs` | Tab CRUD, iterate/branch, run relocking, active pointers |
 | `packages/desktop/src-tauri/src/db/migrations.rs` | Numbered schema migrations (#6 tabs, #7 branch relation) |
 | `packages/desktop/src-tauri/src/db/load.rs` | Tab-aware default draft resolution |
-| `src/lib/editor/DocumentTabs.svelte` | Browser-style tab bar |
-| `src/lib/editor/tabReorder.ts` | Pure reorder math for tab drag-and-drop |
-| `src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |
-| `src/lib/editor/DraftDeleteModal.svelte` | Orphan-vs-cascade prompt for deleting a draft with children |
-| `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
-| `src/lib/editor/Editor.svelte` | Tab/draft switching, iterate/branch/delete, lock banner |
+| `packages/desktop/src/lib/editor/DocumentTabs.svelte` | Browser-style tab bar |
+| `packages/desktop/src/lib/editor/tabReorder.ts` | Pure reorder math for tab drag-and-drop |
+| `packages/desktop/src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |
+| `packages/desktop/src/lib/editor/DraftDeleteModal.svelte` | Orphan-vs-cascade prompt for deleting a draft with children |
+| `packages/desktop/src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
+| `packages/desktop/src/lib/editor/Editor.svelte` | CodeMirror view lifecycle, store mirrors, lock banner |
+| `packages/desktop/src/lib/editor/documentLoader.ts` | Bootstrap, load cancellation, draft commit ordering, state seeding |
+| `packages/desktop/src/lib/editor/tabDrafts.svelte.ts` | Tab/draft selection, iterate/branch/delete, tab tree state |
 
-## Omni (web preview) and the single view
+## Omni Web Preview identity
 
-Omni renders a **single view** per document today. Both sharing identities are
-therefore keyed by **document id**, not draft id:
+The read-only Web Preview is keyed by **document id**, not draft id, so one
+public link follows the document. Its versioned payload can publish the current
+draft tab or all draft tabs, with the selected draft state for each included
+tab. Publishing from another tab or run replaces the document snapshot without
+changing the link. Live Rooms remain a separate mechanism and currently key on
+the active draft; #260 tracks bringing them in line with the tabs/drafts model.
 
-- The read-only web preview/public share has one link per document. Pressing
-  **Update now** publishes whatever tab+draft is *currently active* in the
-  editor — the last one you clicked into — so updating from a different draft
-  simply replaces what the single shared view shows.
-- The live "Go Live" relay room also uses the document id as its room id. The
-  beta live session still mirrors one active editor view, seeded from the draft
-  that was active when the owner started the room, while local event logs and
-  snapshots remain draft-scoped.
+## Current scope
 
-The read-only share key lives in `GoLiveButton.svelte` as `shareId`, while the
-live room key is resolved through `getLiveRelayRoomId()`. Keying both on the
-document — rather than baking a multi-draft payload into the current single-view
-flow — keeps the door open for Omni rendering multiple tabs later without
-changing the external identity.
+Live Rooms work on the active draft; they do not synchronize the document's whole
+tab and draft structure. Web Preview can include multiple tabs but still chooses
+one draft per tab. Content checkpoints remain draft-scoped. Canvas tabs and a
+workflow to merge draft branches are not implemented.
 
-## Out of scope (follow-ups)
+## Loading the root editor
 
-- Omni rendering **multiple tabs** in one preview (#261) — today it's a single
-  view of the last active tab+draft; the share is already document-keyed for this
-- Canvas tabs (#197) — `tab_type` column is ready, no implementation yet
-- Merge workflow between draft branches (UX undecided in #160)
-- Document-wide *content* checkpoints (one snapshot of all tabs/drafts at
-  once); content snapshots remain per-draft, structural history is
-  document-wide via `doc_events`
+`DocumentLoader` starts its document subscription on mount. Bootstrap chooses the
+requested document, the most recently updated document, or creates an initial
+document. The page supplies the first-visit decision used for both the tutorial
+and sample content. Sample content is snapshotted before the document ID becomes
+visible to subscribers.
+
+Document and draft loads return one `LoadedDocument` and share a cancellation
+counter. Pending persistence finishes before reads. A failed flush leaves the loaded
+draft active and restores the committed selection; it must not commit a new
+active pointer or release the current editor. A successful commit seeds the
+draft identity and latest event ID, then asks `Editor.svelte` to install the state
+and refresh its Svelte mirrors. Stale reads cannot commit. Once a draft-pointer
+write is queued, its same-tab state commit finishes even if a newer load starts;
+this keeps the editor aligned with the last successful write if the newer load
+fails. Unmount cancels pending loads and tab refreshes.
+
+Iterations and branches seed from the live state when their source is open,
+otherwise from snapshot and event replay. Both paths preserve the document's undo
+policy; reconstructed seeds omit the source draft's lock.
+
+## Live Rooms
+
+Live Rooms use the document ID as the stable network room key. The owner shares
+one active draft from one tab when starting the room. Safety snapshots, content
+events, and SQLite persistence stay draft-scoped. Joiners receive that shared
+view and restore their prior local view on leaving. Simultaneous multi-tab and
+multi-draft sharing remains future work. See [collaboration](collaboration.md).

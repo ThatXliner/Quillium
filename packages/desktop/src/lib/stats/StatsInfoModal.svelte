@@ -9,6 +9,7 @@
       - onclose: () => void
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { X } from "lucide-svelte";
 
 const { topic, onclose }: { topic: string; onclose: () => void } = $props();
@@ -81,6 +82,8 @@ const entry: InfoEntry = $derived(
         details: "",
     },
 );
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -94,18 +97,21 @@ const entry: InfoEntry = $derived(
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
             <h2 class="text-[13px] font-semibold text-black/60">{entry.title}</h2>
-            <button
-                onclick={onclose}
-                aria-label="Close info"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={onclose}
+                    aria-label="Close info"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->
-        <div class="px-5 py-4 flex flex-col gap-3">
+        <div class="px-5 py-4 flex flex-col gap-3 min-h-0 overflow-y-auto">
             <p class="text-sm text-black/70 leading-relaxed font-medium">{entry.description}</p>
             {#if entry.details}
                 <p class="text-[13px] text-black/50 leading-relaxed">{entry.details}</p>
@@ -126,6 +132,7 @@ const entry: InfoEntry = $derived(
                 </div>
             {/if}
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </dialog>
 
@@ -150,6 +157,8 @@ const entry: InfoEntry = $derived(
     }
 
     .info-inner {
+        display: flex;
+        flex-direction: column;
         position: relative;
         max-width: 26rem;
         width: 85vw;

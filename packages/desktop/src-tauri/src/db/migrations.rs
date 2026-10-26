@@ -15,7 +15,13 @@
 //! already contain the baseline tables, so migrations 1–2 are written to
 //! be safe to re-apply (`IF NOT EXISTS` / column-existence guards).
 
+use super::now_ms;
+
 use rusqlite::{params, Connection, OptionalExtension, Result};
+
+/// 0.22 release boundary. Documents created before 2026-07-14T00:00:00Z
+/// retain Quillium's historical cross-restart undo behavior.
+const LEGACY_PERSIST_HISTORY_CUTOFF_MS: i64 = 1_783_987_200_000;
 
 pub enum MigrationKind {
     Sql(&'static str),
@@ -123,6 +129,145 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 7,
         name: "draft_branch_relation",
         kind: MigrationKind::Rust(draft_branch_relation),
+    },
+    Migration {
+        version: 8,
+        name: "document_history_policy",
+        kind: MigrationKind::Rust(document_history_policy),
+    },
+    Migration {
+        version: 9,
+        name: "grandfather_document_history_policy",
+        kind: MigrationKind::Rust(grandfather_document_history_policy),
+    },
+    Migration {
+        version: 10,
+        name: "ai_conversations_and_profiles",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS ai_conversations (
+                draft_id      TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+                mode          TEXT NOT NULL CHECK (mode IN ('chat', 'feedback', 'revise')),
+                messages_json TEXT NOT NULL DEFAULT '[]',
+                updated_at    INTEGER NOT NULL,
+                PRIMARY KEY (draft_id, mode)
+            ) WITHOUT ROWID;
+
+            CREATE TABLE IF NOT EXISTS document_ai_profiles (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                writer_brief TEXT NOT NULL DEFAULT '',
+                updated_at  INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            ",
+        ),
+    },
+    Migration {
+        version: 11,
+        name: "document_editorial_decisions",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS document_editorial_decisions (
+                document_id   TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                decisions_json TEXT NOT NULL DEFAULT '[]',
+                updated_at     INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            ",
+        ),
+    },
+    Migration {
+        version: 12,
+        name: "document_creator_version",
+        kind: MigrationKind::Sql("ALTER TABLE documents ADD COLUMN created_with_version TEXT;"),
+    },
+    Migration {
+        version: 13,
+        name: "college_tab_setups",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS college_tab_setups (
+                tab_id     TEXT PRIMARY KEY REFERENCES tabs(id) ON DELETE CASCADE,
+                setup_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            ",
+        ),
+    },
+    Migration {
+        version: 14,
+        name: "college_document_activation",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS college_document_activation (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                enabled     INTEGER NOT NULL CHECK(enabled IN(0,1))
+            );
+
+            INSERT OR IGNORE INTO college_document_activation (document_id, enabled)
+            SELECT DISTINCT tabs.document_id, 1
+            FROM college_tab_setups
+            JOIN tabs ON tabs.id = college_tab_setups.tab_id
+            JOIN documents ON documents.id = tabs.document_id;
+            ",
+        ),
+    },
+    Migration {
+        version: 15,
+        name: "ai_conversation_history",
+        kind: MigrationKind::Sql(
+            "
+            CREATE TABLE IF NOT EXISTS ai_conversation_history (
+                id                     TEXT PRIMARY KEY,
+                document_id            TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                draft_id               TEXT NOT NULL,
+                draft_label            TEXT NOT NULL DEFAULT '',
+                mode                   TEXT NOT NULL CHECK (mode IN ('chat', 'feedback', 'revise')),
+                title                  TEXT NOT NULL DEFAULT '',
+                created_at             INTEGER NOT NULL,
+                updated_at             INTEGER NOT NULL,
+                archived               INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+                messages_json          TEXT NOT NULL DEFAULT '[]',
+                source_conversation_id TEXT DEFAULT NULL,
+                source_message_id      TEXT DEFAULT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ai_conversation_history_document
+                ON ai_conversation_history(document_id, updated_at DESC, id DESC);
+
+            INSERT OR IGNORE INTO ai_conversation_history (
+                id,
+                document_id,
+                draft_id,
+                draft_label,
+                mode,
+                title,
+                created_at,
+                updated_at,
+                archived,
+                messages_json,
+                source_conversation_id,
+                source_message_id
+            )
+            SELECT
+                'legacy:' || c.draft_id || ':' || c.mode,
+                d.document_id,
+                c.draft_id,
+                d.label,
+                c.mode,
+                CASE c.mode
+                    WHEN 'chat' THEN 'Chat'
+                    WHEN 'feedback' THEN 'Feedback'
+                    WHEN 'revise' THEN 'Revise'
+                END,
+                c.updated_at,
+                c.updated_at,
+                0,
+                c.messages_json,
+                NULL,
+                NULL
+            FROM ai_conversations c
+            JOIN drafts d ON d.id = c.draft_id;
+            ",
+        ),
     },
 ];
 
@@ -254,10 +399,7 @@ fn tabs_and_draft_tree(conn: &Connection) -> Result<()> {
             Some(id) => id,
             None => {
                 let id = uuid::Uuid::new_v4().to_string();
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as i64;
+                let now = now_ms();
                 conn.execute(
                     "INSERT INTO tabs (id, document_id, tab_type, label, position, created_at)
                      VALUES (?1, ?2, 'draft', 'Main', 0, ?3)",
@@ -294,6 +436,33 @@ fn draft_branch_relation(conn: &Connection) -> Result<()> {
             [],
         )?;
     }
+    Ok(())
+}
+
+/// Documents predating the 0.22 release keep cross-restart undo. Newer
+/// documents explicitly set their policy at creation time, defaulting to the
+/// safer session-only mode.
+fn document_history_policy(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "documents", "persist_history")? {
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN persist_history INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+/// Migration 9 is separate from the column addition so databases that already
+/// ran migration 8 while dogfooding pre-release 0.22 still grandfather every
+/// document created before the release boundary.
+fn grandfather_document_history_policy(conn: &Connection) -> Result<()> {
+    // Creation time is the temporary release-version proxy because legacy
+    // documents do not record the app version that created them. The fixed UTC
+    // boundary is deterministic across locales and migration dates.
+    conn.execute(
+        "UPDATE documents SET persist_history = 1 WHERE created_at < ?1",
+        params![LEGACY_PERSIST_HISTORY_CUTOFF_MS],
+    )?;
     Ok(())
 }
 
@@ -455,6 +624,343 @@ mod tests {
     }
 
     #[test]
+    fn ai_history_migration_backfills_legacy_rows_without_mutating_legacy_data() {
+        // Register sqlite-vec before constructing the in-memory connection,
+        // then build an authentic pre-history (v14) database.
+        let registration_dir = tempfile::tempdir().unwrap();
+        let registration_path = registration_dir.path().join("registration.db");
+        drop(open_db(&registration_path).unwrap());
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for migration in &MIGRATIONS[..14] {
+            match &migration.kind {
+                MigrationKind::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                MigrationKind::Rust(f) => f(&conn).unwrap(),
+            }
+            conn.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('doc-a', 'A', 0, 0), ('doc-b', 'B', 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO drafts (id, document_id, label, created_at, is_active)
+             VALUES ('draft-a', 'doc-a', 'First take', 0, 1),
+                    ('draft-b', 'doc-b', 'Second take', 0, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_conversations (draft_id, mode, messages_json, updated_at)
+             VALUES ('draft-a', 'chat', '[{\"id\":\"chat\"}]', 10),
+                    ('draft-a', 'feedback', '[{\"id\":\"feedback\"}]', 20),
+                    ('draft-b', 'chat', '[{\"id\":\"other\"}]', 30)",
+            [],
+        )
+        .unwrap();
+
+        let legacy_before: Vec<(String, String, String, i64)> = conn
+            .prepare(
+                "SELECT draft_id, mode, messages_json, updated_at
+                 FROM ai_conversations ORDER BY draft_id, mode",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let legacy_after: Vec<(String, String, String, i64)> = conn
+            .prepare(
+                "SELECT draft_id, mode, messages_json, updated_at
+                 FROM ai_conversations ORDER BY draft_id, mode",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(legacy_after, legacy_before);
+
+        let history: Vec<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            i64,
+            i64,
+        )> = conn
+            .prepare(
+                "SELECT id, document_id, draft_id, draft_label, mode, title,
+                        created_at, updated_at, archived
+                 FROM ai_conversation_history ORDER BY id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(
+            history,
+            vec![
+                (
+                    "legacy:draft-a:chat".into(),
+                    "doc-a".into(),
+                    "draft-a".into(),
+                    "First take".into(),
+                    "chat".into(),
+                    "Chat".into(),
+                    10,
+                    10,
+                    0,
+                ),
+                (
+                    "legacy:draft-a:feedback".into(),
+                    "doc-a".into(),
+                    "draft-a".into(),
+                    "First take".into(),
+                    "feedback".into(),
+                    "Feedback".into(),
+                    20,
+                    20,
+                    0,
+                ),
+                (
+                    "legacy:draft-b:chat".into(),
+                    "doc-b".into(),
+                    "draft-b".into(),
+                    "Second take".into(),
+                    "chat".into(),
+                    "Chat".into(),
+                    30,
+                    30,
+                    0,
+                ),
+            ]
+        );
+
+        // A second migration pass must not duplicate the stable IDs.
+        let count_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_conversation_history", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        super::migrate(&conn).unwrap();
+        let count_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_conversation_history", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count_after, count_before);
+    }
+
+    #[test]
+    fn college_activation_migration_seeds_documents_with_existing_setups() {
+        let registration_dir = tempfile::tempdir().unwrap();
+        let registration_path = registration_dir.path().join("registration.db");
+        drop(open_db(&registration_path).unwrap());
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        for migration in &MIGRATIONS[..13] {
+            match &migration.kind {
+                MigrationKind::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                MigrationKind::Rust(f) => f(&conn).unwrap(),
+            }
+            conn.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('with-setup', 'With setup', 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('without-setup', 'Without setup', 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tabs (id, document_id, label, created_at)
+             VALUES ('college-tab', 'with-setup', 'College', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO college_tab_setups (tab_id, setup_json, updated_at)
+             VALUES ('college-tab', '{}', 1)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let seeded: i64 = conn
+            .query_row(
+                "SELECT enabled FROM college_document_activation WHERE document_id = 'with-setup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(seeded, 1);
+        let unseeded: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM college_document_activation
+                 WHERE document_id = 'without-setup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unseeded, 0);
+    }
+
+    #[test]
+    fn creator_version_migration_preserves_legacy_rows_as_unknown() {
+        // Open a temporary database first so sqlite-vec is registered for the
+        // fresh connection below, then build an authentic version-11 schema.
+        let registration_dir = tempfile::tempdir().unwrap();
+        let registration_path = registration_dir.path().join("registration.db");
+        drop(open_db(&registration_path).unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        for migration in &MIGRATIONS[..11] {
+            match &migration.kind {
+                MigrationKind::Sql(sql) => conn.execute_batch(sql).unwrap(),
+                MigrationKind::Rust(f) => f(&conn).unwrap(),
+            }
+            conn.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents
+             (id, title, created_at, updated_at, preview_text, deleted_at)
+             VALUES ('old', 'Old title', ?1, 10, 'old preview', NULL)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents
+             (id, title, created_at, updated_at, preview_text, deleted_at)
+             VALUES ('new-trash', 'New title', ?1, 20, 'new preview', 30)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS + 1],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.last().unwrap().version);
+        let metadata: Vec<(
+            String,
+            String,
+            i64,
+            i64,
+            String,
+            Option<i64>,
+            Option<String>,
+        )> = conn
+            .prepare(
+                "SELECT id, title, created_at, updated_at, preview_text, deleted_at,
+                        created_with_version
+                 FROM documents ORDER BY id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            metadata,
+            vec![
+                (
+                    "new-trash".into(),
+                    "New title".into(),
+                    LEGACY_PERSIST_HISTORY_CUTOFF_MS + 1,
+                    20,
+                    "new preview".into(),
+                    Some(30),
+                    None,
+                ),
+                (
+                    "old".into(),
+                    "Old title".into(),
+                    LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1,
+                    10,
+                    "old preview".into(),
+                    None,
+                    None,
+                ),
+            ]
+        );
+
+        drop(conn);
+        let reopened = open_db(&path).unwrap();
+        let creator_version: Option<String> = reopened
+            .query_row(
+                "SELECT created_with_version FROM documents WHERE id = 'old'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(creator_version, None);
+    }
+
+    #[test]
+    fn creator_version_column_is_nullable_on_fresh_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db(&dir.path().join("fresh.db")).unwrap();
+        let column: (i64, Option<String>) = conn
+            .query_row(
+                "SELECT \"notnull\", dflt_value FROM pragma_table_info('documents')
+                 WHERE name = 'created_with_version'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(column, (0, None));
+    }
+
+    #[test]
     fn legacy_db_with_existing_schema_migrates_cleanly() {
         // Simulate a DB created before the migration framework existed:
         // baseline tables + label column already present, user_version = 0.
@@ -482,6 +988,14 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(version, MIGRATIONS.last().unwrap().version);
+        let persist_history: i64 = conn
+            .query_row(
+                "SELECT persist_history FROM documents WHERE id = 'doc1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(persist_history, 1);
         // FTS index was rebuilt from the existing row.
         let hits: i64 = conn
             .query_row(
@@ -491,6 +1005,68 @@ mod tests {
             )
             .unwrap();
         assert_eq!(hits, 1);
+    }
+
+    #[test]
+    fn document_history_policy_uses_release_cutoff() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        if let MigrationKind::Sql(sql) = &MIGRATIONS[0].kind {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('before', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('at', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('after', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS + 1],
+        )
+        .unwrap();
+
+        document_history_policy(&conn).unwrap();
+        grandfather_document_history_policy(&conn).unwrap();
+
+        for (id, expected) in [("before", 1), ("at", 0), ("after", 0)] {
+            let actual: i64 = conn
+                .query_row(
+                    "SELECT persist_history FROM documents WHERE id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(actual, expected, "unexpected policy for {id}");
+        }
+    }
+
+    #[test]
+    fn grandfathering_catches_documents_created_after_policy_column() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        if let MigrationKind::Sql(sql) = &MIGRATIONS[0].kind {
+            conn.execute_batch(sql).unwrap();
+        }
+        document_history_policy(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, created_at, updated_at) VALUES ('late-legacy', ?1, 0)",
+            params![LEGACY_PERSIST_HISTORY_CUTOFF_MS - 1],
+        )
+        .unwrap();
+
+        grandfather_document_history_policy(&conn).unwrap();
+
+        let actual: i64 = conn
+            .query_row(
+                "SELECT persist_history FROM documents WHERE id = 'late-legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(actual, 1);
     }
 
     #[test]

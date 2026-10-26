@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "sh ../../scripts/install-landing.sh",
+  "buildCommand": "PATH=/tmp/quillium-secure-node/bin:$PATH npm run build"
+}

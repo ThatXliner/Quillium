@@ -18,6 +18,7 @@
         button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { initials } from "$lib/auth/avatarUtils";
 import {
     MAX_RECONNECT_ATTEMPTS,
@@ -28,12 +29,17 @@ import {
     reconnectAttempt,
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import { type ExportFormat, exportDocument } from "$lib/export";
+import { authorshipEnabled, novelNovemberEnabled } from "$lib/featureFlags.svelte";
 import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
+import { activeSprint, sprintOpen } from "$lib/sprint/state";
 import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Play, Settings, X } from "lucide-svelte";
+import {
+    BarChart3, BookmarkPlus, Download, History, LayoutGrid, Play, Settings, Timer, X,
+} from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -64,6 +70,12 @@ const exportItems: { format: ExportFormat; label: string; hint: string }[] = [
     { format: "json", label: "JSON", hint: "Structured text + annotations (.json)" },
     { format: "md", label: "Markdown", hint: "Text with annotations as footnotes (.md)" },
     { format: "pdf", label: "PDF", hint: "Formatted document (.pdf)" },
+    { format: "docx", label: "Word (Beta)", hint: "Document text only (.docx)" },
+    {
+        format: "docx+annotations",
+        label: "Word + Annotations (Beta)",
+        hint: "Selected revisions and anchored comments (.docx)",
+    },
     {
         format: "pdf+annotations",
         label: "PDF + Annotations",
@@ -163,6 +175,8 @@ $effect(() => {
         titleLinger = false;
     }
 });
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleExportKeydown} />
@@ -205,17 +219,20 @@ $effect(() => {
                     <h3 class="text-xl font-bold text-black/85 leading-tight">Export document</h3>
                     <p class="text-xs text-black/35 mt-1">Choose a format to save your document</p>
                 </div>
-                <button
-                    type="button"
-                    onclick={closeExport}
-                    aria-label="Close"
-                    class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
-                >
-                    <X size={16} />
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                    <RestoreSizeButton {restoreSize} />
+                    <button
+                        type="button"
+                        onclick={closeExport}
+                        aria-label="Close"
+                        class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
             </div>
 
-            <div class="px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
+            <div class="min-h-0 overflow-y-auto px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
                 {#each exportItems as item}
                     <button
                         type="button"
@@ -231,6 +248,7 @@ $effect(() => {
                     </button>
                 {/each}
             </div>
+            <ModalResizeHandles bind:restoreSize />
         </div>
     </div>
 {/if}
@@ -334,6 +352,14 @@ $effect(() => {
                 <LayoutGrid size={20} />
             </button>
             <button
+                onclick={() => appEventBus.emit({ type: "name-version" })}
+                aria-label="Name this version"
+                title="Name this version ({modKey}{isMac ? '' : '+'}Shift+S)"
+                class="w-12 h-12 rounded-full bg-white/50 shadow-md flex items-center justify-center hover:bg-white/70 transition-colors text-black/60 hover:text-blue-600 shrink-0"
+            >
+                <BookmarkPlus size={20} />
+            </button>
+            <button
                 onclick={goToHistory}
                 aria-label="Version history"
                 title="Version History ({modKey}Shift+H)"
@@ -359,6 +385,20 @@ $effect(() => {
             >
                 <BarChart3 size={20} />
             </button>
+            {#if $novelNovemberEnabled}
+                <button
+                    onclick={() => ($sprintOpen = true)}
+                    aria-label={$activeSprint ? "Open active writing sprint" : "Start writing sprint"}
+                    title={$activeSprint ? "Writing Sprint (active)" : "Writing Sprint"}
+                    class="relative w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                        {$sprintOpen || $activeSprint ? 'text-violet-600' : 'text-violet-400 hover:text-violet-600'}"
+                >
+                    <Timer size={20} />
+                    {#if $activeSprint}
+                        <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-violet-500 ring-2 ring-white/70"></span>
+                    {/if}
+                </button>
+            {/if}
             <button
                 onclick={() => (exportOpen = true)}
                 aria-label="Export document"
@@ -368,14 +408,16 @@ $effect(() => {
             >
                 <Download size={20} />
             </button>
-            <button
-                onclick={goToAuthorship}
-                aria-label="Authorship playback"
-                title="Authorship Report ({modKey}Shift+A)"
-                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
-            >
-                <Play size={20} />
-            </button>
+            {#if $authorshipEnabled}
+                <button
+                    onclick={goToAuthorship}
+                    aria-label="Authorship playback"
+                    title="Authorship Report ({modKey}Shift+A)"
+                    class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
+                >
+                    <Play size={20} />
+                </button>
+            {/if}
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Right side (pinned) -->

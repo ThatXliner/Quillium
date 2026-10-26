@@ -1,29 +1,8 @@
-<!--
-    Revise.svelte — Text revision AI panel (purple theme).
-
-    Provides targeted rewriting and revision suggestions. Uses the
-    "revise" mode stream which includes two tools:
-      - createSuggestion: proposes one or more rewritten versions of a
-        passage, each with an optional rationale.
-      - createComment: adds an explanatory note about the revision.
-
-    These tool calls are routed through chatFactory.handleToolCall to
-    the annotation system, which attaches inline suggestions/comments
-    to the CodeMirror editor.
-
-    Features:
-      - Context lens with selection/document-aware revision actions.
-      - User-defined custom quick actions from settings.
-
-    State machine (driven by `chat.status`):
-      ready     — user can submit or click a quick action.
-      submitted — waiting for first token.
-      streaming — tokens arriving, "Revising..." indicator shown.
-      error     — implicit (chat.error set).
-
-    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
--->
+<!-- Revise.svelte — Separate revise panel using the current editorial pipeline. -->
 <script lang="ts">
+import { readable } from "svelte/store";
+import ToolActivity from "./ToolActivity.svelte";
+import { isToolUIPart } from "ai";
 import {
     beginAiTask,
     createAiChat,
@@ -32,127 +11,98 @@ import {
     useAiChatEffects,
 } from "$lib/ai/chatFactory";
 import { streamRevise } from "$lib/ai/clientStreams";
-import { personaModes, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { personasEnabledFor, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { aiErrorMessage } from "./errorMessage";
+import { aiSettings } from "./settings.svelte";
 import { renderMarkdown } from "$lib/ai/utils";
-import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { appSettings } from "$lib/settings.svelte";
-/*
- * Revise.svelte
- *
- * Text revision AI panel (purple theme).
- *
- * Renders:
- *   A context lens with action cards, user-defined custom actions,
- *   scrollable message list with user/assistant bubbles, streaming
- *   indicator, and a bottom input form for revision requests.
- *
- * Props: none.
- * Events: none dispatched.
- *
- * Stores read:
- *   - $selectedText — toggles quick-action label and scopes
- *     quick prompts to "this selected text" vs "my document".
- *   - $documentContent — gates action buttons (disabled when empty)
- *     and displayed as character count.
- *
- * Stores written:
- *   - aiProcessing.active (via setAiProcessing) — true while
- *     streaming so the sidebar glow activates.
- *
- * AI streaming layer:
- *   Uses createAiChat({ mode: "revise" }) which provides two
- *   tool definitions: createSuggestion (proposes rewritten
- *   versions with optional rationale) and createComment (adds
- *   explanatory notes). Tool calls are routed through
- *   chatFactory.handleToolCall to the annotation system.
- *
- * State machine (chat.status):
- *   ready -> submitted -> streaming -> ready
- *                                   \-> error (chat.error set)
- */
-import { documentContent, selectedText } from "$lib/stores";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
+import { currentDraftId, documentContent, selectedText } from "$lib/stores";
 import { UsersIcon } from "lucide-svelte";
 import ContextLens from "./ContextLens.svelte";
+import DiscussionModal from "./DiscussionModal.svelte";
+import ConversationHistory from "./ConversationHistory.svelte";
+import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import PersonaInfoModal from "./PersonaInfoModal.svelte";
 import type { ContextAction } from "./context";
 
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
+
 let input = $state("");
+let requestError = $state("");
 let personaInFlight = $state(false);
 
-const { chat, clearChat } = createAiChat({ mode: "revise" });
+let reviewing = $state(false);
+let reviewOpener = $state<HTMLElement>();
+const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "revise" });
+let isBusy = $derived(
+    personaInFlight ||
+        chat.status === "submitted" ||
+        chat.status === "streaming" ||
+        (conversations ? !conversations.canSend : false),
+);
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
 );
 let showStarterSuggestions = $derived(!hasConversationActivity);
-let showConversationControls = $derived(hasConversationActivity);
-
-function clearConversation() {
-    clearChat();
-    personaInFlight = false;
-}
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "revise");
 
-// Also reset persona state on global stop.
-$effect(() => {
-    const unsub = appEventBus.on("stop-ai", () => {
-        personaInFlight = false;
-    });
-    return unsub;
-});
-
-/**
- * Central send helper: routes through persona streams only when the
- * user has opted personas IN for this mode (personas multiply token
- * cost — see issue #259). Otherwise, and as a fallback when no personas
- * are actually enabled, uses the single-stream chat.
- */
-async function sendRevise(text: string, trigger: string) {
-    const personas = personaModes.revise ? getEnabledPersonas() : [];
-    if (personas.length === 0) {
-        posthog.capture("ai_revise_requested", {
-            has_selection: !!$selectedText,
-            trigger,
-        });
-        chat.sendMessage({ text });
-        return;
-    }
-
+async function sendRevise(text: string, trigger: string, turn: NonNullable<ContextAction["turn"]> = { task: "local-rewrite" }) {
+    if (isBusy || !text.trim()) return;
+    requestError = "";
+    const personas = personasEnabledFor("revise") ? getEnabledPersonas() : [];
     posthog.capture("ai_revise_requested", {
         has_selection: !!$selectedText,
-        trigger: "persona",
+        trigger,
         persona_count: personas.length,
     });
-
-    personaInFlight = true;
-    const task = beginAiTask("revise-personas");
     try {
-        await runMultiPersonaStreams({
-            personas,
-            streamFn: streamRevise,
-            messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
-            mode: "revise",
-        });
-    } finally {
-        personaInFlight = false;
-        endAiTask(task);
+        if (personas.length === 0 || turn.task === "exact-compression") {
+            await sendMessage(text, turn);
+            if (conversations?.error && !input) input = text;
+            return;
+        }
+        personaInFlight = true;
+        const task = beginAiTask("revise-personas");
+        try {
+            const review = async () => {
+                await runMultiPersonaStreams({
+                    personas,
+                    streamFn: streamRevise,
+                    messages: chat.messages,
+                    mode: "revise",
+                    turn,
+                });
+                return "Reader review ended. Any notes are attached to your writing.";
+            };
+            if (conversations) await conversations.runAction(text, turn, review);
+            else await review();
+        } finally {
+            personaInFlight = false;
+            endAiTask(task);
+        }
+    } catch (error) {
+        requestError = aiErrorMessage(error instanceof Error ? error : new Error(String(error)), aiSettings.provider);
+        if (!input) input = text;
     }
 }
 
 function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
-    if (!input.trim() || chat.status !== "ready") return;
+    if (!input.trim() || isBusy) return;
     const text = input;
     input = "";
     sendRevise(text, "manual");
 }
 
 function togglePersonaMode() {
-    const next = !personaModes.revise;
+    const next = !personasEnabledFor("revise");
     setPersonasForMode("revise", next);
     posthog.capture("persona_mode_toggled", { mode: "revise", enabled: next });
 }
@@ -163,10 +113,6 @@ let customRevisePrompts = $derived(
         .map((a) => ({ label: a.label, prompt: a.prompt })),
 );
 
-/**
- * Compose a revision message from a quick-prompt chip, scoped to
- * the current selection or the full document, then send it.
- */
 function useQuickPrompt(prompt: string) {
     const target = $selectedText ? "this selected text" : "my document";
     const message = `${prompt} in ${target}`;
@@ -185,11 +131,12 @@ function useContextAction(action: ContextAction) {
         has_selection: !!$selectedText,
     });
     input = "";
-    sendRevise(action.prompt, `context_${action.id}`);
+    sendRevise(action.prompt, `context_${action.id}`, action.turn);
 }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
+    <div class="min-h-0 flex-1 overflow-y-auto" data-conversation-body>
     <!-- Personas opt-in: off by default because personas fan out one
          AI stream per enabled persona (N× token cost — issue #259). -->
     <div class="flex items-center justify-between px-3 py-2 border-b border-black/10 shrink-0">
@@ -201,17 +148,17 @@ function useContextAction(action: ContextAction) {
         <button
             type="button"
             role="switch"
-            aria-checked={personaModes.revise}
+            aria-checked={personasEnabledFor("revise")}
             onclick={togglePersonaMode}
-            title={personaModes.revise
+            title={personasEnabledFor("revise")
                 ? "Personas on — each enabled reader responds in parallel (uses more tokens)"
                 : "Personas off — a single plain revision response"}
-            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personaModes.revise
+            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personasEnabledFor("revise")
                 ? 'bg-purple-500'
                 : 'bg-black/15'}"
         >
             <span
-                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personaModes.revise
+                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personasEnabledFor("revise")
                     ? 'translate-x-3.5'
                     : 'translate-x-0.5'}"
             ></span>
@@ -221,7 +168,7 @@ function useContextAction(action: ContextAction) {
     {#if showStarterSuggestions}
         <ContextLens
             mode="revise"
-            disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+            disabled={isBusy || personaInFlight || !$documentContent}
             onAction={useContextAction}
         />
     {/if}
@@ -230,7 +177,7 @@ function useContextAction(action: ContextAction) {
         <div class="px-3 pb-3 border-b border-black/10">
             <CustomQuickActions
                 prompts={customRevisePrompts}
-                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                disabled={isBusy || personaInFlight || !$documentContent}
                 panel="revise"
                 theme="purple"
                 onPrompt={useQuickPrompt}
@@ -238,20 +185,34 @@ function useContextAction(action: ContextAction) {
         </div>
     {/if}
 
-    <!-- Clear chat row -->
-    {#if showConversationControls}
-        <div class="flex justify-end px-3 pt-2 shrink-0">
-            <button
-                onclick={clearConversation}
-                title="Start a fresh conversation (clears all messages)"
-                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
-            >New chat</button>
-        </div>
+    {#if conversations}
+        <ConversationHistory {conversations} description="Past discussions in Revise." onopen={() => { reviewOpener = document.querySelector<HTMLElement>('[data-panel-id="revise"] [data-history-trigger]') ?? undefined; reviewing = true; }} disabled={personaInFlight} />
     {/if}
 
     <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+    {#if !reviewing}{@render transcript()}{/if}
+    </div>
+    {#if reviewing}
+        <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            <div class="min-h-0 flex-1 overflow-y-auto">
+            {@render transcript()}
+            </div>
+            {@render composer()}
+        </DiscussionModal>
+    {:else}{@render composer()}{/if}
+</div>
+{#snippet transcript()}
+    {#if conversations?.current?.archived}
+        <p class="px-4 py-2 text-xs text-black/60">Archived. Restore this discussion from History to continue.</p>
+    {:else if conversations?.current && conversations.current.draftId !== $currentDraftId}
+        <p class="px-4 py-2 text-xs text-black/60">Open the source draft to continue this discussion.</p>
+    {/if}
+    {#if conversations?.current?.sourceConversationId}
+        <button class="px-4 py-2 text-left text-xs text-black/60 underline" disabled={isBusy} onclick={() => conversations?.open(conversations.current!.sourceConversationId!)}>Open origin conversation</button>
+    {/if}
+    <div class="p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
+            <div class="space-y-0.5" data-conversation-message={message.id}>
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
                     {@const renderPromise = renderMarkdown(part.text)}
@@ -275,8 +236,14 @@ function useContextAction(action: ContextAction) {
                             </div>
                         </div>
                     </div>
+                {:else if isToolUIPart(part)}
+                    <ToolActivity {part} outcomes={$toolApplications} metadata={message.metadata} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
+            {#if conversations}
+                <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading || personaInFlight} />
+            {/if}
+            </div>
         {/each}
 
         {#if chat.status === "streaming" || chat.status === "submitted" || personaInFlight}
@@ -300,13 +267,18 @@ function useContextAction(action: ContextAction) {
             </div>
         {/if}
     </div>
+{/snippet}
 
+{#snippet composer()}
+    {#if requestError || chat.error}
+        <p role="alert" class="px-3 py-2 text-xs text-red-800">{requestError || aiErrorMessage(chat.error!, aiSettings.provider)}</p>
+    {/if}
     <!-- Input -->
-    <div class="border-t border-black/10 p-3 bg-white/30">
+    <div class="shrink-0 border-t border-black/10 p-3 bg-white/30">
         {#if !showStarterSuggestions}
             <CustomQuickActions
                 prompts={customRevisePrompts}
-                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                disabled={isBusy || personaInFlight || !$documentContent}
                 compact
                 panel="revise"
                 theme="purple"
@@ -319,17 +291,17 @@ function useContextAction(action: ContextAction) {
                 bind:value={input}
                 name="message"
                 placeholder="Describe how to revise..."
-                disabled={chat.status !== "ready" || personaInFlight}
+                disabled={isBusy || personaInFlight}
                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || personaInFlight || !input.trim()}
+                disabled={isBusy || personaInFlight || !input.trim()}
                 class="w-full py-2 bg-purple-500 text-white text-sm font-medium rounded-md hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Revise
             </button>
         </form>
     </div>
-</div>
+{/snippet}

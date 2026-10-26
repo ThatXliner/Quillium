@@ -73,12 +73,14 @@ function makeAnnotation(
     type: GenericAnnotation["_type"],
 ): GenericAnnotation {
     const base = { id, selection, thread: [] };
-    if (type === "comment") return { ...base, _type: "comment" };
-    if (type === "suggestion") return { ...base, _type: "suggestion", replacements: [] };
+    if (type === "comment") return { ...base, _type: "comment", status: "pending" };
+    if (type === "suggestion")
+        return { ...base, _type: "suggestion", status: "active", replacements: [] };
     const v0 = makeVersion({ doc: "v0" });
     return {
         ...base,
         _type: "revision",
+        status: "active" as const,
         activeVersionId: v0.id,
         versions: [v0],
     };
@@ -397,21 +399,21 @@ describe("canCreateNewComment", () => {
         expect(canCreateNewComment({})).toBe(true);
     });
 
-    it("returns false when a pending comment (empty thread) exists", () => {
+    it("returns false when a pending comment exists", () => {
         fc.assert(
             fc.property(arbAnnotations, arbSelection, (annotations, sel) => {
                 const pendingId = getNewId(annotations);
                 const withPending: Annotations = {
                     ...annotations,
                     [pendingId]: makeAnnotation(pendingId, sel, "comment"),
-                    // makeAnnotation gives empty thread by default → pending
+                    // makeAnnotation creates comments with explicit pending status.
                 };
                 expect(canCreateNewComment(withPending)).toBe(false);
             }),
         );
     });
 
-    it("returns true when all comments have at least one message", () => {
+    it("returns true when all comments are active", () => {
         fc.assert(
             fc.property(arbAnnotations, arbSelection, (annotations, sel) => {
                 const id = getNewId(annotations);
@@ -419,10 +421,11 @@ describe("canCreateNewComment", () => {
                     _type: "comment";
                 };
                 comment.thread = [{ message: "hi", author: "user", time: Date.now() }];
+                comment.status = "active";
                 const withFilled: Annotations = { ...annotations, [id]: comment };
                 // Only valid if no other pending comment exists in arbitrary annotations
                 const hasPending = Object.values(annotations).some(
-                    (a) => isAnnotationOfType(a, "comment") && a.thread.length === 0,
+                    (a) => isAnnotationOfType(a, "comment") && a.status === "pending",
                 );
                 if (!hasPending) {
                     expect(canCreateNewComment(withFilled)).toBe(true);
@@ -777,6 +780,7 @@ describe("RawAnnotationSchema", () => {
                     const result = RawAnnotationSchema.safeParse({
                         ...base,
                         _type: "suggestion",
+                        status: "active" as const,
                         replacements,
                     });
                     expect(result.success).toBe(true);
@@ -801,6 +805,7 @@ describe("RawAnnotationSchema", () => {
                     const result = RawAnnotationSchema.safeParse({
                         ...base,
                         _type: "revision",
+                        status: "active" as const,
                         activeVersionIndex,
                         versions,
                     });
@@ -829,6 +834,7 @@ describe("RawAnnotationSchema", () => {
                 const result = RawAnnotationSchema.safeParse({
                     ...base,
                     _type: "revision",
+                    status: "active" as const,
                     activeVersionIndex: 0,
                     versions: [],
                 });
@@ -843,6 +849,7 @@ describe("RawAnnotationSchema", () => {
                 const result = RawAnnotationSchema.safeParse({
                     ...base,
                     _type: "comment",
+                    status: "active" as const,
                     selection: { ranges: [] },
                 });
                 expect(result.success).toBe(false);

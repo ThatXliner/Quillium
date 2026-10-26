@@ -5,7 +5,6 @@
 import {
     createDocument,
     deleteDocument,
-    getDocumentMeta,
     getTrashRetention,
     isDocOpenElsewhere,
     isSearchStatusPreparing,
@@ -17,17 +16,24 @@ import {
     searchDocuments,
     setTrashRetention,
     trashDocument,
-    updateDocumentMeta,
+    updateDocumentTags,
+    updateDocumentTitle,
 } from "$lib/db";
+import {
+    getNewDocumentUndoHistoryAnalytics,
+    getUndoHistoryPolicyAnalytics,
+} from "$lib/db/historyPolicy";
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import ContinuePill from "$lib/library/ContinuePill.svelte";
 import DocumentGrid from "$lib/library/DocumentGrid.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
 import LibraryTopBar from "$lib/library/LibraryTopBar.svelte";
 import PreviewPanel from "$lib/library/PreviewPanel.svelte";
+import { duplicateLibraryDocument } from "$lib/library/duplicateDocument";
 import { parseTags } from "$lib/library/tags";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
+import { getPersistUndoHistoryForNewDocuments } from "$lib/settings.svelte";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -44,6 +50,7 @@ let lastClickedId = $state<string | null>(null);
 let viewMode = $state<"grid" | "list">("grid");
 let query = $state("");
 let loading = $state(true);
+let duplicating = $state(false);
 let tab = $state<"library" | "trash">("library");
 let trashRetention = $state<number | null>(null);
 
@@ -182,8 +189,9 @@ async function handleTrashRetentionChange(days: number | null) {
 }
 
 async function handleNew() {
-    const id = await createDocument();
-    posthog.capture("document_created");
+    const persistHistory = getPersistUndoHistoryForNewDocuments();
+    const id = await createDocument("Untitled", persistHistory);
+    posthog.capture("document_created", getNewDocumentUndoHistoryAnalytics(persistHistory));
     $currentDocumentId = id;
     $currentDocumentTitle = "Untitled";
     goToEditor();
@@ -197,22 +205,42 @@ async function handleOpen(id: string) {
         toast.info("This document is already open in another window.");
         return;
     }
-    posthog.capture("document_opened");
-    $currentDocumentId = id;
     const doc = documents.find((d) => d.id === id);
+    posthog.capture("document_opened", doc ? getUndoHistoryPolicyAnalytics(doc) : undefined);
+    $currentDocumentId = id;
     if (doc) $currentDocumentTitle = doc.title;
     goToEditor();
 }
 
 function handleOpenInNewWindow(id: string) {
-    posthog.capture("document_opened_new_window");
+    const doc = documents.find((candidate) => candidate.id === id);
+    posthog.capture(
+        "document_opened_new_window",
+        doc ? getUndoHistoryPolicyAnalytics(doc) : undefined,
+    );
     openInNewWindow(id);
 }
 
+async function handleDuplicate(id: string) {
+    if (duplicating) return;
+    duplicating = true;
+    try {
+        const copyId = await duplicateLibraryDocument(id);
+        posthog.capture("document_duplicated");
+        documents = await listDocuments();
+        selectedIds = new Set([copyId]);
+        lastClickedId = copyId;
+        toast.success("Document duplicated.");
+    } catch (error) {
+        console.error("[library] document duplication failed:", error);
+        toast.error("Couldn’t duplicate the document.");
+    } finally {
+        duplicating = false;
+    }
+}
+
 async function handleRenameTitle(id: string, newTitle: string) {
-    const meta = await getDocumentMeta(id);
-    if (!meta) return;
-    await updateDocumentMeta(id, newTitle, meta.wordCount, meta.previewText, meta.tags);
+    await updateDocumentTitle(id, newTitle);
     posthog.capture("document_renamed");
     documents = await listDocuments();
     // Keep the store in sync if this is the currently open document
@@ -220,9 +248,7 @@ async function handleRenameTitle(id: string, newTitle: string) {
 }
 
 async function handleUpdateTags(id: string, tags: string) {
-    const meta = await getDocumentMeta(id);
-    if (!meta) return;
-    await updateDocumentMeta(id, meta.title, meta.wordCount, meta.previewText, tags);
+    await updateDocumentTags(id, tags);
     posthog.capture("document_tags_updated", { count: parseTags(tags).length });
     documents = await listDocuments();
 }
@@ -464,6 +490,13 @@ function handleKeydown(e: KeyboardEvent) {
         return;
     }
 
+    // D — duplicate selected document (only single selection)
+    if (e.key === "d" && !inInput && selectedIds.size === 1 && !trashMode) {
+        e.preventDefault();
+        handleDuplicate([...selectedIds][0]);
+        return;
+    }
+
     // G — grid view, L — list view
     if (e.key === "g" && !inInput) {
         viewMode = "grid";
@@ -565,6 +598,7 @@ onDestroy(() => {
                     onRestore={handleRestore}
                     onDeletePermanent={handleDeletePermanent}
                     onOpenInNewWindow={handleOpenInNewWindow}
+                    onDuplicate={handleDuplicate}
                     onTagClick={handleTagClick}
                 />
             {/if}
@@ -580,6 +614,7 @@ onDestroy(() => {
             {trashMode}
             onOpen={() => selectedIds.size === 1 && handleOpen([...selectedIds][0])}
             onOpenInNewWindow={() => selectedIds.size === 1 && handleOpenInNewWindow([...selectedIds][0])}
+            onDuplicate={() => selectedIds.size === 1 && handleDuplicate([...selectedIds][0])}
             onTrash={() => {
                 if (selectedIds.size === 1) handleTrash([...selectedIds][0]);
                 else if (selectedIds.size > 1) handleTrashSelected();

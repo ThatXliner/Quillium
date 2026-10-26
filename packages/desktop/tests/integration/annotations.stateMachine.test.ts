@@ -21,6 +21,8 @@
  */
 
 import { activeVersionIndex, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import { canCreateRevision, canCreateSuggestion } from "$lib/editor/plugins/annotations/utils";
+import { EditorSelection } from "@codemirror/state";
 import fc from "fast-check";
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorHarness } from "../helpers/EditorHarness";
@@ -102,7 +104,7 @@ type Command =
 
 // ── Invariant checker ───────────────────────────────────────────────────────
 
-function assertInvariants(h: EditorHarness, label: string, versionMgmtOccurred = false): void {
+function assertInvariants(h: EditorHarness, label: string): void {
     const docLen = h.doc.length;
 
     for (const ann of Object.values(h.annotations)) {
@@ -130,13 +132,10 @@ function assertInvariants(h: EditorHarness, label: string, versionMgmtOccurred =
                 `${label}: rev ${ann.id} activeVersionIndex < versions.length`,
             ).toBeLessThan(ann.versions.length);
 
-            // version.doc matches doc slice (skip collapsed revisions).
-            // KNOWN BUG: version management ops (addNewVersion,
-            // deleteVersion, switchVersion) and undo/redo of those ops
-            // can desync version.doc. We track whether any version
-            // management op has occurred and skip this check if so.
-            // See annotations.knownBugs.test.ts.
-            if (from < to && !versionMgmtOccurred) {
+            // Non-collapsed active versions always mirror their parent slice.
+            // Collapsed revisions are checked by annotations.historyFuzz.test.ts
+            // after the deferred collapsed-revision resolver has settled.
+            if (from < to) {
                 const slice = h.revisionSlice(ann.id);
                 const vDoc = h.versionDoc(ann.id);
                 expect(vDoc, `${label}: rev ${ann.id} version.doc`).toBe(slice);
@@ -155,12 +154,6 @@ function assertInvariants(h: EditorHarness, label: string, versionMgmtOccurred =
     // 3. Undo/redo depths non-negative
     expect(h.undoDepth, `${label}: undoDepth`).toBeGreaterThanOrEqual(0);
     expect(h.redoDepth, `${label}: redoDepth`).toBeGreaterThanOrEqual(0);
-}
-
-const VERSION_MGMT_TYPES = new Set(["addNewVersion", "deleteVersion", "switchVersion"]);
-
-function isVersionMgmtCmd(cmd: Command): boolean {
-    return VERSION_MGMT_TYPES.has(cmd.type);
 }
 
 // ── Command execution ───────────────────────────────────────────────────────
@@ -206,123 +199,126 @@ function revisionRelRange(
 }
 
 function executeCommand(h: EditorHarness, cmd: Command): boolean {
-    try {
-        switch (cmd.type) {
-            case "insert": {
-                h.insert(Math.min(cmd.pos, h.doc.length), cmd.text);
-                return true;
-            }
-            case "delete": {
-                const r = clampRange(cmd.from, cmd.to, h.doc.length);
-                if (!r) return false;
-                h.delete(r[0], r[1]);
-                return true;
-            }
-            case "replace": {
-                const r = clampRange(cmd.from, cmd.to, h.doc.length);
-                if (!r) return false;
-                h.replace(r[0], r[1], cmd.text);
-                return true;
-            }
-            case "addRevision": {
-                const r = clampRange(cmd.from, cmd.to, h.doc.length);
-                if (!r) return false;
-                h.addRevision(r[0], r[1]);
-                return true;
-            }
-            case "addComment": {
-                const r = clampRange(cmd.from, cmd.to, h.doc.length);
-                if (!r) return false;
-                h.addComment(r[0], r[1]);
-                return true;
-            }
-            case "addSuggestion": {
-                const r = clampRange(cmd.from, cmd.to, h.doc.length);
-                if (!r) return false;
-                h.addSuggestion(r[0], r[1], [{ text: cmd.replacement }]);
-                return true;
-            }
-            case "removeAnnotation": {
-                const id = pickAnyAnnotation(h, cmd.annIdx);
-                if (id === null) return false;
-                h.removeAnnotation(id);
-                return true;
-            }
-            case "nestedInsert": {
-                const revId = pickRevision(h, cmd.revIdx);
-                if (revId === null) return false;
-                const rev = h.annotation(revId);
-                if (!isAnnotationOfType(rev, "revision")) return false;
-                const rangeLen = rev.selection.main.to - rev.selection.main.from;
-                h.nestedInsert(revId, Math.min(Math.abs(cmd.relPos), rangeLen), cmd.text);
-                return true;
-            }
-            case "nestedDelete": {
-                const revId = pickRevision(h, cmd.revIdx);
-                if (revId === null) return false;
-                const r = revisionRelRange(h, revId, cmd.relFrom, cmd.relTo);
-                if (!r) return false;
-                h.nestedDelete(revId, r[0], r[1]);
-                return true;
-            }
-            case "nestedReplace": {
-                const revId = pickRevision(h, cmd.revIdx);
-                if (revId === null) return false;
-                const r = revisionRelRange(h, revId, cmd.relFrom, cmd.relTo);
-                if (!r) return false;
-                h.nestedEdit(revId, r[0], r[1], cmd.text);
-                return true;
-            }
-            case "undo": {
-                if (h.undoDepth === 0) return false;
-                h.undo();
-                return true;
-            }
-            case "redo": {
-                if (h.redoDepth === 0) return false;
-                h.redo();
-                return true;
-            }
-            case "switchVersion": {
-                const revId = pickRevision(h, cmd.revIdx);
-                if (revId === null) return false;
-                const rev = h.annotation(revId);
-                if (!isAnnotationOfType(rev, "revision")) return false;
-                if (rev.versions.length < 2) return false;
-                const target = Math.abs(cmd.versionIdx) % rev.versions.length;
-                if (target === activeVersionIndex(rev)) return false;
-                h.switchVersion(revId, target);
-                return true;
-            }
-            case "addNewVersion": {
-                const revId = pickRevision(h, cmd.revIdx);
-                if (revId === null) return false;
-                h.addNewVersion(revId);
-                return true;
-            }
-            case "deleteVersion": {
-                const revId = pickRevision(h, cmd.revIdx);
-                if (revId === null) return false;
-                const rev = h.annotation(revId);
-                if (!isAnnotationOfType(rev, "revision")) return false;
-                if (rev.versions.length < 2) return false; // don't delete last
-                const vi = Math.abs(cmd.versionIdx) % rev.versions.length;
-                h.deleteVersion(revId, vi);
-                return true;
-            }
-            case "applySuggestion": {
-                const sugId = pickSuggestion(h, cmd.sugIdx);
-                if (sugId === null) return false;
-                const sug = h.annotation(sugId);
-                if (!isAnnotationOfType(sug, "suggestion")) return false;
-                if (sug.replacements.length === 0) return false;
-                const ri = Math.abs(cmd.replacementIdx) % sug.replacements.length;
-                h.applySuggestion(sugId, ri);
-                return true;
-            }
+    switch (cmd.type) {
+        case "insert": {
+            h.insert(Math.min(cmd.pos, h.doc.length), cmd.text);
+            return true;
         }
-    } catch {
-        return false;
+        case "delete": {
+            const r = clampRange(cmd.from, cmd.to, h.doc.length);
+            if (!r) return false;
+            h.delete(r[0], r[1]);
+            return true;
+        }
+        case "replace": {
+            const r = clampRange(cmd.from, cmd.to, h.doc.length);
+            if (!r) return false;
+            h.replace(r[0], r[1], cmd.text);
+            return true;
+        }
+        case "addRevision": {
+            const r = clampRange(cmd.from, cmd.to, h.doc.length);
+            if (!r) return false;
+            const selection = EditorSelection.single(r[0], r[1]);
+            if (!canCreateRevision(h.annotations, selection)) return false;
+            h.addRevision(r[0], r[1]);
+            return true;
+        }
+        case "addComment": {
+            const r = clampRange(cmd.from, cmd.to, h.doc.length);
+            if (!r) return false;
+            h.addComment(r[0], r[1]);
+            return true;
+        }
+        case "addSuggestion": {
+            const r = clampRange(cmd.from, cmd.to, h.doc.length);
+            if (!r) return false;
+            const selection = EditorSelection.single(r[0], r[1]);
+            if (!canCreateSuggestion(h.annotations, selection)) return false;
+            h.addSuggestion(r[0], r[1], [{ text: cmd.replacement }]);
+            return true;
+        }
+        case "removeAnnotation": {
+            const id = pickAnyAnnotation(h, cmd.annIdx);
+            if (id === null) return false;
+            h.removeAnnotation(id);
+            return true;
+        }
+        case "nestedInsert": {
+            const revId = pickRevision(h, cmd.revIdx);
+            if (revId === null) return false;
+            const rev = h.annotation(revId);
+            if (!isAnnotationOfType(rev, "revision")) return false;
+            const rangeLen = rev.selection.main.to - rev.selection.main.from;
+            h.nestedInsert(revId, Math.min(Math.abs(cmd.relPos), rangeLen), cmd.text);
+            return true;
+        }
+        case "nestedDelete": {
+            const revId = pickRevision(h, cmd.revIdx);
+            if (revId === null) return false;
+            const r = revisionRelRange(h, revId, cmd.relFrom, cmd.relTo);
+            if (!r) return false;
+            h.nestedDelete(revId, r[0], r[1]);
+            return true;
+        }
+        case "nestedReplace": {
+            const revId = pickRevision(h, cmd.revIdx);
+            if (revId === null) return false;
+            const r = revisionRelRange(h, revId, cmd.relFrom, cmd.relTo);
+            if (!r) return false;
+            h.nestedEdit(revId, r[0], r[1], cmd.text);
+            return true;
+        }
+        case "undo": {
+            if (h.undoDepth === 0) return false;
+            h.undo();
+            return true;
+        }
+        case "redo": {
+            if (h.redoDepth === 0) return false;
+            h.redo();
+            return true;
+        }
+        case "switchVersion": {
+            const revId = pickRevision(h, cmd.revIdx);
+            if (revId === null) return false;
+            const rev = h.annotation(revId);
+            if (!isAnnotationOfType(rev, "revision")) return false;
+            if (h.versionDoc(revId) !== h.revisionSlice(revId)) return false;
+            if (rev.versions.length < 2) return false;
+            const target = Math.abs(cmd.versionIdx) % rev.versions.length;
+            if (target === activeVersionIndex(rev)) return false;
+            h.switchVersion(revId, target);
+            return true;
+        }
+        case "addNewVersion": {
+            const revId = pickRevision(h, cmd.revIdx);
+            if (revId === null) return false;
+            if (h.versionDoc(revId) !== h.revisionSlice(revId)) return false;
+            h.addNewVersion(revId);
+            return true;
+        }
+        case "deleteVersion": {
+            const revId = pickRevision(h, cmd.revIdx);
+            if (revId === null) return false;
+            const rev = h.annotation(revId);
+            if (!isAnnotationOfType(rev, "revision")) return false;
+            if (h.versionDoc(revId) !== h.revisionSlice(revId)) return false;
+            if (rev.versions.length < 2) return false; // don't delete last
+            const vi = Math.abs(cmd.versionIdx) % rev.versions.length;
+            h.deleteVersion(revId, vi);
+            return true;
+        }
+        case "applySuggestion": {
+            const sugId = pickSuggestion(h, cmd.sugIdx);
+            if (sugId === null) return false;
+            const sug = h.annotation(sugId);
+            if (!isAnnotationOfType(sug, "suggestion")) return false;
+            if (sug.replacements.length === 0) return false;
+            const ri = Math.abs(cmd.replacementIdx) % sug.replacements.length;
+            h.applySuggestion(sugId, ri);
+            return true;
+        }
     }
 }
 
@@ -477,17 +473,15 @@ describe("annotation state machine (property-based)", () => {
                     fc.array(arbCommand, { minLength: 5, maxLength: 30 }),
                     (initialDoc, commands) => {
                         harness = EditorHarness.create(initialDoc);
-                        let vMgmt = false;
                         for (let i = 0; i < commands.length; i++) {
-                            if (isVersionMgmtCmd(commands[i])) vMgmt = true;
                             if (executeCommand(harness, commands[i])) {
-                                assertInvariants(harness, `step ${i} (${commands[i].type})`, vMgmt);
+                                assertInvariants(harness, `step ${i} (${commands[i].type})`);
                             }
                         }
                         harness.destroy();
                     },
                 ),
-                { numRuns: 500, endOnFailure: true },
+                { numRuns: 500 },
             );
         },
     );
@@ -502,17 +496,15 @@ describe("annotation state machine (property-based)", () => {
                     fc.array(arbCommand, { minLength: 20, maxLength: 80 }),
                     (initialDoc, commands) => {
                         harness = EditorHarness.create(initialDoc);
-                        let vMgmt = false;
                         for (let i = 0; i < commands.length; i++) {
-                            if (isVersionMgmtCmd(commands[i])) vMgmt = true;
                             if (executeCommand(harness, commands[i])) {
-                                assertInvariants(harness, `step ${i} (${commands[i].type})`, vMgmt);
+                                assertInvariants(harness, `step ${i} (${commands[i].type})`);
                             }
                         }
                         harness.destroy();
                     },
                 ),
-                { numRuns: 200, endOnFailure: true },
+                { numRuns: 200 },
             );
         },
     );
@@ -527,17 +519,15 @@ describe("annotation state machine (property-based)", () => {
                     fc.array(arbCommand, { minLength: 50, maxLength: 200 }),
                     (initialDoc, commands) => {
                         harness = EditorHarness.create(initialDoc);
-                        let vMgmt = false;
                         for (let i = 0; i < commands.length; i++) {
-                            if (isVersionMgmtCmd(commands[i])) vMgmt = true;
                             if (executeCommand(harness, commands[i])) {
-                                assertInvariants(harness, `step ${i} (${commands[i].type})`, vMgmt);
+                                assertInvariants(harness, `step ${i} (${commands[i].type})`);
                             }
                         }
                         harness.destroy();
                     },
                 ),
-                { numRuns: 50, endOnFailure: true },
+                { numRuns: 50 },
             );
         },
     );
@@ -563,10 +553,7 @@ describe("annotation state machine (property-based)", () => {
                     fc.array(arbForwardCmd, { minLength: 3, maxLength: 40 }),
                     (initialDoc, commands) => {
                         harness = EditorHarness.create(initialDoc);
-                        let vMgmt = false;
-
                         for (const cmd of commands) {
-                            if (isVersionMgmtCmd(cmd)) vMgmt = true;
                             executeCommand(harness, cmd);
                         }
                         const finalDoc = harness.doc;
@@ -574,20 +561,20 @@ describe("annotation state machine (property-based)", () => {
                         // Full undo
                         while (harness.undoDepth > 0) {
                             harness.undo();
-                            assertInvariants(harness, "undo pass", vMgmt);
+                            assertInvariants(harness, "undo pass");
                         }
 
                         // Full redo
                         while (harness.redoDepth > 0) {
                             harness.redo();
-                            assertInvariants(harness, "redo pass", vMgmt);
+                            assertInvariants(harness, "redo pass");
                         }
 
                         expect(harness.doc).toBe(finalDoc);
                         harness.destroy();
                     },
                 ),
-                { numRuns: 200, endOnFailure: true },
+                { numRuns: 200 },
             );
         },
     );
@@ -738,17 +725,13 @@ describe("targeted property tests", () => {
                     // All commands here involve version management
                     for (let i = 0; i < commands.length; i++) {
                         if (executeCommand(harness, commands[i])) {
-                            assertInvariants(
-                                harness,
-                                `step ${i} (${commands[i].type})`,
-                                true, // version mgmt always active
-                            );
+                            assertInvariants(harness, `step ${i} (${commands[i].type})`);
                         }
                     }
                     harness.destroy();
                 },
             ),
-            { numRuns: 200, endOnFailure: true },
+            { numRuns: 200 },
         );
     });
 
@@ -777,7 +760,7 @@ describe("targeted property tests", () => {
                     harness.destroy();
                 },
             ),
-            { numRuns: 200, endOnFailure: true },
+            { numRuns: 200 },
         );
     });
 });

@@ -138,6 +138,7 @@ describe("awareness", () => {
                     addAnnotation.of({
                         id: 0,
                         _type: "revision",
+                        status: "active" as const,
                         thread: [],
                         selection: EditorSelection.single(6, 11),
                         activeVersionId: revVersion.id,

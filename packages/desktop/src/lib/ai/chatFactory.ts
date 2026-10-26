@@ -1,10 +1,16 @@
-import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
+import { logAppEvent } from "$lib/appLog";
+import { assertCollegeContextReady } from "$lib/college/state.svelte";
+import { annotationField } from "$lib/editor/plugins/annotations";
+import type { AiGenerationProvenance } from "$lib/editor/plugins/annotations/models";
+import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import posthog from "$lib/posthog";
 import type { ReaderPersona } from "$lib/readers/presets";
 import {
     activeAnnotation,
     annotations,
     currentDocumentId,
+    currentDraftId,
+    currentTabId,
     documentContent,
     editorView,
     selectedText,
@@ -17,8 +23,7 @@ import { toast } from "svelte-sonner";
 /**
  * Chat factory — wires AI streaming to the Svelte Chat class.
  *
- * This file is the glue between the UI chat components (Chat.svelte,
- * Feedback.svelte, Revise.svelte) and the streaming functions in
+ * This file connects Chat.svelte and its writing actions to the streaming functions in
  * `clientStreams.ts`. It has three responsibilities:
  *
  * 1. **Transport creation** (`makeTransport`) — builds a
@@ -45,7 +50,7 @@ import { toast } from "svelte-sonner";
  * Dependencies: @ai-sdk/svelte (Chat), ai SDK types, Svelte stores,
  *   settings.svelte.ts, clientStreams.ts, annotation system.
  */
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     type CommentInput,
@@ -57,19 +62,108 @@ import {
     streamFeedback,
     streamRevise,
 } from "./clientStreams";
+import { createContextHistory } from "./contextHistory";
+import { type ContextRetrievalSnapshot, captureContextRetrieval } from "./contextRetrieval";
+import {
+    createConversationController,
+    sanitizeOutboundMessages,
+} from "./conversationController.svelte";
+import {
+    type EditorialActionPayload,
+    applyEditorialAction,
+    editorialActionFailureMessage,
+} from "./editorialAction";
+import {
+    type EditorialAction,
+    type EditorialPanelMode,
+    type EditorialPreferences,
+    type EditorialTask,
+    type EditorialTurn,
+    compileEditorialPolicy,
+    parseEditorialTurnOptions,
+    resolveEditorialTask,
+} from "./editorialPolicy";
+import {
+    type EditorialTargetSnapshot,
+    captureEditorialTarget,
+    getActiveEditorialView,
+    getEditorialBranchPath,
+    releaseEditorialTarget,
+} from "./editorialTarget";
+import { isPersistentConversationMode } from "./persistence";
+import { createAiGenerationProvenance } from "./provenance";
 import {
     aiSettings,
-    documentContext,
     ensureApiKeyLoaded,
     getAiAbortSignal,
-    setAiProcessing,
+    getEffectiveDocumentContext,
+    getEffectiveEditorialPreferences,
 } from "./settings.svelte";
+import type { DocumentContext } from "./settings.svelte";
+
+function effectiveDocumentContextSnapshot(): DocumentContext {
+    return getEffectiveDocumentContext();
+}
+
+function effectiveEditorialPreferencesSnapshot(): EditorialPreferences {
+    return getEffectiveEditorialPreferences();
+}
 
 type ToolCall =
-    | { toolName: "createComment"; input: CommentInput }
-    | { toolName: "createSuggestion"; input: SuggestionInput }
-    | { toolName: "createRevision"; input: RevisionInput };
+    | { toolCallId?: string; toolName: "createComment"; input: CommentInput }
+    | { toolCallId?: string; toolName: "createSuggestion"; input: SuggestionInput }
+    | { toolCallId?: string; toolName: "createRevision"; input: RevisionInput };
 
+export type ToolApplicationResult = {
+    status: "applied" | "skipped";
+    reason?: string;
+};
+
+type AiChatMode = EditorialPanelMode;
+
+type EditorialTurnAtSend = EditorialTurn;
+
+type ToolCallGuard = {
+    target: EditorialTargetSnapshot;
+    allowedActions: readonly EditorialAction[];
+    provenance: AiGenerationProvenance;
+    exactWordCount?: number;
+};
+
+type RequestContextSnapshot = {
+    documentId: string | null;
+    tabId: string | null;
+    draftId: string | null;
+    capturedAt: number;
+    provider: string;
+    model: string;
+    draftText: string;
+    selectedText: string;
+};
+
+function isEditorialToolCall(toolCall: unknown): toolCall is ToolCall {
+    if (!toolCall || typeof toolCall !== "object") return false;
+    const toolName = (toolCall as { toolName?: unknown }).toolName;
+    return (
+        toolName === "createComment" ||
+        toolName === "createSuggestion" ||
+        toolName === "createRevision"
+    );
+}
+
+function branchPathsEqual(
+    a: readonly { revisionId: number; versionId: string }[],
+    b: readonly { revisionId: number; versionId: string }[],
+): boolean {
+    return (
+        a.length === b.length &&
+        a.every(
+            (segment, index) =>
+                segment.revisionId === b[index]?.revisionId &&
+                segment.versionId === b[index]?.versionId,
+        )
+    );
+}
 /**
  * Route LLM tool calls to the CodeMirror annotation system.
  *
@@ -77,66 +171,85 @@ type ToolCall =
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall(toolCall: ToolCall, author?: string) {
-    const view = get(editorView);
-    if (!view) return;
+function handleToolCall(
+    toolCall: ToolCall,
+    guard: ToolCallGuard,
+    author?: string,
+): ToolApplicationResult {
+    if (!isEditorialToolCall(toolCall)) {
+        return { status: "skipped", reason: "Quillium skipped an unsupported AI action." };
+    }
+    const rootView = get(editorView);
+    if (!rootView) {
+        return {
+            status: "skipped",
+            reason: "The editor was unavailable, so Quillium skipped the AI annotation.",
+        };
+    }
 
-    try {
-        dispatchToolCall(toolCall, view, author);
-    } catch (e) {
-        // The model may reference text that no longer exists (the user edited
-        // mid-stream, or the text was hallucinated). Skip that annotation
-        // instead of failing the whole stream.
-        console.warn("[chatFactory] tool call failed, skipping annotation:", e);
-        toast.warning("The AI referenced text that couldn't be found — skipped one annotation.");
+    const result = applyEditorialAction({
+        rootView,
+        target: guard.target,
+        current: {
+            documentId: get(currentDocumentId),
+            tabId: get(currentTabId),
+            draftId: get(currentDraftId),
+        },
+        allowedActions: guard.allowedActions,
+        payload: toolCallPayload(toolCall),
+        provenance: guard.provenance,
+        author,
+        constraints:
+            guard.exactWordCount === undefined
+                ? undefined
+                : { exactWordCount: guard.exactWordCount },
+    });
+    if (!result.ok) {
+        console.warn("[chatFactory] rejected AI annotation:", result.reason);
+        toast.warning(editorialActionFailureMessage(result.reason));
+        return {
+            status: "skipped",
+            reason: editorialActionFailureMessage(result.reason),
+        };
+    }
+
+    captureToolCallAnalytics(toolCall, author);
+    return { status: "applied" };
+}
+
+function toolCallPayload(toolCall: ToolCall): EditorialActionPayload {
+    switch (toolCall.toolName) {
+        case "createComment": {
+            return { action: "comment", ...toolCall.input };
+        }
+        case "createSuggestion": {
+            return { action: "suggestion", ...toolCall.input };
+        }
+        case "createRevision": {
+            return { action: "revision", ...toolCall.input };
+        }
     }
 }
 
-function dispatchToolCall(toolCall: ToolCall, view: EditorView, author?: string) {
+function captureToolCallAnalytics(toolCall: ToolCall, author?: string) {
     switch (toolCall.toolName) {
-        case "createComment": {
-            const { targetText, context, comment } = toolCall.input;
-            createComment({ targetText, context, comment, view, author });
+        case "createComment":
             posthog.capture("annotation_created", { type: "comment", persona: author });
             break;
-        }
-        case "createSuggestion": {
-            const { targetText, context, replacements, comment } = toolCall.input;
-            createSuggestion({
-                targetText,
-                context,
-                replacements,
-                comment,
-                state: view.state,
-                dispatch: view.dispatch,
-                author,
-            });
+        case "createSuggestion":
             posthog.capture("annotation_created", {
                 type: "suggestion",
-                replacement_count: replacements.length,
+                replacement_count: toolCall.input.replacements.length,
                 persona: author,
             });
             break;
-        }
-        case "createRevision": {
-            const { targetText, context, versions, threadMessage } = toolCall.input;
-            const created = createRevision({
-                targetText,
-                context,
-                versions,
-                threadMessage,
-                view,
-                author,
+        case "createRevision":
+            posthog.capture("annotation_created", {
+                type: "revision",
+                version_count: toolCall.input.versions.length,
+                persona: author,
             });
-            if (created) {
-                posthog.capture("annotation_created", {
-                    type: "revision",
-                    version_count: versions.length,
-                    persona: author,
-                });
-            }
             break;
-        }
     }
 }
 
@@ -152,43 +265,162 @@ export async function runMultiPersonaStreams({
     streamFn,
     messages,
     mode,
+    turn,
 }: {
     personas: ReaderPersona[];
     streamFn: StreamFn;
     messages: UIMessage[];
-    mode: string;
+    mode: "chat" | "feedback" | "revise";
+    turn?: EditorialTurn;
 }): Promise<void> {
-    await ensureApiKeyLoaded();
-
+    assertCollegeContextReady();
+    const requestTarget = {
+        documentId: get(currentDocumentId),
+        tabId: get(currentTabId),
+        draftId: get(currentDraftId),
+    };
     const abortSignal = getAiAbortSignal();
+    const documentContextAtStart = effectiveDocumentContextSnapshot();
+    const editorialPreferencesAtStart = effectiveEditorialPreferencesSnapshot();
+    const personasAtStart = JSON.parse(JSON.stringify(personas)) as ReaderPersona[];
+    const aiSettingsAtStart = {
+        provider: aiSettings.provider,
+        model: aiSettings.model,
+        baseURL: aiSettings.baseURL,
+    };
+
     // Annotations from these streams must land in the document the review
     // was started on — if the user switches documents mid-stream, tool
     // calls would otherwise be applied to the wrong document.
-    const docIdAtStart = get(currentDocumentId);
-    const documentContentAtStart = get(documentContent);
-    const selectedTextAtStart = get(selectedText);
-    const selectedTextRangeAtStart = get(selectedTextRange);
+    const rootView = get(editorView);
+    const targetView = rootView ? getActiveEditorialView(rootView) : undefined;
+    const targetSelection = targetView?.state.selection.main;
+    const targetSelectedText =
+        targetView && targetSelection && !targetSelection.empty
+            ? targetView.state.sliceDoc(targetSelection.from, targetSelection.to)
+            : "";
+    const targetAtStart = captureEditorialTarget({
+        view: targetView ?? null,
+        documentId: get(currentDocumentId),
+        tabId: get(currentTabId),
+        draftId: get(currentDraftId),
+        selectedText: targetSelectedText,
+        selectedTextRange:
+            targetSelection && !targetSelection.empty
+                ? { from: targetSelection.from, to: targetSelection.to }
+                : undefined,
+    });
+    const documentContentAtStart = targetView?.state.doc.toString() ?? get(documentContent);
+    const selectedTextAtStart = targetAtStart.selectedText;
+    const selectedTextRangeAtStart = targetAtStart.selectedTextRange;
+    const task = resolveEditorialTask(mode, turn?.task);
+    const exactWordCount = validExactWordCount(turn?.exactWordCount);
+    if (task === "exact-compression" && exactWordCount === undefined) {
+        releaseEditorialTarget(targetView, targetAtStart);
+        throw new Error("Exact compression requires a positive whole-word target.");
+    }
+    if (task === "exact-compression" && !selectedTextAtStart) {
+        releaseEditorialTarget(targetView, targetAtStart);
+        throw new Error("Select a passage before requesting exact compression.");
+    }
+    const policy = compileEditorialPolicy({
+        task,
+        hasSelection: !!selectedTextAtStart,
+        exactWordCount,
+        requestedActions: turn?.requestedActions,
+    });
     const annotationContextAtStart = buildAnnotationContextInputs({
-        annotations: get(annotations),
+        annotations: targetView ? targetView.state.field(annotationField, false) : get(annotations),
         documentContent: documentContentAtStart,
         selectedText: selectedTextAtStart,
         selectedTextRange: selectedTextRangeAtStart,
-        activeAnnotation: get(activeAnnotation),
+        activeAnnotation: targetView
+            ? getActiveAnnotation(targetView.state)
+            : get(activeAnnotation),
     });
+    const contextRetrievalAtStart: ContextRetrievalSnapshot | undefined =
+        rootView && targetView
+            ? captureContextRetrieval({
+                  rootView,
+                  targetView,
+                  documentId: requestTarget.documentId,
+                  tabId: requestTarget.tabId,
+                  draftId: requestTarget.draftId,
+                  isCurrent: () =>
+                      !abortSignal.aborted &&
+                      get(editorView) === rootView &&
+                      requestTarget.documentId === get(currentDocumentId) &&
+                      requestTarget.tabId === get(currentTabId) &&
+                      requestTarget.draftId === get(currentDraftId) &&
+                      getActiveEditorialView(rootView) === targetView &&
+                      branchPathsEqual(
+                          getEditorialBranchPath(targetView),
+                          targetAtStart.branchPath,
+                      ),
+              })
+            : undefined;
 
-    const tasks = personas.map(async (persona) => {
+    try {
+        await ensureApiKeyLoaded();
+        assertCollegeContextReady();
+        if (
+            abortSignal.aborted ||
+            requestTarget.documentId !== get(currentDocumentId) ||
+            requestTarget.tabId !== get(currentTabId) ||
+            requestTarget.draftId !== get(currentDraftId) ||
+            get(editorView) !== rootView ||
+            (rootView &&
+                (getActiveEditorialView(rootView) !== targetView ||
+                    !branchPathsEqual(
+                        getEditorialBranchPath(targetView ?? rootView),
+                        targetAtStart.branchPath,
+                    ))) ||
+            aiSettings.provider !== aiSettingsAtStart.provider ||
+            aiSettings.model !== aiSettingsAtStart.model ||
+            aiSettings.baseURL !== aiSettingsAtStart.baseURL
+        ) {
+            throw new Error(
+                "The writing target or AI settings changed before the request started.",
+            );
+        }
+    } catch (error) {
+        releaseEditorialTarget(targetView, targetAtStart);
+        throw error;
+    }
+
+    const apiKeyAtStart = aiSettings.apiKey;
+
+    const tasks = personasAtStart.map(async (persona) => {
+        const provenanceTask = actionProvenanceTask(task);
+        const provenance = provenanceTask
+            ? createAiGenerationProvenance({
+                  task: provenanceTask,
+                  provider: aiSettingsAtStart.provider,
+                  model: aiSettingsAtStart.model,
+                  persona: persona.name,
+              })
+            : undefined;
         const stream = await streamFn({
-            messages,
+            messages: sanitizeOutboundMessages(messages),
             documentContent: documentContentAtStart,
             selectedText: selectedTextAtStart,
             selectedTextRange: selectedTextRangeAtStart,
-            provider: aiSettings.provider,
-            model: aiSettings.model,
-            apiKey: aiSettings.apiKey,
-            baseURL: aiSettings.baseURL,
-            documentContext: { ...documentContext },
+            provider: aiSettingsAtStart.provider,
+            model: aiSettingsAtStart.model,
+            apiKey: apiKeyAtStart,
+            baseURL: aiSettingsAtStart.baseURL,
+            documentContext: JSON.parse(
+                JSON.stringify(documentContextAtStart),
+            ) as typeof documentContextAtStart,
+            editorialPreferences: { ...editorialPreferencesAtStart },
+            editorialTask: task,
+            exactWordCount,
+            requestedActions: turn?.requestedActions,
+            responseLength: turn?.responseLength,
             annotationContext: annotationContextAtStart,
+            contextRetrieval: contextRetrievalAtStart,
             persona,
+            annotationOnly: true,
             abortSignal,
         });
 
@@ -201,15 +433,25 @@ export async function runMultiPersonaStreams({
                 }
                 const { value, done } = await reader.read();
                 if (done) break;
-                if (
-                    value?.type === "tool-input-available" &&
-                    get(currentDocumentId) === docIdAtStart
-                ) {
-                    handleToolCall(
-                        { toolName: value.toolName, input: value.input } as ToolCall,
-                        persona.name,
-                    );
+                if (value?.type === "error") {
+                    if (abortSignal.aborted) return;
+                    toast.error(value.errorText);
+                    throw new Error(value.errorText);
                 }
+                if (value?.type !== "tool-input-available") continue;
+                if (value.toolName === "noAction") continue;
+                if (!isEditorialToolCall(value)) continue;
+                if (!provenance) continue;
+                handleToolCall(
+                    { toolName: value.toolName, input: value.input } as ToolCall,
+                    {
+                        target: targetAtStart,
+                        allowedActions: policy.allowedActions,
+                        provenance,
+                        exactWordCount,
+                    },
+                    persona.name,
+                );
             }
         } catch (e) {
             if (abortSignal.aborted) return;
@@ -222,7 +464,42 @@ export async function runMultiPersonaStreams({
         });
     });
 
-    await Promise.all(tasks);
+    try {
+        await Promise.all(tasks);
+    } finally {
+        releaseEditorialTarget(targetView, targetAtStart);
+    }
+}
+
+function validExactWordCount(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function actionProvenanceTask(task: EditorialTask): AiGenerationProvenance["task"] | undefined {
+    if (
+        task === "assistant" ||
+        task === "global-review" ||
+        task === "local-rewrite" ||
+        task === "exact-compression" ||
+        task === "background-review"
+    ) {
+        return task;
+    }
+    return undefined;
+}
+
+function resolveTurnFromBody(mode: AiChatMode, body: object | undefined): EditorialTurnAtSend {
+    const fields = body as Record<string, unknown> | undefined;
+    const requestedTask =
+        typeof fields?.editorialTask === "string"
+            ? (fields.editorialTask as EditorialTask)
+            : undefined;
+    const task = resolveEditorialTask(mode, requestedTask);
+    const exactWordCount = validExactWordCount(fields?.exactWordCount);
+    if (task === "exact-compression" && exactWordCount === undefined) {
+        throw new Error("Exact compression requires a positive whole-word target.");
+    }
+    return { task, exactWordCount, ...parseEditorialTurnOptions(body) };
 }
 
 /**
@@ -233,33 +510,159 @@ export async function runMultiPersonaStreams({
  * config, and document-context fields from their respective stores so
  * the stream function always sees a consistent view of the world.
  */
-function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
+function makeTransport(
+    mode: AiChatMode,
+    streamFn: StreamFn,
+    captureTarget: (
+        target: EditorialTargetSnapshot,
+        turn: EditorialTurnAtSend,
+        context: RequestContextSnapshot,
+    ) => void,
+): ChatTransport<UIMessage> {
+    const contextHistory = createContextHistory();
     return {
         async sendMessages({
             messages,
             abortSignal,
-        }: { messages: UIMessage[]; abortSignal?: AbortSignal } & Record<string, unknown>) {
-            await ensureApiKeyLoaded();
-            const documentContentAtSend = get(documentContent);
-            const selectedTextAtSend = get(selectedText);
-            const selectedTextRangeAtSend = get(selectedTextRange);
-            return streamFn({
-                messages,
+            body,
+        }: {
+            messages: UIMessage[];
+            abortSignal?: AbortSignal;
+            body?: object;
+        } & Record<string, unknown>) {
+            assertCollegeContextReady();
+            const requestTarget = {
+                documentId: get(currentDocumentId),
+                tabId: get(currentTabId),
+                draftId: get(currentDraftId),
+            };
+            const globalAbortSignal = getAiAbortSignal();
+            const documentContextAtSend = effectiveDocumentContextSnapshot();
+            const editorialPreferencesAtSend = effectiveEditorialPreferencesSnapshot();
+            const aiSettingsAtSend = {
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                baseURL: aiSettings.baseURL,
+            };
+            const rootView = get(editorView);
+            const targetView = rootView ? getActiveEditorialView(rootView) : undefined;
+            const selection = targetView?.state.selection.main;
+            const documentContentAtSend = targetView?.state.doc.toString() ?? get(documentContent);
+            const selectedTextAtSend =
+                targetView && selection
+                    ? selection.empty
+                        ? ""
+                        : targetView.state.sliceDoc(selection.from, selection.to)
+                    : get(selectedText);
+            const selectedTextRangeAtSend =
+                targetView && selection
+                    ? selection.empty
+                        ? undefined
+                        : { from: selection.from, to: selection.to }
+                    : get(selectedTextRange);
+            const annotationContextAtSend = buildAnnotationContextInputs({
+                annotations: targetView
+                    ? targetView.state.field(annotationField, false)
+                    : get(annotations),
                 documentContent: documentContentAtSend,
                 selectedText: selectedTextAtSend,
                 selectedTextRange: selectedTextRangeAtSend,
-                provider: aiSettings.provider,
-                model: aiSettings.model,
-                apiKey: aiSettings.apiKey,
-                baseURL: aiSettings.baseURL,
-                documentContext: { ...documentContext },
-                annotationContext: buildAnnotationContextInputs({
-                    annotations: get(annotations),
-                    documentContent: documentContentAtSend,
+                activeAnnotation: targetView
+                    ? getActiveAnnotation(targetView.state)
+                    : get(activeAnnotation),
+            });
+            const targetBranchPath = targetView ? getEditorialBranchPath(targetView) : [];
+            const contextRetrievalAtSend: ContextRetrievalSnapshot | undefined =
+                rootView && targetView
+                    ? captureContextRetrieval({
+                          rootView,
+                          targetView,
+                          documentId: requestTarget.documentId,
+                          tabId: requestTarget.tabId,
+                          draftId: requestTarget.draftId,
+                          isCurrent: () =>
+                              !globalAbortSignal.aborted &&
+                              !abortSignal?.aborted &&
+                              get(editorView) === rootView &&
+                              requestTarget.documentId === get(currentDocumentId) &&
+                              requestTarget.tabId === get(currentTabId) &&
+                              requestTarget.draftId === get(currentDraftId) &&
+                              getActiveEditorialView(rootView) === targetView &&
+                              branchPathsEqual(
+                                  getEditorialBranchPath(targetView),
+                                  targetBranchPath,
+                              ),
+                      })
+                    : undefined;
+            await ensureApiKeyLoaded();
+            assertCollegeContextReady();
+            if (
+                globalAbortSignal.aborted ||
+                abortSignal?.aborted ||
+                requestTarget.documentId !== get(currentDocumentId) ||
+                requestTarget.tabId !== get(currentTabId) ||
+                requestTarget.draftId !== get(currentDraftId) ||
+                get(editorView) !== rootView ||
+                (rootView &&
+                    (getActiveEditorialView(rootView) !== targetView ||
+                        !branchPathsEqual(
+                            getEditorialBranchPath(targetView ?? rootView),
+                            targetBranchPath,
+                        ))) ||
+                aiSettings.provider !== aiSettingsAtSend.provider ||
+                aiSettings.model !== aiSettingsAtSend.model ||
+                aiSettings.baseURL !== aiSettingsAtSend.baseURL
+            ) {
+                throw new Error(
+                    "The writing target or AI settings changed before the request started.",
+                );
+            }
+            const apiKeyAtSend = aiSettings.apiKey;
+            const turn = resolveTurnFromBody(mode, body);
+            if (turn.task === "exact-compression" && !selectedTextAtSend) {
+                throw new Error("Select a passage before requesting exact compression.");
+            }
+            captureTarget(
+                captureEditorialTarget({
+                    view: targetView ?? null,
+                    documentId: requestTarget.documentId,
+                    tabId: requestTarget.tabId,
+                    draftId: requestTarget.draftId,
                     selectedText: selectedTextAtSend,
                     selectedTextRange: selectedTextRangeAtSend,
-                    activeAnnotation: get(activeAnnotation),
                 }),
+                turn,
+                {
+                    documentId: requestTarget.documentId,
+                    tabId: get(currentTabId),
+                    draftId: requestTarget.draftId,
+                    capturedAt: Date.now(),
+                    provider: aiSettingsAtSend.provider,
+                    model: aiSettingsAtSend.model,
+                    draftText: documentContentAtSend.slice(0, 2_000),
+                    selectedText: selectedTextAtSend.slice(0, 500),
+                },
+            );
+            return streamFn({
+                messages: sanitizeOutboundMessages(messages),
+                documentContent: documentContentAtSend,
+                selectedText: selectedTextAtSend,
+                selectedTextRange: selectedTextRangeAtSend,
+                provider: aiSettingsAtSend.provider,
+                model: aiSettingsAtSend.model,
+                apiKey: apiKeyAtSend,
+                baseURL: aiSettingsAtSend.baseURL,
+                documentContext: JSON.parse(
+                    JSON.stringify(documentContextAtSend),
+                ) as typeof documentContextAtSend,
+                editorialPreferences: { ...editorialPreferencesAtSend },
+                editorialTask: turn.task,
+                exactWordCount: turn.exactWordCount,
+                requestedActions: turn.requestedActions,
+                responseLength: turn.responseLength,
+                annotationContext: annotationContextAtSend,
+                contextRetrieval: contextRetrievalAtSend,
+                contextHistory,
                 abortSignal,
             });
         },
@@ -272,12 +675,17 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
 /**
  * Create a Chat instance for the given AI mode.
  *
- * Each mode maps to a different stream function (and therefore a
- * different system prompt + tool set). The returned `chat` object
+ * Each mode maps to a task recipe and its allowed tool set. The returned `chat` object
  * is a reactive @ai-sdk/svelte Chat whose `.messages`, `.status`,
  * and `.error` properties drive the component UI.
  */
-export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | "dictionary" }) {
+export function createAiChat({
+    mode,
+    historyScope = "mode",
+}: {
+    mode: AiChatMode;
+    historyScope?: "mode" | "document";
+}) {
     const streamFns = {
         chat: streamChat,
         feedback: streamFeedback,
@@ -296,16 +704,247 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | 
         return streamFns[mode](opts);
     };
 
+    let targetAtSend: EditorialTargetSnapshot | undefined;
+    let provenanceAtSend: AiGenerationProvenance | undefined;
+    let turnAtSend: EditorialTurnAtSend | undefined;
+    const toolApplications = writable<Record<string, ToolApplicationResult>>({});
+
+    function releaseTargetAtSend() {
+        releaseEditorialTarget(targetAtSend?.ownerView, targetAtSend);
+        targetAtSend = undefined;
+        provenanceAtSend = undefined;
+        turnAtSend = undefined;
+    }
+
+    function recordToolApplication(toolCallId: string, result: ToolApplicationResult): void {
+        toolApplications.update((current) => ({ ...current, [toolCallId]: result }));
+        updateMessageToolApplication(toolCallId, result);
+    }
+
+    function updateMessageToolApplication(toolCallId: string, result: ToolApplicationResult): void {
+        const messages = chat.messages;
+        const message = messages
+            .slice(-1)
+            .find(
+                (candidate) =>
+                    candidate.role === "assistant" &&
+                    candidate.parts.some(
+                        (part) => "toolCallId" in part && part.toolCallId === toolCallId,
+                    ),
+            );
+        if (!message) return;
+        const metadata =
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata)
+                ? (message.metadata as Record<string, unknown>)
+                : {};
+        const applications =
+            metadata.toolApplications &&
+            typeof metadata.toolApplications === "object" &&
+            !Array.isArray(metadata.toolApplications)
+                ? (metadata.toolApplications as Record<string, ToolApplicationResult>)
+                : {};
+        // Keep metadata on the SDK's active message object so later stream chunks preserve it.
+        message.metadata = {
+            ...metadata,
+            toolApplications: { ...applications, [toolCallId]: result },
+        };
+        chat.messages = [...messages];
+    }
+
+    function persistToolApplications(messages: UIMessage[]): void {
+        const applications = get(toolApplications);
+        if (Object.keys(applications).length === 0) return;
+        const nextMessages = messages.map((message, index) => {
+            if (index !== messages.length - 1 || message.role !== "assistant") return message;
+            const matchingApplications = Object.fromEntries(
+                Object.entries(applications).filter(([toolCallId]) =>
+                    message.parts.some(
+                        (part) => "toolCallId" in part && part.toolCallId === toolCallId,
+                    ),
+                ),
+            );
+            if (Object.keys(matchingApplications).length === 0) return message;
+            const metadata =
+                message.metadata &&
+                typeof message.metadata === "object" &&
+                !Array.isArray(message.metadata)
+                    ? (message.metadata as Record<string, unknown>)
+                    : {};
+            return {
+                ...message,
+                metadata: {
+                    ...metadata,
+                    toolApplications: {
+                        ...(metadata.toolApplications &&
+                        typeof metadata.toolApplications === "object" &&
+                        !Array.isArray(metadata.toolApplications)
+                            ? metadata.toolApplications
+                            : {}),
+                        ...matchingApplications,
+                    },
+                },
+            };
+        });
+        if (nextMessages.some((message, index) => message !== messages[index])) {
+            chat.messages = nextMessages;
+        }
+    }
+
+    function updateRequestContextMetadata(context: RequestContextSnapshot) {
+        const index = [...chat.messages]
+            .map((message, messageIndex) => ({ message, messageIndex }))
+            .reverse()
+            .find(({ message }) => message.role === "user")?.messageIndex;
+        if (index === undefined) return;
+        const message = chat.messages[index];
+        const metadata =
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata)
+                ? (message.metadata as Record<string, unknown>)
+                : {};
+        const oldContext =
+            metadata.writingContext &&
+            typeof metadata.writingContext === "object" &&
+            !Array.isArray(metadata.writingContext)
+                ? (metadata.writingContext as Record<string, unknown>)
+                : {};
+        chat.messages = chat.messages.map((candidate, candidateIndex) =>
+            candidateIndex === index
+                ? {
+                      ...candidate,
+                      metadata: {
+                          ...metadata,
+                          writingContext: {
+                              ...oldContext,
+                              ...context,
+                          },
+                      },
+                  }
+                : candidate,
+        );
+    }
+
     const chat = new Chat({
-        transport: makeTransport(transportWithTracking),
-        onToolCall: ({ toolCall }) => handleToolCall(toolCall as ToolCall),
+        transport: makeTransport(mode, transportWithTracking, (target, turn, context) => {
+            releaseTargetAtSend();
+            toolApplications.set({});
+            targetAtSend = target;
+            turnAtSend = turn;
+            updateRequestContextMetadata(context);
+            const provenanceTask = actionProvenanceTask(turn.task);
+            provenanceAtSend = provenanceTask
+                ? createAiGenerationProvenance({
+                      task: provenanceTask,
+                      provider: aiSettings.provider,
+                      model: aiSettings.model,
+                  })
+                : undefined;
+        }),
+        onToolCall: ({ toolCall }) => {
+            if (!isEditorialToolCall(toolCall)) return;
+            const result =
+                !targetAtSend || !provenanceAtSend || !turnAtSend
+                    ? {
+                          status: "skipped" as const,
+                          reason: "The AI request target was unavailable, so Quillium skipped the annotation.",
+                      }
+                    : handleToolCall(toolCall, {
+                          target: targetAtSend,
+                          allowedActions: compileEditorialPolicy({
+                              task: turnAtSend.task,
+                              hasSelection: !!targetAtSend.selectedText,
+                              exactWordCount: turnAtSend.exactWordCount,
+                              requestedActions: turnAtSend.requestedActions,
+                          }).allowedActions,
+                          provenance: provenanceAtSend,
+                          exactWordCount: turnAtSend.exactWordCount,
+                      });
+            if (toolCall.toolCallId) recordToolApplication(toolCall.toolCallId, result);
+        },
+        onFinish: ({ messages }) => {
+            persistToolApplications(messages);
+            toolApplications.set({});
+            releaseTargetAtSend();
+        },
+        onError: (error) => {
+            persistToolApplications(chat.messages);
+            void logAppEvent("error", "ai", "AI chat failed", { mode, error });
+            releaseTargetAtSend();
+        },
     });
 
+    const conversationController = isPersistentConversationMode(mode)
+        ? createConversationController({
+              chat,
+              mode,
+              historyScope,
+              beforeReplace: releaseTargetAtSend,
+              requestSettings: () => ({
+                  provider: aiSettings.provider,
+                  model: aiSettings.model,
+              }),
+          })
+        : undefined;
+
+    if (conversationController) {
+        Object.assign(chat, {
+            conversationManaged: true,
+            conversationController,
+        });
+    }
+
+    const originalStop = chat.stop.bind(chat);
+    chat.stop = async () => {
+        releaseTargetAtSend();
+        return originalStop();
+    };
+
     function clearChat() {
+        if (conversationController) {
+            void conversationController.newConversation().catch((error) => {
+                conversationController.reportError(error);
+            });
+            return;
+        }
         chat.messages = [];
     }
 
-    return { chat, clearChat };
+    function sendMessage(text: string, turn?: EditorialTurn): Promise<void> {
+        if (conversationController) {
+            return conversationController.sendMessage(text, turn).catch((error) => {
+                conversationController.reportError(error);
+            });
+        }
+
+        const task = resolveEditorialTask(mode, turn?.task);
+        const exactWordCount = validExactWordCount(turn?.exactWordCount);
+        if (task === "exact-compression" && exactWordCount === undefined) {
+            return Promise.reject(
+                new Error("Exact compression requires a positive whole-word target."),
+            );
+        }
+        return chat.sendMessage(
+            { text },
+            {
+                body: {
+                    editorialTask: task,
+                    ...parseEditorialTurnOptions(turn),
+                    ...(exactWordCount === undefined ? {} : { exactWordCount }),
+                },
+            },
+        );
+    }
+
+    return {
+        chat,
+        toolApplications,
+        clearChat,
+        sendMessage,
+        conversations: conversationController?.conversations,
+    };
 }
 
 // Re-export so components only need one import for all chat concerns

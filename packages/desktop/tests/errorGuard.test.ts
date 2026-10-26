@@ -116,7 +116,13 @@ function makeSelection(from: number, to: number) {
 }
 
 function makeComment(id: number): GenericAnnotation {
-    return { _type: "comment", id, thread: [], selection: makeSelection(0, 5) };
+    return {
+        _type: "comment",
+        status: "active",
+        id,
+        thread: [],
+        selection: makeSelection(0, 5),
+    };
 }
 
 type TestVersionState = {
@@ -135,6 +141,7 @@ function makeRevision(id: number, versions: TestVersionState[]): GenericAnnotati
     }));
     return {
         _type: "revision",
+        status: "active" as const,
         id,
         thread: [],
         selection: makeSelection(0, 10),
@@ -193,6 +200,7 @@ describe("isDeepAnnotationLoss", () => {
                     annotationField: {
                         0: {
                             _type: "revision",
+                            status: "active" as const,
                             versions: [
                                 { doc: "nested", annotationField: { 0: { _type: "comment" } } },
                             ],

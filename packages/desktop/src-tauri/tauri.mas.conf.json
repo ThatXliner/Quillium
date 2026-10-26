@@ -1,6 +1,7 @@
 {
   "bundle": {
     "macOS": {
+      "bundleVersion": "14",
       "entitlements": "Entitlements.mas.plist",
       "files": {
         "embedded.provisionprofile": "embedded.provisionprofile"

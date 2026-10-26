@@ -1,6 +1,3 @@
-import { getSession } from "$lib/auth/auth.svelte";
-import type { Awareness } from "y-protocols/awareness";
-import { WebsocketProvider } from "y-websocket";
 /**
  * yjsProvider.ts -- WebsocketProvider wrapper with Quillium auth.
  *
@@ -25,12 +22,26 @@ import { WebsocketProvider } from "y-websocket";
  *   - awareness.ts uses returned awareness for cursor sync
  *   - yjsUndo.ts uses returned ytext for UndoManager
  */
+import { PUBLIC_RELAY_URL } from "$env/static/public";
+import { logAppEvent } from "$lib/appLog";
+import { getSession } from "$lib/auth/auth.svelte";
+import {
+    CUSTOM_OWNER_LEFT,
+    LEGACY_OWNER_LEFT_REASON,
+    MESSAGE_CUSTOM,
+    decodeCustomMessage,
+} from "@quillium/share/collab-contract";
+import * as decoding from "lib0/decoding";
+import type { Awareness } from "y-protocols/awareness";
+import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
 import type { YjsAnnotationNode } from "./types";
+import type { YjsVersionGroup } from "./types";
 
 function getRelayUrl(): string | undefined {
-    return import.meta.env.PUBLIC_RELAY_URL;
+    // $env/static/public, NOT import.meta.env — see supabase.ts for why.
+    return PUBLIC_RELAY_URL || undefined;
 }
 
 /** True if PUBLIC_RELAY_URL is configured */
@@ -59,6 +70,7 @@ export interface YjsProviderResult {
     ydoc: Y.Doc;
     ytext: Y.Text;
     ymap: Y.Map<YjsAnnotationNode>;
+    yVersionGroups: Y.Map<YjsVersionGroup>;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -93,6 +105,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
     const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
 
     // Create WebsocketProvider with JWT auth in params (per D-71)
     const provider = new WebsocketProvider(relayUrl, docId, ydoc, {
@@ -103,9 +116,26 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         maxBackoffTime: 5000, // 5 seconds max between retries (default is 2.5s)
     });
 
+    const awarenessQueryHandler = provider.messageHandlers[MESSAGE_CUSTOM];
+    provider.messageHandlers[MESSAGE_CUSTOM] = (encoder, decoder, ...args) => {
+        if (!decoding.hasContent(decoder)) {
+            awarenessQueryHandler(encoder, decoder, ...args);
+            return;
+        }
+        const message = decodeCustomMessage(decoder);
+        if (message?.subtype === CUSTOM_OWNER_LEFT && currentProvider === provider) {
+            handleOwnerLeft();
+        }
+    };
+
     // Track connection state via provider events
     provider.on("status", ({ status }: { status: string }) => {
         console.log(`[yjsProvider] Status: ${status}`);
+        void logAppEvent("info", "collab", "provider status", {
+            status,
+            attempt: currentAttemptCount,
+            docId,
+        });
         if (status === "connecting") {
             // Only set "connecting" on initial connection, not during reconnection
             if (currentAttemptCount === 0) {
@@ -127,6 +157,11 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // Sync event indicates successful initial sync with server
     provider.on("sync", (isSynced: boolean) => {
         console.log(`[yjsProvider] Sync: ${isSynced}`);
+        void logAppEvent("info", "collab", "provider sync", {
+            synced: isSynced,
+            attempt: currentAttemptCount,
+            docId,
+        });
         if (isSynced && currentProvider === provider) {
             collabState.set("connected");
             currentAttemptCount = 0;
@@ -138,10 +173,19 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // y-websocket only emits "disconnected" status on first disconnect, but connection-close
     // fires each time, so we track retry attempts here
     const providerWithConnectionClose = provider as unknown as {
-        on(event: "connection-close", handler: (event: unknown) => void): void;
+        on(event: "connection-close", handler: (event: CloseEvent | null) => void): void;
     };
-    providerWithConnectionClose.on("connection-close", () => {
+    providerWithConnectionClose.on("connection-close", (event) => {
+        // Older relays may only close the socket. Keep their established signal.
+        if (event?.reason === LEGACY_OWNER_LEFT_REASON && currentProvider === provider) {
+            handleOwnerLeft();
+            return;
+        }
         console.log(`[yjsProvider] Connection closed (attempt ${currentAttemptCount})`);
+        void logAppEvent("warn", "collab", "connection closed", {
+            attempt: currentAttemptCount,
+            docId,
+        });
         if (currentProvider === provider && currentAttemptCount > 0) {
             // Already in reconnection mode, increment attempt
             currentAttemptCount += 1;
@@ -149,6 +193,10 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
 
             if (currentAttemptCount >= MAX_RECONNECT_ATTEMPTS) {
                 // Per D-104: Exhausted retries, set error state
+                void logAppEvent("error", "collab", "reconnect attempts exhausted", {
+                    attempts: currentAttemptCount,
+                    docId,
+                });
                 collabState.set("error");
                 // Per D-105: Stop reconnection - user must manually Go Live again
                 // Use setTimeout to avoid calling disconnect inside close handler (stack overflow)
@@ -168,6 +216,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         ydoc,
         ytext,
         ymap,
+        yVersionGroups,
     };
 }
 
@@ -176,6 +225,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
  */
 export function disconnectYjsProvider(): void {
     if (currentProvider) {
+        void logAppEvent("info", "collab", "provider disconnected", { docId: currentDocId });
         currentProvider.destroy();
         currentProvider = null;
     }
@@ -216,6 +266,7 @@ export function getYDoc(): Y.Doc | null {
  */
 export function handleOwnerLeft(): void {
     console.log("[yjsProvider] Owner left, disconnecting");
+    void logAppEvent("info", "collab", "owner left session", { docId: currentDocId });
     ownerLeftSignal.update((n) => n + 1);
     disconnectYjsProvider();
 }

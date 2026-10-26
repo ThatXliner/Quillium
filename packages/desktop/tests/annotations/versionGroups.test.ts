@@ -12,10 +12,12 @@
  *   5. Rename, and ungrouped switches stay independent.
  */
 
+import { persistentHistoryExtension, persistentHistoryField } from "$lib/editor/persistentHistory";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     addAnnotation,
     annotationField,
+    collapseRevision,
     deleteRevisionVersion,
     removeAnnotation,
     setActiveRevisionVersion,
@@ -29,12 +31,16 @@ import {
 } from "$lib/editor/plugins/annotations/models";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import {
+    _restoreVersionGroups,
     addVersionToGroup,
     createVersionGroup,
+    invertedVersionGroupEffects,
+    removeVersionFromGroup,
+    renameVersionGroup,
     versionGroupField,
 } from "$lib/editor/plugins/annotations/versionGroupField";
 import { history, redo, undo } from "@codemirror/commands";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -43,6 +49,26 @@ function createView(doc: string) {
         doc,
         extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
     });
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    return new EditorView({ state, parent });
+}
+
+const versionGroupHistoryFields = {
+    historyField: persistentHistoryField,
+    versionGroupField,
+};
+
+function createVersionGroupHistoryView(json?: unknown) {
+    const extensions = [
+        persistentHistoryExtension,
+        history({ newGroupDelay: 0 }),
+        versionGroupField,
+        invertedVersionGroupEffects,
+    ];
+    const state = json
+        ? EditorState.fromJSON(json, { extensions }, versionGroupHistoryFields)
+        : EditorState.create({ extensions });
     const parent = document.createElement("div");
     document.body.appendChild(parent);
     return new EditorView({ state, parent });
@@ -220,6 +246,23 @@ describe("one version per revision per group", () => {
 });
 
 describe("referential integrity", () => {
+    it("collapsing a revision unlinks its versions and undo restores the groups", () => {
+        const { v, b, formalId, casualId } = setupLinkedDoc();
+        view = v;
+
+        v.dispatch(collapseRevision(v.state, b.id));
+
+        expect(groups(v)[formalId]).toBeUndefined();
+        expect(groups(v)[casualId]).toBeUndefined();
+        expect(v.state.field(annotationField)[b.id]).toBeUndefined();
+
+        undo(v);
+
+        expect(rev(v, b.id)).toBeDefined();
+        expect(groups(v)[formalId]?.members).toHaveLength(2);
+        expect(groups(v)[casualId]?.members).toHaveLength(2);
+    });
+
     it("removing a revision prunes its members and dissolves the group", () => {
         const { v, a, b, formalId, casualId } = setupLinkedDoc();
         view = v;
@@ -262,6 +305,83 @@ describe("group structure ops", () => {
         view = v;
         expect(groups(v)[formalId].members.length).toBe(2);
         expect(groups(v)[formalId].label).toBe("Formal");
+    });
+
+    it("undoing a rename after a remote projection preserves unrelated groups", () => {
+        let v = createVersionGroupHistoryView();
+        view = v;
+        const original = {
+            id: "g-local",
+            label: "Old label",
+            members: [
+                { revisionId: 1, versionId: "v1" },
+                { revisionId: 2, versionId: "v2" },
+            ],
+        };
+        const remote = {
+            id: "g-remote",
+            label: "Remote group",
+            members: [
+                { revisionId: 3, versionId: "v3" },
+                { revisionId: 4, versionId: "v4" },
+            ],
+        };
+        v.dispatch({
+            effects: _restoreVersionGroups.of({ groups: { [original.id]: original } }),
+            annotations: Transaction.addToHistory.of(false),
+        });
+        v.dispatch(renameVersionGroup(v.state, original.id, "New label"));
+        v.dispatch({
+            effects: _restoreVersionGroups.of({
+                groups: { ...groups(v), [remote.id]: remote },
+            }),
+            annotations: Transaction.addToHistory.of(false),
+        });
+
+        const saved = JSON.parse(JSON.stringify(v.state.toJSON(versionGroupHistoryFields)));
+        v.destroy();
+        v = createVersionGroupHistoryView(saved);
+        view = v;
+
+        expect(undo(v)).toBe(true);
+        expect(groups(v)).toEqual({
+            [original.id]: original,
+            [remote.id]: remote,
+        });
+
+        expect(redo(v)).toBe(true);
+        expect(groups(v)).toEqual({
+            [original.id]: { ...original, label: "New label" },
+            [remote.id]: remote,
+        });
+    });
+
+    it("undo restores a removed member at its original index", () => {
+        let v = createVersionGroupHistoryView();
+        view = v;
+        const members = [
+            { revisionId: 1, versionId: "v1" },
+            { revisionId: 2, versionId: "v2" },
+            { revisionId: 3, versionId: "v3" },
+        ];
+        const original = { id: "g-ordered", label: "Ordered", members };
+        v.dispatch({
+            effects: _restoreVersionGroups.of({ groups: { [original.id]: original } }),
+            annotations: Transaction.addToHistory.of(false),
+        });
+        v.dispatch(removeVersionFromGroup(v.state, members[1]));
+        expect(groups(v)[original.id].members).toEqual([members[0], members[2]]);
+
+        const saved = JSON.parse(JSON.stringify(v.state.toJSON(versionGroupHistoryFields)));
+        v.destroy();
+        v = createVersionGroupHistoryView(saved);
+        view = v;
+
+        expect(undo(v)).toBe(true);
+        expect(groups(v)[original.id].members).toEqual(members);
+
+        expect(redo(v)).toBe(true);
+        expect(groups(v)[original.id].members).toEqual([members[0], members[2]]);
     });
 });
 

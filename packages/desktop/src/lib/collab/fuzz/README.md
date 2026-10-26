@@ -1,24 +1,28 @@
-# src/lib/collab/fuzz
+# Long collaboration fuzz tests
 
-**Purpose:** Long-running convergence fuzz tests (Phase 9, HARNESS-03 / -04).
+This directory holds opt-in convergence stress tests. The regular test suite
+uses bounded property tests in
+[`tests/lib/collab/convergence-projection.test.ts`](../../../../tests/lib/collab/convergence-projection.test.ts).
 
-This directory is intentionally empty in Phase 1. The 10k-op convergence fuzz
-and cross-peer `Y.UndoManager` validation land in Phase 9. Until then:
+`convergence.fuzz.test.ts` applies seeded text and annotation operations across
+two connected peers. It compares text, Yjs state, and CodeMirror projections at
+checkpoints and at completion. Peers settle after each operation.
 
-- **Do not** add tests here that should run in CI on every PR. Those go in
-  `src/lib/collab/*.test.ts` (sibling of this directory).
-- **Do** add tests here when they are exploratory, slow, or property-based at
-  a scale that would blow the per-PR test budget (e.g., `numRuns > 1000`).
+Run from the repository root:
 
-**CI exclusion mechanism:** Tests in this directory MUST opt out of CI explicitly,
-either by:
-- Naming the file `*.fuzz.test.ts` (not `*.test.ts`) so the default Vitest glob
-  in `vitest.config.ts` does not pick them up, OR
-- Wrapping the suite in `describe.skip(...)` with a TODO referencing Phase 9.
+```bash
+bun run desktop:test:collab-fuzz
+```
 
-The Phase 1 property test (`src/lib/collab/convergence-projection.test.ts`) is
-NOT a fuzz test — it runs in CI with a small `numRuns` budget. The fuzz here is
-the long-running cousin scheduled for Phase 9.
+The default is 10,000 operations with checks every 100 operations. Override the
+seed, operation count, or checkpoint interval to investigate a failure:
 
-**Related requirements:** HARNESS-03 (10k-op fuzz), HARNESS-04 (cross-peer undo),
-HARNESS-05 (two-device dogfood checklist).
+```bash
+COLLAB_FUZZ_SEED=12345 COLLAB_FUZZ_OPERATIONS=20000 \
+  COLLAB_FUZZ_CHECKPOINT_INTERVAL=100 bun run desktop:test:collab-fuzz
+```
+
+Keep the explicit `COLLAB_FUZZ=1` gate on long suites. The script sets it; the
+`*.fuzz.test.ts` suffix alone does not skip a test. Ordinary regression tests
+belong in the regular test directories. This suite covers convergence, not
+cross-peer undo, native persistence, or two-device interaction.

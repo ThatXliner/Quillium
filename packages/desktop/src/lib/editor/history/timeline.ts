@@ -72,12 +72,14 @@ export function buildTimelineItems(
     docEvents: DocEventRecord[],
 ): TimelineItem[] {
     const items: TimelineItem[] = [
-        ...snapshots.map((snapshot) => ({
-            id: `snapshot:${snapshot.id}`,
-            kind: "snapshot" as const,
-            createdAt: snapshot.createdAt,
-            snapshot,
-        })),
+        ...snapshots
+            .filter((snapshot) => snapshot.upToEventId >= 0)
+            .map((snapshot) => ({
+                id: `snapshot:${snapshot.id}`,
+                kind: "snapshot" as const,
+                createdAt: snapshot.createdAt,
+                snapshot,
+            })),
         ...docEvents.map((event) => ({
             id: `activity:${event.id}`,
             kind: "activity" as const,
@@ -392,6 +394,51 @@ export function reconstructStructureAsOf(
     return { tabs, drafts };
 }
 
+export type HistoricalPreviewStructure = {
+    tabs: TabMeta[];
+    drafts: DraftMeta[];
+    /** The selected coordinate is the deletion of this tab, rendered as a tombstone. */
+    deletedTabId: string | null;
+};
+
+/**
+ * Builds the structure shown in the history document shell for one timeline
+ * item. A tab-deletion coordinate is special: the normal as-of reconstruction
+ * correctly removes the tab, but that would make the preview fall through to
+ * another tab and show unrelated content. Reconstruct the instant immediately
+ * before that one event instead, then mark the target as deleted so the shell
+ * can present its last valid state without treating it as live.
+ *
+ * Coordinates after the deletion still use the normal reconstruction, so the
+ * tombstone cannot leak into later history entries.
+ */
+export function reconstructPreviewStructure(
+    allTabs: TabMeta[],
+    allDrafts: DraftMeta[],
+    docEvents: DocEventRecord[],
+    item: TimelineItem,
+): HistoricalPreviewStructure {
+    const coordinate = coordinateForItem(item);
+    const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinate);
+    if (item.kind !== "activity" || item.event.eventType !== "tab_deleted") {
+        return { ...structure, deletedTabId: null };
+    }
+
+    const payload = parsePayload(item.event.payload);
+    const deletedTabId = typeof payload.tabId === "string" ? payload.tabId : null;
+    if (!deletedTabId) return { ...structure, deletedTabId: null };
+
+    const beforeDeletion = reconstructStructureAsOf(allTabs, allDrafts, docEvents, {
+        ...coordinate,
+        docEventId: item.event.id - 1,
+    });
+    if (!beforeDeletion.tabs.some((tab) => tab.id === deletedTabId)) {
+        return { ...structure, deletedTabId: null };
+    }
+
+    return { ...beforeDeletion, deletedTabId };
+}
+
 // ── Date grouping ───────────────────────────────────────────────────
 
 export type TimelineGroup = { heading: string; items: TimelineItem[] };
@@ -455,6 +502,30 @@ export type TabContentRef = {
 };
 
 /**
+ * Resolves one explicitly selected draft's content at coordinate `t`.
+ * A missing `previous` means there is no comparable version, not that the
+ * comparable document was empty.
+ */
+export function resolveDraftContentAt(
+    snapshots: DocumentSnapshotMeta[],
+    draftId: string,
+    coordinate: TimelineCoordinate,
+): TabContentRef {
+    const eligible = snapshots
+        .filter(
+            (snapshot) =>
+                snapshot.draftId === draftId && snapshotAtOrBeforeCoordinate(snapshot, coordinate),
+        )
+        .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
+
+    return {
+        draftId,
+        current: eligible[0] ?? null,
+        previous: eligible[1] ?? null,
+    };
+}
+
+/**
  * Resolves which content to show for `tabId` at coordinate `t`.
  *
  * Picks the tab's draft that had the most recent snapshot at/before `t` (the
@@ -477,10 +548,7 @@ export function resolveTabContentAt(
 
     if (eligible.length === 0) return { draftId: null, current: null, previous: null };
 
-    const current = eligible[0];
-    // Baseline: the next-older snapshot OF THE SAME DRAFT (track-changes is
-    // within one draft's history, not across drafts).
-    const previous =
-        eligible.find((s) => s.draftId === current.draftId && s.id !== current.id) ?? null;
-    return { draftId: current.draftId, current, previous };
+    // Baseline is resolved within the selected draft; track-changes never
+    // compares two different drafts merely because they share a tab.
+    return resolveDraftContentAt(snapshots, eligible[0].draftId, coordinate);
 }

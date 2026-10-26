@@ -13,29 +13,26 @@
  * on the transaction itself, which is always in scope and timing-safe.
  */
 
+import { registerNestedEditorialView, unregisterEditorialView } from "$lib/ai/editorialTarget";
+import { logAppEvent } from "$lib/appLog";
 import { nestedSavedFields } from "$lib/editor/extensions";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
+import {
+    type PendingNestedEditorSelection,
+    annotationEventBus,
+} from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { Annotation, Transaction } from "@codemirror/state";
+import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
-    _addVersionToRevision,
-    _applySuggestion,
-    _deleteVersionFromRevision,
-    _updateActiveRevisionVersion,
-    _updateRevisionVersionDoc,
-    _updateRevisionVersionLabel,
-    _updateRevisionVersionState,
     addAnnotation,
-    addSuggestion,
     annotationField,
+    classifyAnnotationMutation,
     removeAnnotation,
     updateRevisionVersionState,
-    updateThread,
 } from "./annotationField";
 import type { Annotation as AnnotationType, Annotations, VersionState } from "./models";
 import type { GenericAnnotation } from "./models";
-import { versionById } from "./models";
+import { isAnnotationOfType, versionById, versionText } from "./models";
 import {
     createNestedEditorState,
     mergeNestedVersionState,
@@ -60,22 +57,7 @@ function hasAnnotations(annotations: Annotations): boolean {
 export function transactionsHaveAnnotationMutationEffect(
     transactions: readonly Transaction[],
 ): boolean {
-    return transactions.some((tr) =>
-        tr.effects.some(
-            (e) =>
-                e.is(addAnnotation) ||
-                e.is(removeAnnotation) ||
-                e.is(updateThread) ||
-                e.is(addSuggestion) ||
-                e.is(_applySuggestion) ||
-                e.is(_addVersionToRevision) ||
-                e.is(_deleteVersionFromRevision) ||
-                e.is(_updateActiveRevisionVersion) ||
-                e.is(_updateRevisionVersionDoc) ||
-                e.is(_updateRevisionVersionLabel) ||
-                e.is(_updateRevisionVersionState),
-        ),
-    );
+    return transactions.some((transaction) => classifyAnnotationMutation(transaction) !== "none");
 }
 
 export function serializedNestedAnnotationSnapshot(version: VersionState): string {
@@ -126,13 +108,12 @@ export class NestedEditorController {
 
     /**
      * Create the nested editor in the given host element.
-     * Phase 10: Collab subtree bindings removed. Local-only mode.
      */
     create(
         host: HTMLDivElement,
         version: VersionState,
         versionIndex: number,
-        pendingSelection?: { from: number; to: number },
+        pendingSelection?: Pick<PendingNestedEditorSelection, "from" | "to" | "focus">,
     ): void {
         if (this._editor) return;
 
@@ -145,6 +126,20 @@ export class NestedEditorController {
         );
 
         this._editor = new EditorView({ state, parent: host });
+        registerNestedEditorialView({
+            view: this._editor,
+            parentView: this.parentView,
+            revisionId: this.revisionId,
+            versionId: version.id,
+            isCurrent: () => {
+                const revision = this.parentView.state.field(annotationField)[this.revisionId];
+                return (
+                    !!revision &&
+                    isAnnotationOfType(revision, "revision") &&
+                    revision.activeVersionId === version.id
+                );
+            },
+        });
         this._mountedVersionIndex = versionIndex;
         this._mountedVersionId = version.id;
         this._editorVersionId = version.id;
@@ -165,7 +160,7 @@ export class NestedEditorController {
                 selection: { anchor: from, head: to },
                 scrollIntoView: true,
             });
-            if (from !== to) this._editor.focus();
+            if (pendingSelection.focus) this._editor.focus();
         }
 
         // Snapshot only the serialized nested editor state that requires a
@@ -193,6 +188,7 @@ export class NestedEditorController {
             this.flushToParent();
         }
 
+        unregisterEditorialView(this._editor);
         this._editor.destroy();
         this._editor = undefined;
         this._mountedVersionIndex = -1;
@@ -208,19 +204,48 @@ export class NestedEditorController {
      */
     syncFromParent(externalDoc: string): void {
         if (!this._editor) return;
-        if (externalDoc === this._lastDispatchedDoc) return;
+
+        // Svelte store updates trail the synchronous parent CodeMirror
+        // dispatch. Never let a stale reactive snapshot overwrite a newer
+        // parent state; resolve the mounted version directly from the parent
+        // before applying the incoming text.
+        let authoritativeDoc = externalDoc;
+        const revision = this.parentRevision();
+        const parentVersion = revision ? versionById(revision, this._editorVersionId) : undefined;
+        if (
+            revision?.activeVersionId === this._editorVersionId &&
+            parentVersion &&
+            versionText(parentVersion) !== externalDoc
+        ) {
+            authoritativeDoc = versionText(parentVersion);
+            void logAppEvent(
+                "warn",
+                "nested-editor-sync",
+                "Ignored stale parent snapshot during nested editor sync",
+                {
+                    revisionId: this.revisionId,
+                    mountedVersionId: this._editorVersionId,
+                    incomingDocLength: externalDoc.length,
+                    authoritativeDocLength: authoritativeDoc.length,
+                    editorDocLength: this._editor.state.doc.length,
+                    lastDispatchedDocLength: this._lastDispatchedDoc.length,
+                },
+            );
+        }
+
+        if (authoritativeDoc === this._lastDispatchedDoc) return;
 
         const current = this._editor.state.doc.toString();
-        if (current !== externalDoc) {
+        if (current !== authoritativeDoc) {
             // Compute a minimal diff via common prefix/suffix matching.
             // This preserves nested annotation positions through small,
             // localized changes instead of destroying them with a
             // full-document replacement.
-            const minLen = Math.min(current.length, externalDoc.length);
+            const minLen = Math.min(current.length, authoritativeDoc.length);
             let prefix = 0;
             while (
                 prefix < minLen &&
-                current.charCodeAt(prefix) === externalDoc.charCodeAt(prefix)
+                current.charCodeAt(prefix) === authoritativeDoc.charCodeAt(prefix)
             ) {
                 prefix++;
             }
@@ -228,20 +253,44 @@ export class NestedEditorController {
             while (
                 suffix < minLen - prefix &&
                 current.charCodeAt(current.length - 1 - suffix) ===
-                    externalDoc.charCodeAt(externalDoc.length - 1 - suffix)
+                    authoritativeDoc.charCodeAt(authoritativeDoc.length - 1 - suffix)
             ) {
                 suffix++;
             }
             const from = prefix;
             const to = current.length - suffix;
-            const insert = externalDoc.slice(prefix, externalDoc.length - suffix);
+            const insert = authoritativeDoc.slice(prefix, authoritativeDoc.length - suffix);
 
             this._editor.dispatch({
                 changes: { from, to, insert },
                 annotations: [Transaction.addToHistory.of(false), parentSyncEdit.of(true)],
             });
         }
-        this._lastDispatchedDoc = externalDoc;
+        this._lastDispatchedDoc = authoritativeDoc;
+    }
+
+    syncVersionFromParent(): void {
+        if (!this._editor) return;
+        const revision = this.parentRevision();
+        if (!revision || revision.activeVersionId !== this._editorVersionId) return;
+        const authoritative = versionById(revision, this._editorVersionId);
+        if (!authoritative) return;
+        this.syncFromParent(versionText(authoritative));
+        const restored = EditorState.fromJSON(
+            { ...authoritative, selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 } },
+            { extensions: [annotationField] },
+            { annotationField },
+        );
+        const current = this._editor.state.field(annotationField);
+        const incoming = restored.field(annotationField);
+        this._lastMountedBlob = serializedNestedAnnotationSnapshot(authoritative);
+        this._editor.dispatch({
+            effects: [
+                ...Object.values(current).map((annotation) => removeAnnotation.of(annotation)),
+                ...Object.values(incoming).map((annotation) => addAnnotation.of(annotation)),
+            ],
+            annotations: [Transaction.addToHistory.of(false), parentSyncEdit.of(true)],
+        });
     }
 
     /** Whether a version switch is needed (compared by stable version id). */
@@ -250,12 +299,8 @@ export class NestedEditorController {
     }
 
     /**
-     * Signal whether the current nested EditorView must be torn down and rebuilt.
-     *
-     * Compare the CURRENT serialized nested annotation state against the blob
-     * we mounted. A mismatch means nested annotations changed outside the live
-     * editor (remote sync, modal flush, parent-level undo) and CM decorations
-     * must be rebuilt from the parent-authoritative blob.
+     * Compare the parent's nested state against the last mounted or published blob.
+     * External changes require refreshing annotations from parent authority.
      */
     needsAnnotationRebuild(version: VersionState): boolean {
         if (!this._editor) return false;
@@ -293,7 +338,7 @@ export class NestedEditorController {
             },
             scrollIntoView: true,
         });
-        if (from !== to) this._editor.focus();
+        if (event.focus) this._editor.focus();
     }
 
     /**
@@ -307,6 +352,7 @@ export class NestedEditorController {
         if (!this._editor) return;
 
         const hadNestedAnnotations = hasAnnotations(update.startState.field(annotationField));
+        const hasAnnotationMutation = this.hasAnnotationMutationEffect(update);
 
         // Check for parent sync annotation on the transactions —
         // if present, this is our own sync, don't bounce back.
@@ -314,20 +360,63 @@ export class NestedEditorController {
             (tr) => tr.annotation(parentSyncEdit) === true,
         );
 
-        // Translate doc changes and flush annotation state
-        if (!isParentSync && translateAndDispatch(update, this.parentView, this.revisionId)) {
+        // A nested doc change that also carries (or remaps) nested annotations
+        // must store the final version blob in the SAME parent transaction as
+        // the translated text. Splitting the text into history and flushing the
+        // blob afterward made undo restore only one half of the state.
+        const needsAtomicVersionUpdate =
+            !isParentSync &&
+            update.docChanged &&
+            this.flushBehavior !== "no-flush" &&
+            (hadNestedAnnotations || this.hasNestedAnnotations() || hasAnnotationMutation);
+        const atomicVersionState = needsAtomicVersionUpdate
+            ? this.buildNestedVersionState(update.state)
+            : undefined;
+
+        const dispatched =
+            !isParentSync &&
+            translateAndDispatch(
+                update,
+                this.parentView,
+                this.revisionId,
+                atomicVersionState
+                    ? { versionId: this._editorVersionId, versionState: atomicVersionState }
+                    : undefined,
+            );
+        if (dispatched) {
             // The parent dispatch runs synchronously and its side effects
             // (e.g. a version switch) may destroy this controller — re-check
             // before touching the editor.
             if (!this._editor) return;
             this._lastDispatchedDoc = this._editor.state.doc.toString();
+            if (atomicVersionState) {
+                this._lastMountedBlob = serializedNestedAnnotationSnapshot(atomicVersionState);
+            }
+        } else if (!isParentSync && update.docChanged) {
+            const revision = this.parentRevision();
+            void logAppEvent(
+                "error",
+                "nested-editor-sync",
+                "Nested editor change could not be dispatched to its parent",
+                {
+                    revisionId: this.revisionId,
+                    mountedVersionId: this._editorVersionId,
+                    parentRevisionExists: revision !== undefined,
+                    parentActiveVersionId: revision?.activeVersionId,
+                    nestedDocLength: update.state.doc.length,
+                    parentDocLength: this.parentView.state.doc.length,
+                    transactionCount: update.transactions.length,
+                },
+            );
         }
 
         // Detect annotation mutations and propagate them to the parent's
         // version blob so they enter the parent's undo history. Doc-only
         // remaps are bookkeeping flushes, including parent-sync updates.
         if (this.flushBehavior !== "no-flush") {
-            if (!isParentSync && this.hasAnnotationMutationEffect(update)) {
+            if (atomicVersionState) {
+                // Already persisted atomically with the translated doc change.
+            } else if (!isParentSync && hasAnnotationMutation) {
                 this.flushAnnotationStateToParent(true);
             } else if (update.docChanged && (hadNestedAnnotations || this.hasNestedAnnotations())) {
                 // Bookkeeping flush: keep blob positions in sync with doc.
@@ -366,6 +455,39 @@ export class NestedEditorController {
     }
 
     /**
+     * Build the authoritative parent VersionState for an atomic nested edit.
+     * The nested state supplies annotation positions/selection and its current
+     * document; the existing parent blob supplies stable id and metadata.
+     */
+    private buildNestedVersionState(state: ViewUpdate["state"]): VersionState | undefined {
+        const rev = this.parentRevision();
+        const existing = rev ? versionById(rev, this._editorVersionId) : undefined;
+        if (!rev || !existing || rev.activeVersionId !== this._editorVersionId) return undefined;
+
+        const nestedState = state.toJSON(nestedSavedFields) as Record<string, unknown>;
+        return {
+            ...mergeNestedVersionState(existing, nestedState),
+            doc: state.doc.toString(),
+        };
+    }
+
+    /**
+     * Resolve this controller's revision in the parent field, or undefined
+     * when the id no longer points at a usable revision. Annotation ids are
+     * sequential integers, so a remote collab sync can reassign the id to a
+     * different annotation type (or deliver a revision without a `versions`
+     * array) between mount and flush — a blind cast here crashed clients
+     * with "undefined is not an object (evaluating 'versions.find')".
+     */
+    private parentRevision(): AnnotationType<"revision"> | undefined {
+        const ann: GenericAnnotation | undefined =
+            this.parentView.state.field(annotationField)[this.revisionId];
+        if (!ann || !isAnnotationOfType(ann, "revision")) return undefined;
+        if (!Array.isArray(ann.versions)) return undefined;
+        return ann;
+    }
+
+    /**
      * Serialize the nested editor's annotationField state to the parent's
      * version blob. This is the upward path for annotation mutations — the
      * complement to translateAndDispatch for doc changes.
@@ -378,10 +500,7 @@ export class NestedEditorController {
     private flushAnnotationStateToParent(addToHistory = true): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-            | AnnotationType<"revision">
-            | undefined;
-
+        const rev = this.parentRevision();
         const existing = rev ? versionById(rev, this._editorVersionId) : undefined;
         if (rev && existing) {
             // If the parent already switched to a different version,
@@ -390,6 +509,7 @@ export class NestedEditorController {
             // Flushing now would overwrite the old version's annotations
             // with the corrupted (empty) state.
             if (rev.activeVersionId !== this._editorVersionId) return;
+            if (!addToHistory && this.needsAnnotationRebuild(existing)) return;
 
             // Merge nested editor's sub-annotation state into the parent's
             // existing version blob, preserving the parent's authoritative
@@ -428,10 +548,7 @@ export class NestedEditorController {
     private flushToParent(): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-            | AnnotationType<"revision">
-            | undefined;
-
+        const rev = this.parentRevision();
         const existing = rev ? versionById(rev, this._editorVersionId) : undefined;
         if (rev && existing) {
             // If the parent already switched to a different version,
@@ -444,6 +561,7 @@ export class NestedEditorController {
             // sub-annotations on each prior mutation, so this flush
             // is redundant after a version switch.
             if (rev.activeVersionId !== this._editorVersionId) return;
+            if (this.needsAnnotationRebuild(existing)) return;
 
             // Merge nested editor's sub-annotation state into the parent's
             // existing version blob, preserving the parent's authoritative

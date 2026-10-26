@@ -1,3 +1,5 @@
+pub mod ai;
+pub mod college;
 pub mod documents;
 pub mod events;
 pub mod load;
@@ -7,6 +9,26 @@ pub mod search;
 pub mod tabs;
 
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Structural validation stays distinct from SQLite failures until commands
+/// serialize either error with `to_string()`, preserving the frontend contract.
+#[derive(Debug, thiserror::Error)]
+pub enum DbError {
+    #[error("{0}")]
+    Validation(String),
+    #[error(transparent)]
+    Sql(#[from] rusqlite::Error),
+}
+
+pub type DbResult<T> = Result<T, DbError>;
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +41,10 @@ pub struct DocumentMeta {
     pub preview_text: String,
     pub tags: String,
     pub deleted_at: Option<i64>,
+    pub persist_history: bool,
+    /// Version of the Quillium app that originally created this document.
+    /// `None` means the provenance is unknown, such as for legacy rows.
+    pub created_with_version: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,6 +80,27 @@ pub struct DraftMeta {
     /// newest) lock automatically; any draft can also be locked manually.
     /// The editor shows a lock banner but the DB does not reject writes.
     pub locked: bool,
+}
+
+/// A saved Chat, Feedback, or Revise discussion. The draft association is
+/// intentionally retained as text so a conversation remains readable after
+/// its source draft is deleted; `draft_label` is the label captured at save
+/// time rather than a live join against the draft row.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Conversation {
+    pub id: String,
+    pub document_id: String,
+    pub draft_id: String,
+    pub draft_label: String,
+    pub mode: String,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub archived: bool,
+    pub messages_json: String,
+    pub source_conversation_id: Option<String>,
+    pub source_message_id: Option<String>,
 }
 
 /// The document's full tab/draft roster INCLUDING soft-deleted rows, for the

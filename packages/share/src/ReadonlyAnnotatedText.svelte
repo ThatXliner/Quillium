@@ -173,9 +173,28 @@ const paragraphBlocks = $derived(
 
 	.annotation-inline-revision {
 		text-decoration: underline;
+		text-decoration-color: rgb(168 85 247 / 35%);
+		text-decoration-thickness: 1px;
+		text-underline-offset: 3px;
+	}
+
+	.annotation-inline-revision:focus-visible {
 		text-decoration-color: var(--accent-purple);
 		text-decoration-thickness: 2px;
-		text-underline-offset: 3px;
+	}
+
+	@media (hover: hover) {
+		.annotation-inline-revision:hover {
+			text-decoration-color: var(--accent-purple);
+			text-decoration-thickness: 2px;
+		}
+	}
+
+	@media (hover: none) {
+		.annotation-inline-revision {
+			text-decoration-color: var(--accent-purple);
+			text-decoration-thickness: 2px;
+		}
 	}
 
 	.annotation-inline-revision-active {
@@ -186,6 +205,12 @@ const paragraphBlocks = $derived(
 
 	.annotation-inline:hover {
 		filter: brightness(0.98);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.annotation-inline {
+			transition: none;
+		}
 	}
 
 	.inline-marker-group {

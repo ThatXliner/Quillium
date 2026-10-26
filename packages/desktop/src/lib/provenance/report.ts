@@ -68,7 +68,9 @@ export type ProvenanceReport = {
         typedChars: number;
         pastedChars: number;
         cutChars: number;
+        humanRevisionChars: number;
         aiRevisionChars: number;
+        mixedRevisionChars: number;
         formatChars: number;
         unknownChars: number;
         finalDocLength: number;
@@ -164,16 +166,17 @@ function originOf(event: NormalizedEvent): Provenance["origin"] {
 
 type LooseAnnotation = {
     thread?: Array<{ author?: unknown }>;
+    aiProvenance?: { requestId?: unknown };
 };
 
 /**
- * True when an annotation_add payload's annotation has any thread message
- * authored by "AI". Defensive: thread may be absent or malformed on
- * legacy/foreign payloads.
+ * True when an annotation_add payload carries explicit AI request metadata or
+ * has a legacy thread message authored by "AI".
  */
 function isAiAuthoredAnnotation(payload: EventPayload): boolean {
     if (payload.type !== "annotation_add") return false;
     const annotation = payload.annotation as LooseAnnotation | undefined;
+    if (typeof annotation?.aiProvenance?.requestId === "string") return true;
     const thread = annotation?.thread;
     if (!Array.isArray(thread)) return false;
     return thread.some((message) => message?.author === "AI");
@@ -199,7 +202,9 @@ export function buildProvenanceReport(args: {
         typedChars: 0,
         pastedChars: 0,
         cutChars: 0,
+        humanRevisionChars: 0,
         aiRevisionChars: 0,
+        mixedRevisionChars: 0,
         formatChars: 0,
         unknownChars: 0,
         finalDocLength: args.finalDocLength,
@@ -229,6 +234,13 @@ export function buildProvenanceReport(args: {
                 break;
             case "ai-revision":
                 totals.aiRevisionChars += event.insertedChars;
+                aiRevisionEvents += 1;
+                break;
+            case "human-revision":
+                totals.humanRevisionChars += event.insertedChars;
+                break;
+            case "mixed-revision":
+                totals.mixedRevisionChars += event.insertedChars;
                 aiRevisionEvents += 1;
                 break;
             case "format":
@@ -336,19 +348,31 @@ export async function generateProvenanceReport(
     draftId: string,
     documentTitle: string,
 ): Promise<ProvenanceReport> {
-    const { listDraftEvents } = await import("$lib/db");
-    const { replayEvents } = await import("$lib/editor/replay");
-    const { history } = await import("@codemirror/commands");
-    const { EditorState } = await import("@codemirror/state");
-    const { annotationField } = await import("$lib/editor/plugins/annotations");
+    const { listDraftEvents, listSnapshots, loadSnapshotState } = await import("$lib/db");
+    const { getExtensions } = await import("$lib/editor/extensions");
+    const { reconstructState } = await import("$lib/editor/replay");
 
-    const events = await listDraftEvents(draftId);
+    const [events, snapshots] = await Promise.all([
+        listDraftEvents(draftId),
+        listSnapshots(draftId),
+    ]);
+    const latestSnapshot = snapshots.reduce<(typeof snapshots)[number] | undefined>(
+        (latest, snapshot) => {
+            if (!latest || snapshot.upToEventId > latest.upToEventId) return snapshot;
+            return latest;
+        },
+        undefined,
+    );
+    const snapshotStateJson = latestSnapshot ? await loadSnapshotState(latestSnapshot.id) : null;
+    const eventsSinceSnapshot = latestSnapshot
+        ? events.filter((event) => event.id > latestSnapshot.upToEventId)
+        : events;
 
-    const extensions = [history(), annotationField];
-    let state = EditorState.create({ extensions });
-    if (events.length > 0) {
-        state = replayEvents(state, events);
-    }
+    const state = reconstructState(
+        snapshotStateJson,
+        eventsSinceSnapshot,
+        getExtensions({ persist: false }),
+    );
 
     return buildProvenanceReport({
         events,

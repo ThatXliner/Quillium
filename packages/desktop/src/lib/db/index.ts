@@ -14,6 +14,7 @@ import type {
     DocumentSnapshotMeta,
     DocumentStructure,
     DraftMeta,
+    DuplicateDraftState,
     EventRecord,
     LoadResult,
     ReparentEntry,
@@ -33,6 +34,90 @@ export async function resetDb(): Promise<void> {
     return invoke<void>("cmd_reset_db");
 }
 
+// ── AI state ─────────────────────────────────────────────────────
+
+export type PersistedAiConversationMode = "chat" | "feedback" | "revise";
+
+export async function loadAiConversation(
+    draftId: string,
+    mode: PersistedAiConversationMode,
+): Promise<string | null> {
+    return invoke<string | null>("cmd_load_ai_conversation", { draftId, mode });
+}
+
+export async function saveAiConversation(
+    draftId: string,
+    mode: PersistedAiConversationMode,
+    messagesJson: string,
+): Promise<void> {
+    return invoke<void>("cmd_save_ai_conversation", { draftId, mode, messagesJson });
+}
+
+export async function clearAiConversation(
+    draftId: string,
+    mode: PersistedAiConversationMode,
+): Promise<void> {
+    return invoke<void>("cmd_clear_ai_conversation", { draftId, mode });
+}
+
+export async function getDocumentWriterBrief(documentId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_document_writer_brief", { documentId });
+}
+
+export async function setDocumentWriterBrief(
+    documentId: string,
+    writerBrief: string,
+): Promise<void> {
+    return invoke<void>("cmd_set_document_writer_brief", { documentId, writerBrief });
+}
+
+export async function getDocumentEditorialDecisions(documentId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_document_editorial_decisions", { documentId });
+}
+
+export async function setDocumentEditorialDecisions(
+    documentId: string,
+    decisionsJson: string,
+): Promise<void> {
+    return invoke<void>("cmd_set_document_editorial_decisions", {
+        documentId,
+        decisionsJson,
+    });
+}
+
+export async function getCollegeTabSetup(
+    documentId: string,
+    tabId: string,
+): Promise<string | null> {
+    return invoke<string | null>("cmd_get_college_tab_setup", { documentId, tabId });
+}
+
+export async function setCollegeTabSetup(
+    documentId: string,
+    tabId: string,
+    setupJson: string | null,
+): Promise<void> {
+    return invoke<void>("cmd_set_college_tab_setup", { documentId, tabId, setupJson });
+}
+
+export async function getCollegeDocumentEnabled(documentId: string): Promise<boolean> {
+    return invoke<boolean>("cmd_get_college_document_enabled", { documentId });
+}
+
+export async function setCollegeDocumentEnabled(
+    documentId: string,
+    enabled: boolean,
+): Promise<void> {
+    return invoke<void>("cmd_set_college_document_enabled", { documentId, enabled });
+}
+
+export async function createCollegeTabs(
+    documentId: string,
+    entries: { label: string; setupJson: string; initialContent?: string }[],
+): Promise<TabMeta[]> {
+    return invoke<TabMeta[]>("cmd_create_college_tabs", { documentId, entries });
+}
+
 // ── Documents ─────────────────────────────────────────────────────
 
 export async function listDocuments(): Promise<DocumentMeta[]> {
@@ -43,31 +128,31 @@ export async function getDocumentMeta(id: string): Promise<DocumentMeta | null> 
     return invoke<DocumentMeta | null>("cmd_get_document", { id });
 }
 
-export async function createDocument(title = "Untitled"): Promise<string> {
-    return invoke<string>("cmd_create_document", { title });
+export async function createDocument(title = "Untitled", persistHistory = false): Promise<string> {
+    return invoke<string>("cmd_create_document", { title, persistHistory });
 }
 
-/**
- * `bodyText` is the full plain document text, used to keep the search index
- * current. Omit it for metadata-only updates (rename, tags) — the previously
- * indexed body is preserved.
- */
-export async function updateDocumentMeta(
+/** Inserts a pre-materialized copy in one SQLite transaction. */
+export async function duplicateDocument(
+    sourceDocumentId: string,
+    draftStates: DuplicateDraftState[],
+): Promise<string> {
+    return invoke<string>("cmd_duplicate_document", { sourceDocumentId, draftStates });
+}
+
+export async function updateDocumentTitle(id: string, title: string): Promise<void> {
+    return invoke<void>("cmd_update_document_title", { id, title });
+}
+
+export async function updateDocumentTags(id: string, tags: string): Promise<void> {
+    return invoke<void>("cmd_update_document_tags", { id, tags });
+}
+
+export async function updateDocumentContentMetadata(
     id: string,
-    title: string,
-    wordCount: number,
-    previewText: string,
-    tags: string,
-    bodyText?: string,
+    metadata: { wordCount: number; previewText: string; bodyText: string; automaticTitle?: string },
 ): Promise<void> {
-    return invoke<void>("cmd_update_document_meta", {
-        id,
-        title,
-        wordCount,
-        previewText,
-        tags,
-        bodyText,
-    });
+    return invoke<void>("cmd_update_document_content_metadata", { id, ...metadata });
 }
 
 /**
@@ -394,8 +479,9 @@ export async function listSnapshots(draftId: string): Promise<SnapshotMeta[]> {
 
 /**
  * Lists every snapshot across a whole document — all drafts, including
- * soft-deleted ones — for the document-wide version-history timeline. Excludes
- * internal "Branch point" seeds. Newest first.
+ * soft-deleted ones — for document-wide history and preview resolution.
+ * Includes internal "Branch point" seeds; callers must omit them from visible
+ * timeline coordinates. Newest first.
  */
 export async function listDocumentSnapshots(docId: string): Promise<DocumentSnapshotMeta[]> {
     return invoke<DocumentSnapshotMeta[]>("cmd_list_document_snapshots", { docId });

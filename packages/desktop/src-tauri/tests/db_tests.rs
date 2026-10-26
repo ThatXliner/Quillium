@@ -5,9 +5,10 @@ use quillium_lib::db::{
     schema::open_db,
     tabs::{
         branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, iterate_draft,
-        list_doc_events, list_tab_drafts, list_tabs, rename_tab, restore_draft, restore_tab,
-        set_active_draft, set_active_tab, set_draft_locked,
+        list_doc_events, list_tab_drafts, list_tabs, orphan_and_delete_draft, rename_tab,
+        restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
     },
+    DbError,
 };
 use rusqlite::Connection;
 
@@ -17,6 +18,113 @@ fn in_memory_db() -> Connection {
     // open_db handles pragmas, extension registration, and migrations;
     // SQLite treats the ":memory:" path specially.
     open_db(std::path::Path::new(":memory:")).expect("in-memory DB")
+}
+
+#[test]
+fn validation_errors_are_distinct_and_keep_command_messages() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Test", None).unwrap();
+    let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
+    let error = delete_tab(&conn, &tab_id).unwrap_err();
+    assert!(matches!(error, DbError::Validation(_)));
+    assert_eq!(
+        error.to_string(),
+        "Cannot delete the last tab of a document"
+    );
+
+    let error = delete_tab(&conn, "missing").unwrap_err();
+    assert!(matches!(
+        error,
+        DbError::Sql(rusqlite::Error::QueryReturnedNoRows)
+    ));
+    assert_eq!(
+        error.to_string(),
+        rusqlite::Error::QueryReturnedNoRows.to_string()
+    );
+
+    // A genuine SQLite constraint must retain its SQL identity.
+    let error = create_tab(&conn, "missing-document", "Invalid").unwrap_err();
+    assert!(matches!(
+        error,
+        DbError::Sql(rusqlite::Error::SqliteFailure(..))
+    ));
+}
+
+#[test]
+fn activity_failure_rolls_back_tab_and_seeded_iteration() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Test", None).unwrap();
+    let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
+    let root_id = list_tab_drafts(&conn, &tab_id).unwrap()[0].id.clone();
+    let activity_count = list_doc_events(&conn, &doc_id).unwrap().len();
+    conn.execute_batch(
+        "CREATE TRIGGER reject_activity BEFORE INSERT ON doc_events
+         BEGIN SELECT RAISE(ABORT, 'activity unavailable'); END;",
+    )
+    .unwrap();
+
+    for error in [
+        create_tab(&conn, &doc_id, "New tab").unwrap_err(),
+        iterate_draft(&conn, &root_id, "Next", Some(r#"{"doc":"seed"}"#)).unwrap_err(),
+    ] {
+        assert!(matches!(error, DbError::Sql(_)));
+        assert_eq!(error.to_string(), "activity unavailable");
+    }
+
+    assert_eq!(list_tabs(&conn, &doc_id).unwrap().len(), 1);
+    let drafts = list_tab_drafts(&conn, &tab_id).unwrap();
+    assert_eq!(drafts.len(), 1);
+    assert!(!drafts[0].locked);
+    let snapshots: i64 = conn
+        .query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(snapshots, 0);
+    assert_eq!(
+        list_doc_events(&conn, &doc_id).unwrap().len(),
+        activity_count
+    );
+    assert!(conn.is_autocommit());
+}
+
+#[test]
+fn later_activity_failure_rolls_back_orphan_rewrites_and_earlier_events() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Test", None).unwrap();
+    let tab_id = create_tab(&conn, &doc_id, "Main").unwrap().id;
+    let root_id = list_tab_drafts(&conn, &tab_id).unwrap()[0].id.clone();
+    let middle = iterate_draft(&conn, &root_id, "Middle", None).unwrap();
+    let child = iterate_draft(&conn, &middle.id, "Child", None).unwrap();
+    let before = serde_json::to_value(list_tab_drafts(&conn, &tab_id).unwrap()).unwrap();
+    let activity_count = list_doc_events(&conn, &doc_id).unwrap().len();
+    conn.execute_batch(
+        "CREATE TRIGGER reject_reparent_activity BEFORE INSERT ON doc_events
+         WHEN NEW.event_type = 'draft_reparented'
+         BEGIN SELECT RAISE(ABORT, 'reparent activity unavailable'); END;",
+    )
+    .unwrap();
+
+    let error = orphan_and_delete_draft(&conn, &middle.id).unwrap_err();
+    assert!(matches!(error, DbError::Sql(_)));
+    assert_eq!(error.to_string(), "reparent activity unavailable");
+    assert_eq!(
+        serde_json::to_value(list_tab_drafts(&conn, &tab_id).unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        list_doc_events(&conn, &doc_id).unwrap().len(),
+        activity_count
+    );
+    assert!(conn.is_autocommit());
+
+    conn.execute_batch("DROP TRIGGER reject_reparent_activity")
+        .unwrap();
+    let rewrites = orphan_and_delete_draft(&conn, &middle.id).unwrap();
+    assert_eq!(rewrites.len(), 1);
+    assert_eq!(rewrites[0].draft_id, child.id);
+    assert_eq!(
+        list_doc_events(&conn, &doc_id).unwrap().len(),
+        activity_count + 2
+    );
 }
 
 #[test]
@@ -37,7 +145,7 @@ fn test_schema_creation() {
 #[test]
 fn test_append_event_increments_id() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     let payload = r#"{"type":"doc_change","changes":[]}"#;
@@ -54,7 +162,7 @@ fn test_append_event_increments_id() {
 #[test]
 fn test_snapshot_threshold_event_count() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     let payload = r#"{"type":"doc_change","changes":[]}"#;
@@ -74,7 +182,7 @@ fn test_snapshot_threshold_event_count() {
 fn test_snapshot_threshold_time() {
     // This test injects a fake old snapshot to simulate time passage.
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     // Insert a snapshot that's 130 seconds old
@@ -100,7 +208,7 @@ fn test_snapshot_threshold_time() {
 #[test]
 fn test_load_with_events_since_snapshot() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Test Doc").expect("create doc");
+    let doc_id = create_document(&conn, "Test Doc", None).expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
 
     // Register active draft in _meta
@@ -133,7 +241,7 @@ fn test_load_with_events_since_snapshot() {
 #[test]
 fn test_create_draft_creates_main_tab() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("draft");
 
     let tabs = list_tabs(&conn, &doc_id).expect("tabs");
@@ -151,7 +259,7 @@ fn test_create_draft_creates_main_tab() {
 #[test]
 fn test_create_tab_seeds_root_draft() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Notes").expect("tab");
 
     assert_eq!(tab.label, "Notes");
@@ -164,7 +272,7 @@ fn test_create_tab_seeds_root_draft() {
 #[test]
 fn test_iterate_chains_and_locks_superseded() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -204,7 +312,7 @@ fn test_iterate_chains_and_locks_superseded() {
 #[test]
 fn test_branch_starts_new_run_without_locking() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -234,7 +342,7 @@ fn test_branch_starts_new_run_without_locking() {
 #[test]
 fn test_branch_from_root_is_allowed() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -246,7 +354,7 @@ fn test_branch_from_root_is_allowed() {
 #[test]
 fn test_delete_draft_refusals() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -267,7 +375,7 @@ fn test_delete_draft_refusals() {
 #[test]
 fn test_delete_tab_is_soft_and_restorable() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab1 = create_tab(&conn, &doc_id, "Main").expect("tab1");
     assert!(
         delete_tab(&conn, &tab1.id).is_err(),
@@ -299,7 +407,7 @@ fn test_delete_tab_is_soft_and_restorable() {
 #[test]
 fn test_delete_draft_is_soft_and_restorable() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let v1 = iterate_draft(&conn, &root, "v1", Some(r#"{"doc":"hi"}"#)).expect("iterate");
@@ -321,7 +429,7 @@ fn test_delete_draft_is_soft_and_restorable() {
 #[test]
 fn test_run_tip_moves_back_on_delete_and_returns_on_restore() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
@@ -350,7 +458,7 @@ fn test_run_tip_moves_back_on_delete_and_returns_on_restore() {
 #[test]
 fn test_doc_events_record_structural_ops() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
@@ -379,7 +487,7 @@ fn test_doc_events_record_structural_ops() {
 #[test]
 fn test_load_resolves_active_tab_and_draft() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab1 = create_tab(&conn, &doc_id, "Main").expect("tab1");
     let tab2 = create_tab(&conn, &doc_id, "Notes").expect("tab2");
 
@@ -411,7 +519,7 @@ fn test_load_resolves_active_tab_and_draft() {
 #[test]
 fn test_migration_backfills_pre_tabs_drafts() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Old Doc").expect("doc");
+    let doc_id = create_document(&conn, "Old Doc", None).expect("doc");
     // Simulate a pre-migration draft: inserted without a tab.
     conn.execute(
         "INSERT INTO drafts (id, document_id, label, created_at, is_active)
@@ -419,6 +527,10 @@ fn test_migration_backfills_pre_tabs_drafts() {
         rusqlite::params![doc_id],
     )
     .expect("legacy draft");
+    // Rewind the schema past migration 12 as well so the replay exercises the
+    // creator-version migration against a genuinely pre-column database.
+    conn.execute("ALTER TABLE documents DROP COLUMN created_with_version", [])
+        .expect("drop creator-version column");
     conn.pragma_update(None, "user_version", 5)
         .expect("rewind version");
 
@@ -434,7 +546,7 @@ fn test_migration_backfills_pre_tabs_drafts() {
 #[test]
 fn test_set_draft_locked_roundtrip() {
     let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let doc_id = create_document(&conn, "Doc", None).expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let draft = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
@@ -452,4 +564,50 @@ impl CloneId for quillium_lib::db::DraftMeta {
     fn clone_id(&self) -> String {
         self.id.clone()
     }
+}
+
+#[test]
+fn named_checkpoint_survives_reopen_and_restores_latest_state() {
+    use quillium_lib::db::events::{create_named_snapshot, list_snapshots, load_snapshot_state};
+    use quillium_lib::db::tabs::restore_coordinate_nondestructive;
+
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("checkpoint.db");
+    let conn = open_db(&path).unwrap();
+    let doc = create_document(&conn, "Checkpoint test", None).unwrap();
+    let tab = create_tab(&conn, &doc, "Main").unwrap();
+    let draft = list_tab_drafts(&conn, &tab.id).unwrap()[0].id.clone();
+    let event = append_event(
+        &conn,
+        &draft,
+        r#"{"type":"doc_change","changes":[{"from":0,"to":0,"insert":"Latest opening"}]}"#,
+    )
+    .unwrap();
+    let state =
+        r#"{"doc":"Latest opening","selection":{"ranges":[{"anchor":14,"head":14}],"main":0}}"#;
+    let snapshot = create_named_snapshot(&conn, &draft, state, event.event_id, "Opening").unwrap();
+    drop(conn);
+
+    let conn = open_db(&path).unwrap();
+    let named = list_snapshots(&conn, &draft)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == snapshot)
+        .unwrap();
+    assert_eq!(named.label.as_deref(), Some("Opening"));
+    assert_eq!(named.up_to_event_id, event.event_id);
+    assert_eq!(
+        load_snapshot_state(&conn, snapshot).unwrap().as_deref(),
+        Some(state)
+    );
+    let loaded = load_document_state(&conn, &doc, Some(&draft)).unwrap();
+    assert_eq!(loaded.snapshot_state_json.as_deref(), Some(state));
+    assert!(loaded.events_since.is_empty());
+
+    let restored =
+        restore_coordinate_nondestructive(&conn, &doc, named.created_at, None, Some(snapshot))
+            .unwrap()
+            .unwrap();
+    let loaded = load_document_state(&conn, &doc, Some(&restored.id)).unwrap();
+    assert_eq!(loaded.snapshot_state_json.as_deref(), Some(state));
 }

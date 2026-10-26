@@ -60,13 +60,15 @@ function build(events: EventRecord[], overrides: Partial<typeof baseArgs> = {}) 
 // ── Char buckets ──────────────────────────────────────────────────────────────
 
 describe("buildProvenanceReport — char buckets", () => {
-    it("splits typed vs pasted vs aiRevision chars across several events", () => {
+    it("splits human, AI, and mixed revision chars without conflating them", () => {
         const t0 = 1_000;
         const events = [
             makeEvent(1, t0, "type", "hello"), // 5 typed
             makeEvent(2, t0 + 100, "type", "world"), // 5 typed
             makeEvent(3, t0 + 200, "paste", "pasted-text"), // 11 pasted
             makeEvent(4, t0 + 300, "ai-revision", "from-ai"), // 7 ai-revision
+            makeEvent(5, t0 + 400, "human-revision", "mine"),
+            makeEvent(6, t0 + 500, "mixed-revision", "edited-ai"),
         ];
 
         const report = build(events);
@@ -74,8 +76,10 @@ describe("buildProvenanceReport — char buckets", () => {
         expect(report.totals.typedChars).toBe(10);
         expect(report.totals.pastedChars).toBe(11);
         expect(report.totals.aiRevisionChars).toBe(7);
+        expect(report.totals.humanRevisionChars).toBe(4);
+        expect(report.totals.mixedRevisionChars).toBe(9);
         expect(report.totals.unknownChars).toBe(0);
-        expect(report.aiAssist.aiRevisionEvents).toBe(1);
+        expect(report.aiAssist.aiRevisionEvents).toBe(2);
     });
 
     it("does not count deletes toward authored char totals", () => {
@@ -171,6 +175,39 @@ describe("buildProvenanceReport — session splitting", () => {
         ]);
 
         expect(report.sessions).toHaveLength(1);
+    });
+});
+
+describe("buildProvenanceReport — AI annotations", () => {
+    it("counts persona annotations from explicit AI request provenance", () => {
+        const payload = {
+            type: "annotation_add",
+            annotation: {
+                id: 1,
+                _type: "comment",
+                status: "active",
+                selection: { ranges: [{ anchor: 0, head: 1 }], main: 0 },
+                thread: [{ author: "Skeptical editor", message: "Check this", time: 1 }],
+                aiProvenance: {
+                    requestId: "request-1",
+                    task: "global-review",
+                    provider: "anthropic",
+                    model: "claude-sonnet-4-6",
+                    createdAt: 1,
+                    persona: "Skeptical editor",
+                },
+            },
+        };
+        const report = build([
+            {
+                id: 1,
+                eventType: "annotation_add",
+                payload: JSON.stringify(payload),
+                createdAt: 1,
+            },
+        ]);
+
+        expect(report.aiAssist.aiAuthoredAnnotations).toBe(1);
     });
 });
 

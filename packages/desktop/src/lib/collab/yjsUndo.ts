@@ -1,3 +1,4 @@
+import { isolateHistory } from "@codemirror/commands";
 import { EditorSelection, type Extension, Prec } from "@codemirror/state";
 /**
  * yjsUndo.ts -- Per-user undo via Yjs UndoManager.
@@ -18,8 +19,11 @@ import { EditorSelection, type Extension, Prec } from "@codemirror/state";
  *   - Keymap intercepts Mod-z/Mod-Shift-z for undo/redo
  *   - Phase 02: paired ViewPlugin restores CM selection on undo/redo via stackItem.meta.
  */
-import { type EditorView, type KeyBinding, ViewPlugin, keymap } from "@codemirror/view";
+import { EditorView, type KeyBinding, ViewPlugin, type ViewUpdate, keymap } from "@codemirror/view";
 import * as Y from "yjs";
+
+type ArrayElement<T> = T extends Array<infer Element> ? Element : never;
+type UndoScopeType = ArrayElement<ConstructorParameters<typeof Y.UndoManager>[0]>;
 
 /**
  * Create UndoManager extension for per-user undo.
@@ -30,24 +34,26 @@ import * as Y from "yjs";
  *
  * @param ytext - Y.Text shared type (same instance as yjsBinding)
  * @param ymap - Optional Y.Map for annotation sync (D-83 unified undo)
+ * @param extraTypes - Other shared types, such as document-level version groups
  * @returns Object containing the CodeMirror extension and UndoManager instance
  */
 export function createYjsUndoExtension<T = unknown>(
     ytext: Y.Text,
     ymap?: Y.Map<T>,
+    extraTypes: UndoScopeType[] = [],
 ): {
     extension: Extension;
     undoManager: Y.UndoManager;
 } {
     // Per D-83: Track both text and annotations in unified stack when ymap provided
-    const trackedTypes: (Y.Text | Y.Map<T>)[] = ymap ? [ytext, ymap] : [ytext];
+    const trackedTypes: UndoScopeType[] = [ytext, ...(ymap ? [ymap] : []), ...extraTypes];
 
     const undoManager = new Y.UndoManager(trackedTypes, {
         trackedOrigins: new Set(["local"]), // Only undo local changes (per D-74)
         captureTimeout: 500, // Merge rapid typing into single undo step
     });
 
-    const selectionRestorePlugin = ViewPlugin.fromClass(
+    const undoPlugin = ViewPlugin.fromClass(
         class {
             private added: (event: { stackItem: { meta: Map<unknown, unknown> } }) => void;
             private popped: (event: { stackItem: { meta: Map<unknown, unknown> } }) => void;
@@ -74,6 +80,17 @@ export function createYjsUndoExtension<T = unknown>(
                 };
                 undoManager.on("stack-item-added", this.added);
                 undoManager.on("stack-item-popped", this.popped);
+            }
+
+            update(update: ViewUpdate): void {
+                if (
+                    update.transactions.some((transaction) => {
+                        const boundary = transaction.annotation(isolateHistory);
+                        return boundary === "before" || boundary === "full";
+                    })
+                ) {
+                    undoManager.stopCapturing();
+                }
             }
 
             destroy() {
@@ -114,9 +131,22 @@ export function createYjsUndoExtension<T = unknown>(
 
     return {
         // Prec.highest so Yjs undo wins over CodeMirror's historyKeymap Mod-z —
-        // otherwise CM history (which still accumulated pre-collab events) would
-        // run first and revert to the joiner's pre-connect local doc.
-        extension: [Prec.highest(keymap.of(undoKeymap)), selectionRestorePlugin],
+        // otherwise CM history (which may contain pre-collab events) could run
+        // first and replay stale text or semantic effects into the live document.
+        extension: [
+            Prec.highest(keymap.of(undoKeymap)),
+            Prec.highest(undoPlugin),
+            EditorView.updateListener.of((update) => {
+                if (
+                    update.transactions.some((transaction) => {
+                        const boundary = transaction.annotation(isolateHistory);
+                        return boundary === "after" || boundary === "full";
+                    })
+                ) {
+                    undoManager.stopCapturing();
+                }
+            }),
+        ],
         undoManager,
     };
 }
@@ -124,6 +154,9 @@ export function createYjsUndoExtension<T = unknown>(
 /**
  * Register a subtree Y.Text with an existing UndoManager's tracked scope (D-97).
  * Idempotent — Yjs's addToScope is a no-op if the type is already tracked.
+ * Registration is not retroactive: an already-populated type starts with no
+ * undo item. Bootstrap writes must happen before registration or use an
+ * untracked origin such as `"init"`; `"local"` after registration is a user edit.
  * Caller is responsible for calling this at nested-editor mount time; Plan 8.5c-01
  * (NestedEditorController) owns those call-sites.
  *
@@ -134,11 +167,9 @@ export function createYjsUndoExtension<T = unknown>(
 export function addSubtreeToUndoScope(
     undoManager: Y.UndoManager,
     subtreeYtext: Y.Text,
-    extraTypes?: Y.AbstractType<unknown>[],
+    extraTypes?: UndoScopeType[],
 ): void {
-    // Cast required because Y.Text's internal event handler type is more specific
-    // than AbstractType<unknown>, but addToScope accepts any AbstractType.
-    const toAdd = [subtreeYtext as Y.AbstractType<unknown>, ...(extraTypes ?? [])];
+    const toAdd: UndoScopeType[] = [subtreeYtext, ...(extraTypes ?? [])];
     undoManager.addToScope(toAdd);
 }
 

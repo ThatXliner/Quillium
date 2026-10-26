@@ -4,11 +4,15 @@
  * Desktop app (Tauri) with no SSR, so we use @supabase/supabase-js
  * directly with localStorage storage (not @supabase/ssr).
  */
+import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { processLock } from "@supabase/auth-js";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL;
-export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+// $env/static/public, NOT import.meta.env: SvelteKit only exposes VITE_-prefixed
+// vars on import.meta.env, so PUBLIC_* reads there compile to undefined and
+// silently ship a build with auth disabled (this happened in v0.21.3–v0.21.7).
+export const SUPABASE_URL = PUBLIC_SUPABASE_URL;
+export const SUPABASE_PUBLISHABLE_KEY = PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 export const supabaseConfigured = !!(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
@@ -16,8 +20,36 @@ if (!supabaseConfigured) {
     console.warn("[supabase] Missing environment variables — auth features will not work");
 }
 
+// supabase-js issues fetches with no timeout. A request that never settles
+// (dead TCP connection after sleep-wake or a network switch) wedges the
+// processLock: the in-flight token refresh holds the lock forever, every
+// later getSession() queues behind it, and manual Reconnect can never
+// succeed until the app restarts. Bounding every request guarantees the
+// lock is always released, so the next reconnect attempt gets a fresh try.
+const FETCH_TIMEOUT_MS = 15_000;
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+        () => controller.abort(new DOMException("supabase fetch timed out", "TimeoutError")),
+        FETCH_TIMEOUT_MS,
+    );
+    // Preserve caller-initiated aborts.
+    if (init?.signal?.aborted) {
+        controller.abort(init.signal.reason);
+    } else {
+        init?.signal?.addEventListener("abort", () => controller.abort(init.signal?.reason));
+    }
+    return fetch(input, { ...init, signal: controller.signal }).finally(() =>
+        clearTimeout(timeoutId),
+    );
+};
+
 export const supabase: SupabaseClient | null = supabaseConfigured
     ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+          global: {
+              fetch: fetchWithTimeout,
+          },
           auth: {
               storage: localStorage,
               autoRefreshToken: true,

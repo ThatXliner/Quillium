@@ -1,4 +1,5 @@
 import { dev } from "$app/environment";
+import { PUBLIC_POSTHOG_HOST, PUBLIC_POSTHOG_KEY } from "$env/static/public";
 import { FEEDBACK_SURVEY_ID } from "$lib/constants";
 import { debugForceSurvey } from "$lib/debug/store.svelte";
 import { appSettings } from "$lib/settings.svelte";
@@ -57,9 +58,15 @@ function patchStylesheetCORS() {
 
 let posthogInitialised = false;
 
+/** Whether the PostHog client has been initialized and can serve feature flags. */
+export function isPostHogInitialised(): boolean {
+    return posthogInitialised;
+}
+
 function getPostHogEnv(): { key: string; host: string } | null {
-    const key = import.meta.env.PUBLIC_POSTHOG_KEY;
-    const host = import.meta.env.PUBLIC_POSTHOG_HOST;
+    // $env/static/public, NOT import.meta.env — see supabase.ts for why.
+    const key = PUBLIC_POSTHOG_KEY;
+    const host = PUBLIC_POSTHOG_HOST;
     return key && host ? { key, host } : null;
 }
 
@@ -151,7 +158,9 @@ export function syncAnalyticsOptOut(enabled: boolean) {
  * with no margin, overlapping the editor's side panels. Centering reads as a
  * deliberate modal instead.
  */
-export function showFeedbackSurvey(source: "menu" | "settings" | "auto"): boolean {
+export function showFeedbackSurvey(
+    source: "menu" | "settings" | "auto" | "nested_revision_link",
+): boolean {
     if (!getPostHogEnv()) return false;
     if (dev) {
         if (!get(debugForceSurvey)) return false;
@@ -198,6 +207,14 @@ export function capture(event: string, props?: Record<string, unknown>) {
         delete cleaned[key];
     }
     posthog.capture(event, cleaned);
+}
+
+/**
+ * captureException wrapper that accepts any thrown value, coercing
+ * non-Errors so PostHog always receives an Error instance.
+ */
+export function captureException(error: unknown) {
+    posthog.captureException(error instanceof Error ? error : new Error(String(error)));
 }
 
 // TODO(#191): restore syncShareDocumentAnalytics when document sharing is re-enabled

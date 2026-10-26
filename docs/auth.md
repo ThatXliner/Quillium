@@ -1,121 +1,74 @@
 # Auth
 
-Quillium uses Supabase Auth for Omni identity: read-only public sharing, live
-rooms, collaborator display names, and per-user collaboration metadata. Local
-writing remains usable without auth; auth-dependent UI degrades to sign-in or
-offline states.
+Quillium uses Supabase Auth for Omni identity. Publishing and Live Rooms require
+a session; reading a public Web Preview does not. Local writing remains usable
+without an account or network connection. See the
+[identity decision](adr/0007-supabase-collaboration-identity.md).
 
-## Files
+## Configuration and storage
 
-| File | Purpose |
-|------|---------|
-| `src/lib/auth/supabase.ts` | Supabase client singleton and session storage config |
-| `src/lib/auth/auth.svelte.ts` | Reactive auth state, init/reconnect, sign-in helpers |
-| `src/lib/auth/schemas.ts` | Zod validation for login, signup, display names |
-| `src/lib/auth/AuthButton.svelte` | Top-right account/sign-in entry point |
-| `src/lib/auth/AuthModal.svelte` | Email/password login and gated signup |
-| `src/lib/auth/AvatarDropdown.svelte` | Logged-in account menu |
-| `src/lib/auth/ProfileModal.svelte` | Profile dialog and logout |
-| `src/lib/auth/NameEntryModal.svelte` | Anonymous guest name prompt for joiners |
-| `src/lib/auth/avatarUtils.ts` | Initials and deterministic avatar colors |
+The desktop reads `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_PUBLISHABLE_KEY` at
+build time. Empty values disable auth. Define both names even for offline local
+development, as described in the [quickstart](quickstart.md). Service-role keys
+belong only on the server.
 
-## Environment
+[`supabase.ts`](../packages/desktop/src/lib/auth/supabase.ts) creates the desktop
+client with localStorage session persistence, automatic token refresh, and URL
+session detection disabled. `processLock` serializes auth operations inside a
+window without the cross-window Web Lock used by the default client. Each
+request has a 15-second timeout so a stalled token refresh can release its lock.
 
-| Variable | Purpose |
-|----------|---------|
-| `PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe Supabase publishable key |
+The hosted landing app handles auth redirects separately. Its
+[environment example](../packages/landing/.env.example) records the callback,
+confirmation, and password-reset URLs.
 
-If either variable is missing, `supabaseConfigured` is false and auth features
-show an offline/not-configured state. The desktop client never embeds a
-service-role key.
+## Connection and recovery
 
-## Client and Session Storage
+The editor page calls `initAuth()` on mount.
+[`auth.svelte.ts`](../packages/desktop/src/lib/auth/auth.svelte.ts) owns the
+reactive user, session, loading flag, and connection state:
 
-`supabase.ts` creates a browser-style `@supabase/supabase-js` client because
-Quillium is a static Tauri app, not an SSR app:
+1. Probe `/auth/v1/health`, with up to three attempts.
+2. Read the stored session with a bounded wait.
+3. Subscribe to auth-state changes.
 
-- `storage: localStorage`
-- `autoRefreshToken: true`
-- `persistSession: true`
-- `detectSessionInUrl: false`
-- `lock: processLock`
+An unreachable server or session-read timeout leaves a retryable `offline`
+state. `reconnectAuth()` starts a new attempt. The state can be `online` without
+a signed-in user.
 
-`processLock` avoids cross-window Web Lock contention. Multiple Tauri webviews
-share the same localStorage origin, and the default Supabase Web Lock can throw
-`LockAcquireTimeoutError` when two windows contend for the same auth-token lock.
+`signOut()` attempts server sign-out with a five-second limit, then clears local
+session storage and reactive state even if the server fails. It invalidates
+older reconnect attempts so they cannot restore the cleared session.
+`hasAuthStateToReset()` includes persisted sessions that failed to load; the
+offline UI can therefore still offer sign-out.
 
-## State Flow
+## Accounts and identity
 
-`+page.svelte` calls `initAuth()` on mount.
+`AuthModal.svelte` validates email/password login and signup through
+`schemas.ts`. Production signup links to the waitlist. Development builds show
+the signup tab unless the debug waitlist mode is enabled.
 
-```mermaid
-sequenceDiagram
-    participant Page as "+page.svelte"
-    participant Store as "auth.svelte.ts"
-    participant Supabase as "Supabase Auth"
+The auth API also supports `signInAnonymously(displayName)`. A stored anonymous
+session can join a Live Room, but the desktop has no dedicated anonymous
+name-entry modal.
 
-    Page->>Store: initAuth()
-    Store->>Supabase: GET /auth/v1/health (up to 3 tries)
-    alt reachable
-        Store->>Supabase: auth.getSession()
-        Supabase-->>Store: Session | null
-        Store->>Supabase: onAuthStateChange(...)
-        Store-->>Page: online + user/session state
-    else unreachable
-        Store-->>Page: offline
-    end
-```
+Display names come from user metadata, with email and `"User"` fallbacks. They
+are presentation data, not authorization data. Access checks use verified user
+IDs and table ownership. Anonymous Supabase users also have the `authenticated`
+Postgres role, so that role alone does not distinguish permanent accounts.
 
-The exported reactive getters are intentionally simple:
+When a non-anonymous session loads, auth links the PostHog identity to the user
+ID. Sign-out resets that identity. Event conventions live in the
+[analytics guide](posthog-events.md).
 
-| Getter | Meaning |
-|--------|---------|
-| `getUser()` | Current Supabase user, or null |
-| `getSession()` | Current session, or null |
-| `isLoading()` | Initial auth load/reconnect in progress |
-| `getConnectionState()` | `idle`, `connecting`, `online`, or `offline` |
-| `isOffline()` | Auth server/config unavailable |
-| `isAuthenticated()` | Any current user, including anonymous guests |
-| `isAnonymous()` | Supabase anonymous user |
-| `getCurrentUserName()` | Display name, email local part, or `"User"` |
+## Consumers and verification
 
-## Account Flows
+The share dialog requires a session to publish or enter rooms. `yjsProvider.ts`
+sends its access token to the relay, which verifies it before checking room
+access. `share.ts` supplies auth and author-name information to
+`shareRepository.ts`. See [collaboration](collaboration.md) for those boundaries.
 
-| Flow | Implementation |
-|------|----------------|
-| Email/password login | `signIn(email, password)` -> `supabase.auth.signInWithPassword()` |
-| Signup | `signUp(email, password, displayName)` with `options.data.display_name` |
-| Anonymous guest | `signInAnonymously(displayName)` with `options.data.display_name` |
-| Logout | `signOut()` -> `supabase.auth.signOut()` |
-
-During beta, production signup is waitlist-gated in `AuthModal.svelte`.
-Development builds can enable the signup tab unless the debug waitlist mode is
-active.
-
-Display names live in Supabase user metadata and are used only for UI/presence.
-Do not use `raw_user_meta_data` / `user_metadata` for authorization decisions.
-Authorization should use stable server-side facts such as `auth.uid()` and, when
-needed, app metadata or table ownership columns.
-
-## Consumers
-
-| Consumer | Auth dependency |
-|----------|-----------------|
-| `GoLiveButton.svelte` | Requires a user/session to publish links or start/join rooms |
-| `collab/yjsProvider.ts` | Sends the Supabase access token to the relay |
-| `collab/index.ts` | Uses `user.id` as the Yjs client/user identity |
-| `collab/share.ts` | Uses Supabase tables for read-only shares and author name |
-| `collab/awareness.ts` | Broadcasts display name/color presence |
-
-Anonymous users count as authenticated for Supabase's `authenticated` Postgres
-role. If a future RLS policy must distinguish permanent accounts from anonymous
-guest collaborators, check the anonymous-user claim explicitly rather than
-assuming `TO authenticated` means permanent account.
-
-## Testing
-
-- `tests/lib/auth/schemas.test.ts` covers form validation.
-- `tests/lib/auth/avatarUtils.test.ts` covers avatar initials/colors.
-- Collab tests cover authenticated user/session consumers through harnesses and
-  mocks.
+Form and avatar tests live in
+[`packages/desktop/tests/lib/auth`](../packages/desktop/tests/lib/auth/).
+The [cross-package E2E suite](../packages/e2e/README.md) checks real authentication
+and database access for publishing and relay clients.

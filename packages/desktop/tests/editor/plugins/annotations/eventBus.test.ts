@@ -41,6 +41,7 @@ describe("annotationEventBus", () => {
             annotationId: 42,
             from: 3,
             to: 8,
+            focus: true,
         });
 
         expect(annotationEventBus.consumePendingSelection(42)).toEqual({
@@ -48,6 +49,7 @@ describe("annotationEventBus", () => {
             annotationId: 42,
             from: 3,
             to: 8,
+            focus: true,
         });
         expect(annotationEventBus.consumePendingSelection(42)).toBeUndefined();
     });
@@ -58,12 +60,14 @@ describe("annotationEventBus", () => {
             annotationId: 1,
             from: 0,
             to: 2,
+            focus: false,
         });
         annotationEventBus.emit({
             type: "pending-nested-editor-selection",
             annotationId: 2,
             from: 5,
             to: 9,
+            focus: true,
         });
 
         expect(annotationEventBus.consumePendingSelection(2)).toEqual({
@@ -71,12 +75,14 @@ describe("annotationEventBus", () => {
             annotationId: 2,
             from: 5,
             to: 9,
+            focus: true,
         });
         expect(annotationEventBus.consumePendingSelection(1)).toEqual({
             type: "pending-nested-editor-selection",
             annotationId: 1,
             from: 0,
             to: 2,
+            focus: false,
         });
     });
 
@@ -86,6 +92,7 @@ describe("annotationEventBus", () => {
             annotationId: 5,
             from: 10,
             to: 14,
+            focus: false,
         });
 
         annotationEventBus.clearPendingSelections();

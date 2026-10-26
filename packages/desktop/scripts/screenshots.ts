@@ -40,6 +40,8 @@
  *   29-tutorial.png         — tutorial overlay welcome step
  *   30-error-banner.png     — crash recovery error banner
  *   31-share-omni-waitlist.png — Share modal open on the Omni waitlist surface
+ *   32-writing-reminders-settings.png — feature-flagged reminder schedule settings
+ *   33-writing-reminder-active.png — streak-aware reminder with snooze/dismiss actions
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -53,16 +55,19 @@ import { PNG } from "pngjs";
 
 const noServer = process.argv.includes("--no-server");
 const force = process.argv.includes("--force");
+const videoRain = process.argv.includes("--video-rain");
+const focusOnly = process.argv.includes("--focus-only");
+const remindersOnly = process.argv.includes("--reminders-only");
 const SCREENSHOT_PORT = Number(process.env.SCREENSHOT_PORT) || 4173;
 const BASE_URL = noServer ? "http://localhost:1420" : `http://localhost:${SCREENSHOT_PORT}`;
-const OUT_DIR = "screenshots";
+const OUT_DIR = videoRain ? "../../videos/quillium-reel/capture/rain" : "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
-const DEVICE_SCALE_FACTOR = 2;
+const DEVICE_SCALE_FACTOR = videoRain ? 4 : 2;
 
 // Minimum fraction of pixels that must differ for a screenshot to be considered
 // "significantly changed" and worth committing. 0.01 = 1% of total pixels.
 // If --force is set, all screenshots are updated (threshold = 0).
-const DIFF_THRESHOLD = force ? 0 : 0.01;
+const DIFF_THRESHOLD = force || videoRain ? 0 : 0.01;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -250,6 +255,7 @@ type TauriMockOptions = {
     showTutorial: boolean;
     /** When true, cmd_list_draft_events returns the AUTHORSHIP_EVENTS stream. */
     authorshipEvents: boolean;
+    writingReminders: boolean;
 };
 
 async function installTauriMock(
@@ -263,6 +269,7 @@ async function installTauriMock(
     const snapshots = options.snapshots ?? false;
     const showTutorial = options.showTutorial ?? false;
     const authorshipEvents = options.authorshipEvents ?? false;
+    const writingReminders = options.writingReminders ?? false;
 
     await page.addInitScript(
         (payload: {
@@ -273,6 +280,7 @@ async function installTauriMock(
             snapshots: boolean;
             showTutorial: boolean;
             authorshipEvents: boolean;
+            writingReminders: boolean;
             libraryDocs: typeof LIBRARY_DOCUMENTS;
             trashedDocs: typeof TRASHED_DOCUMENTS;
             mockSnapshots: typeof MOCK_SNAPSHOTS;
@@ -310,6 +318,13 @@ async function installTauriMock(
                     docFontFamily: "Georgia, serif",
                     docFontSize: 18,
                     ...(payload.fakeApiKey ? { aiEnabled: true } : {}),
+                    ...(payload.writingReminders
+                        ? {
+                              writingRemindersEnabled: true,
+                              writingReminderTimes: ["08:30", "18:00"],
+                              writingReminderDays: [1, 2, 3, 4, 5],
+                          }
+                        : {}),
                 }),
             );
 
@@ -357,7 +372,7 @@ async function installTauriMock(
                         return payload.libraryDocs.find((d) => d.id === id) ?? null;
                     }
                     if (cmd === "cmd_create_document") return "doc-new";
-                    if (cmd === "cmd_update_document_meta") return null;
+                    if (cmd === "cmd_update_document_content_metadata") return null;
                     if (cmd === "cmd_trash_document") return null;
                     if (cmd === "cmd_restore_document") return null;
                     if (cmd === "cmd_delete_document") return null;
@@ -470,6 +485,7 @@ async function installTauriMock(
             snapshots,
             showTutorial,
             authorshipEvents,
+            writingReminders,
             libraryDocs: LIBRARY_DOCUMENTS,
             trashedDocs: TRASHED_DOCUMENTS,
             mockSnapshots: MOCK_SNAPSHOTS,
@@ -481,10 +497,10 @@ async function installTauriMock(
 // ── Editor helpers ────────────────────────────────────────────────────────────
 
 async function waitForEditor(page: Page): Promise<void> {
-    await page.locator("#editor-document").waitFor({ state: "attached", timeout: 15_000 });
+    await page.locator("#editor-document").waitFor({ state: "attached", timeout: 60_000 });
     await page
         .locator("#editor-document .cm-editor")
-        .waitFor({ state: "visible", timeout: 15_000 });
+        .waitFor({ state: "visible", timeout: 60_000 });
     await page.waitForTimeout(200);
 }
 
@@ -547,6 +563,33 @@ async function activateAnnotation(page: Page, targetText: string): Promise<void>
     }, targetText);
     // Let the activeAnnotation store update and Svelte re-render
     await page.waitForTimeout(400);
+}
+
+/**
+ * Turn on a gated feature for the current page so its screenshot renders.
+ * Flags fail closed in the app, so anything behind one is invisible to the
+ * screenshot run until it is overridden here.
+ */
+async function enableFeatureFlag(page: Page, flag: string): Promise<void> {
+    const enabled = await page.evaluate(async (key) => {
+        const { default: posthog } = await import("/src/lib/posthog.ts");
+        posthog.init("phc_screenshot", {
+            api_host: "http://127.0.0.1:9",
+            disable_session_recording: true,
+        });
+        posthog.featureFlags.override({ [key]: true }, true);
+        return posthog.getFeatureFlag(key) === true;
+    }, flag);
+    if (!enabled) throw new Error(`Unable to enable the ${flag} screenshot flag`);
+    await page.waitForTimeout(500);
+}
+
+async function enableFocusModeFlag(page: Page): Promise<void> {
+    await enableFeatureFlag(page, "novel-november");
+}
+
+async function enableAuthorshipFlag(page: Page): Promise<void> {
+    await enableFeatureFlag(page, "authorship-provenance");
 }
 
 // ── Server lifecycle ──────────────────────────────────────────────────────────
@@ -734,14 +777,22 @@ async function scenarioRevisionActive(ctx: BrowserContext): Promise<void> {
     await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
-    const applied = await applyDebugScenario(page, "screenshot-revision-active");
+    const applied = await applyDebugScenario(
+        page,
+        videoRain ? "video-rain-revision-active" : "screenshot-revision-active",
+    );
     if (!applied) {
         await setEditorText(page, PROSE_SHORT);
     }
     // Activate the revision card — nested editor auto-opens when active
-    await activateAnnotation(page, "Spiritual revelations were conceded");
+    await activateAnnotation(
+        page,
+        videoRain
+            ? "The rain found her beneath the station clock"
+            : "Spiritual revelations were conceded",
+    );
     await page.waitForTimeout(400); // extra time for nested editor to mount
-    await shot(page, "05-revision-active");
+    await shot(page, videoRain ? "rain-revision-active" : "05-revision-active");
     await page.close();
 }
 
@@ -916,29 +967,41 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
     await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
-    const applied = await applyDebugScenario(page, "screenshot-inline-nested-revision");
+    const applied = await applyDebugScenario(
+        page,
+        videoRain ? "video-rain-inline-nested-revision" : "screenshot-inline-nested-revision",
+    );
     if (!applied) {
         await page.close();
         return;
     }
     // Activate the outer revision card
-    await activateAnnotation(page, "running his fingers along the brass gears");
+    await activateAnnotation(
+        page,
+        videoRain
+            ? "The rain found her beneath the station clock"
+            : "running his fingers along the brass gears",
+    );
     await page.waitForTimeout(400);
+    const outerLabel = videoRain ? "Expanded" : "Extended";
+    const innerTarget = videoRain
+        ? "her rain-dark coat shining under the lamps"
+        : "the way a pianist runs scales before the hall fills";
     // Switch to the "Extended" version (index 1) before opening the modal
-    await page.evaluate(() => {
+    await page.evaluate((desiredLabel) => {
         const revCard = document.querySelector("[data-tutorial-role='revision-card']");
         if (!revCard) return;
         const pills = revCard.querySelectorAll("button");
         for (const btn of pills) {
-            if (btn.textContent?.trim() === "Extended") {
+            if (btn.textContent?.trim() === desiredLabel) {
                 btn.click();
                 break;
             }
         }
-    });
+    }, outerLabel);
     await page.waitForTimeout(600);
     // Push the outer revision into a modal
-    await page.evaluate(() => {
+    await page.evaluate((label) => {
         const w = window as unknown as Record<string, unknown>;
         const stack = w.__modalStack__ as { push(entry: object): void } | undefined;
         const editorViewStore = w.__editorView__ as
@@ -960,46 +1023,57 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
             type: "revision",
             revisionId,
             parentView: view,
-            label: "Extended",
+            label,
         });
-    });
+    }, outerLabel);
     await page.waitForTimeout(800); // wait for modal to mount
     // Switch to the "Extended" version inside the modal by clicking its pill
     // Create a sub-revision inside the modal's nested editor using the
     // __createRevision__ DEV bridge.
-    await page.evaluate(() => {
-        const w = window as unknown as Record<string, unknown>;
-        const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
-        const createRevision = w.__createRevision__ as
-            | ((opts: {
-                  targetText: string;
-                  versions: Array<{ label: string; text: string }>;
-                  threadMessage: string;
-                  author: string;
-                  view: unknown;
-              }) => boolean)
-            | undefined;
-        if (!modalEditors || !createRevision) return;
-        const modalView = modalEditors[0];
-        if (!modalView) return;
-        createRevision({
-            targetText: "the way a pianist runs scales before the hall fills",
-            versions: [
-                {
-                    label: "Alternate image",
-                    text: "the way a watchmaker tests springs before the shop opens",
-                },
-            ],
-            threadMessage:
-                "The pianist image recurs from the outer version — try a different trade to avoid repetition.",
-            author: "Editor",
-            view: modalView,
-        });
-    });
+    await page.evaluate(
+        ({ targetText, versionLabel, versionText, threadMessage }) => {
+            const w = window as unknown as Record<string, unknown>;
+            const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
+            const createRevision = w.__createRevision__ as
+                | ((opts: {
+                      targetText: string;
+                      versions: Array<{ label: string; text: string }>;
+                      threadMessage: string;
+                      author: string;
+                      view: unknown;
+                  }) => boolean)
+                | undefined;
+            if (!modalEditors || !createRevision) return;
+            const modalView = modalEditors[0];
+            if (!modalView) return;
+            createRevision({
+                targetText,
+                versions: [
+                    {
+                        label: versionLabel,
+                        text: versionText,
+                    },
+                ],
+                threadMessage,
+                author: "Editor",
+                view: modalView,
+            });
+        },
+        {
+            targetText: innerTarget,
+            versionLabel: videoRain ? "Sharper image" : "Alternate image",
+            versionText: videoRain
+                ? "her soaked wool coat catching the station light"
+                : "the way a watchmaker tests springs before the shop opens",
+            threadMessage: videoRain
+                ? "This image can carry more texture without leaving the same rainy station moment."
+                : "The pianist image recurs from the outer version — try a different trade to avoid repetition.",
+        },
+    );
     await page.waitForTimeout(600);
     // Activate the inner revision by placing the cursor inside its range
     // within the modal's nested editor, which opens the inline editor.
-    await page.evaluate(() => {
+    await page.evaluate((target) => {
         const w = window as unknown as Record<string, unknown>;
         const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
         if (!modalEditors) return;
@@ -1009,16 +1083,15 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
             focus(): void;
         };
         if (!modalView) return;
-        const target = "the way a pianist runs scales before the hall fills";
         const pos = modalView.state.doc.toString().indexOf(target);
         if (pos === -1) return;
         modalView.focus();
         modalView.dispatch({
             selection: { anchor: pos + Math.floor(target.length / 2) },
         });
-    });
+    }, innerTarget);
     await page.waitForTimeout(600);
-    await shot(page, "13-inline-nested-revision");
+    await shot(page, videoRain ? "rain-inline-nested-revision" : "13-inline-nested-revision");
     await page.close();
 }
 
@@ -1274,6 +1347,7 @@ async function scenarioAuthorshipPlayback(ctx: BrowserContext): Promise<void> {
     // Seed currentDocumentId / currentDraftId via the real scenario flow, then
     // client-navigate so those stores survive (a page.goto would reset them).
     await applyDebugScenario(page, "screenshot-full-ui");
+    await enableAuthorshipFlag(page);
     await page.evaluate(() => {
         (window as unknown as { __goToAuthorship__?: () => void }).__goToAuthorship__?.();
     });
@@ -1506,6 +1580,84 @@ async function scenarioShareOmniWaitlist(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * Focus mode — PostHog-flag-enabled result in its two meaningful visual states:
+ * controls revealed after pointer activity, then the document-only resting state.
+ */
+async function scenarioFocusMode(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(
+        page,
+        [
+            "The house had been quiet for so long that every sound arrived with a history.",
+            "",
+            "Mara wrote at the kitchen table while rain moved softly against the windows. She had promised herself one page before midnight, then another if the room still felt awake.",
+            "",
+            "By the time the clock struck one, the story had stopped asking permission.",
+        ].join("\n"),
+    );
+    await enableFocusModeFlag(page);
+    await page.evaluate(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "F11", bubbles: true }));
+    });
+
+    const exitButton = page.getByRole("button", { name: "Exit focus mode" });
+    await exitButton.waitFor({ state: "visible", timeout: 5_000 });
+    await shot(page, "32-focus-mode-controls");
+
+    await page.waitForTimeout(2400);
+    await shot(page, "33-focus-mode-rest");
+    await page.close();
+}
+
+/**
+ * 32. writing-reminders-settings — The PostHog-gated schedule controls with
+ * reminders enabled, two preferred times, and a weekday writing rhythm.
+ */
+async function scenarioWritingReminders(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { writingReminders: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await enableFeatureFlag(page, "novel-november");
+    await page.locator("#status-bar").hover();
+    await page.locator('[aria-label="Open settings"]').click({ timeout: 5_000 });
+    await page.getByText("Writing reminders", { exact: true }).waitFor({ timeout: 5_000 });
+    await page.locator('[data-setting-id="writing-reminders"]').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await shot(page, "32-writing-reminders-settings");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await setEditorText(page, PROSE_SHORT);
+    await page.evaluate(async () => {
+        const reminders = await import("/src/lib/writingReminders.ts");
+        const { appSettings } = await import("/src/lib/settings.svelte.ts");
+        const now = new Date();
+        const days: string[] = [];
+        for (let offset = 1; offset <= 5; offset += 1) {
+            const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+            days.push(reminders.dateKey(day));
+        }
+        localStorage.setItem("quillium-writing-activity-days", JSON.stringify(days));
+        localStorage.removeItem("quillium-writing-reminder-state");
+        appSettings.writingRemindersEnabled = true;
+        appSettings.writingReminderDays = [now.getDay()];
+        appSettings.writingReminderTimes = [
+            `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+        ];
+        reminders.setWritingReminderFeatureEnabled(true);
+        await reminders.checkWritingReminders(now);
+    });
+    await page.getByText("Snooze 1 hour", { exact: true }).waitFor({ timeout: 5_000 });
+    await page.waitForTimeout(400);
+    await shot(page, "33-writing-reminder-active");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -1558,38 +1710,49 @@ async function main(): Promise<void> {
 
     try {
         console.log("\nCapturing screenshots…\n");
-        await scenarioEditor(context);
-        await scenarioAnnotationsNoAi(context);
-        await scenarioAnnotations(context);
-        await scenarioCommentActive(context);
-        await scenarioRevisionActive(context);
-        await scenarioLibrary(context);
-        await scenarioRevisionModal(context);
-        await scenarioNestedRevision(context);
-        await scenarioInlineNestedRevision(context);
-        await scenarioPersonaAnnotations(context);
-        await scenarioReadersPanel(context);
-        await scenarioDictionary(context);
-        // ── New scenarios ────────────────────────────────────────────
-        await scenarioSettings(context);
-        await scenarioStats(context);
-        await scenarioAIChat(context);
-        await scenarioAIFeedback(context);
-        await scenarioAIRevise(context);
-        await scenarioAIContext(context);
-        await scenarioAutoAIWidget(context);
-        await scenarioVersionHistory(context);
-        await scenarioAuthorshipPlayback(context);
-        await scenarioFullUI(context);
-        await scenarioDenseAnnotations(context);
-        await scenarioSuggestionActive(context);
-        await scenarioLibraryEmpty(context);
-        await scenarioLibraryTrash(context);
-        await scenarioChangelog(context);
-        await scenarioExportMenu(context);
-        await scenarioTutorial(context);
-        await scenarioErrorBanner(context);
-        await scenarioShareOmniWaitlist(context);
+        if (focusOnly) {
+            await scenarioFocusMode(context);
+        } else if (remindersOnly) {
+            await scenarioWritingReminders(context);
+        } else if (videoRain) {
+            await scenarioRevisionActive(context);
+            await scenarioInlineNestedRevision(context);
+        } else {
+            await scenarioEditor(context);
+            await scenarioAnnotationsNoAi(context);
+            await scenarioAnnotations(context);
+            await scenarioCommentActive(context);
+            await scenarioRevisionActive(context);
+            await scenarioLibrary(context);
+            await scenarioRevisionModal(context);
+            await scenarioNestedRevision(context);
+            await scenarioInlineNestedRevision(context);
+            await scenarioPersonaAnnotations(context);
+            await scenarioReadersPanel(context);
+            await scenarioDictionary(context);
+            // ── New scenarios ────────────────────────────────────────────
+            await scenarioSettings(context);
+            await scenarioStats(context);
+            await scenarioAIChat(context);
+            await scenarioAIFeedback(context);
+            await scenarioAIRevise(context);
+            await scenarioAIContext(context);
+            await scenarioAutoAIWidget(context);
+            await scenarioVersionHistory(context);
+            await scenarioAuthorshipPlayback(context);
+            await scenarioFullUI(context);
+            await scenarioDenseAnnotations(context);
+            await scenarioSuggestionActive(context);
+            await scenarioLibraryEmpty(context);
+            await scenarioLibraryTrash(context);
+            await scenarioChangelog(context);
+            await scenarioExportMenu(context);
+            await scenarioTutorial(context);
+            await scenarioErrorBanner(context);
+            await scenarioShareOmniWaitlist(context);
+            await scenarioFocusMode(context);
+            await scenarioWritingReminders(context);
+        }
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {

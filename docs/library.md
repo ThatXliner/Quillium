@@ -1,87 +1,49 @@
-# Library and Document Management
+# Library and document management
 
-## Data Model
+The Library lists documents, each of which contains tabs and drafts. Document
+metadata includes the title, tags, word count, preview text, and timestamps.
+Prose and annotations belong to each draft's event log and snapshots. See
+[tabs and drafts](tabs-and-drafts.md) and [persistence](persistence.md).
 
-SQLite schema with `documents` + `drafts`:
-- Each document has metadata: title, word count, preview text, tags, timestamps, `deletedAt` (soft-delete)
-- Each document has one or more drafts (default one, created automatically)
-- Document state (text + annotations) lives in `events` + `snapshots` tables, keyed by draft
+## Titles and metadata
 
-## Auto-Derived Document Title
+New documents start as `Untitled`.
+[documentMetadata.ts](../packages/desktop/src/lib/editor/documentMetadata.ts)
+derives a title from the first line once the writer adds a newline or at least
+four words. The title is capped at 40 characters. SQLite applies the proposed
+title only if the stored title is still `Untitled`, so a delayed content save
+cannot replace a rename.
 
-New documents start titled "Untitled". On each save, `listeners.ts` checks if title is still "Untitled" and derives one from the first line when:
-- User presses Enter (creating second line), OR
-- First line contains at least 4 words
+Title, tags, and content metadata use separate database operations. Renaming or
+tagging leaves the indexed body unchanged. Content writes update the word count,
+preview, and search body. These values describe the most recently saved draft
+content, not the combined contents of every tab. Tags are a JSON array in
+`documents.tags`.
 
-Title set to `firstLine.slice(0, 40)`. Once derived, it won't auto-update again.
+## Library actions
 
-If AI is enabled, users can click "Suggest" in the status bar for an AI-generated title (also capped at 40 chars).
+[The Library route](../packages/desktop/src/routes/library/+page.svelte) has
+Library and Trash views, a search field, document cards, and a preview panel.
+The Continue control opens the most recently edited document.
 
-## Library Page
+Writers can create, open, rename, duplicate, trash, and restore documents.
+Duplication creates an independent document with its tabs, drafts, and annotations.
+Trash is a soft delete. Permanent deletion requires confirmation; configured
+trash retention can also purge old trashed documents. These operations differ from
+[soft-deleting a tab or draft](tabs-and-drafts.md#deleting-drafts).
 
-`routes/library/+page.svelte` — two tabs: Library and Trash.
+The TypeScript API is in [db/index.ts](../packages/desktop/src/lib/db/index.ts),
+and native document operations are in
+[documents.rs](../packages/desktop/src-tauri/src/db/documents.rs). Search behavior
+has its own [guide](search.md).
 
-### Layout
+## Navigation and save failures
 
-- Document cards in a grid
-- Search bar
-- Preview panel sidebar
-- `ContinuePill` — shortcut to most recently edited document
+[navigation.ts](../packages/desktop/src/lib/navigation.ts) owns navigation to the
+Library, editor, Version History, and authorship report. The outgoing editor
+paths await `flushPersistence()` before navigation. The Library path also releases
+the native open-document registration after that flush succeeds.
 
-### Operations
-
-| Operation | Description |
-|-----------|-------------|
-| Create | New document with seed content |
-| Open | Navigate to editor |
-| Rename | Via preview panel |
-| Trash | Soft-delete |
-| Restore | Restore from trash |
-| Permanent delete | After confirmation |
-
-### Trash Retention
-
-Configurable auto-empty period via:
-- `getTrashRetention` — Rust command
-- `setTrashRetention` — Rust command
-
-## Document Tags (`library/tags.ts`)
-
-Document tagging system for organization. Tags stored in `documents.tags` column as JSON array.
-
-## Navigation (`navigation.ts`)
-
-Two functions:
-
-| Function | Direction | Attribute |
-|----------|-----------|-----------|
-| `goToLibrary()` | Left slide | `data-direction="left"` |
-| `goToEditor()` | Right slide | `data-direction="right"` |
-
-Both set `data-direction` on `<html>` before calling SvelteKit's `goto()`. CSS transitions use this for slide animation.
-
-## Library Components
-
-| Component | Purpose |
-|-----------|---------|
-| `DocumentCard.svelte` | Single card in grid |
-| `DocumentGrid.svelte` | Grid layout |
-| `EmptyState.svelte` | Empty library placeholder |
-| `LibraryTopBar.svelte` | Header + actions |
-| `PreviewPanel.svelte` | Document preview sidebar |
-| `ContinuePill.svelte` | "Continue writing" shortcut |
-
-## DB Wrapper Functions (TypeScript)
-
-These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Tauri commands (actual Tauri command names are `cmd_*` variants).
-
-| Function | Purpose |
-|----------|---------|
-| `listDocuments` | Get all documents |
-| `createDocument` | Create new document |
-| `updateDocumentMeta` | Update title, tags |
-| `trashDocument` | Soft-delete |
-| `restoreDocument` | Restore from trash |
-| `deleteDocument` | Permanent delete |
-| `getTrashRetention` | Get auto-empty period |
-| `setTrashRetention` | Set auto-empty period |
+A failed flush keeps the editor open. Draft and tab switches use the same
+persistence boundary through the loader and tab controller. Code that leaves the
+editor must preserve this ordering rather than calling the router directly.

@@ -3,15 +3,16 @@ import type { VersionState } from "$lib/editor/plugins/annotations/models";
 import { exportDocument, exportDocumentById } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorHarness } from "../helpers/EditorHarness";
 
 let h: EditorHarness;
 let savedContent: string;
 let savedPath: string;
+let invokedTextPath: string;
 let invokedPdfPath: string;
 let invokedPdfPayload: unknown;
+let invokedDocxBytes: number[];
 let mockedDrafts: DraftMeta[];
 let mockedLoadResult: LoadResult;
 
@@ -23,42 +24,62 @@ vi.mock("$lib/db", () => ({
     loadDocumentState: vi.fn(async () => mockedLoadResult),
 }));
 
-vi.mock("$lib/editor/replay", () => ({
-    replayEvents: vi.fn((state) => state),
+vi.mock("$lib/editor/replay", async () => {
+    // The real module pulls in the full extension stack via savedFields; the
+    // tests only need an empty state (snapshots are null here) with no replay.
+    const { EditorState } = await import("@codemirror/state");
+    return {
+        replayEvents: vi.fn((state) => state),
+        reconstructState: vi.fn(
+            (_snapshotStateJson: string | null, _events: unknown[], extensions: unknown) =>
+                EditorState.create({ extensions: extensions as never }),
+        ),
+    };
+});
+
+vi.mock("$lib/appLog", () => ({
+    logAppEvent: vi.fn(async () => {}),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-    invoke: vi
-        .fn()
-        .mockImplementation(
-            async (command: string, args?: { path?: string; payload?: unknown }) => {
-                if (command === "cmd_export_pdf") {
-                    invokedPdfPath = args?.path ?? "";
-                    invokedPdfPayload = args?.payload;
-                }
+    invoke: vi.fn().mockImplementation(
+        async (
+            command: string,
+            args?: {
+                defaultName?: string;
+                content?: string;
+                payload?: unknown;
+                bytes?: number[];
             },
-        ),
-}));
-
-// Mock Tauri dialog and fs plugins
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-    save: vi.fn().mockImplementation(async (opts: { defaultPath: string }) => {
-        savedPath = opts.defaultPath;
-        return `/fake/path/${opts.defaultPath}`;
-    }),
-}));
-
-vi.mock("@tauri-apps/plugin-fs", () => ({
-    writeTextFile: vi.fn().mockImplementation(async (_path: string, content: string) => {
-        savedContent = content;
-    }),
+        ) => {
+            if (command === "cmd_export_text_with_dialog") {
+                savedPath = args?.defaultName ?? "";
+                invokedTextPath = `/fake/path/${savedPath}`;
+                savedContent = args?.content ?? "";
+                return true;
+            }
+            if (command === "cmd_export_pdf_with_dialog") {
+                savedPath = args?.defaultName ?? "";
+                invokedPdfPath = `/fake/path/${savedPath}`;
+                invokedPdfPayload = args?.payload;
+                return true;
+            }
+            if (command === "cmd_export_bytes_with_dialog") {
+                savedPath = args?.defaultName ?? "";
+                invokedDocxBytes = args?.bytes ?? [];
+                return true;
+            }
+        },
+    ),
 }));
 
 beforeEach(() => {
     savedContent = "";
     savedPath = "";
+    invokedTextPath = "";
     invokedPdfPath = "";
     invokedPdfPayload = null;
+    invokedDocxBytes = [];
     mockedDrafts = [
         {
             id: "draft-1",
@@ -87,13 +108,33 @@ afterEach(() => {
 });
 
 describe("exportDocument", () => {
+    it("writes a Word file through the native binary save dialog", async () => {
+        h = EditorHarness.create("Hello world");
+        const id = h.addComment(0, 5);
+        h.addThreadMessage(id, "Keep this", "Alice");
+
+        expect(await exportDocument(h.view, "docx+annotations")).toBe(true);
+        expect(savedPath).toBe("Test Document.docx");
+        expect(invokedDocxBytes.slice(0, 2)).toEqual([80, 75]);
+        expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+            "cmd_export_bytes_with_dialog",
+            expect.objectContaining({ defaultName: "Test Document.docx", extension: "docx" }),
+        );
+    });
     describe("plain text export", () => {
         it("exports document text as .txt", async () => {
             h = EditorHarness.create("Hello world");
             await exportDocument(h.view, "txt");
 
             expect(savedPath).toBe("Test Document.txt");
+            expect(invokedTextPath).toBe("/fake/path/Test Document.txt");
             expect(savedContent).toBe("Hello world");
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_text_with_dialog", {
+                defaultName: "Test Document.txt",
+                extension: "txt",
+                filterName: "Text",
+                content: "Hello world",
+            });
         });
     });
 
@@ -250,14 +291,13 @@ describe("exportDocument", () => {
     describe("PDF export", () => {
         it("writes a plain PDF without annotations through the Rust command", async () => {
             h = EditorHarness.create("Hello world");
-            vi.mocked(save).mockClear();
             await exportDocument(h.view, "pdf");
 
             expect(savedPath).toBe("Test Document.pdf");
             expect(invokedPdfPath).toBe("/fake/path/Test Document.pdf");
             expect(savedContent).toBe("");
-            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_pdf", {
-                path: "/fake/path/Test Document.pdf",
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_pdf_with_dialog", {
+                defaultName: "Test Document.pdf",
                 payload: {
                     title: "Test Document",
                     bodyParagraphs: ["Hello world"],
@@ -314,6 +354,7 @@ describe("exportDocument", () => {
                         annotationField: {
                             "0": {
                                 _type: "comment",
+                                status: "active" as const,
                                 id: 0,
                                 thread: [{ message: "Nested note", author: "Bob", time: 1 }],
                                 selection: {

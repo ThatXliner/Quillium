@@ -15,6 +15,9 @@ export const FEEDBACK_SURVEY_ID = "019e955b-2c1a-0000-4793-edcac62b8133";
 
 export const OMNI_WAITLIST_URL = "https://quillium.bryanhu.com/omni";
 
+export const LATEST_DESKTOP_RELEASE_URL =
+    "https://github.com/ThatXliner/quillium-releases/releases/latest";
+
 // Filled in once the app is live on the App Store.
 // Format: https://apps.apple.com/app/id<APP_ID>
 export const APP_STORE_URL = "";

@@ -183,6 +183,7 @@ describe("yjsBinding", () => {
                 effects: addAnnotation.of({
                     id: 0,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(6, 11),
                     thread: [],
                     versions: revVersions,

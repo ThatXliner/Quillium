@@ -51,7 +51,9 @@ test.describe("revision cursor teleport", () => {
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 40_000,
+        });
     });
 
     test("clicking revision text opens inline editor with cursor", async ({ page }) => {
@@ -72,11 +74,11 @@ test.describe("revision cursor teleport", () => {
         // Verify inline editor closed
         await expect(inlineEditor).toBeHidden({ timeout: 3000 });
 
-        // Now click on the revision text ("world") — should reopen inline editor
-        // "hello " is 6 chars, so "world" starts roughly 60% across the line
-        if (box) {
-            await page.mouse.click(box.x + box.width * 0.8, box.y + box.height / 2);
-        }
+        // Click the actual revision mark rather than estimating its position from the
+        // full-width editor box. The prose occupies only a small part of that box.
+        const revisionText = page.locator("#editor-document .cm-revision").first();
+        await expect(revisionText).toHaveText("world");
+        await revisionText.click();
 
         // Inline editor should reopen
         const reopened = page.locator(".revision-inline-editor .cm-content").first();
@@ -93,12 +95,10 @@ test.describe("revision cursor teleport", () => {
         await expect(inlineEditor).toBeVisible({ timeout: 8000 });
         await expect.poll(() => getCmText(inlineEditor)).toBe("hello world");
 
-        // Click on the revision text in the main editor
-        const mainEditor = page.locator("#editor-document .cm-content");
-        const box = await mainEditor.boundingBox();
-        if (box) {
-            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        }
+        // Click on the marked revision text in the main editor.
+        const revisionText = page.locator("#editor-document .cm-revision").first();
+        await expect(revisionText).toHaveText("hello world");
+        await revisionText.click();
 
         // The inline editor should still be visible and focusable
         await expect(inlineEditor).toBeVisible();
@@ -124,7 +124,9 @@ test.describe("nested annotation creation from inline editor", () => {
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 40_000,
+        });
     });
 
     test("Mod-Alt-K in inline editor with selection opens modal", async ({ page }) => {
@@ -147,7 +149,9 @@ test.describe("nested annotation creation from inline editor", () => {
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
     });
 
-    test("Mod-Alt-M in inline editor with selection opens modal for comment", async ({ page }) => {
+    test("Mod-Shift-C in inline editor with selection opens modal for comment", async ({
+        page,
+    }) => {
         await setupFullRevision(page, "hello world");
 
         const inlineEditor = page.locator(".revision-inline-editor .cm-content").first();
@@ -158,8 +162,12 @@ test.describe("nested annotation creation from inline editor", () => {
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
 
-        // Press Mod-Alt-M to create a nested comment
-        await page.keyboard.press("Control+Alt+m");
+        // Press Mod-Shift-C to create a nested comment.
+        await page.keyboard.down("Control");
+        await page.keyboard.down("Shift");
+        await page.keyboard.press("c");
+        await page.keyboard.up("Shift");
+        await page.keyboard.up("Control");
 
         // A revision modal should open (to host the nested comment)
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
@@ -181,7 +189,9 @@ test.describe("revision modal annotation visibility", () => {
             );
         });
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 40_000,
+        });
     });
 
     test("creating a comment inside the modal shows it in the annotations sidebar", async ({
@@ -208,8 +218,12 @@ test.describe("revision modal annotation visibility", () => {
         await page.keyboard.press("Home");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
 
-        // Create a comment via Mod-Alt-M
-        await page.keyboard.press("Control+Alt+m");
+        // Create a comment via Mod-Shift-C.
+        await page.keyboard.down("Control");
+        await page.keyboard.down("Shift");
+        await page.keyboard.press("c");
+        await page.keyboard.up("Shift");
+        await page.keyboard.up("Control");
 
         // The modal's annotations sidebar should show the annotation card
         const annotationCard = page.locator("dialog .annotation-card-inline").first();

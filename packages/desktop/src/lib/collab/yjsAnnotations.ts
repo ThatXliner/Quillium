@@ -12,9 +12,11 @@ import {
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    AiGenerationProvenanceSchema,
     type Annotation as AnnotationType,
     type GenericAnnotation,
     type ThreadMessage,
+    VersionStateSchema,
     activeVersionIndex,
     isAnnotationOfType,
 } from "$lib/editor/plugins/annotations/models";
@@ -27,8 +29,9 @@ import { Annotation, Transaction } from "@codemirror/state";
  * ─────────────────────────────────────────────────────────────────────────
  *  Yjs is canonical. The CodeMirror `annotationField` is a DERIVED PROJECTION
  *  of the Yjs `annotations` Y.Map. Reads of annotation state for sync purposes
- *  go through `yjsAnnotationToCodeMirror(yMap)`; writes go through Yjs first
+ *  go through `yjsAnnotationToCodeMirror(yMap)`; user writes go through Yjs first
  *  inside `ydoc.transact(fn, "local")` and the CM dispatch is the projection.
+ *  Owner bootstrap data uses the untracked `"init"` origin.
  *
  *  This file does NOT enforce that contract for the entire codebase yet (Phases
  *  3–5 do that). It is the SOLE writer of `annotationField` on the read path
@@ -76,11 +79,13 @@ import { Annotation, Transaction } from "@codemirror/state";
  *  mounts an instance per nested editor subtree.
  *  Per D-93: Comment threads are Y.Array (append-only); Y.Array.push is the
  *  mutation primitive.
- *  Per D-94: No legacy wire format. The previous syncRevisionChanges JSON-diff
- *  path was deleted in this phase.
+ *  Per #269: Revision versions are id-native in Yjs. The versions map is keyed
+ *  by VersionState.id, `order` stores display order, and `activeVersionId` is
+ *  the active pointer. The read path still tolerates older index-keyed rooms.
  *
  *  Origin tagging:
- *    - ydoc.transact(..., "local")  : writes this plugin originated
+ *    - ydoc.transact(..., "local")  : user writes this plugin originated
+ *    - ydoc.transact(..., "init")   : owner bootstrap writes (not undoable)
  *    - Transactions tagged with yjsAnnotationSync(true) : dispatches this plugin
  *      originated on the CM side (skip to avoid loops)
  *
@@ -90,6 +95,7 @@ import { Annotation, Transaction } from "@codemirror/state";
  *                  returns null on malformed data; null entries are skipped.
  */
 import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { YjsThreadSchema } from "@quillium/share/collab-contract/annotations";
 import * as Y from "yjs";
 import {
     AnnotationIdMap,
@@ -100,6 +106,7 @@ import {
 } from "./annotationSchema";
 import { absoluteToRelative } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
+import { yjsAnnotation } from "./yjsBinding";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
@@ -117,8 +124,8 @@ export function createAnnotationSyncPlugin(
             ) => void;
             private destroyed = false;
             private idMap = idMap;
-            private nestedIdMaps = new WeakMap<Y.Map<YjsAnnotationNode>, AnnotationIdMap>();
-            private nestedIdMapFor = (annotations: Y.Map<YjsAnnotationNode>): AnnotationIdMap => {
+            private nestedIdMaps = new WeakMap<Y.Map<unknown>, AnnotationIdMap>();
+            private nestedIdMapFor = (annotations: Y.Map<unknown>): AnnotationIdMap => {
                 let idMap = this.nestedIdMaps.get(annotations);
                 if (!idMap) {
                     idMap = new AnnotationIdMap();
@@ -187,11 +194,12 @@ export function createAnnotationSyncPlugin(
                             const yjsKey = ev.path[0] as string;
                             const cmId = this.idMap.getCmId(yjsKey);
                             if (cmId === undefined) continue;
-                            const threadArr = ev.target as Y.Array<ThreadMessage>;
+                            const thread = YjsThreadSchema.safeParse(ev.target);
+                            if (!thread.success) continue;
                             effects.push(
                                 updateThread.of({
                                     annotationId: cmId,
-                                    newThread: threadArr.toArray(),
+                                    newThread: thread.data,
                                 }),
                             );
                             continue;
@@ -305,7 +313,7 @@ export function createAnnotationSyncPlugin(
                             scopeAnnotations.set(yjsId, node);
                             this.syncAnnotationFields(ann, node, ydoc);
                         }
-                    }, "local");
+                    }, "init");
                 });
             }
 
@@ -370,7 +378,23 @@ export function createAnnotationSyncPlugin(
                             e.is(_updateRevisionVersionState),
                     ),
                 );
-                if (!hasAnnotationEffect && !hasNestedEditorEdit) return;
+                // A pure text edit can still remove annotations when their
+                // mapped ranges collapse. Reconcile those membership changes
+                // so Yjs does not retain annotations that CodeMirror dropped.
+                const beforeAnnotations = update.startState.field(annotationField);
+                const afterAnnotations = update.state.field(annotationField);
+                const beforeIds = Object.keys(beforeAnnotations);
+                const isRemoteTextProjection = update.transactions.some((tr) =>
+                    tr.annotation(yjsAnnotation),
+                );
+                const annotationMembershipChanged =
+                    !isRemoteTextProjection &&
+                    (beforeIds.length !== Object.keys(afterAnnotations).length ||
+                        beforeIds.some((id) => afterAnnotations[Number(id)] === undefined));
+
+                if (!hasAnnotationEffect && !hasNestedEditorEdit && !annotationMembershipChanged) {
+                    return;
+                }
 
                 this.diffAndReconcile(update);
             }
@@ -443,7 +467,7 @@ export function createAnnotationSyncPlugin(
 
             /**
              * Sync specific mutable fields from CM annotation to Yjs node.
-             * Handles: thread, activeVersionIndex, version text, version label.
+             * Handles: status, thread, activeVersionId, version order, version text, version label.
              */
             private syncAnnotationFields(
                 ann: GenericAnnotation,
@@ -451,6 +475,20 @@ export function createAnnotationSyncPlugin(
                 ydoc: Y.Doc,
             ) {
                 this.syncAnnotationPositions(ann, node);
+
+                if (JSON.stringify(node.get("aiProvenance")) !== JSON.stringify(ann.aiProvenance)) {
+                    if (ann.aiProvenance !== undefined) {
+                        node.set("aiProvenance", ann.aiProvenance);
+                    } else if (
+                        AiGenerationProvenanceSchema.safeParse(node.get("aiProvenance")).success
+                    ) {
+                        node.delete("aiProvenance");
+                    }
+                }
+
+                if (node.get("status") !== ann.status) {
+                    node.set("status", ann.status);
+                }
 
                 // Thread sync (all annotation types)
                 const threadArr = node.get("thread") as Y.Array<ThreadMessage> | undefined;
@@ -471,18 +509,24 @@ export function createAnnotationSyncPlugin(
 
                 // Revision-specific fields
                 if (isAnnotationOfType(ann, "revision")) {
-                    // activeVersionIndex — relay schema stays index-based (issue
-                    // #269); derive the positional index from activeVersionId.
-                    const cmIndex = activeVersionIndex(ann);
-                    const yjsIndex = node.get("activeVersionIndex") as number | undefined;
-                    if (cmIndex !== yjsIndex) {
-                        node.set("activeVersionIndex", cmIndex);
+                    const cmActiveVersionId = ann.versions.some((v) => v.id === ann.activeVersionId)
+                        ? ann.activeVersionId
+                        : ann.versions[0]?.id;
+                    const yjsActiveVersionId = node.get("activeVersionId") as string | undefined;
+                    if (
+                        cmActiveVersionId !== undefined &&
+                        cmActiveVersionId !== yjsActiveVersionId
+                    ) {
+                        node.set("activeVersionId", cmActiveVersionId);
+                    }
+                    if (node.get("activeVersionIndex") !== undefined) {
+                        node.delete("activeVersionIndex");
                     }
 
                     // Version management (add/delete/update)
                     const versionsMap = node.get("versions") as Y.Map<Y.Map<unknown>> | undefined;
                     if (versionsMap) {
-                        this.syncRevisionVersions(ann, versionsMap, ydoc);
+                        this.syncRevisionVersions(ann, node, versionsMap, ydoc);
                     }
                 }
             }
@@ -508,52 +552,66 @@ export function createAnnotationSyncPlugin(
              */
             private syncRevisionVersions(
                 ann: AnnotationType<"revision">,
+                node: YjsAnnotationNode,
                 versionsMap: Y.Map<Y.Map<unknown>>,
                 ydoc: Y.Doc,
             ) {
                 const cmVersions = ann.versions;
+                const cmVersionIds = new Set(cmVersions.map((version) => version.id));
                 const yjsKeys = new Set(versionsMap.keys());
 
                 // Add new versions
-                for (let i = 0; i < cmVersions.length; i++) {
-                    const key = String(i);
-                    if (!yjsKeys.has(key)) {
-                        const versionNode = new Y.Map<unknown>();
-                        const vtext = new Y.Text();
-                        if (cmVersions[i].doc.length > 0) {
-                            vtext.insert(0, cmVersions[i].doc);
-                        }
-                        versionNode.set("text", vtext);
-                        if (cmVersions[i].label !== undefined) {
-                            versionNode.set("label", cmVersions[i].label);
-                        }
-                        versionNode.set("annotations", new Y.Map<YjsAnnotationNode>());
-                        versionsMap.set(key, versionNode);
+                for (const version of cmVersions) {
+                    if (!yjsKeys.has(version.id)) {
+                        versionsMap.set(version.id, createYjsVersionNode(version));
                     }
                 }
 
                 // Delete removed versions
                 for (const key of yjsKeys) {
-                    const idx = Number(key);
-                    if (idx >= cmVersions.length) {
+                    if (!cmVersionIds.has(key)) {
                         versionsMap.delete(key);
                     }
                 }
 
+                this.syncVersionOrder(
+                    node,
+                    cmVersions.map((version) => version.id),
+                );
+
                 // Sync version text, labels, and nested annotation maps
-                for (let i = 0; i < cmVersions.length; i++) {
-                    const key = String(i);
-                    const vNode = versionsMap.get(key);
+                for (const version of cmVersions) {
+                    const vNode = versionsMap.get(version.id);
                     if (!vNode) continue;
+                    if (vNode.get("id") !== version.id) {
+                        vNode.set("id", version.id);
+                    }
 
                     // Version text - character-level sync
                     const vtext = vNode.get("text") as Y.Text | undefined;
                     if (vtext) {
-                        this.syncVersionText(cmVersions[i].doc, vtext);
+                        this.syncVersionText(version.doc, vtext);
+                    }
+
+                    for (const [key, value] of Object.entries({
+                        provenance: version.provenance,
+                        aiProvenance: version.aiProvenance,
+                    })) {
+                        if (JSON.stringify(vNode.get(key)) === JSON.stringify(value)) continue;
+                        if (value !== undefined) {
+                            vNode.set(key, value);
+                        } else if (
+                            (key === "provenance"
+                                ? VersionStateSchema.shape.provenance
+                                : AiGenerationProvenanceSchema
+                            ).safeParse(vNode.get(key)).success
+                        ) {
+                            vNode.delete(key);
+                        }
                     }
 
                     // Version label
-                    const cmLabel = cmVersions[i].label;
+                    const cmLabel = version.label;
                     const yjsLabel = vNode.get("label") as string | undefined;
                     if (cmLabel !== yjsLabel) {
                         if (cmLabel !== undefined) {
@@ -563,22 +621,46 @@ export function createAnnotationSyncPlugin(
                         }
                     }
 
-                    let nestedAnnotations = vNode.get("annotations");
-                    if (!(nestedAnnotations instanceof Y.Map)) {
-                        nestedAnnotations = new Y.Map<YjsAnnotationNode>();
+                    const existingAnnotations = vNode.get("annotations");
+                    const nestedAnnotations =
+                        existingAnnotations instanceof Y.Map
+                            ? existingAnnotations
+                            : new Y.Map<unknown>();
+                    if (nestedAnnotations !== existingAnnotations) {
                         vNode.set("annotations", nestedAnnotations);
                     }
                     if (vtext) {
                         syncRawAnnotationsToYjsMap(
-                            getRawAnnotationField(cmVersions[i]),
+                            getRawAnnotationField(version),
                             nestedAnnotations as Y.Map<YjsAnnotationNode>,
                             vtext,
                             this.clientId,
                             ydoc,
-                            this.nestedIdMapFor(nestedAnnotations as Y.Map<YjsAnnotationNode>),
+                            this.nestedIdMapFor(nestedAnnotations),
                             { nestedIdMapFor: this.nestedIdMapFor },
                         );
                     }
+                }
+            }
+
+            private syncVersionOrder(node: YjsAnnotationNode, desiredOrder: string[]): void {
+                const existingOrder = node.get("order");
+                const order =
+                    existingOrder instanceof Y.Array
+                        ? (existingOrder as Y.Array<string>)
+                        : new Y.Array<string>();
+                if (!(existingOrder instanceof Y.Array)) {
+                    node.set("order", order);
+                }
+
+                const yjsOrder = order.toArray();
+                if (arraysEqual(yjsOrder, desiredOrder)) return;
+
+                if (order.length > 0) {
+                    order.delete(0, order.length);
+                }
+                if (desiredOrder.length > 0) {
+                    order.push(desiredOrder);
                 }
             }
 
@@ -628,4 +710,33 @@ function equalUint8(a: Uint8Array, b: Uint8Array): boolean {
         if (a[i] !== b[i]) return false;
     }
     return true;
+}
+
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+function createYjsVersionNode(version: AnnotationType<"revision">["versions"][number]) {
+    const versionNode = new Y.Map<unknown>();
+    const vtext = new Y.Text();
+    if (version.doc.length > 0) {
+        vtext.insert(0, version.doc);
+    }
+    versionNode.set("id", version.id);
+    versionNode.set("text", vtext);
+    if (version.provenance !== undefined) {
+        versionNode.set("provenance", version.provenance);
+    }
+    if (version.aiProvenance !== undefined) {
+        versionNode.set("aiProvenance", version.aiProvenance);
+    }
+    if (version.label !== undefined) {
+        versionNode.set("label", version.label);
+    }
+    versionNode.set("annotations", new Y.Map<YjsAnnotationNode>());
+    return versionNode;
 }

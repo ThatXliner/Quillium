@@ -4,9 +4,8 @@
     The native menu bar (Settings / Library / History / Export)
     is not reachable in a mobile webview, so this component surfaces the
     SAME actions behind a hamburger button. It does not own any of the
-    logic: every item just calls a callback prop that maps 1:1 to the
-    existing handlers in +page.svelte (toggle settings, goToHistory,
-    goToLibrary, toggle licenses, exportDocument).
+    logic: every item just calls a callback prop that maps to handlers in
+    +page.svelte. Feature-flagged actions are omitted entirely when disabled.
 
     Desktop is left untouched: the trigger is hidden at >=900px via the
     `max-[899px]:flex` responsive class (it is `hidden` otherwise), so the

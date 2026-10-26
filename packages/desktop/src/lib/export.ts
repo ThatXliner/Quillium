@@ -9,15 +9,15 @@
  *   - PDF (.pdf) — document content only
  *   - PDF + annotations (.pdf) — document content plus styled annotation cards
  *
- * Uses native save dialog via Tauri's dialog plugin.
+ * Uses native save dialog + file writes through Rust commands.
  */
 
 import type { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
+import { logAppEvent } from "./appLog";
 import { annotationField } from "./editor/plugins/annotations";
 import {
     type GenericAnnotation,
@@ -30,8 +30,19 @@ import {
 import posthog from "./posthog";
 import { currentDocumentTitle } from "./stores";
 
-export type ExportFormat = "txt" | "json" | "md" | "txt+json" | "pdf" | "pdf+annotations";
-type TextExportFormat = Exclude<ExportFormat, "pdf" | "pdf+annotations">;
+export type ExportFormat =
+    | "txt"
+    | "json"
+    | "md"
+    | "txt+json"
+    | "pdf"
+    | "pdf+annotations"
+    | "docx"
+    | "docx+annotations";
+type TextExportFormat = Exclude<
+    ExportFormat,
+    "pdf" | "pdf+annotations" | "docx" | "docx+annotations"
+>;
 
 type PdfAnnotationCardKind = "comment" | "suggestion" | "revision" | "version";
 type PdfAnnotationCard = {
@@ -48,38 +59,71 @@ type PdfExportPayload = {
     annotations: PdfAnnotationCard[];
 };
 
+function exportErrorDescription(error: unknown): string {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "string" && error.trim()) return error;
+    return "The file could not be written.";
+}
+
+function reportExportFailure(format: ExportFormat, error: unknown): void {
+    console.error("[export] export failed", { format, error });
+    void logAppEvent("error", "export", "export failed", {
+        format,
+        error: exportErrorDescription(error),
+    });
+    toast.error("Export failed", {
+        description: exportErrorDescription(error),
+    });
+    posthog.capture("document_export_failed", { format });
+}
+
 export async function saveWithDialog(
     content: string,
     defaultName: string,
     extension: string,
 ): Promise<boolean> {
     const filterName =
-        extension === "txt"
-            ? "Text"
-            : extension === "json"
-              ? "JSON"
-              : extension === "md"
-                ? "Markdown"
-                : extension === "pdf"
-                  ? "PDF"
-                  : "Text";
-    const path = await save({
-        defaultPath: defaultName,
-        filters: [{ name: filterName, extensions: [extension] }],
+        { txt: "Text", json: "JSON", md: "Markdown", pdf: "PDF" }[extension] ?? "Text";
+    await logAppEvent("info", "export", "text export command starting", {
+        defaultName,
+        extension,
+        chars: content.length,
     });
-    if (!path) return false;
-    await writeTextFile(path, content);
-    return true;
+    const saved = await invoke<boolean>("cmd_export_text_with_dialog", {
+        content,
+        defaultName,
+        extension,
+        filterName,
+    });
+    await logAppEvent("info", "export", "text export command finished", {
+        defaultName,
+        extension,
+        saved,
+    });
+    return saved;
 }
 
 async function savePdfWithDialog(payload: PdfExportPayload, defaultName: string): Promise<boolean> {
-    const path = await save({
-        defaultPath: defaultName,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
+    await logAppEvent("info", "export", "pdf export command starting", {
+        defaultName,
+        paragraphs: payload.bodyParagraphs.length,
+        annotations: payload.annotations.length,
     });
-    if (!path) return false;
-    await invoke("cmd_export_pdf", { path, payload });
-    return true;
+    const saved = await invoke<boolean>("cmd_export_pdf_with_dialog", { defaultName, payload });
+    await logAppEvent("info", "export", "pdf export command finished", {
+        defaultName,
+        saved,
+    });
+    return saved;
+}
+
+async function saveDocxWithDialog(bytes: Uint8Array, defaultName: string): Promise<boolean> {
+    return invoke<boolean>("cmd_export_bytes_with_dialog", {
+        bytes: Array.from(bytes),
+        defaultName,
+        extension: "docx",
+        filterName: "Word",
+    });
 }
 
 export function sanitizeFilename(title: string): string {
@@ -348,6 +392,8 @@ const fileExtensions: Record<ExportFormat, string> = {
     "txt+json": "txt",
     pdf: "pdf",
     "pdf+annotations": "pdf",
+    docx: "docx",
+    "docx+annotations": "docx",
 };
 
 function buildContent(state: EditorState, format: TextExportFormat, title: string): string {
@@ -363,73 +409,95 @@ function buildContent(state: EditorState, format: TextExportFormat, title: strin
     }
 }
 
-/** Export from an active EditorView (used from the editor). */
-export async function exportDocument(view: EditorView, format: ExportFormat) {
-    const rawTitle = get(currentDocumentTitle).trim() || "document";
+/**
+ * Shared export tail: log the request, run the format-appropriate save
+ * dialog, and capture the analytics event. Used by both entry points below.
+ */
+async function exportState(
+    state: EditorState,
+    docTitle: string,
+    format: ExportFormat,
+    source: "editor" | "library",
+    logProps: Record<string, unknown> = {},
+): Promise<boolean> {
+    const rawTitle = docTitle.trim() || "document";
     const safeTitle = sanitizeFilename(rawTitle);
-    const saved =
-        format === "pdf" || format === "pdf+annotations"
-            ? await savePdfWithDialog(
-                  buildPdfPayload(view.state, rawTitle, format === "pdf+annotations"),
-                  `${safeTitle}.${fileExtensions[format]}`,
-              )
-            : await saveWithDialog(
-                  buildContent(view.state, format, rawTitle),
-                  `${safeTitle}.${fileExtensions[format]}`,
-                  fileExtensions[format],
-              );
+    await logAppEvent("info", "export", "export requested", {
+        format,
+        source,
+        title: rawTitle,
+        chars: state.doc.length,
+        ...logProps,
+    });
+    let saved: boolean;
+    if (format === "pdf" || format === "pdf+annotations") {
+        saved = await savePdfWithDialog(
+            buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
+            `${safeTitle}.${fileExtensions[format]}`,
+        );
+    } else if (format === "docx" || format === "docx+annotations") {
+        const { buildDocxProjection, renderDocx } = await import("./docxExport");
+        const projection = buildDocxProjection(state, format === "docx+annotations");
+        saved = await saveDocxWithDialog(
+            await renderDocx(projection, rawTitle),
+            `${safeTitle}.docx`,
+        );
+    } else {
+        saved = await saveWithDialog(
+            buildContent(state, format, rawTitle),
+            `${safeTitle}.${fileExtensions[format]}`,
+            fileExtensions[format],
+        );
+    }
     if (saved) {
-        posthog.capture("document_exported", { format });
+        posthog.capture(
+            "document_exported",
+            source === "library" ? { format, source } : { format },
+        );
+    }
+    return saved;
+}
+
+/** Export from an active EditorView (used from the editor). */
+export async function exportDocument(view: EditorView, format: ExportFormat): Promise<boolean> {
+    try {
+        return await exportState(view.state, get(currentDocumentTitle), format, "editor");
+    } catch (error) {
+        reportExportFailure(format, error);
+        return false;
     }
 }
 
 /** Export a document by loading its state from the database. */
-export async function exportDocumentById(docId: string, docTitle: string, format: ExportFormat) {
-    const { loadDocumentState, resolveActiveDraftId } = await import("./db");
-    const { replayEvents } = await import("./editor/replay");
-    const { history, historyField } = await import("@codemirror/commands");
-    const { EditorState } = await import("@codemirror/state");
-    const { annotationField } = await import("./editor/plugins/annotations");
+export async function exportDocumentById(
+    docId: string,
+    docTitle: string,
+    format: ExportFormat,
+): Promise<boolean> {
+    try {
+        const { loadDocumentState, resolveActiveDraftId } = await import("./db");
+        const { reconstructState } = await import("./editor/replay");
+        const { history } = await import("@codemirror/commands");
+        const { annotationField } = await import("./editor/plugins/annotations");
 
-    const activeDraftId = await resolveActiveDraftId(docId);
-    if (!activeDraftId) return;
-
-    const loaded = await loadDocumentState(docId, activeDraftId);
-
-    const extensions = [history(), annotationField];
-    let state: EditorState;
-    if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
-        try {
-            state = EditorState.fromJSON(
-                JSON.parse(loaded.snapshotStateJson),
-                { extensions },
-                { historyField, annotationField },
-            );
-        } catch {
-            state = EditorState.create({ extensions });
+        const activeDraftId = await resolveActiveDraftId(docId);
+        if (!activeDraftId) {
+            await logAppEvent("warn", "export", "export cancelled without active draft", {
+                docId,
+                format,
+            });
+            return false;
         }
-    } else {
-        state = EditorState.create({ extensions });
-    }
 
-    if (loaded.eventsSince.length > 0) {
-        state = replayEvents(state, loaded.eventsSince);
-    }
+        const loaded = await loadDocumentState(docId, activeDraftId);
+        const state = reconstructState(loaded.snapshotStateJson, loaded.eventsSince, [
+            history(),
+            annotationField,
+        ]);
 
-    const rawTitle = docTitle.trim() || "document";
-    const safeTitle = sanitizeFilename(rawTitle);
-    const saved =
-        format === "pdf" || format === "pdf+annotations"
-            ? await savePdfWithDialog(
-                  buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
-                  `${safeTitle}.${fileExtensions[format]}`,
-              )
-            : await saveWithDialog(
-                  buildContent(state, format, rawTitle),
-                  `${safeTitle}.${fileExtensions[format]}`,
-                  fileExtensions[format],
-              );
-    if (saved) {
-        posthog.capture("document_exported", { format, source: "library" });
+        return await exportState(state, docTitle, format, "library", { docId });
+    } catch (error) {
+        reportExportFailure(format, error);
+        return false;
     }
 }

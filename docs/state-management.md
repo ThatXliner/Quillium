@@ -1,121 +1,154 @@
-# State Management
+# State management
 
-Understanding the dual state system is critical before touching any annotation or editor code.
+A component can change what the UI displays without changing the document. To
+avoid that mistake, first identify who owns the value you want to change.
+CodeMirror owns editor content; Svelte holds UI state and explicit copies of
+editor values.
 
-## Two Separate State Worlds
+## The bridge from CodeMirror to Svelte
 
-Quillium runs two parallel state systems that must be kept in sync:
+An `EditorView` is a stable object. Each accepted transaction replaces its
+immutable `EditorState`, but Svelte does not observe that replacement. Reading
+`$editorView.state` in a reactive expression does not subscribe to CodeMirror.
 
-**1. CodeMirror state** — lives inside `EditorView`. Immutable, transaction-based. Every change produces a new state object. Extensions (`StateField`, `ViewPlugin`, etc.) live here. Supports undo/redo via `historyField`.
+[Editor.svelte](../packages/desktop/src/lib/editor/Editor.svelte) supplies an
+`updateListener` that calls `syncStoresToEditorState()`. That function writes the
+values components need into [stores.ts](../packages/desktop/src/lib/stores.ts).
+It also runs after loading a draft, so the UI reflects the newly loaded state
+before the writer makes another edit.
 
-**2. Svelte stores** — reactive signals consumed by components. Do not update automatically when CodeMirror state changes. Must be manually pushed by `Editor.svelte`'s `updateListener`.
+The bridge compares the new state with the update's starting state. It publishes
+annotation and version-group mirrors only when their fields change, and only
+flattens/counts the full draft when the document changes. Cursor movement still
+updates selection, active annotation, and selection statistics immediately.
+Viewport-only updates do not republish editor data. Draft loading forces a full
+synchronization even though `view.setState()` does not emit a normal update.
 
 ```mermaid
-flowchart TD
-    Input["User edit or dispatched transaction"]
-
-    subgraph CMState["CodeMirror state"]
-        CM["EditorView state<br/>document + historyField + annotationField"]
-    end
-
-    Listener["Editor.svelte updateListener fires"]
-    Mirrors["Svelte mirror stores<br/>$annotations, $activeAnnotation,<br/>$documentContent, $selectedText,<br/>$writingStats, $saveStatus,<br/>$currentDocumentTitle"]
-
-    subgraph CollabStores["Collab stores<br/>separate from updateListener"]
-        CollabState["$collabState"]
-        OwnerLeft["$ownerLeftSignal"]
-        Reconnect["$reconnectAttempt"]
-    end
-
-    Input --> CM --> Listener --> Mirrors
-    CollabStores -. "updated by collab provider/UI" .-> Mirrors
+flowchart LR
+    Action["Typing or command"] --> CM["EditorView.dispatch"]
+    CM --> State["New EditorState"]
+    State --> Listener["syncStoresToEditorState"]
+    Listener --> Stores["Svelte mirror stores"]
+    Stores --> Cards["Reactive components"]
+    Cards -- "next editing action" --> CM
 ```
 
-## Why `$editorView` Doesn't Trigger Reactivity
+For example, adding a comment dispatches an annotation effect. The annotation
+field applies it, the listener copies the new annotation map to Svelte, and the
+comment card appears. Adding an object only to the `$annotations` store skips
+the field, undo, and persistence, and the next editor update can overwrite it.
 
-`editorView` is a `writable<EditorView>`. It's set once at mount and never updated again — the `EditorView` object is mutated in place by CodeMirror on each transaction. Svelte's reactivity won't fire.
+The separate persistence listener in
+[listeners.ts](../packages/desktop/src/lib/editor/listeners.ts) records changes.
+The UI bridge and save queue react to the same editor updates but do different
+jobs. See [persistence](persistence.md) for the durable path.
 
-This is intentional: the store is only for *imperative access* (e.g., dispatching a transaction from the AI sidebar). For *reactive data*, use the manually-synced mirror stores.
+## Document outline
 
-## Transaction Annotation vs StateEffect
+The Outline header in the editor’s left column expands headings from the active
+draft. The outline sits below the drafts panel in the same scrollable column
+on wide windows. On narrower windows, the column overlays the document. Each
+panel has a disclosure header that stays visible when collapsed. Drafts and
+outline expand independently; both preferences are saved between sessions.
+Heading levels determine indentation. Selecting a heading dispatches a
+CodeMirror selection and scroll effect, then returns focus to the editor.
 
-CodeMirror has two mechanisms for attaching metadata to a transaction:
+[DocumentOutline.svelte](../packages/desktop/src/lib/editor/DocumentOutline.svelte)
+receives heading labels and positions parsed from the `documentContent` mirror
+only while the panel is open. Edits, undo, version changes, and draft loads
+refresh that mirror. Cursor position comes from the editor bridge and marks the
+current section. `showDrafts` and `showDocumentOutline` in app settings control
+the expanded states. Both panels use `NavigationPanel.svelte` for the same
+surface, header, and keyboard-accessible disclosure. Heading data is derived UI
+state and does not edit or persist the draft.
 
-| Mechanism | Persistence | Invertible | Use Case |
-|-----------|-------------|------------|----------|
-| `StateEffect` | Stored in history | Yes | Annotation mutations |
-| `Transaction.annotation()` | Ephemeral | No | Flags like `revisionInternalEdit`, `nestedEditorEdit` |
+## Store ownership
 
-### Key Transaction Annotations
+| Value | Written by | Use it for |
+|---|---|---|
+| `annotations`, `versionGroups` | `syncStoresToEditorState()` | Rendering annotation and group state |
+| `activeAnnotation` | Same bridge, using the editor selection | Showing which annotation is active |
+| `documentContent`, `selectedText`, `selectedTextRange` | Same bridge | Text-dependent UI and AI context |
+| `writingStats` | Same bridge, using document and selection analysis | Word and character counts |
+| `editorView` | Editor lifecycle | Imperatively dispatching commands |
+| `modalStack`, `modalAnnotationStores` | Modal actions and nested editor listeners | Open overlays and their editor-specific state |
+| `saveStatus` | Persistence queue | Saving, saved, or error indicator |
+| `currentDocumentTitle` | Document loading and metadata updates | The document's title |
+| Collaboration stores | Collaboration provider and UI | Connection and session state |
 
-| Annotation | Purpose |
-|------------|---------|
-| `revisionInternalEdit` | Marks revision-system-driven transactions |
-| `nestedEditorEdit` | Identifies which revision's nested editor originated a parent dispatch |
-| `parentSyncEdit` | Tags sync transactions in nested editors |
-| `yjsAnnotation` | Marks Yjs-originated transactions to prevent feedback loops |
+Only the first four rows are editor mirrors. Metadata, persistence status, and
+connection state have their own owners. Use derived state when its inputs are
+already reactive; a derived store cannot observe an unannounced CodeMirror change.
 
-## Stores Overview
+Nested modal editors publish their own annotations and active selection. Read
+from the relevant editor level instead of always using the root annotation map.
+See [nested editors](nested-editors.md) for parent/child ownership and ID scope.
 
-### Mirror Stores (from updateListener)
+## Effects and transaction annotations
 
-| Store | Source | Purpose |
-|-------|--------|---------|
-| `$annotations` | `annotationField` | All annotations as `{ id: annotation }` |
-| `$activeAnnotation` | Selection + annotations | Currently active annotation |
-| `$documentContent` | `state.doc` | Full document text |
-| `$selectedText` | Selection | Currently selected text |
-| `$writingStats` | Document analysis | Word count, character count |
-| `$saveStatus` | Persistence state | Save indicator |
-| `$currentDocumentTitle` | Document metadata | Title for status bar |
+A Quillium annotation is a comment, suggestion, or revision attached to prose.
+CodeMirror also uses the word *annotation* for transaction metadata. They are
+unrelated concepts.
 
-### Independent Stores
+| CodeMirror mechanism | Purpose | Example |
+|---|---|---|
+| `StateEffect` | Describe a change an extension should apply | Add an annotation or update its thread |
+| Transaction annotation | Describe the origin or handling of a transaction | Mark an edit as parent sync |
 
-| Store | Purpose |
-|-------|---------|
-| `$editorView` | Imperative access to EditorView |
-| `$modalStack` | Open annotation modals |
-| `$modalAnnotationStores` | Per-modal annotation state |
-| `$collabState` | Connection status |
-| `$collabSession` | Active session info |
-| `$settingsOpen` | Settings modal visibility |
-| `$dictionaryTrigger` | Dictionary popover state |
+Neither mechanism automatically guarantees undo or persistence. Quillium
+registers inverse effects for annotation mutations and codecs for supported
+persisted effects. A new mutation needs those paths considered along with its
+field reducer. See [annotations](annotations.md) and
+[persisted undo](adr/0006-lossless-persisted-undo.md).
 
-## Derived vs Writable
+Origin markers prevent feedback loops:
 
-Stores in `src/lib/stores.ts` are writable because the update listener is the only place aware of doc/annotation changes. Attempting to make these derived would mean repeating the imperative update logic inside their calculations.
+| Marker | Meaning |
+|---|---|
+| `revisionInternalEdit` | The revision system produced the transaction |
+| `nestedEditorEdit` | A particular revision's nested editor sent the parent edit |
+| `parentSyncEdit` | The nested editor is receiving parent state |
+| `yjsAnnotation` | The collaboration binding produced the transaction |
 
-Components only derive from these mirrors when the dependency chain is direct (e.g., modal breadcrumbs from `modalStack`).
+For instance, a nested editor receiving parent text must not send that text back
+as a new edit. Its listener recognizes `parentSyncEdit` and skips forwarding.
 
-## Event Routing
+## Temporary editor state
 
-Two typed event buses for cross-component communication:
+Some state needs CodeMirror's position mapping but should not survive the session.
+An AI Feedback or Revise request aimed at a selection uses
+`editorialTargetBookmarkField` to keep its target aligned while the writer types.
+The field is excluded from `savedFields`. Adding or removing a bookmark also
+uses `addToHistory.of(false)` so it does not become a writing undo step.
 
-### `appEventBus` (`src/lib/events/appEventBus.ts`)
+Use that distinction when adding editor state: decide whether it belongs in
+snapshots, replay, and undo independently of whether it is a StateField.
 
-App-level, cross-component one-shot messages:
-- Opening the dictionary popover
-- Opening AI chat with a prefilled message
-- Opening AI settings
+## One-shot UI events
 
-### `annotationEventBus` (`src/lib/events/annotationEventBus.ts`)
+Use the typed buses for an intent such as opening AI settings or focusing a
+revision. These are messages, not document state:
 
-Annotation-system routing where sender and receiver may live in different editor layers:
-- `revision-boundary-nudge` — nudge UI events
-- `nested-annotation-create` — sub-annotation creation
-- `revision-focus-request` — click handling
-- `pending-nested-editor-selection` — deferred selection (with caching)
+- [appEventBus.ts](../packages/desktop/src/lib/events/appEventBus.ts) routes app-wide intents.
+- [annotationEventBus.ts](../packages/desktop/src/lib/events/annotationEventBus.ts)
+  routes annotation intents across editor levels, including deferred selection.
 
-### Why Event Buses?
-
-Some messages are not durable state — they're one-shot intents. The old pattern required writing a transient value into a store, reacting elsewhere, then clearing it. The event bus removes that bookkeeping.
+Subscribe in a Svelte effect and return the unsubscribe function for cleanup:
 
 ```typescript
-// Pattern for consuming events in Svelte
 $effect(() => {
     return annotationEventBus.on("revision-boundary-nudge", (event) => {
         if (event.revisionId !== revision.id) return;
-        // handle event
+        // Handle this revision's UI action.
     });
 });
 ```
+
+## Diagnose a stale view
+
+Follow the ownership chain in order. Check the affected `EditorState` first,
+then its update listener, then the mirror value, then the component reading it.
+If state is correct but a card is stale, investigate the bridge. If the card
+changes but undo or reopen loses the change, investigate whether the action
+reached a real transaction and the persistence path.

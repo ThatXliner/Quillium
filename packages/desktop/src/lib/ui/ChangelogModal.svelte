@@ -14,6 +14,8 @@
 <script lang="ts">
 import { renderMarkdown } from "$lib/ai/utils";
 import { capture } from "$lib/posthog";
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { X } from "lucide-svelte";
 
 const {
@@ -40,6 +42,19 @@ function dismiss() {
     capture("changelog_viewed", { version });
     ondismiss();
 }
+
+// Links come from raw markdown HTML ({@html}), so they're plain anchors —
+// left alone, clicking one would navigate the app's own webview away.
+// Intercept at the container and hand off to the OS default browser instead.
+function handleContentClick(event: MouseEvent) {
+    const anchor = (event.target as HTMLElement).closest("a");
+    const href = anchor?.getAttribute("href");
+    if (!href) return;
+    event.preventDefault();
+    void openUrl(href);
+}
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <div class="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="What's New">
@@ -61,21 +76,29 @@ function dismiss() {
                 <h3 class="text-2xl font-bold text-black/85 leading-tight">What's New</h3>
                 <p class="text-sm text-black/35 mt-1.5">{date}</p>
             </div>
-            <button
-                onclick={dismiss}
-                aria-label="Close"
-                class="flex items-center justify-center w-9 h-9 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
-            >
-                <X size={18} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={dismiss}
+                    aria-label="Close"
+                    class="flex items-center justify-center w-9 h-9 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                >
+                    <X size={18} />
+                </button>
+            </div>
         </div>
 
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto px-9 pt-6 pb-9">
-            <div class="changelog-content text-[15px] text-black/55 leading-relaxed">
+            <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+            <div
+                class="changelog-content text-[15px] text-black/55 leading-relaxed"
+                onclick={handleContentClick}
+            >
                 {@html html}
             </div>
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>
 
@@ -87,8 +110,64 @@ function dismiss() {
     .changelog-content :global(p:last-child) {
         margin-bottom: 0;
     }
+    /* Section headers (`# `, `## `, `### `) for grouping a release's changes.
+       `h1` is a bold black section title; `h2`/`h3` are smaller panel-title-style
+       labels (see BRANDING.md) for subsections within one. */
+    .changelog-content :global(h1),
+    .changelog-content :global(h2),
+    .changelog-content :global(h3) {
+        font-weight: 600;
+        line-height: 1.3;
+        margin: 28px 0 10px 0;
+    }
+    .changelog-content :global(h1:first-child),
+    .changelog-content :global(h2:first-child),
+    .changelog-content :global(h3:first-child) {
+        margin-top: 0;
+    }
+    .changelog-content :global(h1) {
+        font-size: 20px;
+        font-weight: 700;
+        color: rgba(0, 0, 0, 0.85);
+    }
+    .changelog-content :global(h2) {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+    }
+    .changelog-content :global(h3) {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+    }
     .changelog-content :global(strong) {
         color: rgba(0, 0, 0, 0.7);
+    }
+    .changelog-content :global(ul),
+    .changelog-content :global(ol) {
+        margin: 0 0 16px 0;
+        padding-left: 22px;
+    }
+    .changelog-content :global(ul:last-child),
+    .changelog-content :global(ol:last-child) {
+        margin-bottom: 0;
+    }
+    .changelog-content :global(ul) {
+        list-style: disc;
+    }
+    .changelog-content :global(ol) {
+        list-style: decimal;
+    }
+    .changelog-content :global(li) {
+        margin: 0 0 8px 0;
+        line-height: 1.75;
+    }
+    .changelog-content :global(li:last-child) {
+        margin-bottom: 0;
+    }
+    .changelog-content :global(li) :global(p) {
+        margin-bottom: 8px;
+    }
+    .changelog-content :global(li) :global(p:last-child) {
+        margin-bottom: 0;
     }
     .changelog-content :global(a) {
         color: #3b82f6;

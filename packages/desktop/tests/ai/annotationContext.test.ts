@@ -20,6 +20,7 @@ function commentAnnotation({
     return {
         id,
         _type: "comment",
+        status: "active" as const,
         selection: EditorSelection.single(from, from + targetText.length),
         thread: [{ author: "AI", message: `Note on ${targetText}.`, time: id }],
     };
@@ -33,6 +34,7 @@ describe("buildAnnotationContextInputs", () => {
         const annotation: GenericAnnotation = {
             id: 4,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(from, to),
             thread: [{ author: "Bryan", message: "Needs a source.", time: 1 }],
         };
@@ -60,6 +62,7 @@ describe("buildAnnotationContextInputs", () => {
         const suggestion: GenericAnnotation = {
             id: 1,
             _type: "suggestion",
+            status: "active" as const,
             selection: EditorSelection.single(4, 12),
             thread: [],
             replacements: [{ text: "case", rationale: "Less combative" }],
@@ -68,6 +71,7 @@ describe("buildAnnotationContextInputs", () => {
         const revision: GenericAnnotation = {
             id: 2,
             _type: "revision",
+            status: "active" as const,
             selection: EditorSelection.single(16, 20),
             thread: [{ author: "AI", message: "Try a fuller version.", time: 2 }],
             activeVersionId: v0.id,
@@ -92,6 +96,7 @@ describe("buildAnnotationContextInputs", () => {
         const annotation: GenericAnnotation = {
             id: 5,
             _type: "comment",
+            status: "active" as const,
             selection: EditorSelection.single(selectedFrom, selectedTo),
             thread: [{ author: "AI", message: "This is the relevant repeat.", time: 1 }],
         };

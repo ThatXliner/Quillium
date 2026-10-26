@@ -58,15 +58,17 @@ import {
     SerializedAnnotationsSchema,
     getNewId,
     isAnnotationOfType,
+    newAnnotationHistoryId,
     newVersionId,
+    normalizeAnnotation,
     normalizeRevision,
 } from "./models";
 import { cleanRangesOf } from "./utils";
 
 // The clipboard-serialized annotation shape (SerializedAnnotation) is derived
 // from the canonical RawAnnotationSchema in models.ts — see the "Clipboard-
-// serialized shape" section there — so a new field on any annotation type rides
-// across copy/paste automatically with no change in this file.
+// serialized shape" section there. User-facing per-type fields ride across
+// automatically; the private history-lineage ID is intentionally regenerated.
 
 // ── Side-table ──────────────────────────────────────────────────────────────
 // Fallback for when text/html is stripped from the clipboard. Keyed by a hash
@@ -195,11 +197,11 @@ function copyableAnnotationsIn(state: EditorState, from: number, to: number): Ge
         // copied text would not match the version blob — pasting it produces a
         // revision whose empty range disagrees with its rendered active version.
         if (aFrom === aTo) continue;
-        // A pending comment (empty thread) is an unfinished, single-instance
+        // A pending comment is an unfinished, single-instance
         // state guarded by canCreateNewComment; carrying it would let paste create
         // a second pending highlight that bypasses that guard. Only resolved
         // comments (with at least one message) are copyable.
-        if (isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0) continue;
+        if (isAnnotationOfType(annotation, "comment") && annotation.status === "pending") continue;
         result.push(annotation);
     }
     return result;
@@ -236,10 +238,9 @@ export function serializeAnnotationsForCopy(
             // The selection stores anchor/head (direction matters for nothing
             // here, but we preserve it). Rebase relative to the joined-text start.
             const { anchor, head } = annotation.selection.main;
-            // Carry every field except id/selection verbatim — type-specific data
-            // (replacements, versions, …) rides along without enumerating it, so a
-            // new annotation field needs no change here.
-            const { id: _id, selection: _selection, ...rest } = annotation;
+            // Carry user content except id/selection verbatim. The private history
+            // lineage is also stripped because paste mints a new annotation.
+            const { id: _id, selection: _selection, _historyId, ...rest } = annotation;
             result.push({
                 ...rest,
                 relAnchor: rangeStart + (anchor - from),
@@ -342,7 +343,13 @@ function rebuildAnnotation(
     // Inverse of serialization: drop the rebased offsets, restore id/selection,
     // and carry every other field (thread, replacements, versions, …) verbatim.
     const { relAnchor: _relAnchor, relHead: _relHead, ...rest } = serialized;
-    const rebuilt = { ...rest, id, selection } as GenericAnnotation;
+    const rebuilt = normalizeAnnotation({
+        ...rest,
+        id,
+        selection,
+        // A paste is a new annotation lineage even when its numeric ID is reused.
+        _historyId: newAnnotationHistoryId(),
+    } as GenericAnnotation);
     if (isAnnotationOfType(rebuilt, "revision")) {
         // Heal both legacy (activeVersionIndex / no version ids) and new-shape
         // payloads into a consistent revision, then regenerate fresh version ids

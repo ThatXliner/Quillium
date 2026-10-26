@@ -26,6 +26,8 @@ function defaultProps(
     overrides: Partial<{
         tabs: TabMeta[];
         activeTabId: string | null;
+        readOnly: boolean;
+        highlightedTabId: string | null;
         ontabselect: (id: string) => void;
         ontabcreate: () => void;
         ontabrename: (id: string, label: string) => void;
@@ -36,6 +38,8 @@ function defaultProps(
     return {
         tabs: [TAB_A, TAB_B],
         activeTabId: "a",
+        readOnly: false,
+        highlightedTabId: null,
         ontabselect: vi.fn(),
         ontabcreate: vi.fn(),
         ontabrename: vi.fn(),
@@ -46,6 +50,98 @@ function defaultProps(
 }
 
 describe("DocumentTabs", () => {
+    it("opens at the pointer without selecting, dragging, or renaming", async () => {
+        const props = defaultProps();
+        const { getByRole } = render(DocumentTabs, { props });
+        const tab = getByRole("tab", { name: "Tab B" });
+        await fireEvent.pointerDown(tab, { button: 2, clientX: 160 });
+        await fireEvent.contextMenu(tab, { clientX: 160, clientY: 80 });
+        const menu = getByRole("menu", { name: "Actions for Tab B" });
+        expect(menu.parentElement).toBe(document.body);
+        expect(menu).toHaveStyle({ left: "160px", top: "80px" });
+        expect(getByRole("menuitem", { name: "Rename tab" })).toHaveFocus();
+        expect(props.ontabselect).not.toHaveBeenCalled();
+        expect(props.ontabreorder).not.toHaveBeenCalled();
+        expect(props.ontabrename).not.toHaveBeenCalled();
+    });
+
+    it.each(["ContextMenu", "F10"])(
+        "opens with %s and supports keyboard dismissal",
+        async (key) => {
+            const { getByRole, queryByRole } = render(DocumentTabs, { props: defaultProps() });
+            const tab = getByRole("tab", { name: "Tab A" });
+            await fireEvent.keyDown(tab, { key, shiftKey: key === "F10" });
+            const rename = getByRole("menuitem", { name: "Rename tab" });
+            const close = getByRole("menuitem", { name: "Close tab" });
+            await fireEvent.keyDown(rename, { key: "ArrowDown" });
+            expect(close).toHaveFocus();
+            await fireEvent.keyDown(close, { key: "ArrowDown" });
+            expect(rename).toHaveFocus();
+            await fireEvent.keyDown(rename, { key: "End" });
+            expect(close).toHaveFocus();
+            await fireEvent.keyDown(close, { key: "Escape" });
+            expect(queryByRole("menu")).not.toBeInTheDocument();
+            expect(tab).toHaveFocus();
+        },
+    );
+
+    it("renames the target without switching tabs", async () => {
+        const props = defaultProps();
+        const { getByRole } = render(DocumentTabs, { props });
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        await fireEvent.click(getByRole("menuitem", { name: "Rename tab" }));
+        const input = getByRole("textbox", { name: "Rename tab" });
+        expect(input).toHaveFocus();
+        await fireEvent.input(input, { target: { value: "Notes" } });
+        await fireEvent.keyDown(input, { key: "Enter" });
+        expect(props.ontabrename).toHaveBeenCalledExactlyOnceWith("b", "Notes");
+        expect(props.ontabselect).not.toHaveBeenCalled();
+    });
+
+    it("closes the target through the existing callback", async () => {
+        const props = defaultProps();
+        const { getByRole, queryByRole } = render(DocumentTabs, { props });
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        await fireEvent.click(getByRole("menuitem", { name: "Close tab" }));
+        expect(props.ontabdelete).toHaveBeenCalledExactlyOnceWith("b");
+        expect(props.ontabselect).not.toHaveBeenCalled();
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+        expect(getByRole("tab", { name: "Tab A" })).toHaveFocus();
+    });
+
+    it("protects the final tab and omits unsupported duplication", async () => {
+        const { getByRole, queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ tabs: [TAB_A] }),
+        });
+        await fireEvent.contextMenu(getByRole("tab"));
+        expect(getByRole("menuitem", { name: "Close tab" })).toBeDisabled();
+        expect(queryByRole("menuitem", { name: /duplicate/i })).not.toBeInTheDocument();
+    });
+
+    it("does not offer mutations in read-only mode", async () => {
+        const { getByRole, queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true }),
+        });
+        const tab = getByRole("tab", { name: "Tab A" });
+        await fireEvent.contextMenu(tab);
+        await fireEvent.keyDown(tab, { key: "ContextMenu" });
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    it("dismisses on outside interaction and when the target disappears", async () => {
+        const props = defaultProps();
+        const { getByRole, queryByRole, rerender } = render(DocumentTabs, { props });
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        await fireEvent.pointerDown(document.body);
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+        await fireEvent.contextMenu(getByRole("tab", { name: "Tab B" }));
+        for (const tab of document.querySelectorAll<HTMLElement>('[role="tab"]')) {
+            tab.getAnimations = () => [];
+        }
+        await rerender({ ...props, tabs: [TAB_A] });
+        expect(queryByRole("menu")).not.toBeInTheDocument();
+    });
+
     it("renders all tab labels", () => {
         const { getByText } = render(DocumentTabs, { props: defaultProps() });
         expect(getByText("Tab A")).toBeInTheDocument();
@@ -161,6 +257,75 @@ describe("DocumentTabs", () => {
         expect(ontabcreate).toHaveBeenCalledOnce();
     });
 
+    it("places the labeled new-tab action directly after the rightmost tab", () => {
+        const { getByRole } = render(DocumentTabs, { props: defaultProps() });
+        const action = getByRole("button", { name: "New tab" });
+
+        expect(action.previousElementSibling).toHaveAttribute("data-tab-id", "b");
+        expect(action).toHaveAttribute("title", expect.stringMatching(/^New tab \(.+T\)$/));
+        expect(action.className).toContain("focus-visible:ring-2");
+    });
+
+    it("keeps inactive tabs selectable in read-only mode", async () => {
+        const ontabselect = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true, ontabselect }),
+        });
+
+        await fireEvent.click(getByText("Tab B").closest("[role='tab']")!);
+
+        expect(ontabselect).toHaveBeenCalledWith("b");
+    });
+
+    it("moves between tabs with the keyboard", async () => {
+        const ontabselect = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true, ontabselect }),
+        });
+
+        await fireEvent.keyDown(getByText("Tab A").closest("[role='tab']")!, {
+            key: "ArrowRight",
+        });
+
+        expect(ontabselect).toHaveBeenCalledWith("b");
+    });
+
+    it("omits tab creation and deletion controls in read-only mode", () => {
+        const { queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true }),
+        });
+
+        expect(queryByRole("button", { name: "New tab" })).not.toBeInTheDocument();
+        expect(queryByRole("button", { name: "Close tab" })).not.toBeInTheDocument();
+    });
+
+    it("does not enter rename mode after a read-only tab is double-clicked", async () => {
+        const ontabrename = vi.fn();
+        const { getByText, queryByRole } = render(DocumentTabs, {
+            props: defaultProps({ readOnly: true, ontabrename }),
+        });
+
+        await fireEvent.dblClick(getByText("Tab A").closest("[role='tab']")!);
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(queryByRole("textbox", { name: "Rename tab" })).not.toBeInTheDocument();
+        expect(ontabrename).not.toHaveBeenCalled();
+    });
+
+    it("marks a highlighted tab independently from the active tab", () => {
+        const { container } = render(DocumentTabs, {
+            props: defaultProps({ activeTabId: "a", highlightedTabId: "b" }),
+        });
+
+        const highlighted = container.querySelector('[data-highlighted="true"]');
+        expect(highlighted).toHaveTextContent("Tab B");
+        expect(highlighted).toHaveAttribute("aria-selected", "false");
+        expect(highlighted).toHaveAttribute("aria-describedby", "document-tab-timeline-target");
+        expect(container.querySelector("#document-tab-timeline-target")).toHaveTextContent(
+            "Timeline target",
+        );
+    });
+
     // Drag is a custom pointer-events implementation. jsdom has no layout and
     // no pointer capture, so we stub element geometry + the capture methods and
     // drive a real pointerdown → move (past threshold) → up sequence. The pure
@@ -262,6 +427,28 @@ describe("DocumentTabs", () => {
         await pointer(tabA, "pointerup", 51);
 
         expect(ontabreorder).not.toHaveBeenCalled();
+    });
+
+    it("does not reorder tabs after a pointer drag in read-only mode", async () => {
+        const ontabreorder = vi.fn();
+        const { container, getByText } = render(DocumentTabs, {
+            props: defaultProps({
+                tabs: [TAB_A, TAB_B, TAB_C],
+                readOnly: true,
+                ontabreorder,
+            }),
+        });
+        stubGeometry(container);
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
+
+        await pointer(tabA, "pointerdown", 50);
+        await pointer(tabA, "pointermove", 300);
+        await pointer(tabA, "pointerup", 300);
+
+        expect(ontabreorder).not.toHaveBeenCalled();
+        expect(
+            [...container.querySelectorAll("[role='tab']")].map((tab) => tab.textContent?.trim()),
+        ).toEqual(["Tab A", "Tab B", "Tab C"]);
     });
 
     it("suppresses the post-drag click so a reordered tab isn't also selected", async () => {

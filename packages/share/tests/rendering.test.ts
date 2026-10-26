@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildDisplayedShare,
     buildParagraphBlocks,
+    buildRevisionContextLayers,
     buildShareFingerprint,
     findAnnotationPath,
 } from "../src/rendering";
@@ -64,11 +65,13 @@ describe("revision rendering", () => {
         versions: [
             {
                 index: 0,
+                versionId: "original",
                 text: "world",
                 annotations: [],
             },
             {
                 index: 1,
+                versionId: "alternate",
                 text: "reader",
                 annotations: [
                     {
@@ -102,5 +105,25 @@ describe("revision rendering", () => {
 
         expect(path?.map((entry) => entry.annotation.id)).toEqual(["r1", "nested"]);
         expect(path?.[0].viaVersionIndex).toBe(1);
+    });
+
+    it("keeps the complete outer document available to revision context", () => {
+        const before = `START-${"a".repeat(700)}`;
+        const after = `${"z".repeat(700)}-END`;
+        const content = `${before}world${after}`;
+        const longRevision = {
+            ...revision,
+            from: before.length,
+            to: before.length + 5,
+        };
+        const path = findAnnotationPath("r1", content, [longRevision]);
+
+        expect(path).not.toBeNull();
+        const [context] = buildRevisionContextLayers(path ?? []);
+        expect(context.before).toBe(before);
+        expect(context.revision).toBe("world");
+        expect(context.after).toBe(after);
+        expect(context.hasMoreBefore).toBe(false);
+        expect(context.hasMoreAfter).toBe(false);
     });
 });

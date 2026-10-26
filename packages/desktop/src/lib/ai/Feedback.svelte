@@ -1,27 +1,8 @@
-<!--
-    Feedback.svelte — Editorial feedback AI panel (green theme).
-
-    Provides high-level editorial feedback on the writer's document.
-    Uses the "feedback" mode stream which includes two tools:
-      - createComment: flags a specific passage with editorial notes.
-      - createRevision: proposes 2-3 alternative versions of a passage.
-
-    These tool calls are routed through chatFactory.handleToolCall to
-    the annotation system, which attaches comments/revisions directly
-    to the CodeMirror editor.
-
-    Features a context lens that shows what context will be used and
-    offers selection/document-aware feedback actions.
-
-    State machine (driven by `chat.status`):
-      ready     — user can submit or click quick action.
-      submitted — waiting for first token.
-      streaming — tokens arriving, "Analyzing..." indicator shown.
-      error     — implicit (chat.error set).
-
-    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
--->
+<!-- Feedback.svelte — Separate feedback panel using the current editorial pipeline. -->
 <script lang="ts">
+import { readable } from "svelte/store";
+import ToolActivity from "./ToolActivity.svelte";
+import { isToolUIPart } from "ai";
 import {
     beginAiTask,
     createAiChat,
@@ -30,126 +11,112 @@ import {
     useAiChatEffects,
 } from "$lib/ai/chatFactory";
 import { streamFeedback } from "$lib/ai/clientStreams";
-import { personaModes, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { personasEnabledFor, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { aiErrorMessage } from "./errorMessage";
+import { aiSettings } from "./settings.svelte";
 import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { appSettings } from "$lib/settings.svelte";
-/*
- * Feedback.svelte
- *
- * Editorial feedback AI panel (green theme).
- *
- * Renders:
- *   A context lens with action cards, scrollable message list with
- *   user/assistant bubbles, streaming indicator, and a bottom input
- *   form for follow-up requests.
- *
- * Props: none.
- * Events: none dispatched.
- *
- * Stores read:
- *   - $selectedText — scopes context-aware prompts to the active
- *     selection when present.
- *   - $documentContent — gates the quick-action button (disabled
- *     when empty) and displayed as character count.
- *
- * Stores written:
- *   - aiProcessing.active (via setAiProcessing) — true while
- *     streaming so the sidebar glow activates.
- *
- * AI streaming layer:
- *   Uses createAiChat({ mode: "feedback" }) which provides two
- *   tool definitions: createComment and createRevision. Tool calls
- *   are routed through chatFactory.handleToolCall to the annotation
- *   system, attaching comments/revisions to the CodeMirror editor.
- *
- * State machine (chat.status):
- *   ready -> submitted -> streaming -> ready
- *                                   \-> error (chat.error set)
- */
+import { currentDocumentId, currentTabId, currentDraftId } from "$lib/stores";
+import type { SidebarPanelProps } from "$lib/sidebar/panels";
 import { documentContent, selectedText } from "$lib/stores";
 import { UsersIcon } from "lucide-svelte";
 import ContextLens from "./ContextLens.svelte";
+import DiscussionModal from "./DiscussionModal.svelte";
+import ConversationHistory from "./ConversationHistory.svelte";
+import ConversationMessageActions from "./ConversationMessageActions.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import PersonaInfoModal from "./PersonaInfoModal.svelte";
 import type { ContextAction } from "./context";
+import { feedbackActions } from "./feedbackActions";
+
+// Built-in request adapters retain their existing lifecycle and validated operations.
+let { active: _active, session: _session }: SidebarPanelProps = $props();
 
 let input = $state("");
+let requestError = $state("");
 let personaInFlight = $state(false);
+let contributedBusy = $state(false);
 
-const { chat, clearChat } = createAiChat({ mode: "feedback" });
+let reviewing = $state(false);
+let reviewOpener = $state<HTMLElement>();
+const { chat, sendMessage, conversations, toolApplications = readable({}) } = createAiChat({ mode: "feedback" });
+let isBusy = $derived(
+    personaInFlight ||
+        contributedBusy ||
+        chat.status === "submitted" ||
+        chat.status === "streaming" ||
+        (conversations ? !conversations.canSend : false),
+);
 let hasConversationActivity = $derived(
     chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
 );
 let showStarterSuggestions = $derived(!hasConversationActivity);
-let showConversationControls = $derived(hasConversationActivity);
 
-function clearConversation() {
-    clearChat();
-    personaInFlight = false;
-}
+$effect(() => appEventBus.on("college-action", (event) => {
+    if (event.target.documentId !== $currentDocumentId || event.target.tabId !== $currentTabId || event.target.draftId !== $currentDraftId) return;
+    if (event.action === "plan" || chat.status !== "ready" || personaInFlight || !$documentContent.trim()) return;
+    const prompt = event.action === "prompt-fit"
+        ? "Check this draft against each prompt and constraint in this tab's writing brief. Distinguish official requirements from advice and unknown details. Create comments only where useful; do not rewrite."
+        : "Find claims in this draft that need concrete examples or reflection in light of this tab's writing brief. Ask about the writer's real contribution and meaning; never invent experiences. Create comments only where useful.";
+    void sendFeedback(prompt, "college");
+}));
 
 // Wire up processing indicator + global stop listener.
-useAiChatEffects(chat);
+useAiChatEffects(chat, "feedback");
 
-// Also reset persona state on global stop.
-$effect(() => {
-    const unsub = appEventBus.on("stop-ai", () => {
-        personaInFlight = false;
-    });
-    return unsub;
-});
-
-/**
- * Central send helper: routes through persona streams only when the
- * user has opted personas IN for this mode (personas multiply token
- * cost — see issue #259). Otherwise, and as a fallback when no personas
- * are actually enabled, uses the single-stream chat.
- */
-async function sendFeedback(text: string, trigger: string) {
-    const personas = personaModes.feedback ? getEnabledPersonas() : [];
-    if (personas.length === 0) {
-        posthog.capture("ai_feedback_requested", {
-            has_selection: !!$selectedText,
-            trigger,
-        });
-        chat.sendMessage({ text });
-        return;
-    }
-
+async function sendFeedback(text: string, trigger: string, turn: NonNullable<ContextAction["turn"]> = { task: "global-review" }) {
+    if (isBusy || !text.trim()) return;
+    requestError = "";
+    const personas = personasEnabledFor("feedback") ? getEnabledPersonas() : [];
     posthog.capture("ai_feedback_requested", {
         has_selection: !!$selectedText,
-        trigger: "persona",
+        trigger,
         persona_count: personas.length,
     });
-
-    personaInFlight = true;
-    const task = beginAiTask("feedback-personas");
     try {
-        await runMultiPersonaStreams({
-            personas,
-            streamFn: streamFeedback,
-            messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
-            mode: "feedback",
-        });
-    } finally {
-        personaInFlight = false;
-        endAiTask(task);
+        if (personas.length === 0 || turn.task === "exact-compression") {
+            await sendMessage(text, turn);
+            if (conversations?.error && !input) input = text;
+            return;
+        }
+        personaInFlight = true;
+        const task = beginAiTask("feedback-personas");
+        try {
+            const review = async () => {
+                await runMultiPersonaStreams({
+                    personas,
+                    streamFn: streamFeedback,
+                    messages: chat.messages,
+                    mode: "feedback",
+                    turn,
+                });
+                return "Reader review ended. Any notes are attached to your writing.";
+            };
+            if (conversations) await conversations.runAction(text, turn, review);
+            else await review();
+        } finally {
+            personaInFlight = false;
+            endAiTask(task);
+        }
+    } catch (error) {
+        requestError = aiErrorMessage(error instanceof Error ? error : new Error(String(error)), aiSettings.provider);
+        if (!input) input = text;
     }
 }
 
 function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
-    if (!input.trim() || chat.status !== "ready") return;
+    if (!input.trim() || isBusy) return;
     const text = input;
     input = "";
     sendFeedback(text, "manual");
 }
 
 function togglePersonaMode() {
-    const next = !personaModes.feedback;
+    const next = !personasEnabledFor("feedback");
     setPersonasForMode("feedback", next);
     posthog.capture("persona_mode_toggled", { mode: "feedback", enabled: next });
 }
@@ -178,11 +145,12 @@ function useContextAction(action: ContextAction) {
         has_selection: !!$selectedText,
     });
     input = "";
-    sendFeedback(action.prompt, `context_${action.id}`);
+    sendFeedback(action.prompt, `context_${action.id}`, action.turn);
 }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
+    <div class="min-h-0 flex-1 overflow-y-auto" data-conversation-body>
     <!-- Personas opt-in: off by default because personas fan out one
          AI stream per enabled persona (N× token cost — issue #259). -->
     <div class="flex items-center justify-between px-3 py-2 border-b border-black/10 shrink-0">
@@ -194,27 +162,35 @@ function useContextAction(action: ContextAction) {
         <button
             type="button"
             role="switch"
-            aria-checked={personaModes.feedback}
+            aria-checked={personasEnabledFor("feedback")}
             onclick={togglePersonaMode}
-            title={personaModes.feedback
+            title={personasEnabledFor("feedback")
                 ? "Personas on — each enabled reader responds in parallel (uses more tokens)"
                 : "Personas off — a single plain feedback response"}
-            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personaModes.feedback
+            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personasEnabledFor("feedback")
                 ? 'bg-green-500'
                 : 'bg-black/15'}"
         >
             <span
-                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personaModes.feedback
+                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personasEnabledFor("feedback")
                     ? 'translate-x-3.5'
                     : 'translate-x-0.5'}"
             ></span>
         </button>
     </div>
 
+    {#if _active && _session}
+        {#each feedbackActions as action (action.id)}
+            {#if action.applies(_session)}
+                <action.component session={_session} disabled={isBusy || personaInFlight || contributedBusy} onBusyChange={(busy) => (contributedBusy = busy)} />
+            {/if}
+        {/each}
+    {/if}
+
     {#if showStarterSuggestions}
         <ContextLens
             mode="feedback"
-            disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+            disabled={isBusy || personaInFlight || contributedBusy || !$documentContent}
             onAction={useContextAction}
         />
     {/if}
@@ -223,7 +199,7 @@ function useContextAction(action: ContextAction) {
         <div class="px-3 pb-3 border-b border-black/10">
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
-                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                disabled={isBusy || personaInFlight || contributedBusy || !$documentContent}
                 panel="feedback"
                 theme="green"
                 onPrompt={useQuickPrompt}
@@ -231,20 +207,34 @@ function useContextAction(action: ContextAction) {
         </div>
     {/if}
 
-    <!-- Clear chat row -->
-    {#if showConversationControls}
-        <div class="flex justify-end px-3 pt-2 shrink-0">
-            <button
-                onclick={clearConversation}
-                title="Start a fresh conversation (clears all messages)"
-                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
-            >New chat</button>
-        </div>
+    {#if conversations}
+        <ConversationHistory {conversations} description="Past discussions in Feedback." onopen={() => { reviewOpener = document.querySelector<HTMLElement>('[data-panel-id="feedback"] [data-history-trigger]') ?? undefined; reviewing = true; }} disabled={personaInFlight || contributedBusy} />
     {/if}
 
     <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+    {#if !reviewing}{@render transcript()}{/if}
+    </div>
+    {#if reviewing}
+        <DiscussionModal returnFocus={reviewOpener} error={conversations?.error} title={conversations?.current?.title || "Discussion"} draft={conversations?.current?.draftLabel} onclose={() => reviewing = false}>
+            <div class="min-h-0 flex-1 overflow-y-auto">
+            {@render transcript()}
+            </div>
+            {@render composer()}
+        </DiscussionModal>
+    {:else}{@render composer()}{/if}
+</div>
+{#snippet transcript()}
+    {#if conversations?.current?.archived}
+        <p class="px-4 py-2 text-xs text-black/60">Archived. Restore this discussion from History to continue.</p>
+    {:else if conversations?.current && conversations.current.draftId !== $currentDraftId}
+        <p class="px-4 py-2 text-xs text-black/60">Open the source draft to continue this discussion.</p>
+    {/if}
+    {#if conversations?.current?.sourceConversationId}
+        <button class="px-4 py-2 text-left text-xs text-black/60 underline" disabled={isBusy} onclick={() => conversations?.open(conversations.current!.sourceConversationId!)}>Open origin conversation</button>
+    {/if}
+    <div class="p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
+            <div class="space-y-0.5" data-conversation-message={message.id}>
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
                     {@const renderPromise = renderMarkdown(part.text)}
@@ -268,8 +258,14 @@ function useContextAction(action: ContextAction) {
                             </div>
                         </div>
                     </div>
+                {:else if isToolUIPart(part)}
+                    <ToolActivity {part} outcomes={$toolApplications} metadata={message.metadata} active={chat.status === "streaming" && message.id === chat.messages.at(-1)?.id} />
                 {/if}
             {/each}
+            {#if conversations}
+                <ConversationMessageActions {message} {conversations} disabled={chat.status === "submitted" || chat.status === "streaming" || conversations.loading || personaInFlight} />
+            {/if}
+            </div>
         {/each}
 
         {#if chat.status === "streaming" || chat.status === "submitted" || personaInFlight}
@@ -293,13 +289,18 @@ function useContextAction(action: ContextAction) {
             </div>
         {/if}
     </div>
+{/snippet}
 
+{#snippet composer()}
+    {#if requestError || chat.error}
+        <p role="alert" class="px-3 py-2 text-xs text-red-800">{requestError || aiErrorMessage(chat.error!, aiSettings.provider)}</p>
+    {/if}
     <!-- Input -->
-    <div class="border-t border-black/10 p-3 bg-white/30">
+    <div class="shrink-0 border-t border-black/10 p-3 bg-white/30">
         {#if !showStarterSuggestions}
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
-                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                disabled={isBusy || personaInFlight || contributedBusy || !$documentContent}
                 compact
                 panel="feedback"
                 theme="green"
@@ -312,17 +313,17 @@ function useContextAction(action: ContextAction) {
                 bind:value={input}
                 name="message"
                 placeholder="Ask for specific feedback..."
-                disabled={chat.status !== "ready" || personaInFlight}
+                disabled={isBusy || personaInFlight || contributedBusy}
                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || personaInFlight || !input.trim()}
+                disabled={isBusy || personaInFlight || contributedBusy || !input.trim()}
                 class="w-full py-2 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Send
             </button>
         </form>
     </div>
-</div>
+{/snippet}

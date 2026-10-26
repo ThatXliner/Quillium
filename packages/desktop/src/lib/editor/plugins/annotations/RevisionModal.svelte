@@ -1,4 +1,5 @@
 <script lang="ts">
+import { registerMcpModalView } from "$lib/ai/mcpContext";
 /**
  * RevisionModal.svelte — Full-screen modal that hosts a nested
  * CodeMirror editor for a single revision version.
@@ -30,20 +31,24 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView } from "@codemirror/view";
-import { Check, ChevronDown, ChevronRight, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
+import {
+    AnnotationModalFrame,
+    AnnotationModalHeader,
+    AnnotationPanel,
+    hasIdenticalPreviousVersion,
+} from "@quillium/share";
+import { PlusIcon, Trash2 } from "lucide-svelte";
 import { onDestroy } from "svelte";
-import { scale, slide } from "svelte/transition";
 import {
     type Annotation,
     type Annotations as AnnotationsMap,
     type GenericAnnotation,
     type Thread as ThreadType,
-    addAnnotation,
     annotationField,
+    collapseRevision,
+    createAnnotation,
     createNewRevision,
     deleteRevisionVersion,
-    removeAnnotation,
-    revisionInternalEdit,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
     updateRevisionVersionState,
@@ -52,7 +57,7 @@ import {
 
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { appSettings } from "$lib/settings.svelte";
+import { appSettings, updateSettings } from "$lib/settings.svelte";
 import {
     type ModalEntry,
     annotations as annotationsStore,
@@ -60,29 +65,36 @@ import {
     modalStack,
 } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { EditorSelection, Transaction } from "@codemirror/state";
+import { EditorSelection } from "@codemirror/state";
 import Annotations from "./Annotations.svelte";
+import DuplicateDraftWarning from "./DuplicateDraftWarning.svelte";
 import { NestedEditorController } from "./NestedEditorController";
+import RevisionBreadcrumbs from "./RevisionBreadcrumbs.svelte";
+import RevisionContextPanel from "./RevisionContextPanel.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
+import {
+    duplicateDraftWarningIsEnabled,
+    duplicateDraftWarningSnoozeUntil,
+} from "./duplicateDraftWarning";
 import {
     type VersionState,
     activeVersion,
     activeVersionIndex,
-    createNewAnnotation,
     getLastId,
     isAnnotationOfType,
-    makeVersion,
     versionById,
     versionText,
 } from "./models";
 import { previewVersionText } from "./nestedEditor";
 import { shouldHandleRevisionModalKeydown } from "./revisionModalKeyguard";
-import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
+import { getActiveAnnotation } from "./utils";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 const opt = isMac ? "⌥" : "Alt";
+
+let duplicateDraftWarningOpen = $state(false);
 
 const {
     revisionId,
@@ -120,151 +132,10 @@ const crumbRevisions = $derived.by((): (Annotation<"revision"> | undefined)[] =>
     });
 });
 
-// Context snippet: lazy-loaded chunks around the outermost revision range
-const CHUNK = 300; // chars per load step
-let contextBefore = $state(CHUNK); // how many chars before to show
-let contextAfter = $state(CHUNK); // how many chars after to show
-
-// Build a context layer for each crumb level: from the root doc down to
-// the current revision. Each layer shows the surrounding text and
-// highlights the nested revision span within it.
-// Layer 0 = outermost (root doc), layer N-1 = immediate parent of current.
-type ContextLayer = {
-    before: string;
-    revision: string;
-    after: string;
-    hasMoreBefore: boolean;
-    hasMoreAfter: boolean;
-};
-
-const contextLayers = $derived.by((): ContextLayer[] => {
-    void modalAnnotations; // re-run when nested editor writes back
-    const layers: ContextLayer[] = [];
-    for (let ci = 0; ci < crumbs.length; ci++) {
-        const crumb = crumbs[ci];
-        if (crumb.type !== "revision") continue;
-        const parentState = crumb.parentView.state;
-        const rev = parentState.field(annotationField)[crumb.revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (!rev) continue;
-        const doc = parentState.doc;
-        const from = rev.selection.main.from;
-        const to = rev.selection.main.to;
-        // Only the outermost layer gets infinite lazy-loading; inner layers
-        // show the full version text (it's already bounded).
-        const isOuter = ci === 0;
-        const beforeStart = isOuter ? Math.max(0, from - contextBefore) : 0;
-        const afterEnd = isOuter ? Math.min(doc.length, to + contextAfter) : doc.length;
-        layers.push({
-            before: doc.sliceString(beforeStart, from),
-            revision: doc.sliceString(from, to),
-            after: doc.sliceString(to, afterEnd),
-            hasMoreBefore: isOuter && beforeStart > 0,
-            hasMoreAfter: isOuter && afterEnd < doc.length,
-        });
-    }
-    return layers;
-});
-
-// Convenience: outermost layer for scroll/jump logic
-const docContext = $derived(contextLayers[0] ?? null);
-
-let contextCollapsed = $state(false);
 let annotationsCollapsed = $state(false);
-let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
-let contextRevisionEl = $state<HTMLSpanElement | undefined>(undefined);
-
-// "above" | "below" | null — whether revision highlight is out of view
-let revisionDirection = $state<"above" | "below" | null>(null);
-
-// Scroll edge state for dynamic mask
-let contextAtTop = $state(true);
-let contextAtBottom = $state(false);
-
-function scrollRevisionIntoCenter(behavior: ScrollBehavior = "smooth") {
-    if (!contextScrollEl || !contextRevisionEl) return;
-    const container = contextScrollEl;
-    const containerRect = container.getBoundingClientRect();
-    const revisionRect = contextRevisionEl.getBoundingClientRect();
-    const currentTop = container.scrollTop;
-    const targetTop =
-        currentTop +
-        (revisionRect.top - containerRect.top) -
-        (container.clientHeight / 2 - revisionRect.height / 2);
-    container.scrollTo({ top: targetTop, behavior });
-}
-
-// Keep the revision centered whenever context is shown/updated.
-$effect(() => {
-    if (contextCollapsed || !contextRevisionEl || !contextScrollEl) return;
-    requestAnimationFrame(() => scrollRevisionIntoCenter("auto"));
-    const timeoutId = window.setTimeout(() => {
-        scrollRevisionIntoCenter("auto");
-    }, 220);
-    return () => window.clearTimeout(timeoutId);
-});
-
-// IntersectionObserver: track whether revision span is visible in scroll container
-$effect(() => {
-    if (!contextRevisionEl || !contextScrollEl) return;
-    const observer = new IntersectionObserver(
-        ([entry]) => {
-            if (entry.isIntersecting) {
-                revisionDirection = null;
-            } else {
-                const rect = entry.boundingClientRect;
-                const rootRect = entry.rootBounds;
-                if (rootRect) {
-                    revisionDirection = rect.top < rootRect.top ? "above" : "below";
-                }
-            }
-        },
-        { root: contextScrollEl, threshold: 0.1 },
-    );
-    observer.observe(contextRevisionEl);
-    return () => observer.disconnect();
-});
-
-// Auto-load more when scrolling near the top or bottom edge;
-// also track edge state for mask
-$effect(() => {
-    const el = contextScrollEl;
-    if (!el) return;
-    function updateEdges() {
-        if (!el) return;
-        contextAtTop = el.scrollTop <= 0;
-        contextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 0;
-    }
-    // Set initial state
-    updateEdges();
-    function handleScroll() {
-        if (!el) return;
-        updateEdges();
-        const THRESHOLD = 40;
-        if (el.scrollTop < THRESHOLD && docContext?.hasMoreBefore) {
-            const prevHeight = el.scrollHeight;
-            contextBefore += CHUNK;
-            // Preserve scroll position after content is prepended
-            requestAnimationFrame(() => {
-                el.scrollTop += el.scrollHeight - prevHeight;
-            });
-        }
-        if (
-            el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD &&
-            docContext?.hasMoreAfter
-        ) {
-            contextAfter += CHUNK;
-        }
-    }
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
-});
 
 // Track selected version index per crumb level reactively
 let crumbSelectedVersions = $state<number[]>([]);
-// Which crumb dropdown is open (-1 = none)
-let openDropdown = $state(-1);
 
 // Sync the version-dropdown selections for each breadcrumb
 // whenever the crumbs array or underlying revision state changes.
@@ -280,7 +151,6 @@ $effect(() => {
  */
 function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], isCurrent: boolean) {
     if (crumb.type !== "revision") return;
-    openDropdown = -1;
 
     crumbSelectedVersions[ci] = vi;
 
@@ -323,8 +193,9 @@ type FsmEvent =
       };
 
 /** Read fresh revision state from the parent view. */
-function readRevision() {
-    return view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+function readRevision(): Annotation<"revision"> | undefined {
+    const ann = view.state.field(annotationField)[revisionId];
+    return ann && isAnnotationOfType(ann, "revision") ? ann : undefined;
 }
 
 function send(event: FsmEvent) {
@@ -462,9 +333,11 @@ const controller = new NestedEditorController(
     historyView,
 );
 
+let unregisterMcpModal: (() => void) | undefined;
 function createEditor(version: VersionState, versionIndex?: number) {
     if (!editorHost || controller.editor) return;
     controller.create(editorHost, version, versionIndex ?? 0);
+    if (controller.editor) unregisterMcpModal = registerMcpModalView(view, revisionId, controller.editor);
 }
 
 function moveCursorToEnd(activeEditor: EditorView) {
@@ -477,6 +350,8 @@ function moveCursorToEnd(activeEditor: EditorView) {
 }
 
 function destroyEditor() {
+    unregisterMcpModal?.();
+    unregisterMcpModal = undefined;
     controller.destroy();
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
@@ -531,29 +406,12 @@ $effect(() => {
     lastSyncedVersionId = rev.activeVersionId;
 
     if (controller.needsAnnotationRebuild(activeVersionState)) {
-        if (isTop) {
-            send({ type: "REBUILD_REQUESTED" });
-        }
+        if (isTop) controller.syncVersionFromParent();
         return;
     }
 
     const externalDoc = versionText(activeVersionState);
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
-});
-
-// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
-// is no longer needed - nested editors always use local-only mode.
-
-// Close the version dropdown when clicking outside of it.
-$effect(() => {
-    if (openDropdown === -1) return;
-    const handler = (e: MouseEvent) => {
-        if (!(e.target as HTMLElement).closest(".version-trigger, .version-popover")) {
-            openDropdown = -1;
-        }
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
 });
 
 /**
@@ -574,88 +432,26 @@ function executePendingNestedCommand(
         selection: EditorSelection.range(from, to),
     });
     activeEditor.focus();
-    if (cmd.type === "comment") {
-        const s2 = activeEditor.state;
-        if (!s2.selection.main.empty && canCreateNewComment(s2.field(annotationField))) {
-            activeEditor.dispatch(
-                s2.update({
-                    effects: [
-                        addAnnotation.of(
-                            createNewAnnotation(s2.field(annotationField), s2.selection, "comment"),
-                        ),
-                    ],
-                    annotations: Transaction.addToHistory.of(true),
-                }),
-            );
-        }
-    } else if (cmd.type === "revision") {
-        const s2 = activeEditor.state;
-        if (
-            !s2.selection.main.empty &&
-            canCreateRevision(s2.field(annotationField), s2.selection)
-        ) {
-            const sel = s2.selection.main;
-            const originalText = s2.sliceDoc(sel.from, sel.to);
-            const autoVersion = appSettings.autoVersionOnRevisionCreate;
-            const versions: VersionState[] = autoVersion
-                ? [makeVersion({ doc: originalText }), makeVersion({ doc: "" })]
-                : [makeVersion({ doc: originalText })];
-            const annotationSelection = autoVersion
-                ? EditorSelection.single(sel.from)
-                : s2.selection;
-            const newAnnotation = createNewAnnotation(
-                s2.field(annotationField),
-                annotationSelection,
-                "revision",
-            );
-            posthog.capture("annotation_created", {
-                type: "revision",
-                auto_version: autoVersion,
-                nested: true,
-            });
-            activeEditor.dispatch(
-                s2.update({
-                    effects: [
-                        addAnnotation.of({
-                            ...newAnnotation,
-                            activeVersionId: (autoVersion ? versions[1] : versions[0]).id,
-                            versions,
-                        }),
-                    ],
-                    ...(autoVersion
-                        ? {
-                              changes: s2.changes({ from: sel.from, to: sel.to, insert: "" }),
-                              selection: EditorSelection.cursor(sel.from),
-                          }
-                        : {}),
-                    annotations: autoVersion
-                        ? [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)]
-                        : Transaction.addToHistory.of(true),
-                }),
-            );
-            if (appSettings.selectTextInNestedEditor && !sel.empty) {
-                annotationEventBus.emit({
-                    type: "pending-nested-editor-selection",
-                    annotationId: newAnnotation.id,
-                    from: 0,
-                    to: autoVersion ? 0 : sel.to - sel.from,
-                });
-            }
-        }
+    if (cmd.type === "comment" || cmd.type === "revision") {
+        createAnnotation({
+            state: activeEditor.state,
+            dispatch: (transaction) => activeEditor.dispatch(transaction),
+            creation: { source: "human", type: cmd.type, nested: true },
+        });
     }
 }
 
 // ─── Sensor Effect C-0: ⌘Enter add-version from nested editor ─────
 // When the nested editor's keymap fires annotation-add-version, handle
-// it here synchronously so the FSM transitions to "rebuilding" in the
-// same microtask as the dispatch — matching what addVersion() does.
+// it here so the duplicate guard runs before the FSM transitions to
+// "rebuilding" — matching the header button's requestAddVersion() path.
 // Without this, Revision.svelte handles the event and the modal relies
 // on Sensor Effect B to detect the version change reactively, which
 // races with other Svelte effects and can read stale state.
 $effect(() => {
     return annotationEventBus.on("annotation-add-version", (event) => {
         if (event.annotationId !== revisionId || !isTop) return;
-        addVersion();
+        requestAddVersion();
     });
 });
 
@@ -705,32 +501,17 @@ $effect(() => {
     }
 });
 
-// Label editing state for the current crumb's version dropdown
-let editingVersionLabel = $state(false);
-let labelInputValue = $state("");
-let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
-
-function startLabelEdit() {
+/** Initial value for breadcrumb label editing (the active version's label). */
+function getActiveVersionLabel(): string {
     const revision = readRevision();
-    if (!revision) return;
-    labelInputValue = versionById(revision, revision.activeVersionId)?.label ?? "";
-    editingVersionLabel = true;
+    if (!revision) return "";
+    return versionById(revision, revision.activeVersionId)?.label ?? "";
 }
 
-// Focus the label input once it appears in the DOM after editingVersionLabel becomes true.
-$effect(() => {
-    if (editingVersionLabel && labelInputEl) {
-        labelInputEl.focus();
-    }
-});
-
-function commitLabelEdit() {
+/** Commit a breadcrumb label rename for the active version ("" clears it). */
+function commitVersionLabel(trimmed: string) {
     const revision = readRevision();
-    if (!revision) {
-        editingVersionLabel = false;
-        return;
-    }
-    const trimmed = labelInputValue.trim();
+    if (!revision) return;
     view.dispatch(
         updateRevisionVersionLabel(
             view.state,
@@ -739,14 +520,17 @@ function commitLabelEdit() {
             trimmed || undefined,
         ),
     );
-    editingVersionLabel = false;
 }
 
-function cancelLabelEdit() {
-    editingVersionLabel = false;
+function neverShowDuplicateDraftWarning(): void {
+    updateSettings({ warnBeforeDraftAfterIdenticalVersion: false });
 }
 
-function addVersion() {
+function hideDuplicateDraftWarningForOneHour(): void {
+    updateSettings({ duplicateDraftWarningHiddenUntil: duplicateDraftWarningSnoozeUntil() });
+}
+
+function addVersion(): void {
     const revision = readRevision();
     if (!revision) return;
     posthog.capture("revision_version_created", { version_count: revision.versions.length });
@@ -755,12 +539,30 @@ function addVersion() {
     send({ type: "VERSION_SWITCHED" });
 }
 
+function requestAddVersion(): void {
+    controller.flushCurrentStateToParent(false);
+    const revision = readRevision();
+    if (!revision) return;
+    const isDuplicate = hasIdenticalPreviousVersion(
+        revision.versions.map(versionText),
+        activeVersionIndex(revision),
+    );
+    if (
+        duplicateDraftWarningIsEnabled(
+            appSettings.warnBeforeDraftAfterIdenticalVersion,
+            appSettings.duplicateDraftWarningHiddenUntil,
+        ) &&
+        isDuplicate
+    ) {
+        duplicateDraftWarningOpen = true;
+        return;
+    }
+    addVersion();
+}
+
 /**
- * Delete the entire revision (parity with the inline card's trash icon).
- * The removeAnnotation dispatch makes the revision disappear from the
- * parent view; the modal then closes. destroyEditor's flush is safely
- * skipped because flushAnnotationStateToParent no-ops when the revision
- * no longer exists in the parent state.
+ * Collapse the revision wrapper while preserving the active version's nested
+ * annotations in the parent document (parity with the inline trash action).
  */
 function deleteRevision() {
     const revision = readRevision();
@@ -769,8 +571,10 @@ function deleteRevision() {
         type: "revision",
         version_count: revision.versions.length,
         from_modal: true,
+        nested_annotations_preserved: true,
     });
-    view.dispatch(view.state.update({ effects: [removeAnnotation.of(revision)] }));
+    controller.flushCurrentStateToParent(false);
+    view.dispatch(collapseRevision(view.state, revisionId));
     close();
 }
 
@@ -785,7 +589,6 @@ function deleteVersion(vi: number) {
     if (!revision) return;
     const versionId = revision.versions[vi]?.id;
     if (versionId === undefined) return;
-    openDropdown = -1;
     // Preserve any pending nested edits in the mounted version before the
     // delete (mirrors the inline card's flush-before-delete).
     controller.flushCurrentStateToParent(false);
@@ -865,10 +668,82 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
         (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)
             ?.thread ?? [];
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
+
+{#snippet annotationPanelContent()}
+  {#if modalAnnotations}
+    <Annotations
+      view={controller.editor}
+      annotationsData={modalAnnotations}
+      activeAnnotationData={modalActiveAnnotation ?? null}
+      nested
+      layout="inline"
+    />
+  {/if}
+{/snippet}
+
+{#snippet annotationPanelEmpty()}
+  <div class="flex flex-col items-center px-2 pt-4 text-center justify-evenly space-y-8">
+    <p class="text-[11px] text-black/30 leading-relaxed">No annotations yet.</p>
+    {#if appSettings.showShortcutHints}
+      <p class="text-[11px] text-black/25 mb-3">Create one with:</p>
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2 text-black/40">
+          <Kbd keys={[modKey, "⇧", "C"]} />
+          <span class="text-[11px] font-medium text-black/35">comment</span>
+        </div>
+        <div class="flex items-center gap-2 text-black/40">
+          <Kbd keys={[modKey, opt, "K"]} />
+          <span class="text-[11px] font-medium text-black/35">revision</span>
+        </div>
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet revisionHeaderLeading()}
+  <RevisionBreadcrumbs
+    {crumbs}
+    {crumbRevisions}
+    selectedVersions={crumbSelectedVersions}
+    onselect={selectVersion}
+    ondeleteversion={deleteVersion}
+    getlabel={getActiveVersionLabel}
+    oncommitlabel={commitVersionLabel}
+  />
+{/snippet}
+
+{#snippet revisionHeaderActions()}
+  {#if stackIndex > 0}
+    <span class="text-[10px] text-purple-400/60 italic shrink-0">
+      Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
+    </span>
+  {/if}
+  <button
+    class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
+        bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
+    onclick={requestAddVersion}
+    title="New version ({modKey}↵)"
+  >
+    <PlusIcon size={10} />
+    <span>New version</span>
+    <Kbd keys={[modKey, "↵"]} />
+  </button>
+  <button
+    class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
+    onclick={deleteRevision}
+    title="Collapse revision and preserve nested annotations"
+    aria-label="Collapse revision and preserve nested annotations"
+  >
+    <Trash2 size={16} />
+  </button>
+{/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 <dialog
+  data-editor-history
   bind:this={dialogEl}
   class="revision-modal"
   onclick={(e) => {
@@ -881,192 +756,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onkeydowncapture={onDialogKeydownCapture}
   onkeydown={onDialogKeydown}
 >
-  <div class="revision-modal-inner">
-    <!-- Header -->
-    <div
-      class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
-    >
-      <!-- Breadcrumb trail -->
-      <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
-        {#each crumbs as crumb, ci}
-          {@const isCurrent = ci === crumbs.length - 1}
-          {@const crumbRevision = crumbRevisions[ci]}
-          {@const selectedVi = crumbSelectedVersions[ci] ?? 0}
+  <AnnotationModalFrame bind:restoreSize variant="revision">
+    <AnnotationModalHeader {restoreSize}
+      accent="revision"
+      leading={revisionHeaderLeading}
+      actions={revisionHeaderActions}
+      onClose={close}
+      closeLabel="Close revision"
+    />
 
-          {#if ci > 0}
-            <ChevronRight size={10} class="text-purple-300/60 shrink-0" />
-          {/if}
-
-          <div class="flex items-center gap-1.5">
-            <!-- "Revision" label — clickable back if not current -->
-            {#if isCurrent}
-              <span
-                class="text-[10px] font-semibold text-purple-700/70 uppercase tracking-wider shrink-0"
-                >Revision</span
-              >
-            {:else}
-              <button
-                class="text-[10px] text-purple-400/60 hover:text-purple-600/80 transition-colors uppercase tracking-wider shrink-0"
-                onclick={() => modalStack.popTo(ci)}>Revision</button
-              >
-            {/if}
-
-            <!-- Version dropdown -->
-            {#if crumbRevision && crumbRevision.versions.length > 0}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div
-                class="relative"
-                onkeydown={(e) => {
-                  if (e.key === "Escape") openDropdown = -1;
-                }}
-              >
-                <!-- Trigger -->
-                {#if isCurrent && editingVersionLabel}
-                  <input
-                    bind:this={labelInputEl}
-                    bind:value={labelInputValue}
-                    class="pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium w-[120px]
-                        bg-purple-100/70 text-purple-700/80 ring-1 ring-purple-300/60 outline-none
-                        placeholder-purple-400/50"
-                    placeholder="Version name…"
-                    onblur={commitLabelEdit}
-                    onkeydown={(e) => {
-                      if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
-                      else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
-                    }}
-                  />
-                {:else}
-                <button
-                  class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
-                                        transition-all duration-150
-                                        {isCurrent
-                    ? 'bg-purple-100/70 text-purple-700/80 hover:bg-purple-100 ring-1 ring-purple-200/60'
-                    : 'bg-black/5 text-black/45 hover:bg-black/8 ring-1 ring-black/10'}
-                                        {openDropdown === ci
-                    ? 'ring-2 ' +
-                      (isCurrent ? 'ring-purple-300/60' : 'ring-black/20')
-                    : ''}"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    openDropdown = openDropdown === ci ? -1 : ci;
-                  }}
-                  ondblclick={(e) => {
-                    if (isCurrent) { e.stopPropagation(); startLabelEdit(); }
-                  }}
-                  title={isCurrent ? "Double-click to rename" : undefined}
-                >
-                  <span
-                    >{crumbRevision.versions[selectedVi]?.label ??
-                      previewVersionText(
-                        crumbRevision.versions[selectedVi],
-                      )}</span
-                  >
-                  <ChevronDown
-                    size={9}
-                    class="transition-transform duration-200 {openDropdown ===
-                    ci
-                      ? 'rotate-180'
-                      : ''}
-                                            {isCurrent
-                      ? 'text-purple-400/70'
-                      : 'text-black/30'}"
-                  />
-                </button>
-                {/if}
-
-                <!-- Popover -->
-                {#if openDropdown === ci}
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <div
-                    class="version-popover"
-                    transition:scale={{
-                      start: 0.92,
-                      duration: 150,
-                      opacity: 0,
-                    }}
-                    style="transform-origin: top left;"
-                  >
-                    {#each crumbRevision.versions as version, vi}
-                      {@const isSelected = vi === selectedVi}
-                      <div
-                        class="version-option {isSelected
-                          ? 'version-option-active'
-                          : ''}"
-                      >
-                        <button
-                          class="flex-1 min-w-0 flex items-center gap-1.5 text-left"
-                          onclick={() => selectVersion(ci, vi, crumb, isCurrent)}
-                        >
-                          <span class="flex-1 truncate"
-                            >{version.label ?? previewVersionText(version)}</span
-                          >
-                          {#if isSelected}
-                            <Check
-                              size={10}
-                              class="text-purple-500/70 shrink-0"
-                            />
-                          {/if}
-                        </button>
-                        {#if isCurrent}
-                          <button
-                            class="shrink-0 p-0.5 rounded text-black/25 hover:text-red-500/70 transition-colors"
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              deleteVersion(vi);
-                            }}
-                            title={`Delete version ${vi + 1}`}
-                            aria-label={`Delete version ${vi + 1}`}
-                          >
-                            <X size={9} />
-                          </button>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      </nav>
-
-      {#if stackIndex > 0}
-        <span class="text-[10px] text-purple-400/60 italic shrink-0">
-          Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
-        </span>
-      {/if}
-
-      <!-- Right actions -->
-      <div class="flex items-center gap-2 shrink-0">
-        <button
-          class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
-              bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
-          onclick={addVersion}
-          title="New version ({modKey}↵)"
-        >
-          <PlusIcon size={10} />
-          <span>New version</span>
-          <Kbd keys={[modKey, "↵"]} />
-        </button>
-        <button
-          class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
-          onclick={deleteRevision}
-          title="Delete entire revision"
-          aria-label="Delete entire revision"
-        >
-          <Trash2 size={16} />
-        </button>
-        <button
-          class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
-          onclick={close}
-        >
-          <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-          <X size={16} />
-        </button>
-      </div>
-    </div>
-
-        <TutorialGuide />
+    <TutorialGuide />
 
     <!-- Body: thread + editor + annotations panel -->
     <div class="flex flex-1 overflow-hidden">
@@ -1106,107 +805,27 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
         <div class="w-72 shrink-0 border-l border-purple-100/60 flex flex-col min-h-0 bg-purple-50/20 overflow-x-hidden">
 
           <!-- Context panel -->
-          {#if contextLayers.length > 0}
-            <div class="border-b border-purple-100/60 shrink-0">
-              <button
-                class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
-                onclick={() => contextCollapsed = !contextCollapsed}
-              >
-                <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Context</span>
-                {#if contextCollapsed}
-                  <ChevronDown size={10} class="text-purple-400/50" />
-                {:else}
-                  <ChevronUp size={10} class="text-purple-400/50" />
-                {/if}
-              </button>
-              {#if !contextCollapsed}
-                <div transition:slide={{ duration: 180 }} class="relative">
-                  <div
-                    bind:this={contextScrollEl}
-                    class="context-scroll"
-                    style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
-                  >
-                    <!-- Nested context layers: outermost first, each wrapping the next -->
-                    {#snippet renderLayer(depth: number)}
-                      {@const layer = contextLayers[depth]}
-                      {@const isDeepest = depth === contextLayers.length - 1}
-                      <span class="context-text context-depth-{depth}">
-                        {#if layer.before}<span class="context-surrounding">{layer.before}</span>{/if}<!--
-                        -->{#if depth === 0}<span bind:this={contextRevisionEl} class="context-nest context-nest-0">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(1)}{/if}</span>{:else}<span class="context-nest context-nest-{Math.min(depth, 3)}">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(depth + 1)}{/if}</span>{/if}<!--
-                        -->{#if layer.after}<span class="context-surrounding">{layer.after}</span>{/if}
-                      </span>
-                    {/snippet}
-                    {@render renderLayer(0)}
-                  </div>
-                  {#if revisionDirection}
-                    <button
-                      class="context-jump-btn {revisionDirection === 'above' ? 'context-jump-top' : 'context-jump-bottom'}"
-                      onclick={() => scrollRevisionIntoCenter()}
-                      title="Jump to revision"
-                      transition:scale={{ start: 0.8, duration: 120, opacity: 0 }}
-                    >
-                      <span class="context-jump-btn-inner">
-                        {#if revisionDirection === "above"}
-                          <ChevronUp size={14} />
-                        {:else}
-                          <ChevronDown size={14} />
-                        {/if}
-                      </span>
-                    </button>
-                  {/if}
-                </div>
-              {/if}
-            </div>
-          {/if}
+          <RevisionContextPanel {crumbs} refreshKey={modalAnnotations} />
 
           <!-- Annotations -->
-          <div class="flex-1 min-h-0 flex flex-col">
-            <button
-              class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors shrink-0"
-              onclick={() => annotationsCollapsed = !annotationsCollapsed}
-            >
-              <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Annotations</span>
-              {#if annotationsCollapsed}
-                <ChevronDown size={10} class="text-purple-400/50" />
-              {:else}
-                <ChevronUp size={10} class="text-purple-400/50" />
-              {/if}
-            </button>
-            {#if !annotationsCollapsed}
-              <div transition:slide={{ duration: 180 }} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {#if modalAnnotations && Object.keys(modalAnnotations).length > 0}
-                  <Annotations
-                    view={controller.editor}
-                    annotationsData={modalAnnotations}
-                    activeAnnotationData={modalActiveAnnotation ?? null}
-                    layout="inline"
-                  />
-                {:else}
-                  <div class="flex flex-col items-center px-2 pt-4 text-center justify-evenly space-y-8">
-                    <p class="text-[11px] text-black/30 leading-relaxed">No annotations yet.</p>
-                    {#if appSettings.showShortcutHints}
-                      <p class="text-[11px] text-black/25 mb-3">Create one with:</p>
-                      <div class="flex flex-col gap-2">
-                        <div class="flex items-center gap-2 text-black/40">
-                          <Kbd keys={[modKey, opt, "M"]} />
-                          <span class="text-[11px] font-medium text-black/35">comment</span>
-                        </div>
-                        <div class="flex items-center gap-2 text-black/40">
-                          <Kbd keys={[modKey, opt, "K"]} />
-                          <span class="text-[11px] font-medium text-black/35">revision</span>
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
+          <AnnotationPanel
+            bind:collapsed={annotationsCollapsed}
+            hasContent={!!modalAnnotations && Object.keys(modalAnnotations).length > 0}
+            content={annotationPanelContent}
+            empty={annotationPanelEmpty}
+          />
 
         </div>
     </div>
-  </div>
+  </AnnotationModalFrame>
 </dialog>
+
+<DuplicateDraftWarning
+  bind:open={duplicateDraftWarningOpen}
+  onConfirm={addVersion}
+  onHideForOneHour={hideDuplicateDraftWarningForOneHour}
+  onNeverShowAgain={neverShowDuplicateDraftWarning}
+/>
 
 <style>
   .revision-modal {
@@ -1228,17 +847,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   .revision-modal::backdrop {
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);
-  }
-
-  .revision-modal-inner {
-    display: flex;
-    flex-direction: column;
-    width: 1160px;
-    height: 72vh;
-    background: white;
-    border-radius: 1rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    overflow: hidden;
   }
 
   .revision-modal-thread {
@@ -1270,158 +878,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     outline: none;
   }
 
-  .version-popover {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: 160px;
-    max-width: 240px;
-    background: white;
-    border: 1px solid rgba(147, 112, 219, 0.15);
-    border-radius: 10px;
-    box-shadow:
-      0 8px 24px -4px rgba(0, 0, 0, 0.12),
-      0 2px 8px -2px rgba(0, 0, 0, 0.08);
-    padding: 4px;
-    z-index: 10;
-    overflow: hidden;
-  }
-
-  .version-option {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    color: rgba(0, 0, 0, 0.6);
-    transition:
-      background 0.1s,
-      color 0.1s;
-    cursor: pointer;
-  }
-
-  .version-option:hover {
-    background: rgba(147, 112, 219, 0.08);
-    color: rgba(109, 40, 217, 0.85);
-  }
-
-  .version-option-active {
-    background: rgba(147, 112, 219, 0.1);
-    color: rgba(109, 40, 217, 0.9);
-    font-weight: 500;
-  }
-
-  .context-scroll {
-    height: 200px;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    padding: 10px 14px;
-    background: rgba(245, 240, 255, 0.45);
-    backdrop-filter: blur(12px) saturate(1.3);
-    -webkit-backdrop-filter: blur(12px) saturate(1.3);
-  }
-
-  .context-scroll::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Base text layer (outermost / depth-0) */
-  .context-text {
-    font-size: 11px;
-    line-height: 1.7;
-    color: rgba(80, 40, 120, 0.35);
-    font-family: var(--doc-font-family, system-ui, sans-serif);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .context-depth-0 {
-    display: block;
-  }
-
-
-  /* Each nesting level: inset block with deeper purple bg + stronger text */
-  .context-nest {
-    display: inline;
-    border-radius: 4px;
-    padding: 1px 3px;
-  }
-
-  /* Depth 0: outermost revision highlight (light purple) */
-  .context-nest-0 {
-    background: rgba(147, 112, 219, 0.10);
-    color: rgba(88, 28, 135, 0.55);
-    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.18);
-  }
-
-  /* Depth 1: one level in (medium purple) */
-  .context-nest-1 {
-    background: rgba(126, 87, 194, 0.16);
-    color: rgba(88, 28, 135, 0.70);
-    box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.25);
-  }
-
-  /* Depth 2: two levels in (deeper purple) */
-  .context-nest-2 {
-    background: rgba(109, 40, 217, 0.20);
-    color: rgba(88, 28, 135, 0.82);
-    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.30);
-  }
-
-  /* Depth 3+: innermost / deepest (richest purple) */
-  .context-nest-3 {
-    background: rgba(88, 28, 135, 0.24);
-    color: rgba(88, 28, 135, 0.92);
-    font-weight: 500;
-    box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
-  }
-
-  /* Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
-     inner carries backdrop-blur + radius + overflow-hidden + bg/border (clips the blur
-     to the corner). In WebKit a single element with backdrop-filter + radius +
-     overflow-hidden + box-shadow squares the shadow at the corners; splitting avoids it
-     while still clipping the blur. */
-  .context-jump-btn {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: 99px;
-    box-shadow: 0 2px 8px rgba(109, 40, 217, 0.12);
-    cursor: pointer;
-    z-index: 2;
-  }
-
-  .context-jump-btn-inner {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    padding: 3px 5px;
-    font-size: 10px;
-    font-weight: 500;
-    color: rgba(109, 40, 217, 0.8);
-    background: rgba(245, 240, 255, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(167, 139, 250, 0.35);
-    border-radius: 99px;
-    /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
-    overflow: hidden;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .context-jump-btn:hover .context-jump-btn-inner {
-    background: rgba(237, 233, 254, 0.95);
-    color: rgba(109, 40, 217, 1);
-  }
-
-  .context-jump-top {
-    top: 14px;
-  }
-
-  .context-jump-bottom {
-    bottom: 14px;
-  }
+  /* Version-dropdown styles live in RevisionBreadcrumbs.svelte; context-panel
+     styles live in RevisionContextPanel.svelte. */
 </style>

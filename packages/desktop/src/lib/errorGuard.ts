@@ -29,18 +29,12 @@
  * }
  */
 
-import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
+import { persistNamedVersion } from "$lib/editor/listeners";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
-import posthog from "$lib/posthog";
+import { captureException } from "$lib/posthog";
 import { get } from "svelte/store";
-import {
-    currentDocumentTitle,
-    currentDraftId,
-    documentContent,
-    editorView,
-    lastPersistedEventId,
-} from "./stores";
+import { currentDocumentTitle, currentDraftId, documentContent, editorView } from "./stores";
 
 export type BackupEntry = {
     timestamp: number;
@@ -238,14 +232,18 @@ export function saveEmergencyBackup(reason: string): boolean {
 export function saveEmergencySnapshot(label: string): void {
     const view = get(editorView);
     const draftId = get(currentDraftId);
-    const eventId = get(lastPersistedEventId);
     if (!view || !draftId) return;
 
     try {
         const stateJson = JSON.stringify(view.state.toJSON(savedFields));
-        createNamedSnapshot(draftId, stateJson, eventId, label).catch((e) => {
+        persistNamedVersion(
+            draftId,
+            stateJson,
+            label,
+            () => get(editorView) === view && get(currentDraftId) === draftId,
+        ).catch((e) => {
             console.error(e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            captureException(e);
         });
     } catch {
         // Best-effort — don't let snapshot failures mask the original crash

@@ -69,6 +69,18 @@ describe("authenticateWebSocket", () => {
         expect(mockedSupabase().auth.getUser).not.toHaveBeenCalled();
     });
 
+    it.each(["not-a-uuid", "../document", "123e4567-e89b-12d3-a456-426614174000/extra"])(
+        "rejects malformed document ID %s before Supabase",
+        async (documentId) => {
+            expect(await authenticateWebSocket("token", documentId)).toEqual({
+                success: false,
+                error: "Invalid handshake",
+            });
+            expect(mockedSupabase().auth.getUser).not.toHaveBeenCalled();
+            expect(mockedSupabase().from).not.toHaveBeenCalled();
+        },
+    );
+
     it("rejects invalid Supabase JWTs", async () => {
         mockedSupabase().auth.getUser.mockResolvedValue({
             data: { user: null },

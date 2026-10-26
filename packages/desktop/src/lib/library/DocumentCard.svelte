@@ -3,7 +3,7 @@
 -->
 <script lang="ts">
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
-import { AppWindow, RotateCcw, Sparkles, Trash2, X } from "lucide-svelte";
+import { AppWindow, Copy, RotateCcw, Sparkles, Trash2, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { type SnippetSegment, snippetSegments } from "./snippet";
 import { parseTags } from "./tags";
@@ -21,6 +21,7 @@ interface Props {
     onRestore: () => void;
     onDeletePermanent: () => void;
     onOpenInNewWindow: () => void;
+    onDuplicate: () => void;
     onTagClick?: (tag: string) => void;
 }
 
@@ -36,6 +37,7 @@ const {
     onRestore,
     onDeletePermanent,
     onOpenInNewWindow,
+    onDuplicate,
     onTagClick,
 }: Props = $props();
 
@@ -184,6 +186,13 @@ function formatDate(ms: number): string {
         {:else}
             <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
+                    onclick={(e) => { e.stopPropagation(); onDuplicate(); }}
+                    title="Duplicate"
+                    class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
+                >
+                    <Copy size={12} />
+                </button>
+                <button
                     onclick={(e) => { e.stopPropagation(); onOpenInNewWindow(); }}
                     title="Open in new window"
                     class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
@@ -292,6 +301,13 @@ function formatDate(ms: number): string {
                 </div>
             {:else}
                 <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        onclick={(e) => { e.stopPropagation(); onDuplicate(); }}
+                        title="Duplicate"
+                        class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
+                    >
+                        <Copy size={12} />
+                    </button>
                     <button
                         onclick={(e) => { e.stopPropagation(); onOpenInNewWindow(); }}
                         title="Open in new window"

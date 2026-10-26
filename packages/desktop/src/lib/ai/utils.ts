@@ -7,21 +7,16 @@ import remarkRehype from "remark-rehype";
 /**
  * Shared utilities for the AI subsystem.
  *
- * Provides three concerns used across multiple AI components:
+ * Provides two concerns used across multiple AI components:
  *
  * 1. **Markdown rendering** (`renderMarkdown`) — converts AI response
  *    text into sanitized HTML for display in chat bubbles. Uses the
  *    unified/remark/rehype pipeline with DOMPurify for XSS safety.
  *
- * 2. **Document context prompt building** (`buildDocumentContextPrompt`)
- *    — serializes the writer's document-context fields (goal, tone,
- *    audience, etc.) into a string appended to system prompts so the
- *    LLM can tailor its responses.
- *
- * 3. **Document injection** (`injectDocumentContext`) — wraps the
+ * 2. **Document injection** (`injectDocumentContext`) — wraps the
  *    current editor content and any selected text into a
- *    `UserModelMessage` that is appended to every LLM call so the
- *    model has access to the writer's document.
+ *    `UserModelMessage`. Sidebar chat retains one initial summary and
+ *    uses change notices plus read tools for later turns.
  *
  * Dependencies: unified ecosystem, dompurify, ai SDK types.
  */
@@ -47,11 +42,6 @@ export async function renderMarkdown(markdown: string): Promise<string> {
     return sanitizedHTML;
 }
 type DocumentContext = DocumentContextLike;
-
-export function buildDocumentContextPrompt(ctx?: DocumentContext): string {
-    if (!ctx?.freeform?.trim()) return "";
-    return `\n\nDocument context provided by the writer:\nTreat this as user guidance, not document text.\n${ctx.freeform.trim()}`;
-}
 
 export function injectDocumentContext({
     documentContent,

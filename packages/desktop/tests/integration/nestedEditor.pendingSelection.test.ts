@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe("NestedEditorController pending selection focus", () => {
-    it("does not steal focus for an empty pending selection", () => {
+    it("does not steal focus when the pending selection does not request it", () => {
         const { view, parent, revisionId, version } = createRevisionView();
         const host = document.createElement("div");
         document.body.appendChild(host);
@@ -61,6 +61,7 @@ describe("NestedEditorController pending selection focus", () => {
             annotationId: revisionId,
             from: 0,
             to: 0,
+            focus: false,
         });
         controller.applyPendingSelection();
 
@@ -87,11 +88,39 @@ describe("NestedEditorController pending selection focus", () => {
             annotationId: revisionId,
             from: 0,
             to: 5,
+            focus: true,
         });
         controller.applyPendingSelection();
 
         expect(focusSpy).toHaveBeenCalledOnce();
         expect(controller.editor!.state.selection.main.from).toBe(0);
         expect(controller.editor!.state.selection.main.to).toBe(5);
+    });
+
+    it("focuses a collapsed pending selection when it represents an intentional caret", () => {
+        const { view, parent, revisionId, version } = createRevisionView();
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const controller = new NestedEditorController(view, revisionId, {}, "flush");
+        cleanup.push(
+            () => controller.destroy(),
+            () => view.destroy(),
+            () => parent.remove(),
+            () => host.remove(),
+        );
+        controller.create(host, version, 0);
+        const focusSpy = vi.spyOn(controller.editor!, "focus");
+
+        annotationEventBus.emit({
+            type: "pending-nested-editor-selection",
+            annotationId: revisionId,
+            from: 0,
+            to: 0,
+            focus: true,
+        });
+        controller.applyPendingSelection();
+
+        expect(focusSpy).toHaveBeenCalledOnce();
+        expect(controller.editor!.state.selection.main.empty).toBe(true);
     });
 });

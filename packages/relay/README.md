@@ -1,120 +1,99 @@
-# Quillium Omni Relay
+# Quillium Omni relay
 
-Native WebSocket relay server for Quillium Omni real-time collaboration. It uses Yjs for sync, keeps active rooms in memory, authenticates document access through Supabase, and persists Yjs updates/snapshots back to Supabase.
+The relay synchronizes Live Rooms over WebSockets, authenticates access through
+Supabase, and persists Yjs updates and snapshots. The
+[collaboration guide](../../docs/collaboration.md) explains state ownership,
+recovery, cleanup, and shutdown.
 
-## Current Constraints
+## Current constraints
 
-- Run this as a long-lived process. It is not a Vercel Function/SvelteKit route.
-- Run one instance for now. Live rooms are process-local, and guest access depends on the owner being connected to that same process.
-- Scale-out needs a new room routing/presence design, such as Redis-backed presence, sticky room routing, or a Durable Object-style room coordinator.
+Run one long-lived relay process. Rooms and owner presence are process-local;
+non-owners can join only while the registered owner is connected to that same
+process. Update-log cleanup also assumes one process owns each room. Horizontal
+scaling needs coordinated room ownership before another instance is added.
 
-## Local Development
+Failed persistence batches remain in memory for retry. A process crash or the
+10-second shutdown deadline can lose them. `/health` reports process status and
+room count; it does not prove Supabase is reachable or all edits are durable.
+
+## Run locally
+
+Run commands from the repository root. Install dependencies with `bun install`.
+If `packages/relay/.env` does not exist, create it from the package example:
 
 ```sh
-bun install
-cp .env.example .env
-bun run relay:dev
+cp packages/relay/.env.example packages/relay/.env
 ```
 
-Health check:
+Fill in the Supabase values, then start the relay:
 
 ```sh
+bun run relay:dev
 curl http://localhost:3001/health
 ```
 
-WebSocket URL shape:
-
-```text
-wss://relay.quillium.bryanhu.com/<documentId>?auth=<supabase-access-token>
-```
-
-Passing auth in the query string works with browser WebSockets, but it can show up in proxy/access logs. Before wider production use, prefer a short-lived relay token minted for a specific document and session.
+The dev script runs Node through `tsx`. A successful health response contains
+`"status":"ok"` and `"protocol":"yjs"`. Set desktop `PUBLIC_RELAY_URL` to
+`ws://localhost:3001` to connect a local app.
 
 ## Environment
 
-| Name | Required | Default | Notes |
-| --- | --- | --- | --- |
-| `SUPABASE_URL` | Yes | none | Supabase project URL. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | none | Service-role key. Keep server-only. |
-| `PORT` | No | `3001` | Render/Fly/AWS will usually inject this. |
-| `HOST` | No | `0.0.0.0` | Must be `0.0.0.0` on most hosts. |
-| `ALLOWED_ORIGINS` | Production | unset | Comma-separated browser origins allowed to connect. If unset, origin checks are disabled. |
-| `LOG_LEVEL` | No | `info` | `error`, `warn`, `info`, or `debug`. Use `warn` in quiet production and `debug` for protocol troubleshooting. |
-| `PERSIST_DEBOUNCE_MS` | No | `500` | Batches high-frequency Yjs update writes to Supabase. |
+| Name | Default | Purpose |
+|---|---|---|
+| `SUPABASE_URL` | Required | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Required | Server-only key; never put it in frontend configuration |
+| `PORT` | `3001` | HTTP and WebSocket port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `ALLOWED_ORIGINS` | Unset | Comma-separated browser origins; unset disables origin checks |
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info`, or `debug` |
+| `PERSIST_DEBOUNCE_MS` | `500` | Delay before batching update writes |
 
-Example production origins:
+When an allowlist is configured, the relay also accepts its built-in localhost
+and Tauri development origins, and clients without an Origin header. This check
+does not replace authentication. See [`src/origins.ts`](src/origins.ts).
 
-```text
-ALLOWED_ORIGINS=https://quillium.bryanhu.com
-```
+The WebSocket URL is `/<documentId>?auth=<supabase-access-token>`. The desktop
+supplies its active draft ID as this room key. Configure proxies to avoid
+recording the query string, which contains the access token.
 
-## Render Deployment
+## Build and deploy
 
-Render is the easiest first production path.
-
-1. Create a Web Service from this repo.
-2. Set the root directory to the repository root.
-3. Use either native Bun/Node commands or the Dockerfile.
-4. Set the health check path to `/health`.
-5. Add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_ORIGINS`, and `LOG_LEVEL=warn`.
-6. Keep the service at one instance.
-7. Add a custom domain such as `relay.quillium.bryanhu.com`.
-
-Native commands:
+Use the Node version range in [the root manifest](../../package.json). Build and
+start through the package scripts so Node runs the production bundle:
 
 ```sh
-bun install --frozen-lockfile
 bun run relay:build
-bun packages/relay/dist/index.js
+bun run relay:start
 ```
 
-Render-specific notes:
-
-- Render Web Services support WebSocket connections.
-- Render requires binding to `0.0.0.0` and the injected `PORT`.
-- Do not horizontally scale this relay yet; reconnects are not guaranteed to land on the same instance.
-
-Docs: [Render Web Services](https://render.com/docs/web-services), [Render WebSockets](https://render.com/docs/websocket), [Render Pricing](https://render.com/pricing).
-
-## Docker
-
-Build from the repository root:
+Build the Docker image from the repository root:
 
 ```sh
 docker build -f packages/relay/Dockerfile -t quillium-relay .
 docker run --env-file packages/relay/.env -p 3001:3001 quillium-relay
 ```
 
-The image builds TypeScript in one stage, installs production dependencies in the runtime stage, exposes port `3001`, and includes a `/health` health check.
+[`Dockerfile`](Dockerfile) bundles the relay and shared contracts with esbuild.
+The runtime image contains Node and the bundle, without Bun or a production
+`node_modules` tree. It exposes port 3001 and probes `/health`.
 
-## Cost Breakdown
+The checked-in deployment target is Fly. [`fly.toml`](fly.toml) selects the
+Dockerfile, port, region, and machine settings. Run Fly commands from the
+repository root. Runtime pins and the verified Bun installer are documented in
+the [monorepo guide](../../docs/monorepo.md#deployments).
 
-Prices move, so treat this as a decision guide rather than accounting. Last checked: April 23, 2026.
+Before a deployment, apply the root Supabase migrations, configure server-only
+credentials and allowed origins, and verify owner connect, joiner connect,
+owner departure, and reconnect behavior. Allow graceful `SIGTERM` handling and
+check logs for failed flushes or the shutdown deadline.
 
-| Option | Likely minimum | Best reason to choose it | Catch |
-| --- | ---: | --- | --- |
-| Existing self-hosted box | $0 incremental | Cheapest cash cost if you already have reliable hardware and internet. | You own uptime, security updates, backups, TLS, monitoring, router/firewall, and power/network outages. |
-| Cheap VPS/self-hosted cloud | ~$4-6/mo | Cheapest sane public deployment. Hetzner and DigitalOcean-style VPSes are simple with Docker + Caddy. | More ops work than Render/Fly. You patch the host. |
-| AWS Lightsail | $3.50-5/mo | Cheapest AWS-branded path with predictable billing. | Less polished deploy workflow; IPv4 costs more than IPv6-only. |
-| Fly.io | ~$3.32/mo for 512 MB shared CPU in some regions | Cheapest managed-ish WebSocket host; Docker-native; good for long-running processes. | More infra decisions than Render. Watch region/egress/volume choices. |
-| Render | $7/mo starter | Easiest: Git deploys, logs, custom domain, TLS, health checks, WebSocket support. | Costs a little more; scaling still needs relay architecture changes. |
-| AWS App Runner/ECS | Usually $20+/mo for always-on comfort | Fits teams already deep in AWS. | Not the cheapest for this; App Runner’s always-provisioned examples land much higher than tiny VPS/Fly/Render. |
+## Verify changes
 
-My cost-first recommendation:
+```sh
+bun run relay:typecheck
+bun run relay:test:run
+```
 
-1. If you want least money and can tolerate ops: use an existing VPS/home server or a cheap VPS with Docker + Caddy.
-2. If you want cheap without much server babysitting: use Fly.io, one Machine, 512 MB or 1 GB.
-3. If you want the least deployment friction: use Render Starter at one instance.
-4. Use AWS only if Quillium infrastructure is already standardizing there. For lowest AWS cost, prefer Lightsail over App Runner/ECS.
-
-Sources: [Fly.io pricing](https://fly.io/docs/about/pricing/), [AWS Lightsail pricing](https://aws.amazon.com/lightsail/pricing/), [AWS App Runner pricing](https://aws.amazon.com/apprunner/pricing/), [Hetzner Cloud pricing](https://www.hetzner.com/cloud/private-cloud/?country=us), [DigitalOcean Droplet pricing](https://www.digitalocean.com/pricing/droplets).
-
-## Pre-Launch Checklist
-
-- [ ] Apply the Supabase tables for `sync_documents`, `yjs_documents`, and `yjs_updates`.
-- [ ] Set `ALLOWED_ORIGINS` for production domains.
-- [ ] Set `LOG_LEVEL=warn` unless actively debugging.
-- [ ] Confirm `/health` returns `status: "ok"`.
-- [ ] Test owner connect, guest connect, owner disconnect, guest reconnect rejection, and owner reconnect.
-- [ ] Confirm deploy shutdown sends `SIGTERM` and leaves enough time for pending update flush.
-- [ ] Replace query-string auth with short-lived document-scoped relay tokens before broad beta traffic.
+For real authentication, sockets, and database persistence, use the
+[cross-package E2E suite](../e2e/README.md). A health check alone does not cover
+those paths.

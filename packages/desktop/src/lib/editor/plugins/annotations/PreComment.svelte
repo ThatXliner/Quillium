@@ -26,6 +26,7 @@ import posthog from "$lib/posthog";
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
 import { removeAnnotation, updateThread } from "./annotationField";
+import { captureCommentEditorPosition, restoreCommentEditorPosition } from "./commentFocus";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 import { type Annotations, type GenericAnnotation, isAnnotationOfType } from "./models";
 import { canCreateNewComment } from "./utils";
@@ -44,20 +45,21 @@ const {
 
 let textarea = $state<HTMLTextAreaElement | undefined>();
 let focusedPendingId = $state<number | undefined>(undefined);
+let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 
 function resolvePendingComment() {
     if (
         pendingAnnotation &&
         isAnnotationOfType(pendingAnnotation, "comment") &&
-        pendingAnnotation.thread.length === 0
+        pendingAnnotation.status === "pending"
     ) {
         return pendingAnnotation;
     }
     if (
         activeAnnotationData &&
         isAnnotationOfType(activeAnnotationData, "comment") &&
-        activeAnnotationData.thread.length === 0
+        activeAnnotationData.status === "pending"
     ) {
         return activeAnnotationData;
     }
@@ -79,6 +81,7 @@ $effect(() => {
         pendingComment.id !== focusedPendingId
     ) {
         const targetId = pendingComment.id;
+        originSelection = captureCommentEditorPosition(view);
         tick().then(() => {
             if (resolvePendingComment()?.id === targetId) {
                 focusedPendingId = targetId;
@@ -107,12 +110,16 @@ function addComment() {
         has_selection: !!selectedText,
         comment_length: commentText.length,
     });
+    // The dispatch below changes this annotation from pending to active,
+    // which immediately clears the pendingComment derived value. Capture
+    // everything needed after dispatch before making that state transition.
+    const annotationId = pendingComment.id;
     const { from, to } = pendingComment.selection.main;
     view.dispatch(
         view.state.update({
             effects: [
                 updateThread.of({
-                    annotationId: pendingComment.id,
+                    annotationId,
                     newThread: [
                         ...pendingComment.thread,
                         {
@@ -128,7 +135,12 @@ function addComment() {
             selection: { anchor: from, head: to },
         }),
     );
-    clearDraft(pendingComment.id);
+    clearDraft(annotationId);
+}
+
+function dismissComposer() {
+    textarea?.blur();
+    if (originSelection) restoreCommentEditorPosition(view, originSelection);
 }
 
 /**
@@ -137,12 +149,13 @@ function addComment() {
  */
 function cancelComment() {
     if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
+    const annotationId = pendingComment.id;
     view.dispatch(
         view.state.update({
             effects: [removeAnnotation.of(pendingComment)],
         }),
     );
-    clearDraft(pendingComment.id);
+    clearDraft(annotationId);
 }
 </script>
 
@@ -175,8 +188,13 @@ function cancelComment() {
                     addComment();
                     // @ts-ignore
                     e.target.blur();
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dismissComposer();
                 }
             }}
+            onfocus={() => (originSelection = captureCommentEditorPosition(view))}
             placeholder="Add a comment…"
             class="flex-1 text-xs text-black/70 placeholder:text-black/30 bg-transparent resize-none focus:outline-none leading-relaxed"
             rows="2"

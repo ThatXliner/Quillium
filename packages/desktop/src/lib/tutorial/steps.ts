@@ -65,7 +65,7 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-sidebar",
         title: "Your AI Writing Companion",
-        body: "Chat for thinking, Feedback for evaluating structure, Revise for sentence-level craft, Context for setting your goal.",
+        body: "Use Chat, Feedback, and Revise for different kinds of help. Set your goal in Document Context. You can try one conversation in Settings → AI.",
         position: "right",
     },
     {
@@ -73,23 +73,7 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-tab-chat",
         title: "Chat with AI",
-        body: "Open-ended work: brainstorming, outlining, asking questions, or exploring options before committing to edits.",
-        position: "right",
-    },
-    {
-        id: "ai-feedback",
-        section: "ai",
-        selector: "#ai-tab-feedback",
-        title: "Get Instant Feedback",
-        body: "Evaluate whether your content and structure are working — argument, pacing, goals. Set Document Context first so the AI knows what you're aiming for.",
-        position: "right",
-    },
-    {
-        id: "ai-revise",
-        section: "ai",
-        selector: "#ai-tab-revise",
-        title: "Revise & Edit",
-        body: "Sentence-level craft: tightening prose, word choice, rhythm, clarity. The content is assumed right — this is about how it's written.",
+        body: "Ask questions and explore ideas about your writing. Feedback adds comments, and Revise proposes wording changes you can choose to accept.",
         position: "right",
     },
     {

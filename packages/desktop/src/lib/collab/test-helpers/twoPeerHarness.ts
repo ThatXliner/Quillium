@@ -1,5 +1,6 @@
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { history } from "@codemirror/commands";
+import type { GenericAnnotation, VersionGroups } from "$lib/editor/plugins/annotations/models";
+import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
 /**
  * twoPeerHarness.ts -- Shared 2-peer fixture for Yjs convergence tests.
  *
@@ -21,10 +22,11 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
 import { AnnotationIdMap } from "../annotationSchema";
-import type { YjsAnnotationNode } from "../types";
+import type { YjsAnnotationNode, YjsVersionGroup } from "../types";
 import { createAnnotationSyncPlugin } from "../yjsAnnotations";
 import { createYjsBinding } from "../yjsBinding";
 import { createYjsUndoExtension } from "../yjsUndo";
+import { createVersionGroupSyncPlugin } from "../yjsVersionGroups";
 
 export interface Peer {
     ydoc: Y.Doc;
@@ -33,15 +35,24 @@ export interface Peer {
     // annotation shape from YjsAnnotation (flat) to Y.Map (recursive).
     // Using `unknown` here keeps this harness compatible across both.
     ymap: Y.Map<unknown>;
+    yVersionGroups: Y.Map<YjsVersionGroup>;
     view: EditorView;
     clientId: string;
     idMap?: AnnotationIdMap; // Present when annotation sync is enabled
 }
 
+export type UndoPeer = Peer & { undoManager: Y.UndoManager };
+
+type InitialUndoPeerState = {
+    annotations?: GenericAnnotation[];
+    versionGroups?: VersionGroups;
+};
+
 export function makePeer(clientId: string, initialText = ""): Peer {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
     const ymap = ydoc.getMap<unknown>("annotations");
+    const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
     if (initialText) {
         ydoc.transact(() => ytext.insert(0, initialText), "init");
     }
@@ -54,7 +65,7 @@ export function makePeer(clientId: string, initialText = ""): Peer {
         ],
     });
     const view = new EditorView({ state, parent: document.body });
-    return { ydoc, ytext, ymap, view, clientId };
+    return { ydoc, ytext, ymap, yVersionGroups, view, clientId };
 }
 
 /**
@@ -65,6 +76,7 @@ export function makePeerWithAnnotationSync(clientId: string, initialText = ""): 
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
     const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
     const idMap = new AnnotationIdMap();
 
     if (initialText) {
@@ -81,30 +93,74 @@ export function makePeerWithAnnotationSync(clientId: string, initialText = ""): 
     });
     const view = new EditorView({ state, parent: document.body });
     // Cast ymap to Y.Map<unknown> to satisfy Peer interface (ymap is Y.Map<YjsAnnotationNode>)
-    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, view, clientId, idMap };
+    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, yVersionGroups, view, clientId, idMap };
 }
 
-export function makeJoinerPeer(
-    clientId: string,
-    initialText = "",
-): Peer & { undoManager: Y.UndoManager } {
+/**
+ * Create a peer with text, annotation, and version-group sync enabled.
+ * Use for #273 tests that exercise document-level group metadata.
+ */
+export function makePeerWithVersionGroupSync(clientId: string, initialText = ""): Peer {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
     const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
     const idMap = new AnnotationIdMap();
 
     if (initialText) {
         ydoc.transact(() => ytext.insert(0, initialText), "init");
     }
 
-    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
     const state = EditorState.create({
         doc: initialText,
         extensions: [
             annotationField,
+            versionGroupField,
             createYjsBinding(ytext),
             createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
-            // joiner-shape: history intentionally omitted; undo via Y.UndoManager.
+            createVersionGroupSyncPlugin(yVersionGroups, { idMap, annotationsMap: ymap }),
+        ],
+    });
+    const view = new EditorView({ state, parent: document.body });
+    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, yVersionGroups, view, clientId, idMap };
+}
+
+function makePeerWithUnifiedUndo(
+    clientId: string,
+    initialText: string,
+    seedVersionGroupsFromLocal: boolean,
+    initialState?: InitialUndoPeerState,
+): UndoPeer {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const yVersionGroups = ydoc.getMap<YjsVersionGroup>("versionGroups");
+    const idMap = new AnnotationIdMap();
+
+    if (initialText) {
+        ydoc.transact(() => ytext.insert(0, initialText), "init");
+    }
+
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap, [
+        yVersionGroups,
+    ]);
+    const initialAnnotations = Object.fromEntries(
+        (initialState?.annotations ?? []).map((annotation) => [annotation.id, annotation]),
+    );
+    const state = EditorState.create({
+        doc: initialText,
+        extensions: [
+            annotationField.init(() => initialAnnotations),
+            versionGroupField.init(() => initialState?.versionGroups ?? {}),
+            createYjsBinding(ytext),
+            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+            createVersionGroupSyncPlugin(yVersionGroups, {
+                idMap,
+                annotationsMap: ymap,
+                seedFromLocal: seedVersionGroupsFromLocal,
+            }),
+            // Live-collab shape: CM history is intentionally omitted for every
+            // participant; local-only undo is provided by Y.UndoManager.
             undoExt,
         ],
     });
@@ -113,6 +169,7 @@ export function makeJoinerPeer(
         ydoc,
         ytext,
         ymap: ymap as Y.Map<unknown>,
+        yVersionGroups,
         view,
         clientId,
         idMap,
@@ -120,27 +177,16 @@ export function makeJoinerPeer(
     };
 }
 
-export function makeOwnerPeer(clientId: string, initialText = ""): Peer {
-    const ydoc = new Y.Doc();
-    const ytext = ydoc.getText("document");
-    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
-    const idMap = new AnnotationIdMap();
+export function makeJoinerPeer(clientId: string, initialText = ""): UndoPeer {
+    return makePeerWithUnifiedUndo(clientId, initialText, false);
+}
 
-    if (initialText) {
-        ydoc.transact(() => ytext.insert(0, initialText), "init");
-    }
-
-    const state = EditorState.create({
-        doc: initialText,
-        extensions: [
-            annotationField,
-            history({ newGroupDelay: 250 }),
-            createYjsBinding(ytext),
-            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
-        ],
-    });
-    const view = new EditorView({ state, parent: document.body });
-    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, view, clientId, idMap };
+export function makeOwnerPeer(
+    clientId: string,
+    initialText = "",
+    initialState?: InitialUndoPeerState,
+): UndoPeer {
+    return makePeerWithUnifiedUndo(clientId, initialText, true, initialState);
 }
 
 export function connect(a: Peer, b: Peer): () => void {

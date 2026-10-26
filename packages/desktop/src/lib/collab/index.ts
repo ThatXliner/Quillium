@@ -1,6 +1,7 @@
 import { getCurrentUserName, getUser } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
 import { historyCompartment } from "$lib/editor/extensions";
+import { persistentHistoryRuntimeExtension } from "$lib/editor/persistentHistory";
 import { history } from "@codemirror/commands";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
 /**
@@ -23,6 +24,10 @@ import {
     annotationField,
     removeAnnotation,
 } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    _restoreVersionGroups,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
 import { AnnotationIdMap } from "./annotationSchema";
 import { colorForClient, createAwarenessExtension } from "./awareness";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
@@ -33,10 +38,10 @@ import {
     disconnectYjsProvider,
     getCurrentDocId,
     getYjsProvider,
-    handleOwnerLeft,
     relayConfigured,
 } from "./yjsProvider";
 import { createYjsUndoExtension } from "./yjsUndo";
+import { createVersionGroupSyncPlugin } from "./yjsVersionGroups";
 
 // Stores
 import {
@@ -135,7 +140,8 @@ export async function enableCollab(
     asOwner = true,
 ): Promise<void> {
     // Connect to Yjs relay
-    const { provider, awareness, ydoc, ytext, ymap } = await createYjsProvider(docId);
+    const { provider, awareness, ydoc, ytext, ymap, yVersionGroups } =
+        await createYjsProvider(docId);
 
     // Get local content before connecting
     const localDoc = view.state.doc.toString();
@@ -204,7 +210,15 @@ export async function enableCollab(
     const preJoinLocalAnnotations = !asOwner
         ? Object.values(view.state.field(annotationField, false) ?? {})
         : [];
-    if (currentContent !== authoritativeContent || preJoinLocalAnnotations.length > 0) {
+    const preJoinLocalVersionGroups = !asOwner
+        ? (view.state.field(versionGroupField, false) ?? {})
+        : {};
+    const shouldClearVersionGroups = Object.keys(preJoinLocalVersionGroups).length > 0;
+    if (
+        currentContent !== authoritativeContent ||
+        preJoinLocalAnnotations.length > 0 ||
+        shouldClearVersionGroups
+    ) {
         view.dispatch({
             ...(currentContent !== authoritativeContent
                 ? {
@@ -215,7 +229,10 @@ export async function enableCollab(
                       },
                   }
                 : {}),
-            effects: preJoinLocalAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+            effects: [
+                ...preJoinLocalAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+                ...(shouldClearVersionGroups ? [_restoreVersionGroups.of({ groups: {} })] : []),
+            ],
             annotations: [Transaction.addToHistory.of(false)],
         });
     }
@@ -227,12 +244,19 @@ export async function enableCollab(
 
     const binding = createYjsBinding(ytext);
     // Per D-83: Pass ymap to UndoManager for unified undo stack
-    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap, [
+        yVersionGroups,
+    ]);
     const awarenessExt = createAwarenessExtension(awareness, ytext, displayName, cursorColor);
 
     // Plan 8.5c-02: Caller-owned idMap so subtree controllers can resolve CM ids
     const mainIdMap = new AnnotationIdMap();
     const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
+    const versionGroupSync = createVersionGroupSyncPlugin(yVersionGroups, {
+        idMap: mainIdMap,
+        annotationsMap: ymap,
+        seedFromLocal: asOwner,
+    });
 
     currentUndoManager = undoManager;
 
@@ -247,33 +271,20 @@ export async function enableCollab(
         provider,
         awareness,
         ymap,
+        yVersionGroups,
         ytext,
         undoManager,
         mainIdMap,
     });
 
-    // Install Yjs collab extension - includes annotation sync.
-    // Joiners use Y.UndoManager only; owners keep their existing CM history.
-    const collabExts = asOwner
-        ? [binding, awarenessExt, annotationSync]
-        : [binding, undoExt, awarenessExt, annotationSync];
+    // Install one Yjs-backed undo stack for every live participant. CodeMirror
+    // history cannot rebase custom annotation/version-group effects through a
+    // later remote projection, so retaining it for owners can make Cmd-z replay
+    // stale semantic state. Y.UndoManager tracks only this client's "local"
+    // Yjs transactions and rebases them over remote changes.
+    const collabExts = [binding, undoExt, awarenessExt, annotationSync, versionGroupSync];
     view.dispatch({
-        effects: [
-            collabCompartment.reconfigure(collabExts),
-            ...(asOwner ? [] : [historyCompartment.reconfigure([])]),
-        ],
-    });
-
-    // Listen for owner left (custom message from server)
-    // y-websocket doesn't have built-in custom messages, so we listen on provider events
-    const providerWithConnectionClose = provider as unknown as {
-        on(eventName: "connection-close", handler: (event: CloseEvent | null) => void): void;
-    };
-    providerWithConnectionClose.on("connection-close", (event) => {
-        // Check close reason for owner disconnect (event may be null on manual disconnect)
-        if (event?.reason === "Owner left") {
-            handleOwnerLeft();
-        }
+        effects: [collabCompartment.reconfigure(collabExts), historyCompartment.reconfigure([])],
     });
 
     console.log(`[collab] Collab enabled for ${docId.slice(0, 8)}...`);
@@ -313,8 +324,8 @@ function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | 
     try {
         restoredState = EditorState.fromJSON(
             prior.editorStateJson,
-            { extensions: [annotationField] },
-            { annotationField },
+            { extensions: [annotationField, versionGroupField] },
+            { annotationField, versionGroupField },
         );
     } catch (err) {
         console.warn("[collab] Failed to restore joiner editor snapshot:", err);
@@ -323,6 +334,7 @@ function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | 
 
     const currentAnnotations = Object.values(view.state.field(annotationField, false) ?? {});
     const restoredAnnotations = Object.values(restoredState.field(annotationField, false) ?? {});
+    const restoredVersionGroups = restoredState.field(versionGroupField, false) ?? {};
     const restoredDoc = restoredState.doc.toString();
 
     view.dispatch({
@@ -340,12 +352,13 @@ function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | 
         annotations: [Transaction.addToHistory.of(false)],
     });
 
-    if (restoredAnnotations.length > 0) {
-        view.dispatch({
-            effects: restoredAnnotations.map((annotation) => addAnnotation.of(annotation)),
-            annotations: [Transaction.addToHistory.of(false)],
-        });
-    }
+    view.dispatch({
+        effects: [
+            ...restoredAnnotations.map((annotation) => addAnnotation.of(annotation)),
+            _restoreVersionGroups.of({ groups: restoredVersionGroups }),
+        ],
+        annotations: [Transaction.addToHistory.of(false)],
+    });
 }
 
 /**
@@ -367,7 +380,10 @@ export function disableCollab(view: EditorView): void {
     view.dispatch({
         effects: [
             collabCompartment.reconfigure([]),
-            historyCompartment.reconfigure(history({ newGroupDelay: 250 })),
+            historyCompartment.reconfigure([
+                persistentHistoryRuntimeExtension,
+                history({ newGroupDelay: 250 }),
+            ]),
         ],
     });
 

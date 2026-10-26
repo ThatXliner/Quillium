@@ -84,7 +84,8 @@ fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta,
     // have a single source of truth (snippet.ts mirrors them on the JS side).
     let sql = format!(
         "SELECT d.id, d.title, d.created_at, d.updated_at, d.word_count,
-                d.preview_text, d.tags, d.deleted_at,
+                d.preview_text, d.tags, d.deleted_at, d.persist_history,
+                d.created_with_version,
                 snippet(documents_fts, 1, '{HIGHLIGHT_START}', '{HIGHLIGHT_END}', '…', 12)
          FROM documents_fts
          JOIN documents d ON d.rowid = documents_fts.rowid
@@ -104,8 +105,10 @@ fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta,
                 preview_text: row.get(5)?,
                 tags: row.get(6)?,
                 deleted_at: row.get(7)?,
+                persist_history: row.get(8)?,
+                created_with_version: row.get(9)?,
             },
-            row.get(8)?,
+            row.get(10)?,
         ))
     })?;
     rows.collect()
@@ -263,7 +266,10 @@ pub fn search_documents(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::documents::{create_document, trash_document, update_document_meta};
+    use crate::db::documents::{
+        create_document, trash_document, update_document_content_metadata, update_document_tags,
+        update_document_title,
+    };
     use crate::db::schema::open_db;
 
     fn test_db() -> (tempfile::TempDir, Connection) {
@@ -289,17 +295,21 @@ mod tests {
     #[test]
     fn finds_phrase_buried_in_body_beyond_preview() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "My Essay").unwrap();
+        let id = create_document(&conn, "My Essay", Some("0.24.4-rc.1")).unwrap();
         let body = format!(
             "{}{}",
             "padding ".repeat(50), // pushes the phrase past the 200-char preview
             "the silver heron waited by the estuary"
         );
-        update_document_meta(&conn, &id, "My Essay", 100, &body[..200], "[]", Some(&body)).unwrap();
+        update_document_content_metadata(&conn, &id, 100, &body[..200], &body, None).unwrap();
 
         let hits = search_documents(&conn, "silver heron", None).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].meta.id, id);
+        assert_eq!(
+            hits[0].meta.created_with_version.as_deref(),
+            Some("0.24.4-rc.1")
+        );
         assert_eq!(hits[0].match_type, "keyword");
         assert!(hits[0].snippet.contains(HIGHLIGHT_START));
         assert!(hits[0].snippet.contains("heron"));
@@ -308,17 +318,9 @@ mod tests {
     #[test]
     fn last_term_matches_as_prefix() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "Doc").unwrap();
-        update_document_meta(
-            &conn,
-            &id,
-            "Doc",
-            3,
-            "",
-            "[]",
-            Some("an extraordinary revelation"),
-        )
-        .unwrap();
+        let id = create_document(&conn, "Doc", None).unwrap();
+        update_document_content_metadata(&conn, &id, 3, "", "an extraordinary revelation", None)
+            .unwrap();
         let hits = search_documents(&conn, "extraord", None).unwrap();
         assert_eq!(hits.len(), 1);
     }
@@ -326,38 +328,21 @@ mod tests {
     #[test]
     fn trashed_documents_are_excluded() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "Doomed").unwrap();
-        update_document_meta(
-            &conn,
-            &id,
-            "Doomed",
-            2,
-            "",
-            "[]",
-            Some("unique zanzibar text"),
-        )
-        .unwrap();
+        let id = create_document(&conn, "Doomed", None).unwrap();
+        update_document_content_metadata(&conn, &id, 2, "", "unique zanzibar text", None).unwrap();
         assert_eq!(search_documents(&conn, "zanzibar", None).unwrap().len(), 1);
         trash_document(&conn, &id).unwrap();
         assert_eq!(search_documents(&conn, "zanzibar", None).unwrap().len(), 0);
     }
 
     #[test]
-    fn meta_update_without_body_preserves_index() {
+    fn title_and_tag_updates_preserve_index() {
         let (_dir, conn) = test_db();
-        let id = create_document(&conn, "Doc").unwrap();
-        update_document_meta(
-            &conn,
-            &id,
-            "Doc",
-            2,
-            "",
-            "[]",
-            Some("persistent kraken sighting"),
-        )
-        .unwrap();
-        // Rename-style update (no body) must not wipe body_text from FTS.
-        update_document_meta(&conn, &id, "Renamed", 2, "", "[]", None).unwrap();
+        let id = create_document(&conn, "Doc", None).unwrap();
+        update_document_content_metadata(&conn, &id, 2, "", "persistent kraken sighting", None)
+            .unwrap();
+        update_document_title(&conn, &id, "Renamed").unwrap();
+        update_document_tags(&conn, &id, "[\"fiction\"]").unwrap();
         let hits = search_documents(&conn, "kraken", None).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].meta.title, "Renamed");
@@ -366,10 +351,10 @@ mod tests {
     #[test]
     fn vec_knn_roundtrip_and_fusion() {
         let (_dir, conn) = test_db();
-        let id_a = create_document(&conn, "Doc A").unwrap();
-        let id_b = create_document(&conn, "Doc B").unwrap();
-        update_document_meta(&conn, &id_a, "Doc A", 2, "", "[]", Some("about grief")).unwrap();
-        update_document_meta(&conn, &id_b, "Doc B", 2, "", "[]", Some("about carpentry")).unwrap();
+        let id_a = create_document(&conn, "Doc A", None).unwrap();
+        let id_b = create_document(&conn, "Doc B", None).unwrap();
+        update_document_content_metadata(&conn, &id_a, 2, "", "about grief", None).unwrap();
+        update_document_content_metadata(&conn, &id_b, 2, "", "about carpentry", None).unwrap();
 
         // Hand-rolled near-orthogonal unit vectors (dim 384).
         let mut vec_a = vec![0.0f32; 384];

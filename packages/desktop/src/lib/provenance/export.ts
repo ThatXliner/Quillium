@@ -14,9 +14,11 @@
  *   - `$lib/posthog` for the `authorship_report_exported` analytics event.
  */
 
+import { logAppEvent } from "$lib/appLog";
 import { sanitizeFilename, saveWithDialog } from "$lib/export";
 import posthog from "$lib/posthog";
 import { type ProvenanceReport, generateProvenanceReport } from "$lib/provenance/report";
+import { toast } from "svelte-sonner";
 
 export type ReportFormat = "json" | "md";
 
@@ -71,7 +73,9 @@ function buildTotalsSection(report: ProvenanceReport): string {
     const rows: Array<[string, number]> = [
         ["Typed", t.typedChars],
         ["Pasted", t.pastedChars],
+        ["Human revision", t.humanRevisionChars],
         ["AI revision", t.aiRevisionChars],
+        ["Mixed revision", t.mixedRevisionChars],
         ["Formatting", t.formatChars],
         ["Unknown", t.unknownChars],
     ];
@@ -169,13 +173,32 @@ export async function exportAuthorshipReport(
     documentTitle: string,
     format: ReportFormat,
 ): Promise<boolean> {
-    const report = await generateProvenanceReport(draftId, documentTitle);
-    const content =
-        format === "json" ? JSON.stringify(report, null, 2) : buildReportMarkdown(report);
-    const filename = `${sanitizeFilename(documentTitle)}-authorship.${format}`;
-    const saved = await saveWithDialog(content, filename, format);
-    if (saved) {
-        posthog.capture("authorship_report_exported", { format });
+    try {
+        await logAppEvent("info", "export", "authorship export requested", {
+            draftId,
+            format,
+            title: documentTitle,
+        });
+        const report = await generateProvenanceReport(draftId, documentTitle);
+        const content =
+            format === "json" ? JSON.stringify(report, null, 2) : buildReportMarkdown(report);
+        const filename = `${sanitizeFilename(documentTitle)}-authorship.${format}`;
+        const saved = await saveWithDialog(content, filename, format);
+        if (saved) {
+            posthog.capture("authorship_report_exported", { format });
+        }
+        return saved;
+    } catch (error) {
+        console.error("[provenance] authorship report export failed", error);
+        void logAppEvent("error", "export", "authorship export failed", {
+            draftId,
+            format,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        toast.error("Export failed", {
+            description:
+                error instanceof Error ? error.message : "The report could not be written.",
+        });
+        return false;
     }
-    return saved;
 }

@@ -6,13 +6,14 @@ import Footer from "$lib/components/Footer.svelte";
 import Hero from "$lib/components/Hero.svelte";
 import Hero3DV2 from "$lib/components/Hero3DV2.svelte";
 import Nav from "$lib/components/Nav.svelte";
+import NotAiStatement from "$lib/components/NotAiStatement.svelte";
 import VideoOrCarousel from "$lib/components/VideoOrCarousel.svelte";
 import { initReveal } from "$lib/reveal";
 import posthog from "posthog-js";
 import { onMount, tick } from "svelte";
 
 // The marketing demo (YouTube video id) shown above the feature list.
-const HERO_VIDEO_ID: string = "YKsJSmKGITA";
+const HERO_VIDEO_ID: string = "-ext0rEauYM";
 
 let { data } = $props();
 
@@ -26,9 +27,11 @@ let { data } = $props();
 //     No flight (the 520vh sticky scene is desktop-pointer territory) and NO
 //     video — watching a video embed on mobile is a poor experience, so the
 //     static hero takes its place.
-// `isMobile` defaults true so SSR renders the lightweight static-hero path; on
-// mount the real value resolves and desktop swaps in the flight + video.
-let isMobile = $state(true);
+// The landing page is prerendered, so it cannot know the visitor's viewport at
+// build time. Render the current desktop hero first; defaulting to the legacy
+// mobile hero made its feather layout flash on every desktop visit before
+// hydration could read the viewport width.
+let isMobile = $state(false);
 
 // Desktop gets the flight + video; mobile gets the static hero and skips both.
 // The flight already carries its own finale download CTA, but we still render
@@ -75,7 +78,7 @@ onMount(() => {
 </script>
 
 <svelte:head>
-	<title>Quillium — The Non-Linear Writing App</title>
+	<title>Quillium — Write in Branches. Keep Every Draft.</title>
 	<meta name="msvalidate.01" content="64D60FCC52EFEF1A4B0D43527C8FB4C3" />
 	<meta
 		name="keywords"
@@ -90,7 +93,7 @@ onMount(() => {
 	<!-- Open Graph -->
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content="https://quillium.bryanhu.com/" />
-	<meta property="og:title" content="Quillium — The Non-Linear Writing App" />
+	<meta property="og:title" content="Quillium — Write in Branches. Keep Every Draft." />
 	<meta
 		property="og:description"
 		content="A writing app that lets you write in branches. Fork any sentence, keep every version, and never lose a draft."
@@ -103,7 +106,7 @@ onMount(() => {
 	<!-- Twitter Card -->
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:site" content="@quillium" />
-	<meta name="twitter:title" content="Quillium — The Non-Linear Writing App" />
+	<meta name="twitter:title" content="Quillium — Write in Branches. Keep Every Draft." />
 	<meta
 		name="twitter:description"
 		content="A writing app that lets you write in branches. Fork any sentence, keep every version, and never lose a draft."
@@ -156,11 +159,17 @@ onMount(() => {
 		<Hero release={data.release} />
 	{/if}
 
-	<!-- 2. Desktop only: the marketing video (→ Showcase carousel on spotty links).
+	<!-- 2. The "not an AI app" declaration comes FIRST after the hero: the
+	        misconception forms at first glance, so it gets corrected before the
+	        video or features can be misread through an AI lens.
+	     3. Desktop only: the marketing video (→ Showcase carousel on spotty links).
 	        Mobile skips it — a video embed is a poor mobile experience.
-	     3. Then for both: the feature list, then the closing Download CTA.
+	     4. Then for both: the feature list, then the closing Download CTA.
 	     A divider precedes any section that follows another. -->
 	<div class="post-hero">
+		<div class="warm-divider section-divider"></div>
+		<NotAiStatement />
+
 		{#if showFlight}
 			<div class="warm-divider section-divider"></div>
 			<VideoOrCarousel videoId={HERO_VIDEO_ID} location="hero-video" />

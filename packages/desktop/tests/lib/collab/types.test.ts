@@ -81,13 +81,18 @@ describe("YjsAnnotationNode type", () => {
             const versions = new Y.Map<Y.Map<unknown>>();
             const v0 = new Y.Map<unknown>();
             const v0Text = new Y.Text();
+            const versionId = "version-1";
             v0Text.insert(0, "version 1 text");
+            v0.set("id", versionId);
             v0.set("text", v0Text);
             v0.set("label", "v1");
             v0.set("annotations", new Y.Map<YjsAnnotationNode>());
-            versions.set("0", v0);
+            versions.set(versionId, v0);
             node.set("versions", versions);
-            node.set("activeVersionIndex", 0);
+            const order = new Y.Array<string>();
+            order.push([versionId]);
+            node.set("order", order);
+            node.set("activeVersionId", versionId);
 
             ymap.set("test", node as YjsAnnotationNode);
         });
@@ -95,10 +100,13 @@ describe("YjsAnnotationNode type", () => {
         const retrieved = ymap.get("test")!;
         expect(retrieved.get("_type")).toBe("revision");
         expect(retrieved.get("versions")).toBeInstanceOf(Y.Map);
-        expect(retrieved.get("activeVersionIndex")).toBe(0);
+        expect(retrieved.get("order")).toBeInstanceOf(Y.Array);
+        expect(retrieved.get("activeVersionId")).toBe("version-1");
+        expect(retrieved.get("activeVersionIndex")).toBeUndefined();
 
         const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
-        const v0 = versions.get("0") as Y.Map<unknown>;
+        const v0 = versions.get("version-1") as Y.Map<unknown>;
+        expect(v0.get("id")).toBe("version-1");
         expect(v0.get("text")).toBeInstanceOf(Y.Text);
         expect((v0.get("text") as Y.Text).toString()).toBe("version 1 text");
 
@@ -127,6 +135,8 @@ describe("YjsAnnotationNode type", () => {
         expect(retrieved.get("replacements")).toBeUndefined();
         expect(retrieved.get("author")).toBeUndefined();
         expect(retrieved.get("versions")).toBeUndefined();
+        expect(retrieved.get("order")).toBeUndefined();
+        expect(retrieved.get("activeVersionId")).toBeUndefined();
         expect(retrieved.get("activeVersionIndex")).toBeUndefined();
 
         ydoc.destroy();
@@ -140,6 +150,12 @@ describe("CollabSession ymap field", () => {
         // At runtime we just verify the type is exported correctly.
         type HasYmap = CollabSession extends { ymap: unknown } ? true : false;
         const result: HasYmap = true;
+        expect(result).toBe(true);
+    });
+
+    it("CollabSession type includes yVersionGroups field (type-level check)", () => {
+        type HasVersionGroups = CollabSession extends { yVersionGroups: unknown } ? true : false;
+        const result: HasVersionGroups = true;
         expect(result).toBe(true);
     });
 });

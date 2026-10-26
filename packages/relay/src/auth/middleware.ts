@@ -1,5 +1,5 @@
+import { HandshakeAuthSchema } from "@quillium/share/collab-contract";
 import { createLogger } from "../logger.js";
-import { AuthErrorCode, HandshakeAuthSchema } from "../schemas.js";
 import { getYjsRoom } from "../yjs/rooms.js";
 import type { YjsClientData } from "../yjs/types.js";
 /**
@@ -48,6 +48,10 @@ export async function authenticateWebSocket(
 
     if (!documentId) {
         return { success: false, error: "Missing document ID" };
+    }
+
+    if (!HandshakeAuthSchema.safeParse({ token, documentId }).success) {
+        return { success: false, error: "Invalid handshake" };
     }
 
     if (!supabaseConfigured || !supabase) {

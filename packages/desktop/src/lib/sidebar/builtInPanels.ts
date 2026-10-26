@@ -1,0 +1,160 @@
+// builtInPanels.ts — The built-in contributions used by the sidebar host.
+
+import AISettings from "$lib/ai/AISettings.svelte";
+import Chat from "$lib/ai/Chat.svelte";
+import ClassicChat from "$lib/ai/ClassicChat.svelte";
+import DocumentContext from "$lib/ai/DocumentContext.svelte";
+import Feedback from "$lib/ai/Feedback.svelte";
+import Readers from "$lib/ai/Readers.svelte";
+import Revise from "$lib/ai/Revise.svelte";
+import CollegePanel from "$lib/college/CollegePanel.svelte";
+import {
+    CompassIcon,
+    GraduationCapIcon,
+    MessageCircleIcon,
+    PenLineIcon,
+    SettingsIcon,
+    UsersIcon,
+    ZapIcon,
+} from "lucide-svelte";
+import { type SidebarPanelContribution, createSidebarPanels } from "./panels";
+
+const builtInPanelContributions: SidebarPanelContribution[] = [
+    {
+        id: "chat",
+        component: Chat,
+        icon: MessageCircleIcon,
+        label: "Chat",
+        title: "Chat with AI",
+        order: 1,
+        shortcutKey: "1",
+        placement: "main",
+        activeClass: "text-blue-600 bg-white/60",
+        hoverClass: "hover:text-blue-600",
+        requiresModel: true,
+        requiresAi: true,
+        preferredHeight: 650,
+        preferredWidth: 400,
+        contentClass: "flex flex-col",
+        mount: "eager",
+        contextMode: "chat",
+        contextRingClass: "focus:ring-blue-500",
+    },
+    {
+        id: "feedback",
+        component: Feedback,
+        icon: ZapIcon,
+        label: "Feedback",
+        title: "Get Feedback",
+        order: 2,
+        shortcutKey: "2",
+        placement: "main",
+        activeClass: "text-green-600 bg-white/60",
+        hoverClass: "hover:text-green-600",
+        requiresModel: true,
+        requiresAi: true,
+        preferredHeight: 600,
+        contentClass: "flex flex-col",
+        mount: "eager",
+        contextMode: "feedback",
+        contextRingClass: "focus:ring-green-500",
+    },
+    {
+        id: "revise",
+        component: Revise,
+        icon: PenLineIcon,
+        label: "Revise",
+        title: "Revise & Rewrite",
+        order: 3,
+        shortcutKey: "3",
+        placement: "main",
+        activeClass: "text-purple-600 bg-white/60",
+        hoverClass: "hover:text-purple-600",
+        requiresModel: true,
+        requiresAi: true,
+        preferredHeight: 600,
+        contentClass: "flex flex-col",
+        mount: "eager",
+        contextMode: "revise",
+        contextRingClass: "focus:ring-purple-500",
+    },
+    {
+        id: "context",
+        component: DocumentContext,
+        icon: CompassIcon,
+        label: "Document Context",
+        title: "Document Context",
+        order: 4,
+        shortcutKey: "4",
+        placement: "main",
+        activeClass: "text-amber-600 bg-white/60",
+        hoverClass: "hover:text-amber-600",
+        requiresModel: false,
+        requiresAi: true,
+        preferredWidth: 380,
+        contentClass: "overflow-y-auto",
+        mount: "eager",
+    },
+    {
+        id: "readers",
+        component: Readers,
+        icon: UsersIcon,
+        label: "Readers",
+        title: "Reader Personas",
+        order: 5,
+        shortcutKey: "5",
+        placement: "main",
+        activeClass: "text-rose-600 bg-white/60",
+        hoverClass: "hover:text-rose-600",
+        requiresModel: false,
+        requiresAi: true,
+        preferredWidth: 440,
+        contentClass: "flex flex-col",
+        mount: "eager",
+    },
+    {
+        id: "college",
+        component: CollegePanel,
+        icon: GraduationCapIcon,
+        label: "College applications",
+        title: "College applications",
+        order: 5.5,
+        placement: "main",
+        activeClass: "text-amber-600 bg-white/60",
+        hoverClass: "hover:text-amber-600",
+        requiresModel: false,
+        requiresAi: true,
+        preferredWidth: 420,
+        preferredHeight: 650,
+        contentClass: "overflow-y-auto",
+        mount: "active",
+    },
+    {
+        id: "settings",
+        component: AISettings,
+        icon: SettingsIcon,
+        label: "AI Settings",
+        title: "AI Settings",
+        order: 6,
+        shortcutKey: "6",
+        placement: "utility",
+        activeClass: "text-black/60 bg-white/60",
+        hoverClass: "hover:text-black/60 hover:bg-white/40",
+        requiresModel: false,
+        requiresAi: true,
+        contentClass: "flex flex-col",
+        mount: "active",
+    },
+];
+
+export const builtInPanels = createSidebarPanels(
+    builtInPanelContributions.map((panel) =>
+        panel.id === "chat"
+            ? { ...panel, component: ClassicChat, preferredWidth: 320, preferredHeight: 600 }
+            : panel,
+    ),
+);
+
+export const combinedPanels = createSidebarPanels(
+    builtInPanelContributions.filter((panel) => panel.id !== "feedback" && panel.id !== "revise"),
+);

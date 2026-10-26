@@ -1,10 +1,13 @@
 <script lang="ts">
-import { aiSettings } from "$lib/ai/settings.svelte";
+import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { modalStack } from "$lib/stores";
+import { currentDraftId, modalStack } from "$lib/stores";
 import { EditorSelection } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { CommentCard } from "@quillium/share";
+import { get } from "svelte/store";
 /**
  * Comment.svelte — Displays a single comment annotation card with
  * its message thread and AI suggestion action.
@@ -27,11 +30,12 @@ import type { EditorView } from "@codemirror/view";
  * message. When active, the full thread, reply input, and "Suggest"
  * button are visible.
  */
-import { Maximize2, Trash2 } from "lucide-svelte";
 import type { Annotation, Thread as ThreadType } from ".";
-import { annotationField } from ".";
+import { annotationField, updateThread as updateThreadEffect } from ".";
 import Thread from "./Thread.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
+import { type CommentEditorPosition, captureCommentEditorPosition } from "./commentFocus";
+import { isAnnotationOfType } from "./models";
 
 const {
     comment,
@@ -54,117 +58,98 @@ const selectedText = $derived(
     view.state.sliceDoc(comment.selection.main.from, comment.selection.main.to),
 );
 
+let replyOrigin = $state<CommentEditorPosition | undefined>();
+
 async function aiSuggestion() {
+    const owningView = view;
+    const requestDraftId = get(currentDraftId);
+    const annotationId = comment.id;
+    const requestHistoryId = owningView.state.field(annotationField)[annotationId]?._historyId;
     posthog.capture("comment_ai_suggestion_requested", {
         thread_length: thread.length,
         has_selection: !!selectedText,
     });
-    const annotationId = comment.id;
     const prompt = buildCommentAiPrompt(thread, selectedText);
+    // The card may unmount while waiting; append to the original comment
+    // using its latest thread, never the component's captured thread.
+    const appendAiReply = (message: string): void => {
+        if (get(currentDraftId) !== requestDraftId) return;
+        const current = owningView.state.field(annotationField)[annotationId];
+        if (
+            !requestHistoryId ||
+            !current ||
+            current._historyId !== requestHistoryId ||
+            !isAnnotationOfType(current, "comment")
+        ) {
+            return;
+        }
+        owningView.dispatch({
+            effects: updateThreadEffect.of({
+                annotationId,
+                newThread: [...current.thread, { message, author: "AI", time: Date.now() }],
+            }),
+        });
+    };
     try {
         const aiResponse = await streamCommentAiResponse(prompt, aiSettings);
         // Empty response means the stream was stopped before any text arrived.
         if (!aiResponse.trim()) return;
-        if (!view.state.field(annotationField)[annotationId]) return;
-        updateThread([...thread, { message: aiResponse, author: "AI", time: Date.now() }]);
+        appendAiReply(aiResponse);
     } catch {
-        if (!view.state.field(annotationField)[annotationId]) return;
-        updateThread([
-            ...thread,
-            {
-                message: "Sorry, I encountered an error generating a suggestion.",
-                author: "AI",
-                time: Date.now(),
-            },
-        ]);
+        appendAiReply("Sorry, I encountered an error generating a suggestion.");
     }
+}
+
+function openComment() {
+    posthog.capture("comment_modal_opened", { thread_length: thread.length });
+    modalStack.push({
+        type: "comment",
+        commentId: comment.id,
+        parentView: view,
+        label: selectedText.slice(0, 40) || "Comment",
+        originSelection: captureCommentEditorPosition(view),
+    });
+}
+
+function deleteComment() {
+    posthog.capture("annotation_deleted", {
+        type: "comment",
+        thread_length: thread.length,
+    });
+    removeComment();
+}
+
+function selectCommentText() {
+    replyOrigin = captureCommentEditorPosition(view);
+    view.dispatch({
+        selection: EditorSelection.cursor(comment.selection.main.from),
+        scrollIntoView: true,
+    });
 }
 </script>
 
-<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
-     inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
-     corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
-     + box-shadow squares the shadow at the corners; splitting avoids it while still
-     clipping the blur. -->
-<div
-    class="transition-all duration-200
-        {isActive ? 'shadow-xl rounded-[14px]' : 'shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
->
-  <div
-      class="border overflow-hidden
-          {isActive
-              ? 'bg-blue-50/90 border-blue-200/60 rounded-[14px]'
-              : 'bg-blue-50/60 border-blue-200/40 rounded-[12px]'}"
-      style="backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);"
-  >
-    <!-- Header -->
-    <div class="flex items-center justify-between px-3 pt-3 pb-0">
-        <h3 class="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wider">Comment</h3>
-        <div class="flex items-center gap-0.5">
-            <button
-                class="p-1 rounded-md text-blue-400/50 hover:text-blue-600/70 hover:bg-white/40 transition-colors"
-                onclick={() => {
-                    posthog.capture("comment_modal_opened", {
-                        thread_length: thread.length,
-                    });
-                    modalStack.push({
-                        type: "comment",
-                        commentId: comment.id,
-                        parentView: view,
-                        label: selectedText.slice(0, 40) || "Comment",
-                    });
-                }}
-                title="Expand thread"
-                aria-label="Expand comment thread"
-            >
-                <Maximize2 size={14} />
-            </button>
-            <button
-                class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-                onclick={() => {
-                    posthog.capture("annotation_deleted", {
-                        type: "comment",
-                        thread_length: thread.length,
-                    });
-                    removeComment();
-                }}
-                title="Delete comment"
-                aria-label="Delete comment"
-            >
-                <Trash2 size={16} />
-            </button>
-        </div>
-    </div>
-
-    <!-- Quoted text chip — clicking jumps cursor into the annotation range -->
-    {#if selectedText}
-        <div class="px-3 pt-3 pb-0">
-            <button
-                class="w-full text-left text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic hover:text-black/70 hover:border-yellow-500/80 transition-colors cursor-pointer"
-                onclick={() => {
-                    view.dispatch({
-                        selection: EditorSelection.cursor(comment.selection.main.from),
-                        scrollIntoView: true,
-                    });
-                }}
-                title="Jump to this comment in the document"
-            >
-                {selectedText.slice(0, 80)}{selectedText.length > 80 ? "…" : ""}
-            </button>
-        </div>
-    {/if}
-
-    <!-- Thread -->
-    <div class="px-3 pt-3 pb-3">
+{#snippet threadContent()}
         <Thread
             {thread}
             {updateThread}
             {view}
             annotationId={comment.id}
             previewOnly={!isActive}
+            originPosition={replyOrigin}
+            onRestoreOrigin={() => (replyOrigin = undefined)}
             onAiSuggest={isActive && appSettings.aiEnabled ? aiSuggestion : undefined}
+            aiSuggestDisabled={!hasApiKey()}
+            onDisabledAiSuggest={() => appEventBus.emit({ type: "ai-open-settings" })}
             accentClass="text-blue-600/80 hover:text-blue-700"
         />
-    </div>
-  </div>
-</div>
+{/snippet}
+
+<CommentCard
+    annotationId={comment.id}
+    active={isActive}
+    {selectedText}
+    onSelectText={selectCommentText}
+    onOpen={openComment}
+    onDelete={deleteComment}
+    thread={threadContent}
+/>

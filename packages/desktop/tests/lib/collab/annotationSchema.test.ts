@@ -41,6 +41,76 @@ describe("annotationSchema", () => {
         ydoc.destroy();
     });
 
+    it.each([
+        ["thread", () => new Y.Array<unknown>(/* invalid entries added below */)],
+        ["status", () => 42],
+        ["startPos", () => "invalid"],
+    ])("rejects malformed %s before projecting", (field, makeValue) => {
+        const node = codeMirrorToYjsAnnotation(
+            {
+                id: 1,
+                _type: "comment",
+                status: "active",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+            },
+            ytext,
+            CLIENT_ID,
+            ydoc,
+        );
+        ymap.set("test", node);
+        const value = makeValue();
+        node.set(field, value);
+        if (value instanceof Y.Array) value.push([{ message: 42 }]);
+        expect(yjsAnnotationToCodeMirror(node, ydoc, ytext, 1)).toBeNull();
+    });
+
+    it("rejects anchors from another text scope", () => {
+        const otherText = ydoc.getText("other");
+        otherText.insert(0, "a much longer unrelated draft");
+        const node = codeMirrorToYjsAnnotation(
+            {
+                id: 1,
+                _type: "comment",
+                status: "active",
+                selection: EditorSelection.single(15, 20),
+                thread: [],
+            },
+            otherText,
+            CLIENT_ID,
+            ydoc,
+        );
+        ymap.set("test", node);
+        expect(yjsAnnotationToCodeMirror(node, ydoc, ytext, 1)).toBeNull();
+    });
+
+    it("rejects malformed revision children", () => {
+        const version = makeVersion({ doc: "hello" });
+        const node = codeMirrorToYjsAnnotation(
+            {
+                id: 1,
+                _type: "revision",
+                status: "active",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+                versions: [version],
+                activeVersionId: version.id,
+            },
+            ytext,
+            CLIENT_ID,
+            ydoc,
+        );
+        ymap.set("test", node);
+        (node.get("versions") as Y.Map<unknown>).set(version.id, { text: "wrong type" });
+        expect(yjsAnnotationToCodeMirror(node, ydoc, ytext, 1)).toBeNull();
+    });
+
+    it("rejects non-map nodes without throwing", () => {
+        expect(
+            yjsAnnotationToCodeMirror(null as unknown as YjsAnnotationNode, ydoc, ytext, 1),
+        ).toBeNull();
+    });
+
     describe("generateAnnotationId", () => {
         it("generates a string ID with client prefix", () => {
             const id = generateAnnotationId(CLIENT_ID);
@@ -59,6 +129,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 1,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [{ message: "test", author: "user", time: 1000 }],
             };
@@ -82,6 +153,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 2,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 replacements: [{ text: "better", rationale: "clarity" }],
@@ -105,6 +177,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [revVersion],
@@ -119,11 +192,16 @@ describe("annotationSchema", () => {
             const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
             expect(versions).toBeInstanceOf(Y.Map);
             expect(versions.size).toBe(1);
-            const v0 = versions.get("0") as Y.Map<unknown>;
+            const order = retrieved.get("order") as Y.Array<string>;
+            expect(order).toBeInstanceOf(Y.Array);
+            expect(order.toArray()).toEqual([revVersion.id]);
+            const v0 = versions.get(revVersion.id) as Y.Map<unknown>;
+            expect(v0.get("id")).toBe(revVersion.id);
             expect(v0.get("text")).toBeInstanceOf(Y.Text);
             expect((v0.get("text") as Y.Text).toString()).toBe("version text");
             expect(v0.get("label")).toBe("v1");
-            expect(retrieved.get("activeVersionIndex")).toBe(0);
+            expect(retrieved.get("activeVersionId")).toBe(revVersion.id);
+            expect(retrieved.get("activeVersionIndex")).toBeUndefined();
         });
 
         it("syncs nested annotations inside integrated revision versions", () => {
@@ -131,6 +209,7 @@ describe("annotationSchema", () => {
                 "0": {
                     id: 0,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 7).toJSON(),
                     thread: [],
                 },
@@ -142,6 +221,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [version],
@@ -152,7 +232,7 @@ describe("annotationSchema", () => {
             ydoc.transact(() => ymap.set("test", node));
             const retrieved = ymap.get("test")!;
             const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
-            const v0 = versions.get("0") as Y.Map<unknown>;
+            const v0 = versions.get(version.id) as Y.Map<unknown>;
             const nestedMap = v0.get("annotations") as Y.Map<YjsAnnotationNode>;
             const vtext = v0.get("text") as Y.Text;
 
@@ -175,6 +255,7 @@ describe("annotationSchema", () => {
                 "0": {
                     id: 0,
                     _type: "revision",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 5).toJSON(),
                     thread: [],
                     activeVersionIndex: 1,
@@ -193,9 +274,18 @@ describe("annotationSchema", () => {
 
             const node = Array.from(ymap.values())[0];
             expect(node.get("_type")).toBe("revision");
-            expect(node.get("activeVersionIndex")).toBe(1);
+            expect(node.get("activeVersionIndex")).toBeUndefined();
+            const activeVersionId = node.get("activeVersionId");
+            expect(typeof activeVersionId).toBe("string");
             const versions = node.get("versions") as Y.Map<Y.Map<unknown>>;
             expect(versions.size).toBe(2);
+            const order = node.get("order") as Y.Array<string>;
+            expect(order).toBeInstanceOf(Y.Array);
+            expect(order.length).toBe(2);
+            expect(activeVersionId).toBe(order.get(1));
+            for (const versionId of order.toArray()) {
+                expect(versions.get(versionId)).toBeInstanceOf(Y.Map);
+            }
         });
     });
 
@@ -204,6 +294,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 1,
                 _type: "comment",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [{ message: "hello", author: "user", time: 1000 }],
             };
@@ -225,6 +316,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 2,
                 _type: "suggestion",
+                status: "active" as const,
                 selection: EditorSelection.single(6, 11),
                 thread: [],
                 replacements: [{ text: "world2" }],
@@ -249,6 +341,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [roundtripVersion],
@@ -273,6 +366,7 @@ describe("annotationSchema", () => {
                 "0": {
                     id: 0,
                     _type: "comment",
+                    status: "active" as const,
                     selection: EditorSelection.single(0, 2).toJSON(),
                     thread: [],
                 },
@@ -284,6 +378,7 @@ describe("annotationSchema", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
+                status: "active" as const,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [version],
@@ -295,7 +390,7 @@ describe("annotationSchema", () => {
             ydoc.transact(() => ymap.set("test", node));
             const retrieved = ymap.get("test")!;
             const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
-            const v0 = versions.get("0") as Y.Map<unknown>;
+            const v0 = versions.get(version.id) as Y.Map<unknown>;
             syncRawAnnotationsToYjsMap(
                 nestedAnnotations,
                 v0.get("annotations") as Y.Map<YjsAnnotationNode>,
@@ -304,6 +399,7 @@ describe("annotationSchema", () => {
                 ydoc,
                 idMap,
             );
+            (v0.get("annotations") as Y.Map<unknown>).set("bad-child", { thread: "invalid" });
             const restored = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 5, {
                 nestedIdMapFor: () => idMap,
             });
@@ -314,6 +410,7 @@ describe("annotationSchema", () => {
                 const restoredField = (
                     restored.versions[0] as VersionState & { annotationField?: RawAnnotations }
                 ).annotationField;
+                expect(Object.keys(restoredField ?? {})).toEqual(["0"]);
                 expect(restoredField?.["0"]?._type).toBe("comment");
                 expect(restoredField?.["0"]?.selection).toEqual(
                     EditorSelection.single(0, 2).toJSON(),
@@ -374,6 +471,13 @@ describe("annotationSchema", () => {
             const map = new AnnotationIdMap();
             const cmId = map.getOrCreateCmId("yjs-id-x");
             expect(map.getYjsId(cmId)).toBe("yjs-id-x");
+        });
+
+        it("does not reuse a local CM ID for a remote annotation", () => {
+            const map = new AnnotationIdMap();
+            map.getOrCreateYjsId(0, "local-peer");
+
+            expect(map.getOrCreateCmId("remote-annotation")).toBe(1);
         });
 
         it("can register an existing CM ID", () => {

@@ -1,12 +1,93 @@
 name: Build Release
+run-name: ${{ github.event_name == 'push' && format('Dispatch {0}', github.ref_name) || format('Release {0}', inputs.release_tag) }}
 
 on:
   push:
     tags:
       - "v*"
+      # TestFlight-only MAS builds. These skip the public desktop release jobs.
+      - "mas-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build
+        required: true
+        type: string
+      release_sha:
+        description: Exact commit referenced by the release tag
+        required: true
+        type: string
+      validate_only:
+        description: Validate the release identity without building or publishing
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 jobs:
+  dispatch-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Run release on the default branch cache scope
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: 'build.yml',
+              ref: context.payload.repository.default_branch,
+              inputs: {
+                release_tag: context.ref.replace('refs/tags/', ''),
+                release_sha: context.sha,
+                validate_only: 'false',
+              },
+            });
+            await core.summary.addRaw(
+              `Dispatch accepted for ${context.ref}. This job does not wait for the release.\n\n` +
+              `[Follow release runs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/build.yml?query=event%3Aworkflow_dispatch)`,
+            ).write();
+
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Validate release identity before using signing secrets
+        id: release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const defaultRef = `refs/heads/${context.payload.repository.default_branch}`;
+            if (context.ref !== defaultRef) {
+              throw new Error('Release execution must use the default branch');
+            }
+            const { release_tag: tag, release_sha: sha } = context.payload.inputs;
+            if (typeof tag !== 'string' || !/^(?:mas-)?v[0-9A-Za-z._+-]+$/.test(tag)) {
+              throw new Error('A valid v* or mas-v* release tag is required');
+            }
+            if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
+              throw new Error('A full lowercase commit SHA is required');
+            }
+            const { data: commit } = await github.rest.repos.getCommit({
+              ...context.repo,
+              ref: `refs/tags/${tag}`,
+            });
+            if (commit.sha !== sha) {
+              throw new Error('Release tag does not reference the expected commit');
+            }
+            core.setOutput('tag', tag);
+            core.setOutput('sha', sha);
+
   build-tauri:
+    needs: prepare-release
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.validate_only && !startsWith(needs.prepare-release.outputs.tag, 'mas-') }}
     permissions:
       contents: write
     strategy:
@@ -19,27 +100,38 @@ jobs:
           # no prebuilt x86_64-apple-darwin binary, so the build fails. arm64 only.
           # - platform: "macos-latest"
           #   args: "--target x86_64-apple-darwin"
+          # ubuntu-24.04, NOT 22.04: the ort (ONNX Runtime) prebuilt links
+          # against glibc ≥ 2.38 (__isoc23_strtol), which 22.04 (2.35) lacks —
+          # the v0.21.6 build died at link time on it.
           - platform: "ubuntu-latest"
             args: ""
+          # - platform: 'ubuntu-24.04-arm' # Only available in public repos.
+          #   args: ''
           - platform: "windows-latest"
             args: ""
 
     runs-on: ${{ matrix.platform }}
     env:
+      RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-latest'
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: actions/checkout@v7
         with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-          version: 1.0
+          ref: ${{ needs.prepare-release.outputs.sha }}
 
-      - uses: oven-sh/setup-bun@v2
+      - name: install dependencies (ubuntu only)
+        if: startsWith(matrix.platform, 'ubuntu') # This must match the platform values defined above.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - name: Install digest-pinned Bun with patched CA trust
+        run: node scripts/install-secure-bun.mjs "${{ runner.temp }}/quillium-secure-bun"
 
       - name: Cache bun dependencies
         uses: actions/cache@v5
@@ -61,7 +153,8 @@ jobs:
         with:
           workspaces: "packages/desktop/src-tauri -> target"
           cache-on-failure: true
-          prefix-key: "v1"
+          prefix-key: "v2-release"
+          shared-key: "desktop"
 
       - name: Install frontend dependencies
         run: bun ci
@@ -114,22 +207,84 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: packages/desktop
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "Quillium v__VERSION__"
           releaseBody: "See the assets to download and install this version."
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
+      # tauri-action has previously repackaged .app.tar.gz after the Tauri
+      # signer ran, leaving a valid-looking release whose updater signature no
+      # longer matched. Validate the exact final files the action uploaded.
+      - name: Validate macOS release artifacts
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set -euo pipefail
+
+          UPDATER_BUNDLE_DIR="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle"
+          UPDATER_ARCHIVE=$(find "$UPDATER_BUNDLE_DIR" -type f -name '*.app.tar.gz' -print -quit)
+          if [ -z "$UPDATER_ARCHIVE" ]; then
+            echo "::error::macOS updater archive was not generated"
+            exit 1
+          fi
+
+          UPDATER_SIGNATURE="$UPDATER_ARCHIVE.sig"
+          if [ ! -f "$UPDATER_SIGNATURE" ]; then
+            echo "::error::macOS updater signature was not generated"
+            exit 1
+          fi
+
+          UPDATER_VERIFY_DIR=$(mktemp -d "$RUNNER_TEMP/quillium-updater.XXXXXX")
+          tar -xzf "$UPDATER_ARCHIVE" -C "$UPDATER_VERIFY_DIR"
+          UPDATER_APP=$(find "$UPDATER_VERIFY_DIR" -type d -name '*.app' -print -quit)
+          if [ -z "$UPDATER_APP" ]; then
+            echo "::error::macOS updater archive does not contain an app bundle"
+            exit 1
+          fi
+
+          UPDATER_VERSION=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleShortVersionString' \
+            "$UPDATER_APP/Contents/Info.plist")
+          EXPECTED_VERSION="${RELEASE_TAG#v}"
+          if [ "$UPDATER_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Updater contains $UPDATER_VERSION, expected $EXPECTED_VERSION"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=4 "$UPDATER_APP"
+          spctl --assess --type execute --verbose=4 "$UPDATER_APP"
+          xcrun stapler validate "$UPDATER_APP"
+
+          brew install minisign
+          UPDATER_PUBLIC_KEY=$(jq -r '.plugins.updater.pubkey' \
+            packages/desktop/src-tauri/tauri.conf.json)
+          printf '%s' "$UPDATER_PUBLIC_KEY" \
+            | base64 --decode > "$UPDATER_VERIFY_DIR/updater.pub"
+          base64 --decode \
+            -i "$UPDATER_SIGNATURE" \
+            -o "$UPDATER_VERIFY_DIR/update.minisig"
+          minisign -Vm "$UPDATER_ARCHIVE" \
+            -p "$UPDATER_VERIFY_DIR/updater.pub" \
+            -x "$UPDATER_VERIFY_DIR/update.minisig"
+
   build-mas:
+    needs: prepare-release
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.validate_only }}
     runs-on: macos-latest
     permissions:
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare-release.outputs.sha }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - name: Install digest-pinned Bun with patched CA trust
+        run: node scripts/install-secure-bun.mjs "${{ runner.temp }}/quillium-secure-bun"
 
       - name: Cache bun dependencies
         uses: actions/cache@v5
@@ -151,10 +306,14 @@ jobs:
         with:
           workspaces: "packages/desktop/src-tauri -> target"
           cache-on-failure: true
-          prefix-key: "v1-mas"
+          prefix-key: "v2-release"
+          shared-key: "desktop"
 
       - name: Install frontend dependencies
         run: bun ci
+
+      - name: Verify MAS OAuth callback entitlement
+        run: bash packages/desktop/src-tauri/tests/mas_oauth_loopback_entitlements.sh
 
       - name: Import MAS certificates
         env:
@@ -207,6 +366,18 @@ jobs:
             --bundles app \
             --target aarch64-apple-darwin
 
+      - name: Verify signed MAS metadata and entitlements
+        run: |
+          APP_PATH="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Quillium.app"
+          EXPECTED_VERSION=$(jq -r '.version' packages/desktop/src-tauri/tauri.conf.json)
+          EXPECTED_BUILD=$(jq -r '.bundle.macOS.bundleVersion' packages/desktop/src-tauri/tauri.mas.conf.json)
+          ACTUAL_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")
+          ACTUAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
+          test "$ACTUAL_BUILD" = "$EXPECTED_BUILD"
+          codesign -d --entitlements :- "$APP_PATH" > signed-entitlements.plist 2>/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.server' signed-entitlements.plist)" = "true"
+
       - name: Package as .pkg
         env:
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ env.APPLE_INSTALLER_SIGNING_IDENTITY }}
@@ -235,8 +406,11 @@ jobs:
             --apiIssuer "$APPLE_API_KEY_ISSUER"
 
   publish-release:
-    needs: build-tauri
-    if: always() && needs.build-tauri.result != 'cancelled'
+    env:
+      RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+    needs: [prepare-release, build-tauri]
+    # Never copy a partial or unverified release into the public repository.
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.validate_only && !startsWith(needs.prepare-release.outputs.tag, 'mas-') && needs.build-tauri.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -246,8 +420,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir assets
-          gh release download ${{ github.ref_name }} \
-            --repo ${{ github.repository }} \
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             --dir assets || true
           echo "=== Downloaded assets ==="
           ls -la assets/
@@ -259,7 +433,7 @@ jobs:
 
       - name: Build latest.json
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
           BASE_URL="https://github.com/ThatXliner/quillium-releases/releases/download/$TAG"
@@ -332,14 +506,14 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_PAT }}
         run: |
           # Create the release in the public repo
-          gh release create ${{ github.ref_name }} \
+          gh release create "$RELEASE_TAG" \
             --repo ThatXliner/quillium-releases \
-            --title "Quillium ${{ github.ref_name }}" \
+            --title "Quillium $RELEASE_TAG" \
             --notes "See the assets to download and install this version." \
             || true
 
           # Upload all assets (--clobber to overwrite if re-running)
-          gh release upload ${{ github.ref_name }} \
+          gh release upload "$RELEASE_TAG" \
             --repo ThatXliner/quillium-releases \
             --clobber \
             assets/*

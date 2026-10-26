@@ -1,299 +1,171 @@
-# Real-time Collaboration (Quillium Omni)
+# Collaboration and Web Preview
 
-Quillium Omni has two sharing surfaces:
+Omni provides two ways to share writing:
 
-- **Web Preview** — a read-only public page generated from the currently
-  active tab+draft snapshot.
-- **Live Room** — an owner-led real-time session between Quillium instances.
+- Web Preview publishes a read-only snapshot at a stable, document-keyed URL.
+  The snapshot includes the selected draft from the current tab or all tabs.
+- A Live Room mirrors one active draft between desktop editors through Yjs.
+  The owner's SQLite draft remains authoritative. Joiners are ephemeral, and
+  the session ends when the owner leaves.
 
-The Live Room editor remains CodeMirror locally, while live document state is
-mirrored through Yjs CRDTs.
+Live Rooms use the **document ID** as their network room key. Each room mirrors
+only the active draft when the owner starts it; sharing multiple tabs or drafts
+at once remains future work. Owner snapshots and events stay attached to that
+active draft. See the decisions on [owner-led rooms](adr/0008-owner-led-yjs-live-rooms.md)
+and [document-keyed previews](adr/0010-document-keyed-web-preview.md).
 
-## Architecture Overview
+## State ownership
 
 ```mermaid
 flowchart LR
-    Owner["Owner<br/>CodeMirror EditorView"]
-    Joiner["Joiner<br/>CodeMirror EditorView"]
-    OwnerExt["Owner Extensions<br/>binding + annotations + awareness<br/>keeps CM history"]
-    JoinerExt["Joiner Extensions<br/>binding + annotations + awareness<br/>+ Y.UndoManager"]
-    OwnerDoc["Owner Y.Doc<br/>Y.Text + Y.Map"]
-    JoinerDoc["Joiner Y.Doc<br/>Y.Text + Y.Map"]
-    Relay["Relay Server<br/>packages/relay"]
-    Supabase["Supabase<br/>Auth + persistence"]
-
-    Owner --> OwnerExt --> OwnerDoc
-    Joiner --> JoinerExt --> JoinerDoc
-    OwnerDoc <-->|"Yjs protocol"| Relay
-    JoinerDoc <-->|"Yjs protocol"| Relay
-    Relay --> Supabase
+    Owner[Owner CodeMirror editor] <--> OwnerDoc[Owner Y.Doc]
+    OwnerDoc <--> Relay[WebSocket relay]
+    Joiner[Joiner CodeMirror editor] <--> JoinerDoc[Joiner Y.Doc]
+    JoinerDoc <--> Relay
+    Owner --> SQLite[Local draft persistence]
+    Relay --> Supabase[Supabase update log and snapshots]
 ```
 
-Current Live Room mode is owner-led: the owner's local SQLite draft is the
-source of truth when a room starts, joiners are ephemeral, and the room ends
-when the owner leaves.
+The desktop implementation lives in
+[`packages/desktop/src/lib/collab`](../packages/desktop/src/lib/collab/):
 
-The Live Room id is the **document id**. The beta room still mirrors one active
-editor view, so the owner seeds the room from the active tab+draft when the
-session starts. Local persistence remains draft-scoped; only the relay identity
-is document-scoped.
+| Responsibility | Source |
+|---|---|
+| Start, join, and leave a session | `liveSession.svelte.ts` |
+| Install and remove editor extensions | `index.ts` |
+| Connection, authentication token, reconnects, owner-left signals | `yjsProvider.ts` |
+| Text and annotation synchronization | `yjsBinding.ts`, `yjsAnnotations.ts`, `annotationSchema.ts` |
+| Linked revision groups | `yjsVersionGroups.ts` |
+| Relative positions, cursors, and following a collaborator | `relativePosition.ts`, `awareness.ts` |
+| Session undo | `yjsUndo.ts` |
+| Share dialog and preview publication | `GoLiveButton.svelte`, `readonlySharePublisher.svelte.ts` |
+| Preview storage and wire payload | `shareRepository.ts`, `sharePayload.ts`, `shareState.ts` |
 
-## Files
+## Live Room lifecycle
 
-| File | Purpose |
-|------|---------|
-| `index.ts` | Public API: `enableCollab()`, `disableCollab()` |
-| `yjsProvider.ts` | Y.Doc + WebsocketProvider with JWT auth |
-| `yjsBinding.ts` | Bidirectional Y.Text ↔ CodeMirror sync |
-| `yjsAnnotations.ts` | Bidirectional Y.Map ↔ annotationField sync |
-| `annotationSchema.ts` | CM ↔ Yjs annotation converters |
-| `relativePosition.ts` | Position anchoring utilities |
-| `awareness.ts` | Remote cursor rendering + follow mode |
-| `yjsUndo.ts` | Unified undo via Y.UndoManager |
-| `store.ts` | Svelte stores for collab state |
-| `GoLiveButton.svelte` | Share modal UI |
-| `share.ts` | Supabase read-only share CRUD and URL building |
-| `sharePayload.ts` | Public-share annotation serialization |
+When the owner starts a room, `LiveSessionController` queues a named snapshot,
+**Before going live (auto)**, behind pending local edits. It registers the document
+with Supabase, checks persistence again, and starts collaboration only if the
+same editor, document, and draft are still active. A local persistence failure blocks this
+transition. See [persistence](persistence.md) for the save-failure boundary.
 
-## Yjs Data Model
+After the provider synchronizes, the owner seeds the shared text, annotations,
+and version groups from local state. The editor replaces CodeMirror history
+with the Yjs extensions and a `Y.UndoManager`.
 
-```mermaid
-flowchart TB
-    subgraph YDoc["Y.Doc"]
-        YText["Y.Text<br/>document content"]
-        YMap["Y.Map<br/>annotations"]
-        Awareness["Awareness<br/>cursor + presence"]
-        Undo["Y.UndoManager<br/>text + annotation scope"]
-    end
-```
+A joiner supplies the room ID. The controller captures the prior draft and
+editor state, clears `currentDraftId`, and sets `isCollabJoiner` before connecting.
+This prevents shared changes from entering the joiner's local event log. The
+joiner's editor then loads the relay state.
 
-### YjsAnnotationNode Shape
+`disableCollab()` removes the collaborative extensions and installs fresh,
+empty CodeMirror history. Owners stay on their draft. Joiners restore their
+captured state. The pre-session undo stack is not replayed across shared edits.
 
-Annotations stored as recursive Y.Map structures:
+The provider retries a lost connection up to five times. Exhausting retries
+ends the session and requires the user to start or join again. Owner departure
+also ends the session, through a custom frame or the older close reason
+`1000 / "Owner left"`. Either signal triggers teardown only once.
 
-```typescript
-// Shared keys
-{
-    id: string;
-    _type: "comment" | "suggestion" | "revision";
-    startPos: Uint8Array;  // encoded RelativePosition
-    endPos: Uint8Array;
-    thread: Y.Array<MessageObject>;
-    annotations: Y.Map<YjsAnnotationNode>;  // nested
-}
+## Shared document model
 
-// Suggestion-only
-{ replacements: Y.Array<string>; author: string | null; }
+A room's `Y.Doc` contains document text, annotations, and linked version groups.
+Presence and cursor positions use Yjs awareness. Annotations are recursive
+`Y.Map` nodes. Revision versions use stable IDs, an ordered ID array, and
+`activeVersionId`.
 
-// Revision-only
-{
-    versions: Y.Map<string, Y.Map<unknown>>;  // keyed by String(index)
-    // versionNode: { text: Y.Text, label?: string, annotations: Y.Map }
-    activeVersionIndex: number;
-}
-```
+[`annotationSchema.ts`](../packages/desktop/src/lib/collab/annotationSchema.ts)
+owns conversion between CodeMirror annotations and Yjs nodes.
+[`@quillium/share/collab-contract/annotations`](../packages/share/src/collab-contract/annotations.ts)
+validates nodes before the desktop projects them into CodeMirror. Invalid nodes
+are skipped individually. The relay treats updates as opaque Yjs data.
 
-> **Note — wire shape is still index-based.** Locally, revision versions use a
-> stable `id` and a revision points at `activeVersionId` (see
-> [annotations.md → Version identity](./annotations.md#version-identity)). The Yjs
-> wire schema above is intentionally *not yet* migrated: the versions `Y.Map` is
-> keyed by `String(index)` and the active pointer is `activeVersionIndex: number`.
-> The CM→Yjs write path derives the index from `activeVersionId`, and the Yjs→CM
-> read path runs `normalizeRevision()` to mint local ids. The relay has no schema
-> migration framework yet, so the id-native rewrite is deferred — see issue #269.
+The relay records its schema version in `__quillium.schemaVersion`. Its v2
+migration converts numeric revision-version keys and `activeVersionIndex` to
+stable IDs. Desktop reads still accept the legacy form.
 
-## Sync Loops
+Local CodeMirror transactions update Yjs with the `"local"` origin. Remote Yjs
+observers dispatch marked CodeMirror transactions so the change is not sent
+back as a new local edit. Annotation anchors use relative Yjs positions so
+concurrent text edits can move their ranges.
 
-### Text Sync
+The same awareness extension runs in nested editors with position mappers
+between nested and root coordinates. Cursors outside the nested range are not
+rendered. Following a collaborator scrolls toward that user's cursor and stops
+when the user disappears.
 
-**Local → Remote:**
-```
-CM transaction → yjsBinding update hook → skip Yjs-originated
-→ write Y.Text inside "local" transaction → provider broadcasts
-```
+### Undo
 
-**Remote → Local:**
-```
-Provider applies update → Y.Text.observe() fires → yjsBinding
-→ convert delta to CM changes → dispatch with yjsAnnotation
-```
+`Y.UndoManager` tracks local edits to text, annotations, and version groups.
+Nested editor text joins that scope through `addSubtreeToUndoScope()`.
+`breakUndoCapture()` separates steps at modal boundaries. Owner bootstrap uses
+the `"init"` origin, so initial room contents do not become an undo step.
 
-### Annotation Sync
+## Relay boundary
 
-**Local → Remote:**
-```
-annotationField effect → yjsAnnotations update hook
-→ diff CM annotations vs Y.Map → write changes with "local" origin
-```
+[`@quillium/share/collab-contract`](../packages/share/src/collab-contract/index.ts)
+owns handshake validation and custom frame encoding. The relay validates the
+token and UUID before contacting Supabase, verifies the token, and checks room
+access. A non-owner may join only while the registered owner is connected to
+that relay process. There is no per-invite permission list.
 
-**Remote → Local:**
-```
-Y.Map.observeDeep() → yjsAnnotations observer → skip "local" origin
-→ project Yjs nodes to annotationField → dispatch with Yjs marker
-```
+Custom frames use varuint type `3`, a varuint subtype, and a JSON string.
+Subtype `1` signals owner departure with `{}`. Subtype `2` carries a departing
+client's `{ userId }`. An empty type-3 frame retains y-websocket's awareness-query
+behavior. Desktop ignores unknown or malformed custom payloads.
 
-## RelativePosition Anchoring
+The relay creates one room per key, including concurrent initial connections.
+It reads the snapshot and every update-log page before publishing the room.
+A missing snapshot is valid; a failed read or invalid Yjs update rejects the
+connection without migrating or rewriting partial state.
 
-Annotation positions use Yjs RelativePosition instead of absolute indices — survives concurrent edits:
+After the last client leaves, cleanup waits 45 seconds, drains updates, writes
+a snapshot, and clears the log. New connections wait for in-progress cleanup.
+If cleanup fails, the live document remains in memory and cleanup retries after
+another delay.
 
-```typescript
-// Save: absolute CM → RelativePosition
-const { startPos, endPos } = absoluteToRelative(ytext, selection);
+Failed update batches remain ahead of newer updates. A new edit, explicit flush,
+or cleanup retries them. Flushes include writes already in progress and reject
+on failure. Shutdown stops new connections and incoming messages before flushing,
+while outstanding room loads and socket closure finish. The process exits with
+an error if flushing fails or shutdown exceeds 10 seconds.
 
-// Load: RelativePosition → absolute CM
-const selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
-// Returns null if anchored text was deleted
-```
+These guarantees require one relay process. Retained failed batches exist only
+in memory and can be lost on a forced exit. Deployment and configuration live
+in the [relay README](../packages/relay/README.md).
 
-## Remote Cursors
+## Web Preview publication
 
-Google Docs-style colored carets with name labels. Stored as encoded Yjs relative positions in awareness state:
+The share dialog builds a versioned payload with serialized CodeMirror state
+and flat annotations. `shareRepository.ts` registers ownership in
+`sync_documents` and upserts the document's `shares` row. Republishing replaces
+the snapshot while preserving the public token. Disabling a preview deletes
+the share row.
 
-```mermaid
-sequenceDiagram
-    participant Local as Local Editor
-    participant Awareness
-    participant Remote as Remote Peer
+`ReadonlyDocument` restores modern state through the shared read-only editor
+host. Revision modals use the same host for nested `VersionState` values.
+The flat projection supplies cards and navigation. Shared presentation and
+desktop capability adapters follow the
+[package boundary](monorepo.md#shared-editor-surface-architecture).
 
-    Local->>Awareness: Selection change
-    Awareness->>Awareness: Encode as RelativePosition
-    Awareness->>Remote: Broadcast awareness
-    Remote->>Remote: Decode against Y.Text
-    Remote->>Remote: Render RemoteCursorWidget
-```
+The landing RPC boundary validates metadata, recursive flat annotations, and
+published state before rendering. Invalid payloads return the not-found page.
+Early v2 envelopes without scope and pre-envelope states remain supported;
+unknown editor-extension fields are preserved. A valid empty v2 tab list uses
+the flat fallback.
 
-### Nested Editor Awareness
+`LegacyReadonlyDocument` handles shares without serialized state and valid
+empty v2 tab lists. Keep that compatibility path until the prerequisites in
+[issue #339](https://github.com/ThatXliner/Quillium/issues/339) are met.
 
-Nested editors use the same extension with position mappers:
-- `toSharedPosition(localPos, state)` — nested → root coordinates
-- `fromSharedPosition(sharedPos, state)` — root → nested coordinates
+## Configuration and limits
 
-Remote cursors outside the revision range return `null` and aren't rendered.
+Desktop uses `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_PUBLISHABLE_KEY` for
+accounts and publishing. `PUBLIC_RELAY_URL` enables Live Rooms. The Share
+button remains available with Supabase configured even when the relay URL is
+empty. See [auth](auth.md) and the [environment examples](monorepo.md#environment-files).
 
-### Follow Mode
-
-Click a collaborator avatar to follow their cursor. Each awareness tick scrolls the active editor toward that user's decoded cursor. Auto-clears when target disappears.
-
-## Sharing Flows
-
-### Read-only Web Preview
-
-The Web Preview tab in `GoLiveButton.svelte` publishes a read-only snapshot to
-Supabase:
-
-```mermaid
-sequenceDiagram
-    participant UI as GoLiveButton
-    participant Share as share.ts
-    participant Supabase
-
-    UI->>UI: Build title/content/serialized annotations
-    UI->>Share: publishReadonlyShare(...)
-    Share->>Supabase: upsert sync_documents
-    Share->>Supabase: upsert shares
-    Supabase-->>Share: share_token + published fields
-    Share-->>UI: ReadonlyShare
-```
-
-The share row is keyed by **document id**, not draft id. Publishing from a
-different tab or draft replaces the single public view for that document. See
-[Tabs & Drafts](./tabs-and-drafts.md#omni-web-preview-and-the-single-view) for
-why that keeps the door open for a future multi-tab public renderer.
-
-| Action | Function | Notes |
-|--------|----------|-------|
-| Load status | `getReadonlyShare(documentId)` | Reads existing share row |
-| Publish/update | `publishReadonlyShare(...)` | Stores current snapshot + annotations |
-| Copy link | `buildReadonlyShareUrl(token)` | `https://quillium.bryanhu.com/share/{token}` |
-| Disable | `disableReadonlyShare(documentId)` | Deletes the share row |
-
-The public payload intentionally uses the share renderer's compatibility shape:
-revision versions are serialized with index-style active state even though local
-annotations use stable version ids.
-
-### Owner Goes Live
-
-1. User opens Share → clicks "Start live room"
-2. Creates active-draft named snapshot: "Before going live (auto)"
-3. `registerDocumentForCollab(documentId, ...)` upserts `sync_documents`
-4. `createYjsProvider(documentId)` opens WebsocketProvider with JWT
-5. After sync, owner replaces relay Y.Text with local doc
-6. `enableCollab()` installs Yjs extensions
-7. UI shows "You're live!"
-
-### Joiner Joins
-
-1. User pastes document UUID / room ID
-2. Capture prior draft ID and state in `joinerPriorView`
-3. `currentDraftId = null`, `isCollabJoiner = true` — persistence disabled
-4. `createYjsProvider(documentId)` opens WebsocketProvider
-5. After sync, replace local editor with relay Y.Text
-6. Clear local annotations, project shared annotations
-7. `enableCollab()` installs Yjs extensions + Y.UndoManager
-8. UI shows "Joined shared document"
-
-### Disconnect
-
-1. `disableCollab()` calls `disconnectYjsProvider()`
-2. `collabCompartment` reconfigured to `[]`
-3. `historyCompartment` restores standard CM history
-4. Joiners restore captured snapshot and navigate back
-
-## Unified Undo (Y.UndoManager)
-
-Tracks both Y.Text and Y.Map in a single stack:
-
-```typescript
-const undoManager = new Y.UndoManager([ytext, ymap], {
-    trackedOrigins: new Set(["local"]),
-    captureTimeout: 500,
-});
-```
-
-- `Mod-z` → `undoManager.undo()`
-- `Mod-Shift-z` / `Mod-y` → `undoManager.redo()`
-- `breakUndoCapture()` — force new step at modal boundaries
-- `addSubtreeToUndoScope()` — register nested editor Y.Text
-
-## Connection States
-
-| State | Meaning |
-|-------|---------|
-| `disconnected` | Not connected |
-| `connecting` | Handshake/sync in progress |
-| `connected` | Active session |
-| `reconnecting` | Lost connection, auto-retry |
-| `error` | Failed after max retries |
-
-After 5 reconnect attempts, provider enters `error` and disconnects. User must start a new session.
-
-## Owner Disconnect Handling
-
-Relay signals owner disconnect via websocket close reason. Flow:
-
-```
-Provider close reason "Owner left" → handleOwnerLeft()
-→ increment ownerLeftSignal → disconnectYjsProvider()
-→ GoLiveButton effect calls disableCollab()
-→ Toast: "The owner ended the session"
-```
-
-## Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| `PUBLIC_RELAY_URL` | WebSocket relay server |
-| `PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
-
-If `PUBLIC_RELAY_URL` is not configured, GoLiveButton is hidden.
-
-## Known Limitations
-
-- **Live Room mode only** — no persistent shared documents yet
-- **Manual Live Room IDs** — joiners paste a draft UUID manually; there are no
-  invite links or room permissions yet
-- **No local persistence for joiners** — restored to prior state after leaving
-- **No offline queue** — if reconnects exhaust, must restart session
-- **Single-view public preview** — read-only shares publish one active tab+draft
-  snapshot, not the whole document tab set
+Live Rooms have no durable joiner workspace, host migration, or offline queue.
+Joiners paste a room ID manually. Web Preview publishes one selected draft per
+included tab, rather than every draft and run. For connected-service checks,
+use the [cross-package E2E guide](../packages/e2e/README.md).

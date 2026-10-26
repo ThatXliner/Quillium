@@ -11,6 +11,14 @@
  *   expect(h.doc).toBe("hello world");
  */
 
+import type { EventPayload } from "$lib/db/events";
+import type { EventRecord } from "$lib/db/types";
+import { buildEventPayload } from "$lib/editor/listeners";
+import {
+    persistHistoryFacet,
+    persistentHistoryExtension,
+    persistentHistoryField,
+} from "$lib/editor/persistentHistory";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     _nestedEditRevision,
@@ -35,29 +43,125 @@ import {
     makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
+import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
+import { reconstructState } from "$lib/editor/replay";
 import { history, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 // ── Harness ─────────────────────────────────────────────────────────────────
 
-export class EditorHarness {
-    readonly view: EditorView;
-    private _parent: HTMLDivElement;
+export type EditorRestartMode = "snapshot" | "eventTail";
 
-    private constructor(doc: string) {
+const persistedFields = {
+    historyField: persistentHistoryField,
+    annotationField,
+    versionGroupField,
+};
+
+export class EditorHarness {
+    view: EditorView;
+    private _parent: HTMLDivElement;
+    private readonly _persistHistory: boolean;
+    private readonly _historyGroupDelay: number;
+    private readonly _captureEventTail: boolean;
+    private _checkpointStateJson = "";
+    private _eventPayloads: EventPayload[] = [];
+
+    private constructor(
+        doc: string,
+        persistHistory: boolean,
+        historyGroupDelay: number,
+        captureEventTail: boolean,
+    ) {
+        this._persistHistory = persistHistory;
+        this._historyGroupDelay = historyGroupDelay;
+        this._captureEventTail = captureEventTail;
         const state = EditorState.create({
             doc,
-            extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
+            extensions: this.extensions(),
         });
         this._parent = document.createElement("div");
         document.body.appendChild(this._parent);
         this.view = new EditorView({ state, parent: this._parent });
+        this.resetPersistenceCheckpoint();
     }
 
     /** Create a new harness with the given document text. */
-    static create(doc = ""): EditorHarness {
-        return new EditorHarness(doc);
+    static create(
+        doc = "",
+        persistHistory = true,
+        historyGroupDelay = 0,
+        captureEventTail = false,
+    ): EditorHarness {
+        return new EditorHarness(doc, persistHistory, historyGroupDelay, captureEventTail);
+    }
+
+    private extensions() {
+        return [
+            persistHistoryFacet.of(this._persistHistory),
+            persistentHistoryExtension,
+            history({ newGroupDelay: this._historyGroupDelay }),
+            annotationExtensions(),
+            ...(this._captureEventTail
+                ? [
+                      EditorView.updateListener.of((update) => {
+                          const payload = buildEventPayload(update);
+                          if (payload) {
+                              // Match SQLite persistence rather than retaining
+                              // references to immutable-but-live editor values.
+                              this._eventPayloads.push(
+                                  JSON.parse(JSON.stringify(payload)) as EventPayload,
+                              );
+                          }
+                      }),
+                  ]
+                : []),
+        ];
+    }
+
+    private resetPersistenceCheckpoint(): void {
+        this._checkpointStateJson = JSON.stringify(this.view.state.toJSON(persistedFields));
+        this._eventPayloads = [];
+    }
+
+    /** Number of exact event payloads accumulated since the current checkpoint. */
+    get pendingEventPayloadCount(): number {
+        return this._eventPayloads.length;
+    }
+
+    /** Rebuild through a full saved-field snapshot or snapshot-plus-event tail. */
+    restart(mode: EditorRestartMode = "snapshot"): this {
+        const extensions = this.extensions();
+        let state: EditorState;
+        if (mode === "snapshot") {
+            // Match SQLite snapshots exactly: no object identity or non-JSON
+            // values may survive the persistence boundary.
+            const json = JSON.parse(
+                JSON.stringify(this.view.state.toJSON(persistedFields)),
+            ) as unknown;
+            state = EditorState.fromJSON(json, { extensions }, persistedFields);
+        } else {
+            if (!this._captureEventTail) {
+                throw new Error("eventTail restart requires captureEventTail=true");
+            }
+            const events: EventRecord[] = this._eventPayloads.map((payload, index) => ({
+                id: index + 1,
+                eventType: payload.type,
+                payload: JSON.stringify(payload),
+                createdAt: index + 1,
+            }));
+            state = reconstructState(
+                this._checkpointStateJson,
+                events,
+                extensions,
+                persistedFields,
+            );
+        }
+        this.view.destroy();
+        this.view = new EditorView({ state, parent: this._parent });
+        this.resetPersistenceCheckpoint();
+        return this;
     }
 
     /** Tear down the EditorView and remove the DOM element. */

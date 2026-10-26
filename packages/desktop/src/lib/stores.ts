@@ -104,7 +104,7 @@ export const activeAnnotation = writable<GenericAnnotation | undefined>();
 /**
  * Full document text, synced on every editor transaction.
  * Written by: Editor.svelte updateListener.
- * Read by: AI sidebar (Chat.svelte, Feedback.svelte, Revise.svelte)
+ * Read by: AI sidebar (Chat.svelte)
  *          to include document context in AI prompts.
  */
 export const documentContent = writable<string>("");
@@ -159,6 +159,22 @@ export const currentDraftId = writable<string | null>(null);
  * Read by: Editor.svelte draft-tree handlers.
  */
 export const currentTabId = writable<string | null>(null);
+
+/**
+ * Display label for the active document tab.
+ * Written by the editor's tab/draft controller alongside currentTabId.
+ * Read by target-scoped panels for context labels; it is presentation metadata,
+ * separate from the stable tab ID used for persistence and request guards.
+ */
+export const currentTabLabel = writable<string>("");
+
+/**
+ * Display label for the active draft.
+ * Written by the editor's tab/draft controller alongside currentDraftId.
+ * Read by target-scoped panels for context labels; it is presentation metadata,
+ * separate from the stable draft ID used for persistence and request guards.
+ */
+export const currentDraftLabel = writable<string>("");
 
 /**
  * Controls tutorial overlay visibility.
@@ -225,12 +241,6 @@ export type NestedEditorCommand = {
 
 // ── Modal stack types ────────────────────────────────────────
 
-/** A single diff operation used in diff display. */
-export type DiffOp = {
-    type: "equal" | "delete" | "insert";
-    text: string;
-};
-
 /** A command queued for execution inside a nested revision editor. */
 export type PendingNestedCommand = {
     type: "comment" | "revision" | "cursor";
@@ -252,7 +262,13 @@ export type ModalEntry =
           label: string;
           pendingNestedCommand?: PendingNestedCommand;
       }
-    | { type: "comment"; commentId: number; parentView: EditorView; label: string };
+    | {
+          type: "comment";
+          commentId: number;
+          parentView: EditorView;
+          label: string;
+          originSelection?: { anchor: number; head: number };
+      };
 
 // ── Modal stack store ────────────────────────────────────────
 
@@ -313,6 +329,20 @@ export const settingsOpen = writable<false | true | string>(false);
  */
 export const statsOpen = writable(false);
 
+/**
+ * Drops per-modal annotation state for stack indices [fromIndex, toIndex).
+ * Every stack-shrinking operation must call this so a closed modal's
+ * annotation state can't leak into a future modal at the same index.
+ */
+function trimModalAnnotationStores(fromIndex: number, toIndex = fromIndex + 1): void {
+    if (toIndex <= fromIndex || fromIndex < 0) return;
+    _modalAnnotationStores.update((m) => {
+        const copy = { ...m };
+        for (let i = fromIndex; i < toIndex; i++) delete copy[i];
+        return copy;
+    });
+}
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>
@@ -346,31 +376,17 @@ export const modalStack = {
         }),
     pop: () =>
         _modalStack.update((s) => {
-            if (s.length > 0) {
-                _modalAnnotationStores.update((m) => {
-                    const copy = { ...m };
-                    delete copy[s.length - 1];
-                    return copy;
-                });
-            }
+            trimModalAnnotationStores(s.length - 1);
             return s.slice(0, -1);
         }),
     popTo: (index: number) =>
         _modalStack.update((s) => {
-            _modalAnnotationStores.update((m) => {
-                const copy = { ...m };
-                for (let i = index + 1; i < s.length; i++) delete copy[i];
-                return copy;
-            });
+            trimModalAnnotationStores(index + 1, s.length);
             return s.slice(0, index + 1);
         }),
     popToAndRebuild: (index: number) =>
         _modalStack.update((s) => {
-            _modalAnnotationStores.update((m) => {
-                const copy = { ...m };
-                for (let i = index + 1; i < s.length; i++) delete copy[i];
-                return copy;
-            });
+            trimModalAnnotationStores(index + 1, s.length);
             const trimmed = s.slice(0, index + 1);
             const target = trimmed[index];
             if (!target) return trimmed;

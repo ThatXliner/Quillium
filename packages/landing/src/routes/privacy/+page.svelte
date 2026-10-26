@@ -52,7 +52,7 @@ let activeTab: "plain" | "legal" = $state("plain");
 				Privacy Policy
 			</h1>
 			<p class="mb-8 text-[0.8rem] text-[color:var(--text-faint)]">
-				Last updated: April 8, 2026 · Quillium Beta
+				Last updated: July 16, 2026 · Quillium Beta
 			</p>
 
 			<div
@@ -91,7 +91,7 @@ let activeTab: "plain" | "legal" = $state("plain");
 					<p class="m-0 text-[0.875rem] leading-relaxed text-[color:var(--text-strong)]">
 						We collect anonymous usage analytics and send error reports automatically. If you use AI
 						features, your text goes directly to your chosen AI provider—never through us. We don't
-						know who you are, and we never sell your data.
+						know who you are unless you create a Quillium account, and we never sell your data.
 					</p>
 				</div>
 
@@ -146,7 +146,10 @@ let activeTab: "plain" | "legal" = $state("plain");
 								Analytics go to PostHog only—anonymized and not linked to you. If you use AI
 								features, your text goes directly to your chosen provider (OpenAI, Anthropic, or
 								Google)—we never see it. Dictionary lookups are sent to an external dictionary
-								service. We don't sell or share data with third parties for their own use.
+								service. We don't sell or share data with third parties for their own use. If you
+								create a Quillium account, we link your anonymous identifier to that account so we
+								can help troubleshoot issues you report—this doesn't apply if you never create an
+								account.
 							</p>
 						</div>
 					</div>
@@ -184,9 +187,10 @@ let activeTab: "plain" | "legal" = $state("plain");
 							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
 								PostHog assigns a random identifier to track usage behavior. On the website, this
 								only persists if you accept cookies: if you decline, no identifier is stored. In the
-								desktop app, the identifier persists for the lifetime of your install. Either way,
-								it contains no personal information and cannot be linked back to you. No marketing
-								or tracking cookies are used.
+								desktop app, the identifier persists for the lifetime of your install. It contains no
+								personal information and cannot be linked back to you—unless you create a Quillium
+								account, in which case it's linked to that account only. No marketing or tracking
+								cookies are used.
 							</p>
 						</div>
 					</div>
@@ -371,6 +375,17 @@ let activeTab: "plain" | "legal" = $state("plain");
 						and operating system. No personal information or document content is transmitted during
 						update checks.
 					</p>
+
+					<h3>2.10 Account-Linked Analytics</h3>
+					<p>
+						If you create a Quillium account, we link your previously anonymous PostHog identifier to
+						that account. This lets us match analytics events and error reports to your account so we
+						can help troubleshoot issues you report. This linkage only happens once you take the
+						deliberate step of creating an account — it never applies to the anonymous desktop or web
+						experience, and it does not retroactively identify any analytics collected before the
+						account existed. The account-linked identifier is still not shared, sold, or used for
+						advertising, and is subject to the same retention practices described in Section 6.
+					</p>
 				</section>
 
 				<section>
@@ -436,13 +451,17 @@ let activeTab: "plain" | "legal" = $state("plain");
 					<ul>
 						<li>Is a random UUID with no personal information attached</li>
 						<li>Persists across sessions to stitch together usage behavior over time</li>
-						<li>Cannot be linked back to you — no name, email, or account is associated with it</li>
+						<li>
+							Cannot be linked back to you — no name, email, or account is associated with it,
+							unless you create a Quillium account (see Section 2.10)
+						</li>
 						<li>Is used solely for analytics session management</li>
 					</ul>
 					<p>
 						On the website, the identifier is only stored if you accept cookies; declining puts
 						PostHog into cookieless mode with no persistent ID. In the desktop app, the identifier
-						persists for the lifetime of your install (until you uninstall or clear app data).
+						persists for the lifetime of your install (until you uninstall or clear app data), and is
+						linked to your account if you create one.
 					</p>
 					<p>
 						We do not use marketing, advertising, or cross-site tracking cookies. On the website,

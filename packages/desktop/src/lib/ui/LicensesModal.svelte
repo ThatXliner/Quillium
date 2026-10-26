@@ -8,6 +8,7 @@
       ondismiss — called when the user closes the modal
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { X } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -47,6 +48,8 @@ function handleKeydown(e: KeyboardEvent) {
 
 const jsEntries = $derived(entries.filter((e) => e.ecosystem === "js"));
 const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -70,14 +73,17 @@ const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
                 <h3 class="text-xl font-bold text-black/85 leading-tight">Open Source Licenses</h3>
                 <p class="text-xs text-black/35 mt-1">Libraries that make Quillium possible</p>
             </div>
-            <button
-                type="button"
-                onclick={ondismiss}
-                aria-label="Close"
-                class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
-            >
-                <X size={16} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    type="button"
+                    onclick={ondismiss}
+                    aria-label="Close"
+                    class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                >
+                    <X size={16} />
+                </button>
+            </div>
         </div>
 
         <!-- Scrollable content -->
@@ -119,5 +125,6 @@ const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
                 {/each}
             {/if}
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

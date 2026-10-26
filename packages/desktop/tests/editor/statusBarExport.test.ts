@@ -66,6 +66,8 @@ describe("StatusBar export modal (#258)", () => {
             "JSON",
             "Markdown",
             "PDF",
+            "Word (Beta)",
+            "Word + Annotations (Beta)",
             "PDF + Annotations",
         ]) {
             expect(scope.getByText(label)).toBeInTheDocument();

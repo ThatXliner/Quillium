@@ -1,0 +1,70 @@
+# Preserve AI conversation paths independently of prose
+
+Store each Chat, Feedback, and Revise discussion as a distinct SQLite row with a
+stable ID and original writing-context association. Retain a draft ID and label
+snapshot even if the draft is deleted; document deletion still removes its AI
+history. Migrate legacy draft/mode arrays by copying their original JSON.
+
+Conversation branching copies a message prefix and records the source
+conversation and message IDs. Edit and retry create another path before asking
+for an answer. This is sufficient for local conversation management and avoids
+introducing a shared message graph, graph deletion rules, or prose history events.
+Deleting an origin must not delete its descendants.
+
+A reopened conversation uses its original draft's current context for new turns.
+Other drafts can browse it, but cannot send into it. Per-turn metadata distinguishes
+past context from the next turn. Switching discussions cancels and settles the
+current request before changing the displayed messages; writes retain the
+initiating conversation ID. Historical tools are displayed as data, not replayed.
+
+See [issue #436](https://github.com/ThatXliner/Quillium/issues/436) and
+[the AI pipeline](../ai-sidebar.md#conversation-identity-and-alternative-paths).
+
+## Unified chat (September 2026)
+
+Chat now hosts discussion, feedback, and revision requests in one conversation.
+The original separate-panel design interrupted follow-up questions and required
+writers to remember where a discussion happened. History therefore spans legacy
+mode values, while each new turn carries its own task permissions. Existing row
+IDs, mode fields, source links, and draft associations remain unchanged; no data
+migration merges or discards conversations. Edit/retry reuse a saved turn's task
+(and exact word target), falling back to the legacy mode only for older messages.
+New follow-ups default to discussion; feedback and revision actions are explicit
+per-request permissions, not persistent conversation modes.
+
+This changes navigation and action selection, not draft authority, historical
+tool replay, cancellation, or the persistence boundaries above. Built-in chat is
+the primary UI; the existing optional MCP bridge is a complementary integration
+for external assistants and does not replace it.
+
+## Explicit layout choice (October 2026)
+
+Separate Chat, Feedback, and Revise panels are the default again. Writers familiar
+with those panels must explicitly choose One assistant in Settings → Advanced
+→ AI → AI panel layout to enable unified Chat. Missing or invalid saved values
+select Separate panels, including when upgrading from v0.25.
+
+This supersedes unified Chat as the default UI, while retaining its per-turn
+permissions and persistence design. The setting changes views and history filters;
+it does not merge, rewrite, or delete conversations. Separate panels load their
+own mode's history. Unified Chat can open every mode. Switching back leaves
+conversations available in the panel matching their stored mode.
+
+## One assistant with selected tools (October 2026)
+
+The combined layout now presents one assistant instead of a Discuss/Feedback/Revise
+selector. Writers opt in with **One assistant** in the existing AI panel layout
+setting; Separate panels remains the default. This supersedes the combined layout's
+per-message task selector, while preserving the distinct legacy panels.
+
+The Tools popup grants comments, suggestions, and revision versions independently.
+These choices stay with the conversation on this device and are snapshotted in each
+user turn, including empty permission sets. Both model tool exposure and editor
+application enforce that snapshot. Edit/retry carry the original snapshot and reply
+length into the new path; old messages retain their original task recipes. Special
+contextual recipes may narrow the selected tools but never expand them.
+
+Response length remains separate from editorial stance, feedback density, and voice
+latitude. None grants tools. The direct Readers toggle adds enabled reader requests
+with the same permission snapshot alongside the assistant's normal reply. Existing
+annotation commands, undo, cancellation, and conversation persistence still apply.

@@ -20,6 +20,8 @@ export type MockSnapshot = {
     label: string | null;
     /** The plain-text doc content stored in this snapshot. */
     doc: string;
+    /** Optional full serialized EditorState, including annotations and version groups. */
+    stateJson?: string;
 };
 
 export type MockDocEvent = {
@@ -53,6 +55,21 @@ export type MockDraft = {
     deletedAt: number | null;
 };
 
+export type MockConversation = {
+    id: string;
+    documentId: string;
+    draftId: string;
+    draftLabel: string;
+    mode: "chat" | "feedback" | "revise";
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+    archived: boolean;
+    messagesJson: string;
+    sourceConversationId: string | null;
+    sourceMessageId: string | null;
+};
+
 export type TauriMockOptions = {
     /** Return value for `get_api_key`. null = no key configured. */
     apiKey: string | null;
@@ -60,11 +77,18 @@ export type TauriMockOptions = {
     skipTutorial: boolean;
     /** Merged into localStorage `quillium-app-settings`. */
     settings: Record<string, unknown>;
+    /** Keep settings changed through the UI when a test reloads the page. */
+    preserveSettingsOnReload: boolean;
     /**
      * Pre-loaded document text.  When set, cmd_load_document_state returns
      * a snapshot so the editor opens with content.
      */
     initialDoc: string | null;
+    /**
+     * Full serialized EditorState for the writable editor. Takes precedence over
+     * initialDoc so cross-surface tests can load annotations and version groups.
+     */
+    initialStateJson: string | null;
     /**
      * Pre-seeded version history snapshots returned by cmd_list_snapshots.
      * cmd_load_snapshot_state returns a minimal state blob from each snapshot's doc.
@@ -76,11 +100,14 @@ export type TauriMockOptions = {
     tabs: MockTab[];
     /** Full draft roster returned by cmd_list_document_structure. */
     drafts: MockDraft[];
+    /** Pre-seeded AI conversation rows returned by conversation history commands. */
+    conversations: MockConversation[];
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
     apiKey: null,
     skipTutorial: true,
+    preserveSettingsOnReload: false,
     settings: {
         showNestedEditor: true,
         atomicRevisions: true,
@@ -88,10 +115,12 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
         autoVersionOnRevisionCreate: false,
     },
     initialDoc: null,
+    initialStateJson: null,
     snapshots: [],
     docEvents: [],
     tabs: [],
     drafts: [],
+    conversations: [],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -118,6 +147,18 @@ export class QuilliumPage {
     }
     get aiSidebar(): Locator {
         return this.page.locator("#ai-sidebar");
+    }
+    get chatPanel(): Locator {
+        return this.page.locator("#ai-sidebar [data-panel-id='chat']");
+    }
+    get chatInput(): Locator {
+        return this.chatPanel.locator('textarea[name="message"]');
+    }
+    get conversationHistory(): Locator {
+        return this.page.getByRole("list", { name: "Conversation history" });
+    }
+    get conversationRows(): Locator {
+        return this.conversationHistory.locator("li");
     }
     get annotationCards(): Locator {
         return this.page.locator(".annotation-card");
@@ -148,18 +189,25 @@ export class QuilliumPage {
                 apiKey: string | null;
                 skipTutorial: boolean;
                 settings: Record<string, unknown>;
+                preserveSettingsOnReload: boolean;
                 initialDoc: string | null;
+                initialStateJson: string | null;
                 snapshots: MockSnapshot[];
                 docEvents: MockDocEvent[];
                 tabs: MockTab[];
                 drafts: MockDraft[];
+                conversations: MockConversation[];
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
                     localStorage.setItem("quillium_beta_accepted", "true");
                     localStorage.setItem("quillium_changelog_seen", "999.999");
                 }
-                if (Object.keys(payload.settings).length > 0) {
+                if (
+                    Object.keys(payload.settings).length > 0 &&
+                    (!payload.preserveSettingsOnReload ||
+                        !localStorage.getItem("quillium-app-settings"))
+                ) {
                     localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
                 }
                 if (payload.apiKey) {
@@ -168,6 +216,7 @@ export class QuilliumPage {
 
                 let nextCallbackId = 1;
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
+                const eventHandlers = new Map<string, number>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
                 // ── Stateful tabs & draft-tree mock (#160) ──────────────
@@ -191,6 +240,20 @@ export class QuilliumPage {
                     branchedFrom: string | null;
                     locked: boolean;
                     deletedAt: number | null;
+                };
+                type MockConversation = {
+                    id: string;
+                    documentId: string;
+                    draftId: string;
+                    draftLabel: string;
+                    mode: "chat" | "feedback" | "revise";
+                    title: string;
+                    createdAt: number;
+                    updatedAt: number;
+                    archived: boolean;
+                    messagesJson: string;
+                    sourceConversationId: string | null;
+                    sourceMessageId: string | null;
                 };
                 const defaultTabs: MockTab[] = [
                     {
@@ -217,12 +280,83 @@ export class QuilliumPage {
                         deletedAt: null,
                     },
                 ];
+                const persistedTabsKey = "mock-workspace-tabs";
+                const persistedDraftsKey = "mock-workspace-drafts";
+                const persistedSnapshotsKey = "mock-workspace-snapshots";
+                const persistedConversationsKey = "mock-ai-conversations";
+                function readPersistedRows<T>(key: string, fallback: T[]): T[] {
+                    const raw = localStorage.getItem(key);
+                    if (!raw) return fallback;
+                    try {
+                        const parsed: unknown = JSON.parse(raw);
+                        return Array.isArray(parsed) ? (parsed as T[]) : fallback;
+                    } catch {
+                        return fallback;
+                    }
+                }
+                function readPersistedPointers(key: string): Record<string, string> {
+                    const raw = localStorage.getItem(key);
+                    if (!raw) return {};
+                    try {
+                        const parsed: unknown = JSON.parse(raw);
+                        return parsed !== null &&
+                            typeof parsed === "object" &&
+                            !Array.isArray(parsed)
+                            ? (parsed as Record<string, string>)
+                            : {};
+                    } catch {
+                        return {};
+                    }
+                }
                 const tabs: MockTab[] =
-                    payload.tabs.length > 0 ? payload.tabs.map((tab) => ({ ...tab })) : defaultTabs;
+                    payload.tabs.length > 0
+                        ? payload.tabs.map((tab) => ({ ...tab }))
+                        : readPersistedRows(persistedTabsKey, defaultTabs);
                 const drafts: MockDraft[] =
                     payload.drafts.length > 0
                         ? payload.drafts.map((draft) => ({ ...draft }))
-                        : defaultDrafts;
+                        : readPersistedRows(persistedDraftsKey, defaultDrafts);
+                if (payload.snapshots.length === 0) {
+                    payload.snapshots = readPersistedRows(persistedSnapshotsKey, []);
+                }
+                const seededConversations = payload.conversations.map((conversation) => ({
+                    ...conversation,
+                    sourceConversationId: conversation.sourceConversationId ?? null,
+                    sourceMessageId: conversation.sourceMessageId ?? null,
+                }));
+                const persistedConversations = localStorage.getItem(persistedConversationsKey);
+                const conversations: MockConversation[] = persistedConversations
+                    ? readPersistedRows(persistedConversationsKey, [])
+                    : seededConversations;
+                if (!persistedConversations && conversations.length > 0) {
+                    localStorage.setItem(persistedConversationsKey, JSON.stringify(conversations));
+                }
+                const persistConversations = () => {
+                    localStorage.setItem(persistedConversationsKey, JSON.stringify(conversations));
+                };
+                const validateConversationMessages = (messagesJson: string): void => {
+                    let messages: unknown;
+                    try {
+                        messages = JSON.parse(messagesJson);
+                    } catch {
+                        throw new Error("AI conversation messages must be valid JSON");
+                    }
+                    if (!Array.isArray(messages)) {
+                        throw new Error("AI conversation messages must be a JSON array");
+                    }
+                };
+                const requireConversation = (id: string): MockConversation => {
+                    const conversation = conversations.find((item) => item.id === id);
+                    if (!conversation) throw new Error(`conversation ${id} not found`);
+                    return conversation;
+                };
+                const validateConversationTitle = (title: string): void => {
+                    if (!title.trim() || [...title].length > 200) {
+                        throw new Error(
+                            "conversation title must be non-empty and at most 200 characters",
+                        );
+                    }
+                };
                 const nextIndex = (ids: string[], prefix: string) =>
                     Math.max(
                         1,
@@ -238,10 +372,21 @@ export class QuilliumPage {
                     drafts.map((draft) => draft.id),
                     "draft-test-",
                 );
-                const activeTabByDoc: Record<string, string> = {};
-                const activeDraftByTab: Record<string, string> = {};
+                const activeTabsKey = "mock-active-tabs";
+                const activeDraftsKey = "mock-active-drafts";
+                const activeTabByDoc = readPersistedPointers(activeTabsKey);
+                const activeDraftByTab = readPersistedPointers(activeDraftsKey);
 
-                (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
+                (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
+                    invokeCalls,
+                    conversations,
+                    emitEvent: (event: string, payload: unknown) => {
+                        const callbackId = eventHandlers.get(event);
+                        if (callbackId === undefined) return false;
+                        callbacks.get(callbackId)?.({ event, id: 0, payload });
+                        return true;
+                    },
+                };
 
                 (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
                     metadata: {
@@ -261,6 +406,7 @@ export class QuilliumPage {
                                     wordCount: 0,
                                     previewText: "",
                                     tags: "[]",
+                                    persistHistory: true,
                                 },
                             ];
                         if (cmd === "cmd_create_document") return "doc-test-1";
@@ -301,6 +447,165 @@ export class QuilliumPage {
                             });
                             return tab;
                         }
+                        if (cmd === "cmd_create_college_tabs") {
+                            const a = args as {
+                                documentId: string;
+                                entries: Array<{
+                                    label: string;
+                                    setupJson: string;
+                                    initialContent?: string;
+                                }>;
+                            };
+                            const entries = Array.isArray(a.entries) ? a.entries : [];
+                            if (entries.length < 1 || entries.length > 12) {
+                                throw new Error(
+                                    "College tab creation requires between 1 and 12 entries",
+                                );
+                            }
+
+                            // Match the native batch boundary: every entry is
+                            // validated before any tab, draft, or setup row is
+                            // staged. A setup created from several prompts is
+                            // split by the caller into one prompt per tab.
+                            const validatedEntries = entries.map((entry) => {
+                                const label = typeof entry?.label === "string" ? entry.label : "";
+                                if (!label.trim()) {
+                                    throw new Error("College tab labels must not be blank");
+                                }
+                                if ([...label].length > 200) {
+                                    throw new Error(
+                                        "College tab labels must be at most 200 characters",
+                                    );
+                                }
+
+                                const setupJson =
+                                    typeof entry?.setupJson === "string" ? entry.setupJson : "";
+                                if (setupJson.length > 128 * 1024) {
+                                    throw new Error(
+                                        "College tab setup JSON must be at most 128 KiB",
+                                    );
+                                }
+
+                                let setup: unknown;
+                                try {
+                                    setup = JSON.parse(setupJson);
+                                } catch {
+                                    throw new Error("Invalid College tab setup JSON");
+                                }
+                                if (
+                                    setup === null ||
+                                    typeof setup !== "object" ||
+                                    Array.isArray(setup)
+                                ) {
+                                    throw new Error("College tab setup must be a JSON object");
+                                }
+                                const setupRecord = setup as {
+                                    version?: unknown;
+                                    prompts?: unknown;
+                                };
+                                if (setupRecord.version !== 1) {
+                                    throw new Error("College tab setup version must be numeric 1");
+                                }
+                                if (
+                                    !Array.isArray(setupRecord.prompts) ||
+                                    setupRecord.prompts.length !== 1
+                                ) {
+                                    throw new Error(
+                                        "College tab setup must contain exactly one prompt when creating tabs",
+                                    );
+                                }
+                                const initialContent =
+                                    typeof entry?.initialContent === "string"
+                                        ? entry.initialContent
+                                        : undefined;
+                                if (
+                                    initialContent !== undefined &&
+                                    new TextEncoder().encode(initialContent).length > 12_000
+                                ) {
+                                    throw new Error(
+                                        "College tab initial content must be at most 12000 bytes",
+                                    );
+                                }
+                                return { label, setupJson, initialContent };
+                            });
+
+                            // The existing single-setup mock uses this switch
+                            // to simulate a persistence failure. Check it
+                            // before staging anything so the batch stays all or
+                            // none, just like the native transaction.
+                            if (localStorage.getItem("mock-college-save-error")) {
+                                throw new Error("Mock College setup save failed");
+                            }
+
+                            const firstTabIndex = nextTabIndex;
+                            const firstDraftIndex = nextDraftIndex;
+                            const firstPosition = tabs.length;
+                            const now = Date.now();
+                            let nextSnapshotId =
+                                Math.max(0, ...payload.snapshots.map((snapshot) => snapshot.id)) +
+                                1;
+                            const stagedTabs: MockTab[] = validatedEntries.map((entry, index) => ({
+                                id: `tab-test-${firstTabIndex + index}`,
+                                documentId: a.documentId,
+                                tabType: "draft",
+                                label: entry.label,
+                                position: firstPosition + index,
+                                createdAt: now,
+                                deletedAt: null,
+                            }));
+                            const stagedDrafts: MockDraft[] = stagedTabs.map((tab, index) => ({
+                                id: `draft-test-${firstDraftIndex + index}`,
+                                documentId: a.documentId,
+                                label: "main",
+                                createdAt: now,
+                                isActive: true,
+                                tabId: tab.id,
+                                parentDraftId: null,
+                                branchedFrom: null,
+                                locked: false,
+                                deletedAt: null,
+                            }));
+
+                            tabs.push(...stagedTabs);
+                            drafts.push(...stagedDrafts);
+                            for (const [index, entry] of validatedEntries.entries()) {
+                                const tab = stagedTabs[index];
+                                const draft = stagedDrafts[index];
+                                localStorage.setItem(
+                                    `mock-college-setup:${a.documentId}:${tab.id}`,
+                                    entry.setupJson,
+                                );
+                                if (entry.initialContent !== undefined) {
+                                    const cursor = entry.initialContent.length;
+                                    const stateJson = JSON.stringify({
+                                        doc: entry.initialContent,
+                                        selection: {
+                                            ranges: [{ anchor: cursor, head: cursor }],
+                                            main: 0,
+                                        },
+                                    });
+                                    payload.snapshots.push({
+                                        id: nextSnapshotId++,
+                                        draftId: draft.id,
+                                        tabId: tab.id,
+                                        upToEventId: 0,
+                                        createdAt: now,
+                                        label: "College prompt",
+                                        doc: entry.initialContent,
+                                        stateJson,
+                                    });
+                                }
+                            }
+                            localStorage.setItem(persistedTabsKey, JSON.stringify(tabs));
+                            localStorage.setItem(persistedDraftsKey, JSON.stringify(drafts));
+                            localStorage.setItem(
+                                persistedSnapshotsKey,
+                                JSON.stringify(payload.snapshots),
+                            );
+                            nextTabIndex = firstTabIndex + stagedTabs.length;
+                            nextDraftIndex = firstDraftIndex + stagedDrafts.length;
+                            return stagedTabs.map(({ deletedAt: _deletedAt, ...tab }) => tab);
+                        }
                         if (cmd === "cmd_rename_tab") {
                             const a = args as { tabId: string; label: string };
                             const tab = tabs.find((t) => t.id === a.tabId);
@@ -327,6 +632,7 @@ export class QuilliumPage {
                         if (cmd === "cmd_set_active_tab") {
                             const a = args as { docId: string; tabId: string };
                             activeTabByDoc[a.docId] = a.tabId;
+                            localStorage.setItem(activeTabsKey, JSON.stringify(activeTabByDoc));
                             return null;
                         }
                         if (cmd === "cmd_list_tab_drafts") {
@@ -340,6 +646,7 @@ export class QuilliumPage {
                         if (cmd === "cmd_set_active_draft") {
                             const a = args as { tabId: string; draftId: string };
                             activeDraftByTab[a.tabId] = a.draftId;
+                            localStorage.setItem(activeDraftsKey, JSON.stringify(activeDraftByTab));
                             return null;
                         }
                         if (cmd === "cmd_iterate_draft") {
@@ -523,6 +830,38 @@ export class QuilliumPage {
                         }
 
                         if (cmd === "cmd_load_document_state") {
+                            const draftId = (args as { draftId?: string | null } | null | undefined)
+                                ?.draftId;
+                            const draftSnapshot =
+                                typeof draftId === "string"
+                                    ? payload.snapshots
+                                          .filter((snapshot) => snapshot.draftId === draftId)
+                                          .sort(
+                                              (left, right) => right.upToEventId - left.upToEventId,
+                                          )[0]
+                                    : undefined;
+                            if (draftSnapshot) {
+                                return {
+                                    snapshotStateJson:
+                                        draftSnapshot.stateJson ??
+                                        JSON.stringify({
+                                            doc: draftSnapshot.doc,
+                                            selection: {
+                                                ranges: [{ anchor: 0, head: 0 }],
+                                                main: 0,
+                                            },
+                                        }),
+                                    snapshotEventId: draftSnapshot.upToEventId,
+                                    eventsSince: [],
+                                };
+                            }
+                            if (payload.initialStateJson) {
+                                return {
+                                    snapshotStateJson: payload.initialStateJson,
+                                    snapshotEventId: 0,
+                                    eventsSince: [],
+                                };
+                            }
                             if (payload.initialDoc) {
                                 return {
                                     snapshotStateJson: JSON.stringify({
@@ -543,7 +882,173 @@ export class QuilliumPage {
 
                         if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
                         if (cmd === "cmd_create_snapshot") return null;
-                        if (cmd === "cmd_update_document_meta") return null;
+                        if (cmd === "cmd_update_document_content_metadata") return null;
+                        if (cmd === "cmd_get_document_writer_brief") {
+                            const a = args as { documentId: string };
+                            return localStorage.getItem(`mock-writer-brief:${a.documentId}`);
+                        }
+                        if (cmd === "cmd_set_document_writer_brief") {
+                            const a = args as { documentId: string; writerBrief: string };
+                            const key = `mock-writer-brief:${a.documentId}`;
+                            if (a.writerBrief) localStorage.setItem(key, a.writerBrief);
+                            else localStorage.removeItem(key);
+                            return null;
+                        }
+                        if (cmd === "cmd_get_document_editorial_decisions") {
+                            const a = args as { documentId: string };
+                            return localStorage.getItem(`mock-editorial-decisions:${a.documentId}`);
+                        }
+                        if (cmd === "cmd_set_document_editorial_decisions") {
+                            const a = args as { documentId: string; decisionsJson: string };
+                            const key = `mock-editorial-decisions:${a.documentId}`;
+                            if (a.decisionsJson === "[]") localStorage.removeItem(key);
+                            else localStorage.setItem(key, a.decisionsJson);
+                            return null;
+                        }
+
+                        // AI conversation history (#436). The browser harness
+                        // keeps rows in localStorage so lifecycle actions and
+                        // reloads exercise the same persistence boundary as
+                        // the native commands without requiring SQLite.
+                        if (cmd === "cmd_list_ai_conversations") {
+                            const a = args as { documentId: string };
+                            return conversations.filter(
+                                (conversation) => conversation.documentId === a.documentId,
+                            );
+                        }
+                        if (cmd === "cmd_get_ai_conversation") {
+                            const a = args as { id: string };
+                            return (
+                                conversations.find((conversation) => conversation.id === a.id) ??
+                                null
+                            );
+                        }
+                        if (cmd === "cmd_create_ai_conversation") {
+                            const a = args as {
+                                id: string;
+                                documentId: string;
+                                draftId: string;
+                                mode: MockConversation["mode"];
+                                title: string;
+                                messagesJson: string;
+                                sourceConversationId?: string;
+                                sourceMessageId?: string;
+                            };
+                            if (!a.id.trim()) throw new Error("conversation id must not be empty");
+                            if (conversations.some((conversation) => conversation.id === a.id)) {
+                                throw new Error(`conversation ${a.id} already exists`);
+                            }
+                            const draft = drafts.find(
+                                (candidate) =>
+                                    candidate.id === a.draftId &&
+                                    candidate.documentId === a.documentId,
+                            );
+                            if (!draft) {
+                                throw new Error(
+                                    `draft ${a.draftId} does not belong to document ${a.documentId}`,
+                                );
+                            }
+                            if (
+                                !(a.mode === "chat" || a.mode === "feedback" || a.mode === "revise")
+                            ) {
+                                throw new Error(`unsupported AI conversation mode: ${a.mode}`);
+                            }
+                            validateConversationTitle(a.title);
+                            validateConversationMessages(a.messagesJson);
+                            const now = Date.now();
+                            const conversation: MockConversation = {
+                                id: a.id,
+                                documentId: a.documentId,
+                                draftId: a.draftId,
+                                draftLabel: draft.label,
+                                mode: a.mode,
+                                title: a.title,
+                                createdAt: now,
+                                updatedAt: now,
+                                archived: false,
+                                messagesJson: a.messagesJson,
+                                sourceConversationId: a.sourceConversationId ?? null,
+                                sourceMessageId: a.sourceMessageId ?? null,
+                            };
+                            conversations.push(conversation);
+                            persistConversations();
+                            return conversation;
+                        }
+                        if (cmd === "cmd_save_ai_conversation_messages") {
+                            const a = args as { id: string; messagesJson: string };
+                            const conversation = requireConversation(a.id);
+                            validateConversationMessages(a.messagesJson);
+                            conversation.messagesJson = a.messagesJson;
+                            conversation.updatedAt = Date.now();
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_rename_ai_conversation") {
+                            const a = args as { id: string; title: string };
+                            const conversation = requireConversation(a.id);
+                            validateConversationTitle(a.title);
+                            conversation.title = a.title;
+                            conversation.updatedAt = Date.now();
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_archive_ai_conversation") {
+                            const a = args as { id: string; archived: boolean };
+                            const conversation = requireConversation(a.id);
+                            conversation.archived = a.archived;
+                            conversation.updatedAt = Date.now();
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_ai_conversation") {
+                            const a = args as { id: string };
+                            requireConversation(a.id);
+                            const index = conversations.findIndex((item) => item.id === a.id);
+                            conversations.splice(index, 1);
+                            persistConversations();
+                            return null;
+                        }
+                        if (cmd === "cmd_get_college_document_enabled") {
+                            const a = args as { documentId: string };
+                            const saved = localStorage.getItem(
+                                `mock-college-enabled:${a.documentId}`,
+                            );
+                            return saved !== null
+                                ? saved === "true"
+                                : Object.keys(localStorage).some((key) =>
+                                      key.startsWith(`mock-college-setup:${a.documentId}:`),
+                                  );
+                        }
+                        if (cmd === "cmd_set_college_document_enabled") {
+                            const a = args as { documentId: string; enabled: boolean };
+                            if (localStorage.getItem("mock-college-activation-error"))
+                                throw new Error("Could not enable College applications.");
+                            localStorage.setItem(
+                                `mock-college-enabled:${a.documentId}`,
+                                String(a.enabled),
+                            );
+                            return null;
+                        }
+                        if (cmd === "cmd_get_college_tab_setup") {
+                            const a = args as { documentId: string; tabId: string };
+                            return localStorage.getItem(
+                                `mock-college-setup:${a.documentId}:${a.tabId}`,
+                            );
+                        }
+                        if (cmd === "cmd_set_college_tab_setup") {
+                            const a = args as {
+                                documentId: string;
+                                tabId: string;
+                                setupJson: string | null;
+                            };
+                            if (localStorage.getItem("mock-college-save-error")) {
+                                throw new Error("Mock College setup save failed");
+                            }
+                            const key = `mock-college-setup:${a.documentId}:${a.tabId}`;
+                            if (a.setupJson === null) localStorage.removeItem(key);
+                            else localStorage.setItem(key, a.setupJson);
+                            return null;
+                        }
                         if (cmd === "get_api_key") return payload.apiKey;
 
                         // Version history
@@ -577,6 +1082,7 @@ export class QuilliumPage {
                             const a = args as { snapshotId: number };
                             const snap = payload.snapshots.find((s) => s.id === a.snapshotId);
                             if (!snap) return null;
+                            if (snap.stateJson !== undefined) return snap.stateJson;
                             return JSON.stringify({
                                 doc: snap.doc,
                                 selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
@@ -622,22 +1128,36 @@ export class QuilliumPage {
                             return before - payload.snapshots.length;
                         }
                         if (cmd === "cmd_create_named_snapshot") {
-                            const a = args as { label: string; upToEventId: number };
+                            const a = args as {
+                                label: string;
+                                upToEventId: number;
+                                draftId: string;
+                                stateJson: string;
+                            };
                             const newId = payload.snapshots.length + 100;
                             payload.snapshots.unshift({
                                 id: newId,
-                                draftId: "draft-test-1",
+                                draftId: a.draftId,
                                 upToEventId: a.upToEventId,
                                 createdAt: Date.now(),
                                 label: a.label,
-                                doc: "",
+                                doc: JSON.parse(a.stateJson).doc,
+                                stateJson: a.stateJson,
                             });
                             return newId;
                         }
 
                         // Tauri event plumbing
-                        if (cmd === "plugin:event|listen") return 1;
-                        if (cmd === "plugin:event|unlisten") return null;
+                        if (cmd === "plugin:event|listen") {
+                            const eventArgs = args as { event: string; handler: number };
+                            eventHandlers.set(eventArgs.event, eventArgs.handler);
+                            return eventArgs.handler;
+                        }
+                        if (cmd === "plugin:event|unlisten") {
+                            const eventArgs = args as { event: string };
+                            eventHandlers.delete(eventArgs.event);
+                            return null;
+                        }
 
                         return null;
                     },
@@ -660,11 +1180,14 @@ export class QuilliumPage {
                 apiKey: opts.apiKey,
                 skipTutorial: opts.skipTutorial,
                 settings: opts.settings,
+                preserveSettingsOnReload: opts.preserveSettingsOnReload,
                 initialDoc: opts.initialDoc,
+                initialStateJson: opts.initialStateJson,
                 snapshots: opts.snapshots,
                 docEvents: opts.docEvents,
                 tabs: opts.tabs,
                 drafts: opts.drafts,
+                conversations: opts.conversations,
             },
         );
     }
@@ -681,10 +1204,133 @@ export class QuilliumPage {
         await this.goto();
     }
 
+    /** Open the AI Chat panel and wait for its panel surface. */
+    async openChat(): Promise<void> {
+        if (!(await this.chatPanel.isVisible().catch(() => false))) {
+            await this.page.locator("#ai-tab-chat").click();
+        }
+        await expect(this.chatPanel).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** Open the Chat panel's conversation browser. */
+    async openConversationHistory(): Promise<void> {
+        const close = this.chatPanel.getByRole("button", { name: "Close discussion", exact: true });
+        if (await close.isVisible()) await close.click();
+        await this.openChat();
+        if (!(await this.conversationHistory.isVisible().catch(() => false))) {
+            await this.chatPanel.getByRole("button", { name: "History", exact: true }).click();
+        }
+        await expect(this.conversationHistory).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** Return one conversation history row by its title. */
+    conversationRow(title: string): Locator {
+        return this.conversationRows.filter({ hasText: title }).first();
+    }
+
+    /** Return the action strip for a rendered message ID. */
+    conversationMessageActions(messageId: string): Locator {
+        return this.chatPanel.locator(`[data-message-id="${messageId}"]`);
+    }
+
+    /** Return an exact rendered Chat message text locator. */
+    conversationMessage(text: string): Locator {
+        return this.chatPanel.getByText(text, { exact: true }).first();
+    }
+
+    /** Open a conversation by its history title. */
+    async openConversation(title: string): Promise<void> {
+        await this.openConversationHistory();
+        await this.conversationHistory.getByRole("button", { name: title, exact: true }).click();
+        await expect(this.chatPanel).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** Toggle the archived conversation filter. */
+    async showArchivedConversations(): Promise<void> {
+        const archived = this.chatPanel.getByRole("button", { name: "Archived", exact: true });
+        await archived.click();
+        await expect(archived).toHaveAttribute("aria-pressed", "true");
+    }
+
+    /** Search the open conversation history by title or message text. */
+    async searchConversations(query: string): Promise<void> {
+        await this.openConversationHistory();
+        await this.chatPanel.getByRole("textbox", { name: "Search conversations" }).fill(query);
+    }
+
+    /** Reset the history container so the header and controls are in frame. */
+    async resetConversationHistoryScroll(): Promise<void> {
+        await this.chatPanel.locator("[data-conversation-history]").evaluate((element) => {
+            element.scrollTop = 0;
+        });
+    }
+
+    /** Assert the history browser controls are visible in the current viewport. */
+    async expectConversationHistoryControlsVisible(): Promise<void> {
+        await expect(
+            this.chatPanel.getByRole("button", {
+                name: "History",
+                exact: true,
+            }),
+        ).toBeVisible();
+        await expect(
+            this.chatPanel.getByRole("button", { name: "New discussion", exact: true }),
+        ).toBeVisible();
+    }
+
+    /** Configure the deterministic DeepSeek-compatible route used by provider UI tests. */
+    async mockDeepSeekProvider(responseText = "Alternative answer"): Promise<void> {
+        await this.page.addInitScript(() => {
+            localStorage.setItem("quillium-ai-provider", "deepseek");
+            localStorage.setItem("quillium-ai-model", "deepseek-chat");
+        });
+        await this.page.route("https://api.deepseek.com/chat/completions", async (route) => {
+            const created = Math.floor(Date.now() / 1_000);
+            const chunk = (delta: Record<string, string>, finishReason: string | null = null) =>
+                `data: ${JSON.stringify({
+                    id: "chatcmpl-quillium-test",
+                    object: "chat.completion.chunk",
+                    created,
+                    model: "deepseek-chat",
+                    choices: [{ index: 0, delta, finish_reason: finishReason }],
+                })}\n\n`;
+            const body = `${chunk({ role: "assistant" })}${chunk({ content: responseText })}${chunk({}, "stop")}data: [DONE]\n\n`;
+            await route.fulfill({
+                status: 200,
+                headers: {
+                    "cache-control": "no-cache",
+                    "content-type": "text/event-stream; charset=utf-8",
+                },
+                body,
+            });
+        });
+    }
+
+    /** Capture a full-page browser screenshot for visual verification. */
+    async captureScreenshot(path: string): Promise<void> {
+        await this.page.screenshot({ path, fullPage: true });
+    }
+
+    /** Read the browser-only conversation roster used by the Tauri mock. */
+    async mockConversations(): Promise<MockConversation[]> {
+        return this.page.evaluate(() => {
+            const raw = localStorage.getItem("mock-ai-conversations");
+            if (!raw) return [];
+            try {
+                const parsed: unknown = JSON.parse(raw);
+                return Array.isArray(parsed) ? (parsed as MockConversation[]) : [];
+            } catch {
+                return [];
+            }
+        });
+    }
+
     /** Navigate to "/history" and wait for the history page to render. */
     async gotoHistory(): Promise<void> {
         await this.page.goto("/history");
-        await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });
+        await expect(this.page.getByText("Version History", { exact: true })).toBeVisible({
+            timeout: 10_000,
+        });
     }
 
     /** setup() + gotoHistory() */
@@ -696,7 +1342,9 @@ export class QuilliumPage {
     /** Click the History button in the status bar to navigate to /history. */
     async openHistoryFromStatusBar(): Promise<void> {
         await this.page.locator("#status-bar button[aria-label='Version history']").click();
-        await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });
+        await expect(this.page.getByText("Version History", { exact: true })).toBeVisible({
+            timeout: 10_000,
+        });
     }
 
     // ── Tauri mock introspection ────────────────────────────────────────
@@ -727,6 +1375,22 @@ export class QuilliumPage {
                 ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === c).length,
             cmd,
         );
+    }
+
+    /** Deliver a Tauri event through the same callback registered by listen(). */
+    async emitTauriEvent(event: string, payload: unknown = null): Promise<void> {
+        const delivered = await this.page.evaluate(
+            ({ eventName, eventPayload }) =>
+                (
+                    window as unknown as {
+                        __TAURI_MOCK__: {
+                            emitEvent: (event: string, payload: unknown) => boolean;
+                        };
+                    }
+                ).__TAURI_MOCK__.emitEvent(eventName, eventPayload),
+            { eventName: event, eventPayload: payload },
+        );
+        expect(delivered).toBe(true);
     }
 
     // ── Editor text ─────────────────────────────────────────────────────
@@ -858,7 +1522,7 @@ export class QuilliumPage {
     }
 
     async createComment(): Promise<void> {
-        await this.page.keyboard.press("Control+Alt+m");
+        await this.page.keyboard.press("ControlOrMeta+Shift+c");
     }
 
     async createRevision(): Promise<void> {

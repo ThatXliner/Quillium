@@ -2,11 +2,14 @@ import { getLiveRelayRoomId } from "$lib/collab/roomIdentity";
 import { describe, expect, it } from "vitest";
 
 describe("live relay room identity", () => {
-    it("uses the document id even when an active draft id exists", () => {
+    it("hides the local room identity while a joiner connects", () => {
+        expect(getLiveRelayRoomId({ documentId: "local-doc", isJoiner: true })).toBe("");
+    });
+    it("uses the document id before starting a session", () => {
         expect(
             getLiveRelayRoomId({
+                isJoiner: false,
                 documentId: "doc-123",
-                draftId: "draft-456",
             }),
         ).toBe("doc-123");
     });
@@ -15,8 +18,8 @@ describe("live relay room identity", () => {
         expect(
             getLiveRelayRoomId({
                 activeRoomId: "joined-doc-789",
+                isJoiner: true,
                 documentId: "local-doc-123",
-                draftId: null,
             }),
         ).toBe("joined-doc-789");
     });
@@ -24,8 +27,8 @@ describe("live relay room identity", () => {
     it("returns an empty room id when no document is open", () => {
         expect(
             getLiveRelayRoomId({
+                isJoiner: false,
                 documentId: null,
-                draftId: null,
             }),
         ).toBe("");
     });

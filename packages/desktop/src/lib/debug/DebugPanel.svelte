@@ -1,50 +1,21 @@
 <!--
     DebugPanel.svelte — Developer overlay for loading editor scenarios.
 
-    How it works:
-      1. Creates a temporary EditorState with full extensions (including
-         annotationField and annotation decorations) but no persist listener.
-      2. Mounts a headless EditorView and intercepts every transaction
-         dispatched during scenario.setup(), converting each to an
-         EventPayload (same format as the live persistence layer).
-      3. Wipes the DB and creates a fresh document + draft.
-      4. Appends each collected EventPayload to the event log via
-         appendEvent(), so the document has a real replay-able history.
-      5. Takes a final snapshot of the temp state for fast initial load,
-         and calls updateDocumentMeta() so the library shows a preview.
-      6. Calls reloadEditor() — the editor restores state via the normal
-         snapshot + replayEvents path, identical to a real session restore.
-
-    Activation: click the 🐛 button in the StatusBar, or press Escape to close.
-    Only available when import.meta.env.DEV is true (stripped from production).
+    Uses loadScenario for the DEV reset and persistence cycle shared with screenshots.
+    Only available when import.meta.env.DEV is true.
 -->
 <script lang="ts">
+import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
 import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
-import {
-    appendEvent,
-    createDocument,
-    createDraft,
-    createSnapshot,
-    resetDb,
-    updateDocumentMeta,
-} from "$lib/db";
-import type { EventPayload } from "$lib/db/events";
-import { type Scenario, scenarios } from "$lib/debug/scenarios";
+import { loadScenario } from "$lib/debug/loadScenario";
+import { type Scenario, type ScenarioGroup, scenarios } from "$lib/debug/scenarios";
 import { debugAuthWaitlistMode, debugForceSurvey, debugPanelActive } from "$lib/debug/store.svelte";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { buildEventPayload } from "$lib/editor/listeners";
 import { saveEmergencyBackup } from "$lib/errorGuard";
 import { appEventBus } from "$lib/events/appEventBus";
-import {
-    currentDocumentId,
-    currentDocumentTitle,
-    currentDraftId,
-    editorView,
-    errorBanner,
-} from "$lib/stores";
+import { editorView, errorBanner } from "$lib/stores";
 import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
 
 // Face preview state
 const FACE_STATES: FaceState[] = [
@@ -97,8 +68,30 @@ function startCountdown(type: string, callback: () => void) {
     }, 1000);
 }
 
+// Fixed display order for accordion sections — only groups with at least
+// one matching scenario are rendered (see groupScenarios below).
+const DEBUG_GROUP_ORDER: ScenarioGroup[] = [
+    "Showcase",
+    "Comments",
+    "Suggestions",
+    "Revisions",
+    "Combinations & edge cases",
+    "Provenance & authorship",
+    "Privacy & safety",
+    "Screenshot & video fixtures",
+];
+const DEMO_GROUP_ORDER: ScenarioGroup[] = ["Editorial sessions", "Linked versions"];
+
+function groupScenarios(list: Scenario[], order: ScenarioGroup[]) {
+    return order
+        .map((name) => ({ name, scenarios: list.filter((s) => s.group === name) }))
+        .filter((g) => g.scenarios.length > 0);
+}
+
 const debugScenarios = scenarios.filter((s) => s.category === "debug");
 const demoScenarios = scenarios.filter((s) => s.category === "demo");
+const groupedDebugScenarios = groupScenarios(debugScenarios, DEBUG_GROUP_ORDER);
+const groupedDemoScenarios = groupScenarios(demoScenarios, DEMO_GROUP_ORDER);
 
 function close() {
     $debugPanelActive = false;
@@ -116,63 +109,7 @@ async function runScenario(scenario: Scenario) {
     error = null;
 
     try {
-        // 1. Collect EventPayloads from the scenario's transactions.
-        const collectedPayloads: EventPayload[] = [];
-
-        const tempState = EditorState.create({
-            doc: scenario.doc,
-            extensions: getExtensions({
-                persist: false,
-                updateListener(update) {
-                    const payload = buildEventPayload(update);
-                    if (payload) collectedPayloads.push(payload);
-                },
-            }),
-        });
-
-        const tempParent = document.createElement("div");
-        const tempView = new EditorView({ state: tempState, parent: tempParent });
-
-        // 2. Run the scenario — each dispatch fires the updateListener above.
-        scenario.setup(tempView);
-
-        const finalState = tempView.state;
-        tempView.destroy();
-
-        // 3. Fresh DB: new document + draft.
-        await resetDb();
-        const docId = await createDocument(scenario.label);
-        const draftId = await createDraft(docId, "Draft");
-
-        // 4. Replay events into the event log — this is the "real history".
-        let lastEventId = -1;
-        for (const payload of collectedPayloads) {
-            const result = await appendEvent(draftId, JSON.stringify(payload));
-            lastEventId = result.eventId;
-        }
-
-        // 5. Write a snapshot of the final state so the editor loads fast,
-        //    and update document metadata so the library shows a preview.
-        const stateJson = JSON.stringify(finalState.toJSON(savedFields));
-        await createSnapshot(draftId, stateJson, lastEventId);
-
-        const docText = finalState.doc.toString();
-        const title = scenario.label;
-        const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
-        const previewText = docText.slice(0, 200);
-        await updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText);
-
-        // 6. Set stores AFTER snapshot is written. Setting currentDocumentId
-        //    triggers Editor.svelte's subscription which calls loadDocument —
-        //    if set too early (before the snapshot exists), it would load an
-        //    empty state and cause a RangeError when annotations are mapped
-        //    through a zero-length changeset.
-        currentDocumentId.set(docId);
-        currentDocumentTitle.set(scenario.label);
-        currentDraftId.set(draftId);
-
-        // 7. Reload the editor via the normal snapshot + replay path.
-        await reloadEditor();
+        await loadScenario(scenario, reloadEditor);
 
         lastLoaded = scenario.id;
     } catch (e) {
@@ -252,6 +189,8 @@ function triggerAuthOffline() {
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") close();
 }
+
+let restoreSize = $state<(() => void) | undefined>();
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -272,21 +211,24 @@ function handleKeydown(e: KeyboardEvent) {
         tabindex="-1"
     >
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-4 border-b border-black/10">
+        <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-black/10">
             <div class="flex items-center gap-2.5">
                 <span class="text-lg">🐛</span>
                 <span class="font-semibold text-black/80 text-sm">Scenarios</span>
                 <span class="text-[10px] font-mono bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">DEV</span>
             </div>
-            <button
-                onclick={close}
-                class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
-                aria-label="Close debug panel"
-            >✕</button>
+            <div class="flex items-center gap-1 shrink-0">
+                <RestoreSizeButton {restoreSize} />
+                <button
+                    onclick={close}
+                    class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
+                    aria-label="Close debug panel"
+                >✕</button>
+            </div>
         </div>
 
         <!-- Info bar -->
-        <div class="px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
+        <div class="shrink-0 px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
             Saves the scenario to disk and reloads the editor. <strong>Overwrites your current draft.</strong>
         </div>
 
@@ -305,38 +247,60 @@ function handleKeydown(e: KeyboardEvent) {
                 <div class="px-4 pt-3 pb-2 flex items-center gap-2">
                     <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Debug</span>
                 </div>
-                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
-                    {#each debugScenarios as scenario}
-                        {@const isLoading = loading === scenario.id}
-                        {@const isLoaded = lastLoaded === scenario.id && loading === null}
-                        <div
-                            class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
-                                isLoaded
-                                    ? "border-green-200 bg-green-50/70"
-                                    : "border-black/8 bg-white/50 hover:bg-white/80"
-                            }`}
+                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-2">
+                    {#each groupedDebugScenarios as group}
+                        <details
+                            class="group rounded-xl border border-black/8 bg-white/40"
+                            open={group.name !== "Screenshot & video fixtures"}
                         >
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
-                                    {#if isLoaded}
-                                        <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
-                                    {/if}
-                                </div>
-                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
-                            </div>
-                            <button
-                                onclick={() => runScenario(scenario)}
-                                disabled={loading !== null}
-                                class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                                    isLoading
-                                        ? "bg-blue-100 text-blue-400 cursor-wait"
-                                        : "bg-black/8 hover:bg-black/14 text-black/60 disabled:opacity-40 disabled:cursor-not-allowed"
-                                }`}
+                            <summary
+                                class="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer select-none list-none marker:content-none"
                             >
-                                {isLoading ? "Saving…" : "Load"}
-                            </button>
-                        </div>
+                                <span class="flex items-center gap-1.5 text-[11px] font-semibold text-black/55">
+                                    <svg
+                                        class="w-2 h-2 shrink-0 text-black/30 transition-transform group-open:rotate-90"
+                                        viewBox="0 0 8 8"
+                                        fill="currentColor"
+                                    ><path d="M1 0l6 4-6 4z" /></svg>
+                                    {group.name}
+                                </span>
+                                <span class="text-[10px] text-black/30">{group.scenarios.length}</span>
+                            </summary>
+                            <div class="flex flex-col gap-1.5 px-3 pb-3 pt-1">
+                                {#each group.scenarios as scenario}
+                                    {@const isLoading = loading === scenario.id}
+                                    {@const isLoaded = lastLoaded === scenario.id && loading === null}
+                                    <div
+                                        class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                                            isLoaded
+                                                ? "border-green-200 bg-green-50/70"
+                                                : "border-black/8 bg-white/50 hover:bg-white/80"
+                                        }`}
+                                    >
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                                {#if isLoaded}
+                                                    <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
+                                                {/if}
+                                            </div>
+                                            <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                                        </div>
+                                        <button
+                                            onclick={() => runScenario(scenario)}
+                                            disabled={loading !== null}
+                                            class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                                                isLoading
+                                                    ? "bg-blue-100 text-blue-400 cursor-wait"
+                                                    : "bg-black/8 hover:bg-black/14 text-black/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                            }`}
+                                        >
+                                            {isLoading ? "Saving…" : "Load"}
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </details>
                     {/each}
                 </div>
             </div>
@@ -350,38 +314,57 @@ function handleKeydown(e: KeyboardEvent) {
                     <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Demo</span>
                     <span class="text-[10px] text-black/30">polished · show-ready</span>
                 </div>
-                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
-                    {#each demoScenarios as scenario}
-                        {@const isLoading = loading === scenario.id}
-                        {@const isLoaded = lastLoaded === scenario.id && loading === null}
-                        <div
-                            class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
-                                isLoaded
-                                    ? "border-blue-200 bg-blue-50/60"
-                                    : "border-black/8 bg-white/50 hover:bg-white/80"
-                            }`}
-                        >
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
-                                    {#if isLoaded}
-                                        <span class="text-[10px] text-blue-500 font-medium">✓ loaded</span>
-                                    {/if}
-                                </div>
-                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
-                            </div>
-                            <button
-                                onclick={() => runScenario(scenario)}
-                                disabled={loading !== null}
-                                class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                                    isLoading
-                                        ? "bg-blue-100 text-blue-400 cursor-wait"
-                                        : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                                }`}
+                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-2">
+                    {#each groupedDemoScenarios as group}
+                        <details class="group rounded-xl border border-black/8 bg-white/40" open>
+                            <summary
+                                class="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer select-none list-none marker:content-none"
                             >
-                                {isLoading ? "Saving…" : "Load"}
-                            </button>
-                        </div>
+                                <span class="flex items-center gap-1.5 text-[11px] font-semibold text-black/55">
+                                    <svg
+                                        class="w-2 h-2 shrink-0 text-black/30 transition-transform group-open:rotate-90"
+                                        viewBox="0 0 8 8"
+                                        fill="currentColor"
+                                    ><path d="M1 0l6 4-6 4z" /></svg>
+                                    {group.name}
+                                </span>
+                                <span class="text-[10px] text-black/30">{group.scenarios.length}</span>
+                            </summary>
+                            <div class="flex flex-col gap-1.5 px-3 pb-3 pt-1">
+                                {#each group.scenarios as scenario}
+                                    {@const isLoading = loading === scenario.id}
+                                    {@const isLoaded = lastLoaded === scenario.id && loading === null}
+                                    <div
+                                        class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                                            isLoaded
+                                                ? "border-blue-200 bg-blue-50/60"
+                                                : "border-black/8 bg-white/50 hover:bg-white/80"
+                                        }`}
+                                    >
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                                {#if isLoaded}
+                                                    <span class="text-[10px] text-blue-500 font-medium">✓ loaded</span>
+                                                {/if}
+                                            </div>
+                                            <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                                        </div>
+                                        <button
+                                            onclick={() => runScenario(scenario)}
+                                            disabled={loading !== null}
+                                            class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                                                isLoading
+                                                    ? "bg-blue-100 text-blue-400 cursor-wait"
+                                                    : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                            }`}
+                                        >
+                                            {isLoading ? "Saving…" : "Load"}
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </details>
                     {/each}
                 </div>
             </div>
@@ -514,5 +497,6 @@ function handleKeydown(e: KeyboardEvent) {
                 <span>DEV only — stripped from production builds</span>
             </div>
         </div>
+        <ModalResizeHandles bind:restoreSize />
     </div>
 </div>

@@ -171,7 +171,7 @@ test.describe("status bar", () => {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 
 test.describe("keyboard shortcuts", () => {
-    test("Cmd+Alt+M creates comment when text is selected", async ({ page }) => {
+    test("Cmd+Shift+C creates comment and records both shortcut boundaries", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -181,6 +181,79 @@ test.describe("keyboard shortcuts", () => {
         // Pre-comment composer should appear
         const textarea = page.locator("textarea[placeholder='Add a comment…']");
         await expect(textarea).toBeVisible({ timeout: 5_000 });
+        await expect(textarea).toBeFocused();
+
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    (
+                        window as unknown as {
+                            __TAURI_MOCK__: {
+                                invokeCalls: Array<{
+                                    cmd: string;
+                                    args: { target?: string };
+                                }>;
+                            };
+                        }
+                    ).__TAURI_MOCK__.invokeCalls
+                        .filter((call) => call.cmd === "cmd_log_app_event")
+                        .map((call) => call.args.target),
+                ),
+            )
+            .toEqual(expect.arrayContaining(["comment-shortcut", "comment-command"]));
+    });
+
+    test("Cmd+Shift+C with no selection does not create a comment", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.editor.click();
+        await page.keyboard.press("ArrowRight");
+        await q.createComment();
+
+        await expect(page.locator("textarea[placeholder='Add a comment…']")).toHaveCount(0);
+    });
+
+    test("Cmd+Shift+M is retired because macOS assigns it to a text service", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await page.keyboard.press("Control+Shift+m");
+
+        await expect(page.locator("textarea[placeholder='Add a comment…']")).toHaveCount(0);
+    });
+
+    test("right-clicking selected text can create and focus a comment", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+
+        const selectionRect = await page.evaluate(() => {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) return null;
+            const rect = selection.getRangeAt(0).getBoundingClientRect();
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        });
+        expect(selectionRect).not.toBeNull();
+        await page.mouse.click(
+            selectionRect!.x + selectionRect!.width / 2,
+            selectionRect!.y + selectionRect!.height / 2,
+            { button: "right" },
+        );
+
+        const menu = page.getByRole("menu", { name: "Editor actions" });
+        await expect(menu).toBeVisible();
+        for (const item of ["Cut", "Copy", "Paste", "Select All", "Add Revision"]) {
+            await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
+        }
+        await menu.getByRole("menuitem", { name: /Add Comment/ }).click();
+
+        const textarea = page.locator("textarea[placeholder='Add a comment…']");
+        await expect(textarea).toBeVisible({ timeout: 5_000 });
+        await expect(textarea).toBeFocused();
+        await expect(q.annotationCards.first()).toContainText("hello");
     });
 
     test("Cmd+Alt+K creates revision when text is selected", async ({ page }) => {
@@ -194,6 +267,58 @@ test.describe("keyboard shortcuts", () => {
         await expect(q.annotationCards.first()).toBeVisible({
             timeout: 5_000,
         });
+    });
+
+    test("Cmd+Alt+K places a caret in the auto-created version", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            settings: {
+                autoVersionOnRevisionCreate: true,
+                selectTextInNestedEditor: true,
+            },
+        });
+        await q.init();
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await q.createRevision();
+
+        await expect(q.inlineEditor).toBeVisible({ timeout: 8_000 });
+        await expect(q.inlineEditor).toBeFocused();
+        await expect
+            .poll(() =>
+                page.evaluate(() => {
+                    const selection = window.getSelection();
+                    const anchorElement =
+                        selection?.anchorNode instanceof Element
+                            ? selection.anchorNode
+                            : selection?.anchorNode?.parentElement;
+                    return {
+                        collapsed: selection?.isCollapsed,
+                        insideInlineEditor:
+                            anchorElement?.closest(".revision-inline-editor") !== null,
+                    };
+                }),
+            )
+            .toEqual({ collapsed: true, insideInlineEditor: true });
+
+        const caret = page.locator(".revision-inline-editor .cm-cursor").first();
+        await expect(caret).toBeVisible();
+        await expect(caret).toHaveCSS("border-left-style", "solid");
+        expect((await caret.boundingBox())!.height).toBeGreaterThan(0);
+
+        // Typing must land at the visible caret and update the parent document.
+        await page.keyboard.type("Hi");
+        await expect.poll(() => q.cmText(q.inlineEditor)).toBe("Hi");
+        await q.expectEditorText("Hi world");
+        await q.undo();
+        await expect.poll(() => q.cmText(q.inlineEditor)).toBe("");
+        await q.expectEditorText(" world");
+        await q.redo();
+        await expect.poll(() => q.cmText(q.inlineEditor)).toBe("Hi");
+        await q.expectEditorText("Hi world");
+
+        await q.openRevisionModal();
+        await expect(q.modalEditor).toBeFocused();
+        await expect(page.locator(".revision-modal-editor .cm-cursor").first()).toBeVisible();
     });
 
     test("Escape closes AI sidebar", async ({ page }) => {

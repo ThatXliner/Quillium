@@ -4,7 +4,9 @@ import {
     coordinateForItem,
     describeDocEvent,
     headingForDate,
+    reconstructPreviewStructure,
     reconstructStructureAsOf,
+    resolveDraftContentAt,
     resolveTabContentAt,
     resolveTimelineTarget,
 } from "$lib/editor/history/timeline";
@@ -90,6 +92,15 @@ describe("buildTimelineItems", () => {
         // a lexical "snapshot:10" < "snapshot:2" compare would get backwards.
         const items = buildTimelineItems([snapshot(2, "d", 100), snapshot(10, "d", 100)], []);
         expect(items.map((i) => i.id)).toEqual(["snapshot:10", "snapshot:2"]);
+    });
+
+    it("keeps branch-point seeds out of visible timeline coordinates", () => {
+        const seed = { ...snapshot(1, "draft", 200), upToEventId: -1 };
+        const visible = snapshot(2, "draft", 100);
+
+        expect(buildTimelineItems([seed, visible], []).map((item) => item.id)).toEqual([
+            "snapshot:2",
+        ]);
     });
 
     it("derives event and snapshot tie-breaker coordinates", () => {
@@ -289,6 +300,45 @@ describe("reconstructStructureAsOf", () => {
     });
 });
 
+describe("reconstructPreviewStructure", () => {
+    const tabs = [tab("tab1", 0, "Main"), tab("tab2", 0, "Notes")];
+    const drafts = [
+        { ...draft("d1", 0, "main"), tabId: "tab1" },
+        { ...draft("d2", 0, "main"), tabId: "tab2" },
+    ];
+    const deletion = docEvent(3, "tab_deleted", { tabId: "tab2", label: "Notes" }, 300);
+    const events = [
+        docEvent(1, "tab_created", { tabId: "tab1", label: "Main", rootDraftId: "d1" }, 100),
+        docEvent(2, "tab_created", { tabId: "tab2", label: "Notes", rootDraftId: "d2" }, 200),
+        deletion,
+        docEvent(4, "tab_renamed", { tabId: "tab1", label: "Main after" }, 400),
+    ];
+
+    it("shows a deleted tab as a tombstone only on its deletion coordinate", () => {
+        const deletionItem = {
+            id: "activity:3",
+            kind: "activity" as const,
+            createdAt: deletion.createdAt,
+            event: deletion,
+        };
+        const atDeletion = reconstructPreviewStructure(tabs, drafts, events, deletionItem);
+
+        expect(atDeletion.tabs.map((candidate) => candidate.id)).toEqual(["tab1", "tab2"]);
+        expect(atDeletion.drafts.map((candidate) => candidate.id)).toContain("d2");
+        expect(atDeletion.deletedTabId).toBe("tab2");
+
+        const afterDeletion = events[3];
+        const later = reconstructPreviewStructure(tabs, drafts, events, {
+            id: "activity:4",
+            kind: "activity",
+            createdAt: afterDeletion.createdAt,
+            event: afterDeletion,
+        });
+        expect(later.tabs.map((candidate) => candidate.id)).toEqual(["tab1"]);
+        expect(later.deletedTabId).toBeNull();
+    });
+});
+
 // ── resolveTabContentAt ─────────────────────────────────────────────
 
 describe("resolveTabContentAt", () => {
@@ -338,6 +388,50 @@ describe("resolveTabContentAt", () => {
         expect(
             resolveTabContentAt(sameTime, drafts, "tabA", coord(100, null, 10)).current?.id,
         ).toBe(10);
+    });
+
+    it("chooses the most recently snapshotted draft as a tab's default", () => {
+        const otherDraft = { ...draft("dA2", 0), tabId: "tabA" };
+        const otherSnapshot = {
+            ...snapshot(4, "dA2", 325),
+            tabId: "tabA",
+        };
+
+        const ref = resolveTabContentAt(
+            [otherSnapshot, ...snaps],
+            [...drafts, otherDraft],
+            "tabA",
+            coord(350),
+        );
+
+        expect(ref.draftId).toBe("dA2");
+        expect(ref.current?.id).toBe(4);
+        expect(ref.previous).toBeNull();
+    });
+});
+
+describe("resolveDraftContentAt", () => {
+    const snaps = [
+        snapshot(4, "other", 400),
+        snapshot(3, "selected", 300),
+        snapshot(2, "other", 200),
+        snapshot(1, "selected", 100),
+    ];
+
+    it("returns current and previous snapshots from the requested draft only", () => {
+        const ref = resolveDraftContentAt(snaps, "selected", coord(350));
+
+        expect(ref.draftId).toBe("selected");
+        expect(ref.current?.id).toBe(3);
+        expect(ref.previous?.id).toBe(1);
+    });
+
+    it("returns no content when the requested draft has no eligible snapshot", () => {
+        const ref = resolveDraftContentAt(snaps, "selected", coord(50));
+
+        expect(ref.draftId).toBe("selected");
+        expect(ref.current).toBeNull();
+        expect(ref.previous).toBeNull();
     });
 });
 

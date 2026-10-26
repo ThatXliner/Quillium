@@ -13,6 +13,22 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
 describe("yjs undo manager", () => {
+    it("tracks version-group changes in the joiner undo scope", () => {
+        const ydoc = new Y.Doc();
+        const ytext = ydoc.getText("content");
+        const annotations = ydoc.getMap("annotations");
+        const versionGroups = ydoc.getMap("versionGroups");
+        const { undoManager } = createYjsUndoExtension(ytext, annotations, [versionGroups]);
+
+        ydoc.transact(() => {
+            versionGroups.set("group-1", { id: "group-1", label: "Linked", members: [] });
+        }, "local");
+
+        expect(undoManager.canUndo()).toBe(true);
+        undoManager.undo();
+        expect(versionGroups.has("group-1")).toBe(false);
+    });
+
     it("chronological across scopes", () => {
         // Setup: main ytext + ymap, then a subtree Y.Text
         const ydoc = new Y.Doc();
@@ -122,6 +138,29 @@ describe("yjs undo manager", () => {
         undoManager.undo();
         expect(subtree.toString()).toBe("pre-registration edit");
         expect(undoManager.canUndo()).toBe(false);
+    });
+
+    it("registering pre-populated subtree text and annotations is not undoable", () => {
+        const ydoc = new Y.Doc();
+        const ytext = ydoc.getText("content");
+        const ymap = ydoc.getMap<unknown>("annotations");
+        const { undoManager } = createYjsUndoExtension(ytext, ymap);
+
+        const subtree = new Y.Text();
+        const subtreeAnnotations = new Y.Map<unknown>();
+        ydoc.getMap("subtrees").set("rev-1", subtree);
+        ydoc.getMap("subtreeAnnotations").set("rev-1", subtreeAnnotations);
+        ydoc.transact(() => {
+            subtree.insert(0, "seeded text");
+            subtreeAnnotations.set("comment-1", { message: "seeded annotation" });
+        }, "local");
+
+        expect(undoManager.canUndo()).toBe(false);
+        addSubtreeToUndoScope(undoManager, subtree, [subtreeAnnotations]);
+
+        expect(undoManager.canUndo()).toBe(false);
+        expect(subtree.toString()).toBe("seeded text");
+        expect(subtreeAnnotations.has("comment-1")).toBe(true);
     });
 
     it("addToScope is idempotent", () => {

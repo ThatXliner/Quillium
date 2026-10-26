@@ -35,7 +35,7 @@ Quillium uses PostHog for usage analytics. If that bothers you, there's a single
 
 That said, let me be specific about what these analytics are, because "analytics" is a word that's been poisoned by ad tech.
 
-**We don't track you.** There are no accounts, no login, no user ID tied to your identity. PostHog assigns its own anonymous IDs, and we don't call any identify function with personal information. The only context we attach to events is the app version and that you're on the desktop app. That's it.
+**We don't track you—unless you create an account.** By default there's no login, no signup, and no user ID tied to your identity; PostHog assigns its own anonymous IDs, and the only context we attach to events is the app version and that you're on the desktop app. If you create a Quillium account, we link that anonymous identifier to your account so we can help troubleshoot issues you report. It's opt-in in the most literal sense: it only happens if you go out of your way to create an account, and it changes nothing about the no-account experience, which stays the default. See the [privacy policy](/privacy) for the specifics.
 
 **Your document content is never in analytics by default.** The analytics system actively strips document-related properties—words, synonyms, original text—from every event before sending. our internal session replay telemetry mask the actual text you're writing with asterisks—we can't read your writing even if we wanted to. (There is an optional "Share document analytics" setting, off by default, that removes this masking if you want to help us debug editor-specific issues. You have to explicitly opt in.)
 
@@ -57,9 +57,9 @@ The reason for this policy is straightforward: if nothing in the app is broken, 
 
 I want to state this plainly because it's easy to miss how unusual it is:
 
-- There is no account system today. No login, no signup. When we add accounts for cloud sync down the road, they'll be entirely optional—you'll have to go out of your way to create one.
+- Creating a Quillium account is entirely optional—you have to go out of your way to do it. The default, no-account experience needs no login or signup at all.
 - There is no cloud storage today. Again: no sync, no upload. When cloud sync arrives, it'll be a paid add-on you explicitly enable, not something that happens by default.
-- There is no user ID tied to your identity.
+- There is no user ID tied to your identity—unless you create a Quillium account, in which case we link your anonymous analytics identifier to it so we can help you when something breaks.
 - There is no *Quillium* server that sees your documents or your AI conversations. When you use AI features, requests go directly from your machine to your provider.
 
 Quillium is a desktop app that runs on your machine, stores data on your machine, and talks to the internet only when *you* explicitly tell it to. That's the default today, and it will remain the default.

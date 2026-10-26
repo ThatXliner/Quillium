@@ -9,8 +9,29 @@ import {
     READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     normalizeReadonlyShareAutoUpdateDebounceMs,
 } from "$lib/collab/readonlyShareAutoUpdate";
+import { DRAFT_PANEL_DEFAULT_WIDTH, DRAFT_PANEL_MIN_WIDTH } from "$lib/editor/draftPanelResize";
 
 const STORAGE_KEY = "quillium-app-settings";
+
+/**
+ * Reads the new-document undo policy at the moment a document is created.
+ *
+ * Each Tauri window owns its own in-memory `appSettings` rune. Reading the
+ * shared localStorage value here prevents an already-open window from using a
+ * stale copy after another window saves Settings. Invalid or unavailable
+ * storage must choose the safer session-only default.
+ */
+export function getPersistUndoHistoryForNewDocuments(): boolean {
+    return readStoredSettings()?.persistUndoHistoryForNewDocuments === true;
+}
+
+// Clamp bounds + default for the floating annotation panel width. Exported so
+// Annotations.svelte's resize handle, reset button, and "is custom" check use
+// the same numbers as the persisted default below — a hardcoded copy in the
+// component could silently drift from DEFAULTS.annotationPanelWidth.
+export const ANNOTATION_PANEL_MIN_WIDTH = 180;
+export const ANNOTATION_PANEL_MAX_WIDTH = 420;
+export const ANNOTATION_PANEL_DEFAULT_WIDTH = 280;
 
 export type CustomQuickAction = {
     label: string;
@@ -18,7 +39,7 @@ export type CustomQuickAction = {
     panel: "revise" | "feedback" | "chat";
 };
 
-type AppSettings = {
+export type AppSettings = {
     selectTextInNestedEditor: boolean;
     showNestedEditor: boolean;
     atomicRevisions: boolean;
@@ -36,10 +57,13 @@ type AppSettings = {
     // shareDocumentAnalytics: boolean;
     // shareDocumentKey: string;
     aiEnabled: boolean;
+    aiSidebarLayout: "separate" | "combined";
     showShortcutHints: boolean;
     showWordCount: boolean;
     wordCountDisplayMode: "words" | "chars" | "both";
     autoVersionOnRevisionCreate: boolean;
+    warnBeforeDraftAfterIdenticalVersion: boolean;
+    duplicateDraftWarningHiddenUntil: number;
     showAiSuggestions: boolean;
     // When true, the AI panels hide the "AI can see your selection" context
     // summary card and tuck it into the header info (ℹ) icon instead.
@@ -48,8 +72,19 @@ type AppSettings = {
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
     annotationPanelWidth: number;
+    draftPanelWidth: number;
+    showDocumentOutline: boolean;
+    showDrafts: boolean;
     readonlyShareAutoUpdate: boolean;
     readonlyShareAutoUpdateDebounceMs: number;
+    /** Captured per document at creation; pre-2026-07-14 documents are grandfathered on. */
+    persistUndoHistoryForNewDocuments: boolean;
+    /** NanoWriMo writing reminders, gated at runtime by the `novel-november` flag. */
+    writingRemindersEnabled: boolean;
+    /** Local wall-clock times in 24-hour HH:mm format. */
+    writingReminderTimes: string[];
+    /** JavaScript weekday numbers (Sunday = 0). */
+    writingReminderDays: number[];
     // Where annotation cards are placed when the AI sidebar is hidden (AI off):
     //   "visual-split" — balance cards across a left and right column
     //   "by-type"      — comments on the left, revisions/suggestions on the right
@@ -76,46 +111,112 @@ const DEFAULTS: AppSettings = {
     // shareDocumentAnalytics: false,
     // shareDocumentKey: "",
     aiEnabled: false,
+    aiSidebarLayout: "separate",
     showShortcutHints: true,
     showWordCount: true,
     wordCountDisplayMode: "both",
     autoVersionOnRevisionCreate: true,
+    warnBeforeDraftAfterIdenticalVersion: true,
+    duplicateDraftWarningHiddenUntil: 0,
     showAiSuggestions: true,
     collapseContextSummary: false,
     checkForUpdates: true,
     grammarCheckEnabled: true,
     grammarDialect: "american",
-    annotationPanelWidth: 280,
+    annotationPanelWidth: ANNOTATION_PANEL_DEFAULT_WIDTH,
+    draftPanelWidth: DRAFT_PANEL_DEFAULT_WIDTH,
+    showDocumentOutline: false,
+    showDrafts: true,
     readonlyShareAutoUpdate: false,
     readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    persistUndoHistoryForNewDocuments: false,
+    writingRemindersEnabled: false,
+    writingReminderTimes: ["09:00"],
+    writingReminderDays: [0, 1, 2, 3, 4, 5, 6],
     annotationLayout: "visual-split",
 };
 
-function loadSettings(): AppSettings {
+function readStoredSettings(): Partial<AppSettings> | undefined {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { ...DEFAULTS };
-        let parsed = JSON.parse(raw);
-        // Migrate legacy alwaysShowTitle boolean
-        if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
-            const { alwaysShowTitle, ...rest } = parsed;
-            parsed = {
-                ...rest,
-                titleVisibility: alwaysShowTitle ? "always" : "hover",
-            };
-        }
-        const merged = { ...DEFAULTS, ...parsed };
-        if (typeof merged.docFontFamily === "string" && merged.docFontFamily.includes("Inter")) {
-            merged.docFontFamily = DEFAULTS.docFontFamily;
-        }
-        merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
-        merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
-            merged.readonlyShareAutoUpdateDebounceMs,
-        );
-        return merged;
+        const parsed = raw ? JSON.parse(raw) : undefined;
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
     } catch {
-        return { ...DEFAULTS };
+        return undefined;
     }
+}
+
+function loadSettings(fallback: AppSettings = DEFAULTS): AppSettings {
+    let parsed = readStoredSettings();
+    if (!parsed) return { ...fallback };
+    // Migrate legacy alwaysShowTitle boolean.
+    if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
+        const { alwaysShowTitle, ...rest } = parsed;
+        parsed = { ...rest, titleVisibility: alwaysShowTitle ? "always" : "hover" };
+    }
+    return normalizeSettings({ ...DEFAULTS, ...parsed });
+}
+
+function normalizeSettings(settings: AppSettings): AppSettings {
+    const merged = { ...settings };
+    merged.aiSidebarLayout = merged.aiSidebarLayout === "combined" ? "combined" : "separate";
+    merged.showDrafts = merged.showDrafts !== false;
+    merged.showDocumentOutline = merged.showDocumentOutline === true;
+    merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
+    merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
+        merged.readonlyShareAutoUpdateDebounceMs,
+    );
+    merged.persistUndoHistoryForNewDocuments = merged.persistUndoHistoryForNewDocuments === true;
+    merged.warnBeforeDraftAfterIdenticalVersion =
+        merged.warnBeforeDraftAfterIdenticalVersion !== false;
+    merged.duplicateDraftWarningHiddenUntil =
+        typeof merged.duplicateDraftWarningHiddenUntil === "number" &&
+        Number.isFinite(merged.duplicateDraftWarningHiddenUntil) &&
+        merged.duplicateDraftWarningHiddenUntil > 0
+            ? merged.duplicateDraftWarningHiddenUntil
+            : 0;
+    merged.writingRemindersEnabled = merged.writingRemindersEnabled === true;
+    merged.writingReminderTimes = Array.isArray(merged.writingReminderTimes)
+        ? [
+              ...new Set(
+                  merged.writingReminderTimes.filter(
+                      (time: unknown) =>
+                          typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time),
+                  ),
+              ),
+          ].sort()
+        : [...DEFAULTS.writingReminderTimes];
+    if (merged.writingReminderTimes.length === 0) {
+        merged.writingReminderTimes = [...DEFAULTS.writingReminderTimes];
+    }
+    if (Array.isArray(merged.writingReminderDays)) {
+        const reminderDays = (merged.writingReminderDays as unknown[]).filter(
+            (day): day is number => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6,
+        );
+        merged.writingReminderDays = [...new Set(reminderDays)].sort((a, b) => a - b);
+    } else {
+        merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
+    }
+    if (merged.writingReminderDays.length === 0) {
+        merged.writingReminderDays = [...DEFAULTS.writingReminderDays];
+    }
+    merged.draftPanelWidth =
+        typeof merged.draftPanelWidth === "number" && Number.isFinite(merged.draftPanelWidth)
+            ? Math.max(DRAFT_PANEL_MIN_WIDTH, Math.round(merged.draftPanelWidth))
+            : DRAFT_PANEL_DEFAULT_WIDTH;
+    merged.uiZoom = Number.isFinite(merged.uiZoom)
+        ? Math.round(Math.min(2, Math.max(0.5, merged.uiZoom)) * 10) / 10
+        : DEFAULTS.uiZoom;
+    merged.docFontSize = Number.isFinite(merged.docFontSize)
+        ? Math.min(24, Math.max(14, merged.docFontSize))
+        : DEFAULTS.docFontSize;
+    merged.annotationPanelWidth = Number.isFinite(merged.annotationPanelWidth)
+        ? Math.min(
+              ANNOTATION_PANEL_MAX_WIDTH,
+              Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(merged.annotationPanelWidth)),
+          )
+        : ANNOTATION_PANEL_DEFAULT_WIDTH;
+    return merged;
 }
 
 function saveSettings(s: AppSettings) {
@@ -124,7 +225,9 @@ function saveSettings(s: AppSettings) {
     } catch {}
 }
 
-export function applySettings(s: AppSettings) {
+/** Preview appearance without committing the Settings modal draft. */
+export function previewSettings(s: Readonly<AppSettings>): void {
+    if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.style.setProperty("--doc-font-family", s.docFontFamily);
     root.style.setProperty("--doc-font-size", `${s.docFontSize}px`);
@@ -132,17 +235,23 @@ export function applySettings(s: AppSettings) {
     root.style.zoom = String(s.uiZoom);
 }
 
-export const appSettings = $state<AppSettings>(loadSettings());
-
-// Apply persisted settings on startup
-if (typeof document !== "undefined") {
-    applySettings(appSettings);
+const initialSettings = loadSettings();
+if (
+    typeof initialSettings.docFontFamily === "string" &&
+    initialSettings.docFontFamily.includes("Inter")
+) {
+    initialSettings.docFontFamily = DEFAULTS.docFontFamily;
 }
+const settings = $state<AppSettings>(initialSettings);
+export const appSettings: Readonly<AppSettings> = settings;
 
-/**
- * Persist settings whenever they change. Call this after mutating
- * any field on appSettings.
- */
-export function persistSettings() {
-    saveSettings(appSettings);
+previewSettings(settings);
+
+/** Commit absolute values, including validation, appearance, and persistence. */
+export function updateSettings(patch: Partial<AppSettings>): void {
+    // Merge against shared storage so an older window cannot overwrite another
+    // window's new-document undo policy while changing an unrelated preference.
+    Object.assign(settings, normalizeSettings({ ...loadSettings(settings), ...patch }));
+    previewSettings(settings);
+    saveSettings(settings);
 }
