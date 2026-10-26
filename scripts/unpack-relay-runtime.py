@@ -6,8 +6,8 @@ import tarfile
 import zipfile
 
 node = {
-    "arm64": ("f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9", "bun-linux-aarch64/bun", "7341c3b1572c4c1c7f372360b5a17313180cac11dd670e0a2f6a3aec1ce40d05"),
-    "amd64": ("b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406", "bun-linux-x64/bun", "aacef5036f5551631006d20deb11338452064dc32ab25f8ceba8f378d7faf45b"),
+    "arm64": ("f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9", "bun-linux-aarch64/bun", "baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e"),
+    "amd64": ("b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406", "bun-linux-x64/bun", "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c"),
 }
 architecture, destination = sys.argv[1:]
 node_hash, bun_member, bun_hash = node[architecture]

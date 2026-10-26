@@ -5,13 +5,12 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-// Emergency upstream build containing the eMudhra CA fix. Stable Bun is unpatched.
-const revision = "1.4.4-canary.1+963452075";
+const revision = "1.4.4+38afee6c8";
 const archives = {
-    "darwin-arm64": ["bun-darwin-aarch64", "179654d25e6494c5f7900d2c2caf6185a857ee5e4c9706a14b959e2c36a8e997"],
-    "linux-arm64": ["bun-linux-aarch64", "7341c3b1572c4c1c7f372360b5a17313180cac11dd670e0a2f6a3aec1ce40d05"],
-    "linux-x64": ["bun-linux-x64", "aacef5036f5551631006d20deb11338452064dc32ab25f8ceba8f378d7faf45b"],
-    "win32-x64": ["bun-windows-x64", "f5bc840279f30a263bc41cc0400c6288088911a150d3a9e1cc74e899af98a4b2"],
+    "darwin-arm64": ["bun-darwin-aarch64", "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510"],
+    "linux-arm64": ["bun-linux-aarch64", "baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e"],
+    "linux-x64": ["bun-linux-x64", "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c"],
+    "win32-x64": ["bun-windows-x64", "cd2c0fccc78f3ede1f50ca827a15f063eda13d4d150a3d0674f4f6e323d864a5"],
 };
 const [major, minor, patch] = process.versions.node.split(".").map(Number);
 const patched = (major === 22 && (minor > 23 || (minor === 23 && patch >= 4))) ||
@@ -24,7 +23,7 @@ const [name, expected] = entry;
 const downloadOnly = process.argv[2] === "--download-only";
 const destination = downloadOnly ? process.argv[3] : (process.argv[2] || join(tmpdir(), "quillium-secure-bun"));
 const archive = downloadOnly ? destination : join(destination, `${name}.zip`);
-const response = await fetch(`https://github.com/oven-sh/bun/releases/download/canary/${name}.zip`);
+const response = await fetch(`https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/${name}.zip`);
 if (!response.ok) throw new Error(`Bun archive download failed: HTTP ${response.status}`);
 const data = Buffer.from(await response.arrayBuffer());
 const actual = createHash("sha256").update(data).digest("hex");

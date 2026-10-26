@@ -119,9 +119,10 @@ copies `packages/share/src` to resolve that workspace dependency.
 
 Docker and release builds pin verified runtime versions and archive hashes.
 [`scripts/install-secure-bun.mjs`](../scripts/install-secure-bun.mjs) owns the
-local and release Bun installer; the relay Dockerfile pins its downloads directly. The pin is an eMudhra CA incident mitigation;
-keep it until a reviewed runtime update replaces it. A changed or unavailable
-canary archive fails the hash check. The production relay uses Node, without Bun.
+local and release Bun installer. The relay Dockerfile pins the same Bun archives
+for its build stage. Both use patched stable Bun 1.4.4, exact revision
+`1.4.4+38afee6c8`, with version-specific URLs and pinned SHA256 values. A changed
+or unavailable archive fails closed. The production relay uses Node, without Bun.
 
 For local dependency work during this incident, use the same verified installer:
 
@@ -200,9 +201,16 @@ environment handling changes.
 
 ### Security runtime verification
 
-The Node bootstrap and emergency Bun canary installer authenticate upstream
-archives with pinned SHA256 values and assert their exact runtime versions. The
-canary download URL is mutable; a new archive fails the hash check until reviewed.
+The Node bootstrap and Bun installer authenticate upstream archives with pinned
+SHA256 values and assert their exact runtime versions. Bun 1.4.4 is identified as
+patched in [Bun's eMudhra advisory](https://github.com/oven-sh/bun/security/advisories/GHSA-26q8-h657-pf84).
+The Bun archive pins match the release's
+[signed checksum manifest](https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/SHASUMS256.txt.asc),
+verified with signer fingerprint `F3DCC08A8572C0749B3E18888EAB4D40A7B22B59`.
+The public key is recorded in
+[Bun's Dockerfile at the release commit](https://github.com/oven-sh/bun/blob/38afee6c84fcf48c0edb2466aa4b27d287a59c30/dockerhub/alpine/Dockerfile).
+GitHub does not mark this release immutable. The local checksum pins and exact
+revision check remain authoritative, so an upstream replacement fails closed.
 The relay production image runs Node 22.23.4 and contains no Bun binary.
 
 Run `node scripts/check-bun-ca-trust.mjs` and the same script with the verified
