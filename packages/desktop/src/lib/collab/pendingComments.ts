@@ -36,7 +36,11 @@ export class PendingComments {
         this.comments.set(key, {
             annotation,
             start: Y.createRelativePositionFromTypeIndex(this.context.text, range.from),
-            end: Y.createRelativePositionFromTypeIndex(this.context.text, range.to),
+            end: Y.createRelativePositionFromTypeIndex(
+                this.context.text,
+                range.to,
+                range.empty ? 0 : -1,
+            ),
         });
         this.publish();
     }

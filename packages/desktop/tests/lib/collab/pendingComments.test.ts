@@ -121,3 +121,44 @@ it("shares private pending comments across mounted views and cancels them in bot
     expect(f.context.ids.getYjsId(0)).toBeUndefined();
     expect(f.context.annotations.size).toBe(0);
 });
+
+it.each([
+    { at: 0, insert: "New ", from: 4, to: 9 },
+    { at: 2, insert: "X", from: 0, to: 6 },
+    { at: 5, insert: " NEW", from: 0, to: 5 },
+])(
+    "preserves the selected passage across an owner insertion at $at",
+    async ({ at, insert, from, to }) => {
+        const f = fixture();
+        const first = f.mount();
+        first.dispatch({ effects: addAnnotation.of(pending()) });
+        f.close(first);
+        f.context.text.insert(at, insert);
+        const reopened = f.mount();
+        await new Promise<void>((resolve) => queueMicrotask(resolve));
+        expect(reopened.state.field(annotationField)[0].selection.main.from).toBe(from);
+        expect(reopened.state.field(annotationField)[0].selection.main.to).toBe(to);
+    },
+);
+
+it("keeps a prepared command's end outside text later inserted at that boundary", async () => {
+    const f = fixture();
+    const prepare = f.context.prepareComment;
+    let encodedEnd: number[] | undefined;
+    f.context.prepareComment = (command) => {
+        if (command.kind === "createComment") encodedEnd = command.end;
+        return prepare(command);
+    };
+    const view = f.mount();
+    view.dispatch({ effects: addAnnotation.of(pending()) });
+    const submitted = getCommentSubmission(view, 0)!.send("Please clarify");
+    f.context.text.insert(5, " NEW");
+    if (!encodedEnd || !f.context.text.doc) throw new Error("Missing prepared end anchor");
+    const end = Y.createAbsolutePositionFromRelativePosition(
+        Y.decodeRelativePosition(Uint8Array.from(encodedEnd)),
+        f.context.text.doc,
+    );
+    expect(end?.index).toBe(5);
+    f.accept();
+    expect(await submitted).toBe(true);
+});

@@ -50,7 +50,11 @@ export function createRolePermissions(context: RoleContext): Extension {
                 ),
                 end: Array.from(
                     Y.encodeRelativePosition(
-                        Y.createRelativePositionFromTypeIndex(context.text, range.to),
+                        Y.createRelativePositionFromTypeIndex(
+                            context.text,
+                            range.to,
+                            range.empty ? 0 : -1,
+                        ),
                     ),
                 ),
                 message,
