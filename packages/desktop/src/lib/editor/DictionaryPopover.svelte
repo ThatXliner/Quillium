@@ -14,13 +14,14 @@ import { renderMarkdown } from "$lib/ai/utils";
 import { appEventBus } from "$lib/events/appEventBus";
 import { capture } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { editorView, selectedText } from "$lib/stores";
+import { editorView, selectedText, settingsOpen } from "$lib/stores";
 import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { get } from "svelte/store";
 import {
     type DictionaryEntry,
+    DICTIONARY_MISSING_KEY_MESSAGE,
     dictionaryErrorMessage,
     dictionaryUnavailableMessage,
     normalizeDictionaryData,
@@ -114,15 +115,24 @@ $effect(() => {
     // idempotently so the effect doesn't re-trigger itself.
     const cx = centerX;
     const cy = centerY;
-    requestAnimationFrame(() => {
+    const clamp = () => {
         if (!popoverEl) return;
         const w = popoverEl.clientWidth;
         const h = popoverEl.clientHeight;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         posX = Math.min(Math.max(cx - w / 2, 8), vw - w - 8);
-        posY = Math.min(cy, vh - h - 8);
-    });
+        posY = Math.max(8, Math.min(cy, vh - h - 8));
+    };
+    const frame = requestAnimationFrame(clamp);
+    const observer = new ResizeObserver(clamp);
+    observer.observe(popoverEl);
+    window.addEventListener("resize", clamp);
+    return () => {
+        cancelAnimationFrame(frame);
+        observer.disconnect();
+        window.removeEventListener("resize", clamp);
+    };
 });
 
 // ── Dismiss ────────────────────────────────────────────────────
@@ -168,6 +178,13 @@ async function fetchLookup(w: string, signal: AbortSignal): Promise<LookupState>
             return { status: "error", message: "AI settings changed. Try again." };
         }
         signal.throwIfAborted();
+        if (
+            requestSettings.provider !== "openai-oauth" &&
+            requestSettings.provider !== "openai-compatible" &&
+            !aiSettings.apiKey.trim()
+        ) {
+            return { status: "error", message: DICTIONARY_MISSING_KEY_MESSAGE };
+        }
         const request = generateDictionaryEntry({
             word: w,
             ...requestSettings,
@@ -216,8 +233,9 @@ function lookupStackedWord(id: number, w: string) {
     });
 }
 
-function openAiSettings() {
-    appEventBus.emit({ type: "ai-open-settings" });
+function openDictionarySettings() {
+    if (appSettings.aiEnabled) appEventBus.emit({ type: "ai-open-settings" });
+    else settingsOpen.set(true);
     dismiss();
 }
 
@@ -243,7 +261,7 @@ function openStackedLookup(w: string, event: MouseEvent) {
     const xFromLeft = rect ? rect.left - popoverWidth - 8 : centerX - popoverWidth - 24;
     const posX =
         xFromRight + popoverWidth <= window.innerWidth - 8 ? xFromRight : Math.max(8, xFromLeft);
-    const posY = Math.min(Math.max(rect?.top ?? centerY, 8), window.innerHeight - 360);
+    const posY = Math.min(Math.max(rect?.top ?? centerY, 8), Math.max(8, window.innerHeight - 480));
     const id = nextStackedLookupId++;
     stackedLookups = [
         ...stackedLookups,
@@ -300,85 +318,89 @@ async function handleDescribeSubmit(e: Event) {
 <svelte:window onkeydown={handleKeydown} />
 
 {#snippet lookupBody(state: LookupState, lookupWord: string, retry: () => void, exploreHint: boolean)}
-    {#if state.status === "loading"}
-        <div class="flex items-center gap-2 text-gray-400 text-sm py-2">
-            <span class="animate-pulse">●</span>
-            <span>Looking up...</span>
-        </div>
-    {:else if state.status === "unavailable"}
-        <div class="space-y-1.5">
-            <p class="text-sm text-gray-500">{state.message}</p>
-            {#if appSettings.aiEnabled}
+    <div role="status" aria-live="polite" aria-busy={state.status === "loading"} class="space-y-3">
+        {#if state.status === "loading"}
+            <div class="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <span class="animate-pulse">●</span>
+                <span>Looking up...</span>
+            </div>
+        {:else if state.status === "unavailable"}
+            <div class="space-y-1.5">
+                <p class="text-sm text-gray-500">{state.message}</p>
                 <button
-                    onclick={openAiSettings}
-                    class="text-xs font-medium text-blue-600 transition-colors hover:text-blue-700 hover:underline"
+                    onclick={openDictionarySettings}
+                    class="text-xs font-medium text-teal-700 transition-colors hover:text-teal-800 hover:underline"
+                >{appSettings.aiEnabled ? "Open AI Settings" : "Open Settings"}</button>
+            </div>
+        {:else if state.status === "empty"}
+            <p class="text-sm text-gray-500">No definition found for "{lookupWord}".</p>
+        {:else if state.status === "error"}
+            <div class="space-y-1.5">
+                <p class="text-sm text-gray-500">{state.message}</p>
+                <button
+                    onclick={retry}
+                    class="text-xs font-medium text-teal-700 transition-colors hover:text-teal-800 hover:underline"
+                >Try again</button>
+                <button
+                    onclick={openDictionarySettings}
+                    class="ml-3 text-xs font-medium text-teal-700 transition-colors hover:text-teal-800 hover:underline"
                 >Open AI Settings</button>
-            {/if}
-        </div>
-    {:else if state.status === "empty"}
-        <p class="text-sm text-gray-500">No definition found for "{lookupWord}".</p>
-    {:else if state.status === "error"}
-        <div class="space-y-1.5">
-            <p class="text-sm text-gray-500">{state.message}</p>
-            <button
-                onclick={retry}
-                class="text-xs font-medium text-teal-700 transition-colors hover:text-teal-800 hover:underline"
-            >Try again</button>
-        </div>
-    {:else}
-        {@const entry = state.entry}
+            </div>
+        {:else}
+            {@const entry = state.entry}
 
             {#each entry.meanings as meaning}
-            <div class="space-y-1">
-                <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-600">
-                    {meaning.partOfSpeech}
-                </p>
-                {#each meaning.definitions as def, i}
-                    <p class="text-xs text-gray-700 leading-snug">
-                        <span class="text-gray-400 mr-1">{i + 1}.</span>{def.definition}
+                <div class="space-y-1">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-600">
+                        {meaning.partOfSpeech}
                     </p>
-                    {#if def.example}
-                        <p class="text-[11px] text-gray-400 italic pl-3">"{def.example}"</p>
-                    {/if}
-                {/each}
-            </div>
-        {/each}
+                    {#each meaning.definitions as def, i}
+                        <p class="text-xs text-gray-700 leading-snug">
+                            <span class="text-gray-400 mr-1">{i + 1}.</span>{def.definition}
+                        </p>
+                        {#if def.example}
+                            <p class="text-[11px] text-gray-400 italic pl-3">"{def.example}"</p>
+                        {/if}
+                    {/each}
+                </div>
+            {/each}
 
             {#if entry.synonyms.length > 0}
-            <div>
-                <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                    Synonyms
-                    {#if exploreHint}
-                        <span class="font-normal normal-case tracking-normal text-gray-300">· click to explore</span>
-                    {/if}
-                </p>
-                <div class="flex flex-wrap gap-1 w-full">
-                    {#each entry.synonyms as syn}
-                        <button
-                            onclick={(e) => openStackedLookup(syn, e)}
-                            class="px-2 py-0.5 text-xs bg-teal-50 text-teal-700 rounded-full border border-teal-100 hover:bg-teal-500 hover:text-white hover:border-teal-500 transition-colors"
-                        >{syn}</button>
-                    {/each}
+                <div>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                        Synonyms
+                        {#if exploreHint}
+                            <span class="font-normal normal-case tracking-normal text-gray-300">· click to explore</span>
+                        {/if}
+                    </p>
+                    <div class="flex flex-wrap gap-1 w-full">
+                        {#each entry.synonyms as syn}
+                            <button
+                                onclick={(e) => openStackedLookup(syn, e)}
+                                class="px-2 py-0.5 text-xs bg-teal-50 text-teal-700 rounded-full border border-teal-100 hover:bg-teal-500 hover:text-white hover:border-teal-500 transition-colors"
+                            >{syn}</button>
+                        {/each}
+                    </div>
                 </div>
-            </div>
-        {/if}
+            {/if}
 
             {#if entry.antonyms.length > 0}
-            <div>
-                <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Antonyms</p>
-                <div class="flex flex-wrap gap-1 w-full">
-                    {#each entry.antonyms as ant}
-                        <button
-                            onclick={(e) => openStackedLookup(ant, e)}
-                            class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full border border-gray-200 hover:bg-gray-200 transition-colors"
-                        >{ant}</button>
-                    {/each}
+                <div>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Antonyms</p>
+                    <div class="flex flex-wrap gap-1 w-full">
+                        {#each entry.antonyms as ant}
+                            <button
+                                onclick={(e) => openStackedLookup(ant, e)}
+                                class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full border border-gray-200 hover:bg-gray-200 transition-colors"
+                            >{ant}</button>
+                        {/each}
+                    </div>
                 </div>
-            </div>
-        {/if}
+            {/if}
 
-        <p class="text-[10px] text-gray-400">From your AI model</p>
-    {/if}
+            <p class="text-[10px] text-gray-400">From your AI model</p>
+        {/if}
+    </div>
 {/snippet}
 
 {#snippet phoneticFor(state: LookupState)}
@@ -409,7 +431,7 @@ async function handleDescribeSubmit(e: Event) {
     style="left: {posX}px; top: {posY}px;"
 >
   <div
-      class="flex flex-col max-h-[480px] backdrop-blur-md bg-white/90 border border-white/40
+      class="flex flex-col max-h-[min(480px,calc(100vh-16px))] backdrop-blur-md bg-white/90 border border-white/40
           rounded-2xl overflow-hidden"
   >
     <!-- Header -->
@@ -423,7 +445,8 @@ async function handleDescribeSubmit(e: Event) {
                 <button
                     onclick={openInChat}
                     disabled={!hasApiKey()}
-                    title={hasApiKey() ? "Open in Chat" : "Needs API key"}
+                    aria-label="Open in Chat"
+                    title={hasApiKey() ? "Open in Chat" : "Needs an AI connection"}
                     class="p-1 rounded-full text-black/30 hover:text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-black/30 disabled:hover:bg-transparent"
                 >
                     <ExternalLinkIcon size={13} />
@@ -431,6 +454,7 @@ async function handleDescribeSubmit(e: Event) {
             {/if}
             <button
                 onclick={dismiss}
+                aria-label="Close dictionary popover"
                 class="p-1 rounded-full text-black/30 hover:text-black/60 hover:bg-black/10 transition-colors"
             >
                 <XIcon size={13} />
@@ -449,7 +473,7 @@ async function handleDescribeSubmit(e: Event) {
             <div class="border-t border-black/8 pt-2">
                 <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
                     Describe → find word
-                    {#if !hasApiKey()}
+                    {#if !hasApiKey() && lookup.status !== "unavailable"}
                         <span class="font-normal normal-case tracking-normal text-amber-600">· needs an AI connection</span>
                     {/if}
                 </p>
@@ -480,6 +504,7 @@ async function handleDescribeSubmit(e: Event) {
                 <form onsubmit={handleDescribeSubmit} class="mt-2 flex w-full gap-1">
                     <input
                         bind:value={describeInput}
+                        aria-label="Describe the idea"
                         placeholder="Describe the idea..."
                         disabled={!canUseAi() || chat.status !== "ready"}
                         class="min-w-0 flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"

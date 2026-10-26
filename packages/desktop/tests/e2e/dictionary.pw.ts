@@ -94,6 +94,55 @@ async function expectPopoverHidden(page: Page) {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe("dictionary popover", () => {
+    test("keeps a delayed result inside a short viewport", async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 520 });
+        await mockDictionaryModel(page);
+        let releaseResponse = (): void => {};
+        const responseReady = new Promise<void>((resolve) => {
+            releaseResponse = resolve;
+        });
+        await page.route("https://api.openai.com/**", async (route) => {
+            await responseReady;
+            await route.fallback();
+        });
+        const q = connectedPage(page);
+        await q.init();
+        await q.typeInEditor(`${"A line of writing.\n".repeat(20)}helpful`);
+        for (let index = 0; index < 7; index += 1) await page.keyboard.press("Shift+ArrowLeft");
+        await page.keyboard.press("Control+d");
+        const popover = page.locator(".dictionary-popover").first();
+        await expect(popover).toContainText("Looking up...");
+        releaseResponse();
+        await expect(popover).toContainText("Furnishing help");
+        await expect
+            .poll(async () => {
+                const bounds = await popover.boundingBox();
+                return bounds !== null && bounds.y >= 8 && bounds.y + bounds.height <= 512;
+            })
+            .toBe(true);
+        await expect(popover.getByRole("textbox", { name: "Describe the idea" })).toBeVisible();
+    });
+
+    test("explains AI disabled and offers settings without sending a request", async ({ page }) => {
+        const requests: string[] = [];
+        page.on("request", (request) => {
+            if (request.url().includes("api.openai.com")) requests.push(request.url());
+        });
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { aiEnabled: false, grammarCheckEnabled: false },
+        });
+        await q.init();
+        await openDictionaryOn(q, "helpful");
+        const popover = page.locator(".dictionary-popover").first();
+        await expect(popover).toContainText("Enable AI in Settings to look up words.");
+        await expect(
+            popover.getByRole("button", { name: "Open Settings", exact: true }),
+        ).toBeVisible();
+        await expect(popover.getByRole("button", { name: "Find", exact: true })).toHaveCount(0);
+        expect(requests).toEqual([]);
+    });
+
     test("opens on ⌘D with a word selected and shows definition", async ({ page }) => {
         const freeDictionaryRequests: string[] = [];
         page.on("request", (request) => {

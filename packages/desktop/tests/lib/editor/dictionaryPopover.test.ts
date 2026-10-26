@@ -114,6 +114,13 @@ let globalStop: AbortController;
 
 beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal(
+        "ResizeObserver",
+        class {
+            observe() {}
+            disconnect() {}
+        },
+    );
     Object.assign(aiSettings, {
         provider: "openai",
         model: "gpt-5.6-sol",
@@ -131,11 +138,40 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     mutableAppSettings.aiEnabled = previousAiEnabled;
     selectedText.set("");
 });
 
 describe("DictionaryPopover AI lookup", () => {
+    it.each(["openai-oauth", "openai-compatible"] as const)(
+        "allows a ready %s connection without an API key",
+        async (provider) => {
+            aiSettings.provider = provider;
+            aiSettings.apiKey = "";
+            aiSettings.baseURL = provider === "openai-compatible" ? "http://localhost:1234/v1" : "";
+            vi.mocked(generateDictionaryEntry).mockResolvedValue(entryFor("Giving aid."));
+            render(DictionaryPopover);
+            await open("helpful");
+            expect(await screen.findByText("Giving aid.")).toBeTruthy();
+            expect(generateDictionaryEntry).toHaveBeenCalledWith(
+                expect.objectContaining({ provider, apiKey: "" }),
+            );
+        },
+    );
+
+    it("does not send when a stored key flag remains but the key cannot load", async () => {
+        aiSettings.apiKey = "";
+        render(DictionaryPopover);
+        await open("helpful");
+        expect(
+            await screen.findByText(
+                "Quillium could not load your API key. Open AI Settings and check your key.",
+            ),
+        ).toBeTruthy();
+        expect(generateDictionaryEntry).not.toHaveBeenCalled();
+    });
+
     it.each(["provider", "model", "baseURL"] as const)(
         "does not send credentials after %s changes during keychain loading",
         async (field) => {
