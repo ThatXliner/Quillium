@@ -5,8 +5,11 @@ import {
     streamFeedback,
     streamRevise,
 } from "$lib/ai/clientStreams";
+import type { ContextRetrievalSnapshot } from "$lib/ai/contextRetrieval";
 import type { ReaderPersona } from "$lib/readers/presets";
+import { tool } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 const mocks = vi.hoisted(() => ({
     streamText: vi.fn(),
@@ -102,6 +105,68 @@ describe("editorial stream policy", () => {
         expect(Object.keys(request.tools)).toEqual(["createComment"]);
         expect(request.toolChoice).toBeUndefined();
         expect(request.system).toContain("Do not create rewrites during a broad review");
+    });
+
+    it("requires one display-only review call for passage review", async () => {
+        await streamFeedback({ ...baseOptions, editorialTask: "passage-review" });
+
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(Object.keys(request.tools)).toEqual(["reviewPassages"]);
+        expect(request.toolChoice).toBe("required");
+        expect(request.system).toContain("Call reviewPassages once");
+        const input = request.tools.reviewPassages.inputSchema.parse({
+            passages: [{ passage: "a deliberate fragment", category: "keep", reason: "Rhythm." }],
+        });
+        await expect(request.tools.reviewPassages.execute(input, {})).resolves.toEqual({
+            status: "complete",
+            review: input,
+            scope: "draft",
+        });
+        expect(() =>
+            request.tools.reviewPassages.inputSchema.parse({
+                passages: [{ passage: "a deliberate fragment", category: "polish", reason: "x" }],
+            }),
+        ).toThrow();
+    });
+
+    it("validates the response against the captured selection rather than the whole draft", async () => {
+        await streamFeedback({
+            ...baseOptions,
+            selectedText: "The draft",
+            editorialTask: "passage-review",
+        });
+        const request = mocks.streamText.mock.calls[0][0];
+        await expect(
+            request.tools.reviewPassages.execute(
+                {
+                    passages: [{ passage: "a deliberate fragment", category: "cut", reason: "x" }],
+                },
+                {},
+            ),
+        ).resolves.toEqual({ status: "invalid", reason: "source-mismatch" });
+    });
+
+    it("keeps retrieval available during passage review and stops after the review", async () => {
+        const contextRetrieval = {
+            tools: {
+                readDraftContext: tool({ inputSchema: z.object({}), execute: async () => ({}) }),
+            },
+            contextMessage: { role: "user", content: "Retrieval snapshot." },
+        } as unknown as ContextRetrievalSnapshot;
+        await streamFeedback({ ...baseOptions, editorialTask: "passage-review", contextRetrieval });
+
+        const request = mocks.streamText.mock.calls[0][0];
+        expect(Object.keys(request.tools)).toEqual(["reviewPassages", "readDraftContext"]);
+        const stops = (steps: { toolCalls: { toolName: string }[] }[]) =>
+            request.stopWhen.some((condition: (options: { steps: unknown }) => boolean) =>
+                condition({ steps }),
+            );
+        expect(stops([{ toolCalls: [{ toolName: "readDraftContext" }] }])).toBe(false);
+        expect(
+            stops([
+                { toolCalls: [{ toolName: "readDraftContext" }, { toolName: "reviewPassages" }] },
+            ]),
+        ).toBe(true);
     });
 
     it("requires an annotation tool or noAction for persona feedback", async () => {

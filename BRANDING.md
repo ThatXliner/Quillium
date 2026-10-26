@@ -136,6 +136,25 @@ Used for the Document Context AI mode. Amber = orientation, map, reference.
 | `context-active` | `text-amber-600 bg-white/60` | Active context tab |
 | `context-hover` | `hover:text-amber-600` | Hover on collapsed icon |
 
+#### Passage Review Categories
+
+A passage review card uses its own fixed legend. These hues mean the review
+category only inside that card. Every category also has its own icon and text
+label, so none depends on color.
+
+| Category | Meaning | Hue | Icon |
+|----------|---------|-----|------|
+| Keep | Core content | `green-600` stripe, `green-50` chip | Check |
+| Condense | Useful idea, too many words | `yellow-500` stripe, `yellow-50` chip | Fold |
+| Cut | Redundant | `rose-500` stripe, `rose-50` chip | Scissors |
+| Revise | Wording or logic needs work | `blue-500` stripe, `blue-50` chip | Pen |
+
+Cut uses rose rather than a primary red so it stays warm and desaturated.
+Category text uses the 800–900 shade of its hue for contrast. Presentation lives
+in [PassageReviewCard.svelte](packages/desktop/src/lib/ai/PassageReviewCard.svelte);
+categories and their order live in
+[passageReview.ts](packages/desktop/src/lib/ai/passageReview.ts).
+
 #### AI Processing State
 
 When the AI is actively generating, the sidebar receives a rainbow glow
@@ -147,6 +166,8 @@ being alarming.
 
 1. **One color per action type.** Blue = chat, green = feedback, purple =
    revise, yellow = comment, amber = context. Never mix these associations.
+   The passage review legend is the one scoped exception; its icons and labels
+   carry the meaning inside the review card.
 2. **Accents are desaturated.** No neon. No harsh primary RGB values. All
    accents should feel like they belong in a warm, lit room.
 3. **Text on glass uses opacity, not color.** UI labels use `text-black/90`,

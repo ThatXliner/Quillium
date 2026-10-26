@@ -78,6 +78,44 @@ describe("compileEditorialPolicy", () => {
         expect(policy.systemPrompt).toContain("regardless of stance or voice preferences");
     });
 
+    it.each([false, true])(
+        "answers passage review only through its display tool with selection=%s",
+        (hasSelection) => {
+            const policy = compileEditorialPolicy({
+                task: "passage-review",
+                hasSelection,
+                requestedActions: ["comment", "suggestion", "revision"],
+                preferences: {
+                    stance: "collaborative",
+                    feedbackDensity: "thorough",
+                    voiceLatitude: "transform",
+                },
+            });
+
+            expect(policy.allowedActions).toEqual([]);
+            expect(policy.responseTool).toBe("reviewPassages");
+            for (const id of ["keep", "condense", "cut", "revise"]) {
+                expect(policy.systemPrompt).toContain(`- ${id} (`);
+            }
+            expect(policy.systemPrompt).toContain("Call reviewPassages once");
+            expect(policy.systemPrompt).toContain("does not change the draft");
+            expect(policy.systemPrompt).toContain("never put replacement words");
+            expect(policy.systemPrompt).not.toContain("Tool use is optional");
+            expect(policy.systemPrompt).toContain(
+                hasSelection
+                    ? "review only passages inside the selection"
+                    : "Review the whole included draft",
+            );
+        },
+    );
+
+    it("offers passage review in Feedback and unified Chat only", () => {
+        expect(resolveEditorialTask("feedback", "passage-review")).toBe("passage-review");
+        expect(resolveEditorialTask("chat", "passage-review")).toBe("passage-review");
+        expect(resolveEditorialTask("revise", "passage-review")).toBe("conversation");
+        expect(compileEditorialPolicy({ task: "global-review" }).responseTool).toBeUndefined();
+    });
+
     it("allows local rewrite proposals without requiring tool use", () => {
         const policy = compileEditorialPolicy({
             task: "local-rewrite",

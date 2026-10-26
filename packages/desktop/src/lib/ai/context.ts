@@ -921,6 +921,17 @@ export function getContextAwareActions(
     }
 
     if (mode === "feedback") {
+        const passageReviewAction: ContextAction = {
+            id: "feedback-passage-review",
+            label: "Passage review",
+            description:
+                "Sorts passages into Keep, Condense, Cut, and Revise with a reason for each. The review stays in this conversation and does not change your draft.",
+            detail: "Keep, condense, cut, or revise",
+            prompt: hasSelection
+                ? "Review this selected passage piece by piece. Mark each part Keep, Condense, Cut, or Revise, with a short reason."
+                : "Review this draft passage by passage. Mark each passage Keep, Condense, Cut, or Revise, with a short reason.",
+            turn: { task: "passage-review" },
+        };
         if (hasSelection) {
             const actions = [
                 {
@@ -948,18 +959,21 @@ export function getContextAwareActions(
                     prompt: "Ask the hardest useful editorial question about this selected passage, then point to the exact text that triggered it.",
                 },
             ];
-            if (!hasAnnotations) return actions;
+            if (!hasAnnotations) return [passageReviewAction, ...actions];
             return [
-                {
-                    id: "feedback-annotations",
-                    label: "Audit notes",
-                    description:
-                        "Reviews the writing alongside existing annotations, identifies overlap and gaps, and adds feedback only where a distinct issue needs attention.",
-                    detail: "Build on nearby annotations",
-                    prompt: "Give feedback on this selected passage while accounting for the existing annotations. Add new annotations only for distinct issues that are not already covered.",
-                },
-                ...actions,
-            ].slice(0, 3);
+                passageReviewAction,
+                ...[
+                    {
+                        id: "feedback-annotations",
+                        label: "Audit notes",
+                        description:
+                            "Reviews the writing alongside existing annotations, identifies overlap and gaps, and adds feedback only where a distinct issue needs attention.",
+                        detail: "Build on nearby annotations",
+                        prompt: "Give feedback on this selected passage while accounting for the existing annotations. Add new annotations only for distinct issues that are not already covered.",
+                    },
+                    ...actions,
+                ].slice(0, 3),
+            ];
         }
         const actions: ContextAction[] = [
             {
@@ -990,18 +1004,21 @@ export function getContextAwareActions(
                 prompt: "Look for recurring editorial patterns across the draft. Annotate representative examples instead of every instance.",
             },
         ];
-        if (!hasAnnotations) return actions;
+        if (!hasAnnotations) return [passageReviewAction, ...actions];
         return [
-            {
-                id: "feedback-annotations",
-                label: "Audit notes",
-                description:
-                    "Reviews the writing alongside existing annotations, identifies overlap and gaps, and adds feedback only where a distinct issue needs attention.",
-                detail: "Coverage, duplicates, and gaps",
-                prompt: "Review this draft with the existing annotations in mind. Identify what is already covered, where annotations overlap, and where a new high-value note would add distinct guidance.",
-            },
-            ...actions,
-        ].slice(0, 3);
+            passageReviewAction,
+            ...[
+                {
+                    id: "feedback-annotations",
+                    label: "Audit notes",
+                    description:
+                        "Reviews the writing alongside existing annotations, identifies overlap and gaps, and adds feedback only where a distinct issue needs attention.",
+                    detail: "Coverage, duplicates, and gaps",
+                    prompt: "Review this draft with the existing annotations in mind. Identify what is already covered, where annotations overlap, and where a new high-value note would add distinct guidance.",
+                },
+                ...actions,
+            ].slice(0, 3),
+        ];
     }
 
     if (hasSelection) {

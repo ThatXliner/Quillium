@@ -43,7 +43,7 @@ remain unconfigured for unrelated development.
 | `ai_sidebar_opened` | User opens sidebar | `sidebar/Sidebar.svelte` |
 | `ai_message_sent` | Sidebar chat transport dispatches a request | `chatFactory.ts` |
 | `ai_chat_message_sent` | Chat message sent | `ClassicChat.svelte`, `Chat.svelte` |
-| `ai_feedback_requested` | Feedback requested | `Feedback.svelte`, `Chat.svelte` |
+| `ai_feedback_requested` | Feedback or passage review requested | `Feedback.svelte`, `Chat.svelte` |
 | `ai_revise_requested` | Revision triggered | `Revise.svelte`, `Chat.svelte` |
 | `context_generated` | Document context generated | `clientStreams.ts` |
 | `context_cleared` | Context cleared | `DocumentContext.svelte` |

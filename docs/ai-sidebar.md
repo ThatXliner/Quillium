@@ -83,6 +83,7 @@ Unqualified AI filenames below live in `packages/desktop/src/lib/ai`.
 | `provenance.ts` | Stable request metadata for AI-created annotations and accepted text |
 | `chatFactory.ts` | Svelte Chat transport, send-time snapshot, persona fan-out, and tool dispatch |
 | `clientStreams.ts` | Policy-driven tools, streaming, context generation, and characterization |
+| `passageReview.ts`, `PassageReviewCard.svelte` | Passage review category registry, payload validation, and conversation card |
 
 ## Built-in panel host
 
@@ -232,8 +233,9 @@ copies the prefix before the edited prompt, then sends its replacement. Retry as
 new path copies the prefix before the selected answer and generates another
 answer. None of these actions deletes the old path. Copying or reopening messages
 does not create a draft, modify prose, or execute historical tools. Stored tool
-parts remain intact, but the transport omits them from later provider requests;
-current annotations still arrive through the writing-context packet.
+parts remain intact, but the transport omits them from later provider requests,
+except that a passage review is sent as text. Current annotations still arrive
+through the writing-context packet.
 
 Conversation changes stop an active response and wait for its final save before
 replacing the displayed messages. Saves target the conversation that initiated
@@ -256,6 +258,21 @@ high-impact anchored comments. It does not supply replacement prose. Suggest
 revisions may propose local suggestions or coherent passage alternatives while
 preserving the original text. Exact compression remains a revision-only recipe
 with an explicit word target. All use the same conversation and target guards.
+
+Passage review is the first Feedback starting point, and unified Chat offers it
+in Starting points. It sorts passages from the draft or selection into the fixed
+categories in `passageReview.ts`: Keep (core content), Condense (useful idea,
+too many words), Cut (redundant), and Revise (wording or logic). Each passage
+has one reason. The model must answer with one `reviewPassages` call. The
+conversation renders that call as a card with a legend of the categories it
+uses, in registry order. Each category has its own icon and text label, so it
+doesn't depend on color. Passages, reasons, and the summary render as plain
+text. The review creates no annotation and doesn't change the draft. Each full
+quote has an expandable reason. The card identifies its captured draft or selection.
+The tool validates exact quotes, source order, and non-overlap against that captured
+writing before returning a completed result. Only that result renders or enters
+follow-up history. Invalid or interrupted reviews show a status instead of marks. Reader personas don't run for this
+task, because their streams can only apply annotations.
 
 Separate Feedback and Revise use their saved per-mode reader opt-ins. With
 readers enabled, they save the request, run reader streams, and save an
@@ -319,6 +336,7 @@ wording cannot expand a turn's permissions.
 | Reverse outline | Chat | None |
 | Compare versions | Chat | None |
 | Global review | Feedback or Chat context action | Comment (intersected with Chat permissions) |
+| Passage review | Feedback or Chat context action | None; answers through the display-only `reviewPassages` tool |
 | Local rewrite | Revise or Chat context action | Comment, suggestion, revision (intersected with Chat permissions) |
 | Exact compression | Chat: Starting points | Revision only |
 
@@ -424,7 +442,9 @@ scopes and 20 nested levels, with omitted scope counts reported. The focused
 version remains available within that limit.
 
 Before sending saved history, `sanitizeOutboundMessages()` removes historical
-tool parts from provider input without changing the visible conversation. The
+tool parts from provider input without changing the visible conversation. A
+valid passage review becomes a plain-text record marked as historical, so a
+follow-up can discuss it; the call itself is never replayed. The
 stream builder also prunes prior retrieval calls and results if supplied.
 Retrieval results from the current request remain available within its tool
 loop. None of these records executes historical editor actions.
@@ -496,6 +516,7 @@ settings reloads. ChatGPT sign-in discovers models for the connected account.
 | `createComment` | Feedback, Revise, permitted assistant turns | Comment thread anchored to exact text |
 | `createRevision` | Revise, exact compression, permitted assistant turns | Two or more named passage versions plus a thread message |
 | `createSuggestion` | Revise, permitted assistant turns | One or more replacement options for a short target |
+| `reviewPassages` | Passage review | A categorized review shown in the conversation; never dispatched to the editor |
 | `listAnnotationThreads` | Chat, Feedback, Revise | Searchable pages of scoped discussion references |
 | `readAnnotationThread` | Chat, Feedback, Revise | Complete discussion content in bounded pages |
 | `readDraftContext` | Chat, Feedback, Revise | Captured draft or revision-version passages in bounded pages |

@@ -1,6 +1,8 @@
 <script lang="ts">
 import { Check, CircleAlert, LoaderCircle, Circle } from "lucide-svelte";
 import { getToolName, isToolUIPart, type UIMessage } from "ai";
+import PassageReviewCard from "./PassageReviewCard.svelte";
+import { PASSAGE_REVIEW_TOOL_NAME } from "./passageReview";
 let {
     part,
     active = false,
@@ -57,7 +59,9 @@ function format(value: unknown): string {
 <svelte:window onkeydown={updateModifier} onkeyup={updateModifier} onblur={hideDetails} />
 <svelte:document onvisibilitychange={hideDetails} />
 
-{#if tool}
+{#if tool && getToolName(tool) === PASSAGE_REVIEW_TOOL_NAME}
+    <PassageReviewCard part={tool} {active} />
+{:else if tool}
     {@const name = getToolName(tool)}
     {@const outcome = application(tool.toolCallId)}
     {@const label = names[name] || "Assistant action"}

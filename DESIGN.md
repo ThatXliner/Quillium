@@ -80,6 +80,8 @@ Response length, editorial stance, feedback density, and voice latitude shape th
 response separately. Structural recipes stay conversational and specialized context
 actions can narrow the selected permissions. The separate legacy panels retain
 their original task limits. A valid AI turn may produce no document action.
+Passage review is always response-only. It sorts passages into Keep, Condense,
+Cut, and Revise in the conversation and never edits or annotates the draft.
 
 Every turn has an explicit task and capability set. Prompt wording, reader
 personas, saved decisions, and device-local editorial preferences can shape the

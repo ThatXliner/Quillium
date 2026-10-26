@@ -177,6 +177,11 @@ recognized application prompt. Writers retain the guidance they accepted until
 they choose an update.
 _Avoid_: Cached research
 
+**Passage review**:
+An AI feedback response that sorts passages into Keep, Condense, Cut, and Revise,
+each with a reason. It appears in a conversation and creates no annotation.
+_Avoid_: Triage, annotation
+
 **Conversation**:
 A saved AI discussion that can include conversation, feedback, and revision
 requests, with its own identity and original
