@@ -1,3 +1,4 @@
+import { commentDraftScope, getNestedCommentDraftScope } from "./drafts.svelte";
 /**
  * nestedEditor.ts — Shared utilities for nested CodeMirror editors
  * inside revision cards (inline) and modals.
@@ -32,6 +33,8 @@
 import { dev } from "$app/environment";
 import { logAppEvent } from "$lib/appLog";
 import { createAwarenessExtension } from "$lib/collab/awareness";
+import { annotationScopeIds, roleContext } from "$lib/collab/roleContext";
+import { createRolePermissions } from "$lib/collab/rolePermissions";
 import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
@@ -49,6 +52,7 @@ import {
     formatVersionPreviewText,
 } from "@quillium/share/versionPreview";
 import { get } from "svelte/store";
+import * as Y from "yjs";
 import {
     _nestedEditRevision,
     _updateRevisionVersionState,
@@ -121,7 +125,32 @@ export function createNestedEditorState(
                       },
                   ),
               ];
+    const parentContext = parentView.state.facet(roleContext);
+    const annotationId = parentContext?.ids.getYjsId(revisionId);
+    const node = annotationId ? parentContext?.annotations.get(annotationId) : undefined;
+    const versions = node instanceof Y.Map ? node.get("versions") : undefined;
+    const versionNode = versions instanceof Y.Map ? versions.get(version.id) : undefined;
+    const nestedText = versionNode instanceof Y.Map ? versionNode.get("text") : undefined;
+    const nestedAnnotations =
+        versionNode instanceof Y.Map ? versionNode.get("annotations") : undefined;
+    const permissions =
+        parentContext &&
+        annotationId &&
+        nestedText instanceof Y.Text &&
+        nestedAnnotations instanceof Y.Map
+            ? createRolePermissions({
+                  ...parentContext,
+                  text: nestedText,
+                  annotations: nestedAnnotations,
+                  ids: annotationScopeIds(nestedAnnotations),
+                  scope: [...parentContext.scope, { annotationId, versionId: version.id }],
+              })
+            : parentContext && parentContext.role !== "editor"
+              ? createRolePermissions({ ...parentContext, role: "viewer" })
+              : [];
     const extensions = [
+        commentDraftScope.of(getNestedCommentDraftScope(parentView, revisionId, version.id)),
+        permissions,
         // Install nested command routing before the shared editor extensions.
         // Both layers watch the same physical comment chord at highest precedence;
         // extension order ensures the nested route wins instead of creating a

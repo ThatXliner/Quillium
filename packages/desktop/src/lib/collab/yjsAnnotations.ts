@@ -105,6 +105,7 @@ import {
     yjsAnnotationToCodeMirror,
 } from "./annotationSchema";
 import { absoluteToRelative } from "./relativePosition";
+import { annotationScopeIds } from "./roleContext";
 import type { YjsAnnotationNode } from "./types";
 import { yjsAnnotation } from "./yjsBinding";
 
@@ -115,7 +116,9 @@ export function createAnnotationSyncPlugin(
     scopeAnnotations: Y.Map<YjsAnnotationNode>,
     clientId: string,
     idMap: AnnotationIdMap = new AnnotationIdMap(),
+    readOnly = false,
 ) {
+    annotationScopeIds(scopeAnnotations, idMap);
     return ViewPlugin.fromClass(
         class {
             private deepObserver: (
@@ -124,22 +127,14 @@ export function createAnnotationSyncPlugin(
             ) => void;
             private destroyed = false;
             private idMap = idMap;
-            private nestedIdMaps = new WeakMap<Y.Map<unknown>, AnnotationIdMap>();
-            private nestedIdMapFor = (annotations: Y.Map<unknown>): AnnotationIdMap => {
-                let idMap = this.nestedIdMaps.get(annotations);
-                if (!idMap) {
-                    idMap = new AnnotationIdMap();
-                    this.nestedIdMaps.set(annotations, idMap);
-                }
-                return idMap;
-            };
+            private nestedIdMapFor = annotationScopeIds;
             private clientId = clientId;
             private _initialSyncDone = false;
             private deepObserverAttached = false;
 
             constructor(private view: EditorView) {
-                this._syncIdMapFromCM();
-                this._syncInitialToYjs(); // Owner: push CM annotations to Yjs
+                if (!readOnly) this._syncIdMapFromCM();
+                if (!readOnly) this._syncInitialToYjs();
                 this._syncInitialFromYjs(); // Joiner: pull Yjs annotations to CM
 
                 this.deepObserver = (events, tr) => {
@@ -354,6 +349,7 @@ export function createAnnotationSyncPlugin(
             }
 
             update(update: ViewUpdate) {
+                if (readOnly) return;
                 // Skip if this dispatch originated from our observeDeep (avoid infinite loop)
                 if (update.transactions.some((tr) => tr.annotation(yjsAnnotationSync))) return;
 

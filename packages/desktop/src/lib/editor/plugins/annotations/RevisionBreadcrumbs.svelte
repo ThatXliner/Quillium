@@ -4,6 +4,7 @@
     models stay here; dropdown and label-editing behavior live in @quillium/share.
 -->
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { type ModalEntry, modalStack } from "$lib/stores";
 import {
     type RevisionBreadcrumbCrumbView,
@@ -65,6 +66,7 @@ function navigateToCrumb(crumbId: string): void {
 }
 
 function selectCrumbVersion(crumbId: string, versionId: string): void {
+    if (!$collabCapabilities.canEdit) return;
     const crumbIndex = indexOfCrumb(crumbId);
     if (crumbIndex === undefined) return;
     const revision = crumbRevisions[crumbIndex];
@@ -83,9 +85,9 @@ function deleteCurrentVersion(crumbId: string, versionId: string): void {
 </script>
 
 <RevisionBreadcrumbsView
-    crumbs={breadcrumbViews}
+    crumbs={$collabCapabilities.canEdit ? breadcrumbViews : breadcrumbViews.map((crumb) => ({ ...crumb, versions: crumb.versions.filter((version) => version.id === crumb.selectedVersionId) }))}
     onNavigate={navigateToCrumb}
     onSelectVersion={selectCrumbVersion}
-    onRenameCurrent={(_, __, label) => oncommitlabel(label)}
-    onDeleteCurrentVersion={deleteCurrentVersion}
+    onRenameCurrent={$collabCapabilities.canEdit ? (_, __, label) => oncommitlabel(label) : undefined}
+    onDeleteCurrentVersion={$collabCapabilities.canEdit ? deleteCurrentVersion : undefined}
 />

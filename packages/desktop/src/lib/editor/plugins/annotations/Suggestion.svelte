@@ -1,4 +1,5 @@
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import posthog from "$lib/posthog";
 import { modalStack } from "$lib/stores";
 import type { EditorView } from "@codemirror/view";
@@ -92,6 +93,7 @@ function trackDiff(index: number) {
         thread={replyThread}
         updateThread={updateReplyThread}
         annotationId={suggestion.id}
+        {view}
     />
 {/snippet}
 
@@ -101,9 +103,9 @@ function trackDiff(index: number) {
     replacements={suggestion.replacements}
     {overallComment}
     onOpen={openSuggestion}
-    onDelete={deleteSuggestion}
-    onBranch={branch}
-    onApply={apply}
+    onDelete={$collabCapabilities.canEdit ? deleteSuggestion : undefined}
+    onBranch={$collabCapabilities.canEdit ? branch : undefined}
+    onApply={$collabCapabilities.canEdit ? apply : undefined}
     onDiffViewed={trackDiff}
     {getDiffOperations}
     thread={hasReplies ? threadContent : undefined}

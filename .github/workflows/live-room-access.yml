@@ -1,0 +1,52 @@
+name: Live Room access
+
+on:
+  pull_request:
+    paths:
+      - "packages/relay/**"
+      - "packages/desktop/src/lib/collab/**"
+      - "packages/desktop/src/lib/editor/plugins/annotations/**"
+      - "packages/desktop/tests/lib/collab/**"
+      - "packages/share/**"
+      - "packages/e2e/**"
+      - "supabase/**"
+      - "bun.lock"
+      - ".github/workflows/live-room-access.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QUILLIUM_ALLOW_MISSING_SUPABASE_ENV: "1"
+      PUBLIC_SUPABASE_URL: ""
+      PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+      PUBLIC_RELAY_URL: ""
+      PUBLIC_POSTHOG_KEY: ""
+      PUBLIC_POSTHOG_HOST: ""
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.4"
+      - name: Install verified Bun runtime
+        run: node scripts/install-secure-bun.mjs /tmp/quillium-access-bun
+      - uses: supabase/setup-cli@v1
+        id: supabase
+        with:
+          version: 2.121.0
+      - run: bun install --frozen-lockfile
+      - run: bun run check:all
+      - run: bun run share:test:run
+      - run: bun run desktop:test:run
+      - name: Start disposable local auth and database
+        run: supabase start --exclude studio,postgres-meta,edge-runtime,storage-api,imgproxy,realtime,logflare,vector,supavisor
+      - name: Verify grants and hostile relay clients
+        run: bun packages/relay/scripts/testAccessLocal.ts
+      - name: Stop local services
+        if: always() && steps.supabase.outcome == 'success'
+        run: supabase stop --no-backup

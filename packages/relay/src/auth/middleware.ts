@@ -1,4 +1,5 @@
 import { HandshakeAuthSchema } from "@quillium/share/collab-contract";
+import { LiveRoomAccessService } from "../access/index.js";
 import { createLogger } from "../logger.js";
 import { getYjsRoom } from "../yjs/rooms.js";
 import type { YjsClientData } from "../yjs/types.js";
@@ -41,6 +42,7 @@ export interface AuthResult {
 export async function authenticateWebSocket(
     token: string | null,
     documentId: string,
+    invitation?: string | null,
 ): Promise<AuthResult> {
     if (!token) {
         return { success: false, error: "Missing auth token" };
@@ -89,8 +91,20 @@ export async function authenticateWebSocket(
 
         const isOwner = doc?.owner_id === user.id;
         const isAnonymous = user.is_anonymous ?? false;
+        const name = user.user_metadata?.display_name;
+        const displayName =
+            typeof name === "string" && name.trim() ? name.trim().slice(0, 80) : undefined;
 
+        let grant:
+            | { grantId: string; role: "viewer" | "commenter" | "editor"; expiresAt: string }
+            | undefined;
         if (!isOwner) {
+            if (!invitation) return { success: false, error: "Invitation required" };
+            grant = await new LiveRoomAccessService({ supabase, onGrantChanged: () => {} }).resolve(
+                invitation,
+                user,
+                documentId,
+            );
             const room = getYjsRoom(documentId);
             const ownerIsLive = room?.isOwnerConnected === true && room.ownerId === doc.owner_id;
 
@@ -106,6 +120,9 @@ export async function authenticateWebSocket(
                 documentId,
                 isOwner,
                 isAnonymous,
+                ...(displayName ? { displayName } : {}),
+                role: grant?.role ?? "editor",
+                ...(grant ? { grantId: grant.grantId, expiresAt: grant.expiresAt } : {}),
             },
         };
     } catch (e) {

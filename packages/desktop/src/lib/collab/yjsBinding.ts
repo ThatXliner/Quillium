@@ -24,7 +24,7 @@ export const yjsAnnotation = Annotation.define<boolean>();
  * @param ytext - Y.Text shared type to sync with
  * @returns ViewPlugin that maintains bidirectional sync
  */
-export function createYjsBinding(ytext: Y.Text) {
+export function createYjsBinding(ytext: Y.Text, readOnly = false) {
     return ViewPlugin.fromClass(
         class {
             private observer: (event: Y.YTextEvent, tr: Y.Transaction) => void;
@@ -104,6 +104,7 @@ export function createYjsBinding(ytext: Y.Text) {
                 // CodeMirror -> Y.Text
                 // Skip if this transaction came from Y.Text (has yjsAnnotation)
                 if (
+                    !readOnly &&
                     update.docChanged &&
                     !update.transactions.some((tr) => tr.annotation(yjsAnnotation))
                 ) {

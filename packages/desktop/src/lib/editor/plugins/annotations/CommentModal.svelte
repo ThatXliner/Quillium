@@ -1,10 +1,12 @@
 <script lang="ts">
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { getCurrentUserName } from "$lib/auth";
+import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
+import { roleContext } from "$lib/collab/roleContext";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
+import { annotations as annotationsStore, editorView as rootEditorView, modalAnnotationStores, modalStack } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
 import {
@@ -43,7 +45,7 @@ import {
     captureCommentEditorPosition,
     restoreCommentEditorPosition,
 } from "./commentFocus";
-import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
+import { clearDraft, getCommentDraftScope, getDraft, setDraft } from "./drafts.svelte";
 
 const {
     commentId,
@@ -66,12 +68,9 @@ const isTop = $derived(stackIndex === $modalStack.length - 1);
 
 let dialogEl = $state<HTMLDialogElement>();
 
-// Read comment from the correct annotation source:
-// - stackIndex 0 → main editor's global annotations store
-// - stackIndex N → parent modal's nested annotation store (index N-1)
 const comment = $derived.by((): Annotation<"comment"> | undefined => {
     const annotation =
-        (stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
+        (parentView === $rootEditorView || stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
             commentId
         ] ?? parentView.state.field(annotationField)[commentId];
     return annotation && isAnnotationOfType(annotation, "comment") ? annotation : undefined;
@@ -107,22 +106,56 @@ const docContext = $derived.by((): AnnotationContextViewLayer | null => {
 const contextLayers = $derived(docContext ? [docContext] : []);
 
 // ── Reply box state ──────────────────────────────────────────
-// Reply draft lives in the shared drafts store (keyed by annotation id) so
-// it hands off to/from the inline composers when the layout switches
-// between floating cards and this modal (#247).
-const newMessage = $derived(getDraft(commentId));
+const newMessage = $derived(getDraft(parentView, commentId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
+let sendButton = $state<HTMLButtonElement | undefined>();
 let isFocused = $state(false);
 const currentUserName = $derived(getCurrentUserName());
-const sendActive = $derived(!!newMessage.trim());
+const submission = $derived(getCommentSubmission(parentView, commentId));
 
-function send() {
-    if (!newMessage.trim() || !comment) return;
-    handleUpdateThread([
-        ...comment.thread,
-        { message: newMessage.trim(), author: currentUserName, time: Date.now() },
-    ]);
-    clearDraft(commentId);
+const composerAccess = $derived.by(() => {
+    getCommentDraftScope(parentView);
+    const role = parentView.state.facet(roleContext)?.role;
+    return {
+        canEdit: role ? role === "editor" : !parentView.state.readOnly,
+        canComment: role ? role !== "viewer" : !parentView.state.readOnly,
+    };
+});
+const submissionError = $derived.by(() => {
+    const error = submission?.error;
+    if (!error) return "";
+    if (/not found|Invalid comment (scope|thread)|selection.*available/.test(error))
+        return "This text or comment has changed. Copy your draft, close this comment, and select the text again.";
+    if (/access|permission|session.*ended|connection ended/i.test(error))
+        return "This Live Room can't accept your comment right now. Copy this draft, then reopen your invitation.";
+    return "Your comment wasn't confirmed. Your draft is still here. Check your connection and try again.";
+});
+const sendActive = $derived(!!newMessage.trim() && !submission?.pending);
+
+async function send(): Promise<void> {
+    if (!composerAccess.canComment || !newMessage.trim() || !comment || submission?.pending) return;
+    const submitted = newMessage;
+    const submittedScope = getCommentDraftScope(parentView);
+    if (submission) {
+        const restoreFocus = document.activeElement === textareaEl || document.activeElement === sendButton;
+        const accepted = await submission.send(submitted.trim());
+        if (accepted) {
+            if (
+                getCommentDraftScope(parentView) === submittedScope &&
+                getDraft(parentView, commentId) === submitted
+            ) clearDraft(parentView, commentId);
+        } else if (restoreFocus && getCommentDraftScope(parentView) === submittedScope) {
+            await tick();
+            if (textareaEl?.isConnected &&
+                (document.activeElement === document.body || document.activeElement === sendButton || document.activeElement === textareaEl)) textareaEl.focus();
+        }
+        return;
+    }
+    const next = [...comment.thread, { message: submitted.trim(), author: currentUserName, time: Date.now() }];
+    handleUpdateThread(next);
+    const accepted = parentView.state.field(annotationField, false)?.[commentId]?.thread;
+    if (getCommentDraftScope(parentView) === submittedScope && accepted?.length === next.length &&
+        accepted.at(-1)?.message === submitted.trim()) clearDraft(parentView, commentId);
 }
 
 function autoResize(el: HTMLTextAreaElement) {
@@ -224,6 +257,7 @@ let restoreSize = $state<(() => void) | undefined>();
 {/snippet}
 
 {#snippet commentHeaderActions()}
+    {#if composerAccess.canEdit}
     <button
         class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
         onclick={deleteComment}
@@ -232,6 +266,7 @@ let restoreSize = $state<(() => void) | undefined>();
     >
         <Trash2 size={16} />
     </button>
+    {/if}
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -260,6 +295,7 @@ let restoreSize = $state<(() => void) | undefined>();
                     {#if comment}
                         <Thread
                             thread={comment.thread}
+                            commentThread
                             updateThread={handleUpdateThread}
                             annotationId={commentId}
                             view={parentView}
@@ -273,13 +309,14 @@ let restoreSize = $state<(() => void) | undefined>();
                 </div>
 
                 <!-- Reply box anchored at bottom -->
-                {#if comment}
+                {#if comment && composerAccess.canComment}
                     <div class="px-6 pb-5 pt-2 shrink-0">
                         <div class="rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
                             ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
                             <textarea
                                 bind:this={textareaEl}
-                                bind:value={() => newMessage, (v) => setDraft(commentId, v)}
+                                bind:value={() => newMessage, (v) => setDraft(parentView, commentId, v)}
+                                disabled={submission?.pending && comment.status === "pending"}
                                 placeholder="Reply…"
                                 rows="3"
                                 class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
@@ -298,9 +335,10 @@ let restoreSize = $state<(() => void) | undefined>();
                                     }
                                 }}
                             ></textarea>
+        {#if submissionError}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submissionError}</p>{/if}
                             <div class="flex items-center justify-between px-2 pb-1.5">
                                 <div class="flex items-center gap-1">
-                                    {#if appSettings.aiEnabled}
+                                    {#if appSettings.aiEnabled && composerAccess.canEdit}
                                     <button
                                         aria-label={hasApiKey()
                                             ? "Get AI suggestion"
@@ -324,11 +362,13 @@ let restoreSize = $state<(() => void) | undefined>();
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <button
+                                        bind:this={sendButton}
                                         onclick={sendActive ? send : undefined}
+                    disabled={!sendActive}
                                         class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
                                             {sendActive ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' : 'bg-black/5 text-black/30'}"
                                     >
-                                        {isFocused ? "Send" : "Reply"}
+                                        {submission?.pending ? "Sending" : isFocused ? "Send" : "Reply"}
                                         <span class="flex items-center gap-0.5">
                                             <Kbd keys={isFocused ? ["⌘", "↵"] : ["⌘", "/"]}
                                                 variant={sendActive ? "fullWhite" : isFocused ? "whiteGhost" : "default"} />

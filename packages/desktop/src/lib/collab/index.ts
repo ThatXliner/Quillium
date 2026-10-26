@@ -30,9 +30,11 @@ import {
 } from "$lib/editor/plugins/annotations/versionGroupField";
 import { AnnotationIdMap } from "./annotationSchema";
 import { colorForClient, createAwarenessExtension } from "./awareness";
-import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 // Yjs modules
+import { createRolePermissions } from "./rolePermissions";
+import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { createYjsBinding } from "./yjsBinding";
+import { type InvitationAccess, getCollabRole, prepareCommentOperation } from "./yjsProvider";
 import {
     createYjsProvider,
     disconnectYjsProvider,
@@ -59,7 +61,7 @@ import {
 
 // Navigation (D-103: restore joiner to prior view)
 import { goToEditor, goToLibrary } from "$lib/navigation";
-import { currentDraftId } from "$lib/stores";
+import { currentDraftId, modalStack } from "$lib/stores";
 
 // Types
 export type { CollabSession, CollabState } from "./types";
@@ -138,36 +140,48 @@ export async function enableCollab(
     docId: string,
     clientID: string,
     asOwner = true,
+    access?: InvitationAccess,
 ): Promise<void> {
     // Connect to Yjs relay
-    const { provider, awareness, ydoc, ytext, ymap, yVersionGroups } =
-        await createYjsProvider(docId);
+    const { provider, awareness, ydoc, ytext, ymap, yVersionGroups } = await createYjsProvider(
+        docId,
+        access,
+    );
 
     // Get local content before connecting
     const localDoc = view.state.doc.toString();
 
     console.log(`[collab] enableCollab: localDoc.length=${localDoc.length}, asOwner=${asOwner}`);
 
-    // Wait for initial sync with timeout
     await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            console.error("[collab] Sync timeout after 10s - provider.synced:", provider.synced);
-            reject(new Error("Sync timeout - relay may not be responding correctly"));
-        }, 10000);
-
-        const checkSync = () => {
-            if (provider.synced) {
-                clearTimeout(timeout);
-                resolve();
-            } else {
-                provider.once("sync", () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-            }
+        let stopState = () => {};
+        let finished = false;
+        const finish = (error?: Error): void => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+            stopState();
+            provider.off("sync", synced);
+            if (error) reject(error);
+            else resolve();
         };
-        checkSync();
+        const synced = (isSynced: boolean): void => {
+            if (isSynced) finish();
+        };
+        const timeout = setTimeout(
+            () => finish(new Error("Sync timeout - relay may not be responding correctly")),
+            10000,
+        );
+        provider.on("sync", synced);
+        stopState = collabState.subscribe((state) => {
+            if (state === "disconnected" || state === "error")
+                finish(new Error("The Live Room connection ended before joining"));
+        });
+        if (finished) stopState();
+        else if (provider.synced) finish();
     });
+    if (getYjsProvider() !== provider)
+        throw new Error("The Live Room connection ended before joining");
 
     // After sync, determine authoritative content
     // Per D-55: Owner's local SQLite is source of truth; relay is broadcast layer
@@ -233,7 +247,9 @@ export async function enableCollab(
     const displayName = user ? getCurrentUserName() : clientID.slice(0, 8);
     const cursorColor = colorForClient(clientID);
 
-    const binding = createYjsBinding(ytext);
+    const role = asOwner ? "editor" : getCollabRole();
+    const readOnly = role !== "editor";
+    const binding = createYjsBinding(ytext, readOnly);
     // Per D-83: Pass ymap to UndoManager for unified undo stack
     const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap, [
         yVersionGroups,
@@ -242,7 +258,7 @@ export async function enableCollab(
 
     // Plan 8.5c-02: Caller-owned idMap so subtree controllers can resolve CM ids
     const mainIdMap = new AnnotationIdMap();
-    const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
+    const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap, readOnly);
     const versionGroupSync = createVersionGroupSyncPlugin(yVersionGroups, {
         idMap: mainIdMap,
         annotationsMap: ymap,
@@ -258,6 +274,7 @@ export async function enableCollab(
         displayName,
         cursorColor,
         isOwner: asOwner,
+        role,
         ydoc,
         provider,
         awareness,
@@ -273,7 +290,23 @@ export async function enableCollab(
     // later remote projection, so retaining it for owners can make Cmd-z replay
     // stale semantic state. Y.UndoManager tracks only this client's "local"
     // Yjs transactions and rebases them over remote changes.
-    const collabExts = [binding, undoExt, awarenessExt, annotationSync, versionGroupSync];
+    const permissions = createRolePermissions({
+        role,
+        isOwner: asOwner,
+        text: ytext,
+        annotations: ymap,
+        ids: mainIdMap,
+        scope: [],
+        prepareComment: prepareCommentOperation,
+    });
+    const collabExts = [
+        binding,
+        ...(readOnly ? [] : [undoExt]),
+        awarenessExt,
+        annotationSync,
+        versionGroupSync,
+        permissions,
+    ];
     view.dispatch({
         effects: [collabCompartment.reconfigure(collabExts), historyCompartment.reconfigure([])],
     });
@@ -361,6 +394,7 @@ export function disableCollab(view: EditorView): void {
     const prior = wasJoiner ? get(joinerPriorView) : null;
 
     disconnectYjsProvider();
+    if (wasJoiner) modalStack.clear();
     currentUndoManager = null;
     collabSession.set(null);
     collabPresenceUsers.set([]);

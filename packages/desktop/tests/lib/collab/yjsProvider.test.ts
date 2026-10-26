@@ -1,5 +1,6 @@
 import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
 import {
+    CUSTOM_ACCESS,
     CUSTOM_CLIENT_LEFT,
     CUSTOM_OWNER_LEFT,
     MESSAGE_CUSTOM,
@@ -20,6 +21,8 @@ import { get } from "svelte/store";
  * 6. disconnectYjsProvider destroys provider and clears state
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
+import * as Y from "yjs";
 
 type MockHandler = (data: unknown) => void;
 type MockFunction = ReturnType<typeof vi.fn>;
@@ -33,6 +36,7 @@ interface MockWebsocketProviderOptions {
 }
 
 interface TestWebsocketProvider {
+    _updateHandler: MockFunction;
     _awarenessQueryHandler: MockFunction;
     _opts?: MockWebsocketProviderOptions;
     destroy: MockFunction;
@@ -45,25 +49,26 @@ function testProvider(provider: unknown): TestWebsocketProvider {
 }
 
 // Mock y-websocket - factory must define class inline
-vi.mock("y-websocket", () => {
+vi.mock("y-websocket", async () => {
+    const { Awareness } = await import("y-protocols/awareness");
     class MockWebsocketProvider {
-        awareness = {
-            clientID: 1,
-            setLocalStateField: vi.fn(),
-            on: vi.fn(),
-            off: vi.fn(),
-            destroy: vi.fn(),
-        };
+        awareness: Awareness;
+        ws = { readyState: 1, send: vi.fn() };
+        _awarenessUpdateHandler = vi.fn();
+        _updateHandler = vi.fn();
         _awarenessQueryHandler = vi.fn();
         messageHandlers = [vi.fn(), vi.fn(), vi.fn(), this._awarenessQueryHandler];
         handlers: Map<string, Set<MockHandler>> = new Map();
-        destroy = vi.fn();
+        destroy = vi.fn(() => this.awareness.destroy());
         disconnect = vi.fn();
         _opts?: MockWebsocketProviderOptions;
         url: string;
         roomname: string;
 
-        constructor(url: string, room: string, _doc: unknown, opts?: MockWebsocketProviderOptions) {
+        constructor(url: string, room: string, doc: Y.Doc, opts?: MockWebsocketProviderOptions) {
+            this.awareness = new Awareness(doc);
+            this.awareness.on("update", this._awarenessUpdateHandler);
+            doc.on("update", this._updateHandler);
             this.url = url;
             this.roomname = room;
             this._opts = opts;
@@ -101,13 +106,19 @@ vi.mock("$env/static/public", () => ({
 }));
 
 // Import after mocks
-import { createYjsProvider, disconnectYjsProvider, handleOwnerLeft } from "$lib/collab/yjsProvider";
+import {
+    accessChangedSignal,
+    createYjsProvider,
+    disconnectYjsProvider,
+    handleOwnerLeft,
+} from "$lib/collab/yjsProvider";
 
 describe("yjsProvider", () => {
     beforeEach(() => {
         // Reset all stores to initial state
         collabState.set("disconnected");
         ownerLeftSignal.set(0);
+        accessChangedSignal.set(0);
         reconnectAttempt.set(0);
         // Ensure no existing connection
         disconnectYjsProvider();
@@ -117,18 +128,103 @@ describe("yjsProvider", () => {
         disconnectYjsProvider();
     });
 
+    it("uses the relay role when it changes after invitation preflight", async () => {
+        const result = await createYjsProvider("doc-123", { token: "invitation", role: "viewer" });
+        result.ytext.insert(0, "local draft");
+        const transport = testProvider(result.provider);
+        expect(transport._updateHandler).not.toHaveBeenCalled();
+        const bytes = encodeCustomMessage({
+            subtype: CUSTOM_ACCESS,
+            payload: { role: "editor", roomEpoch: "123e4567-e89b-12d3-a456-426614174000" },
+        });
+        const decoder = decoding.createDecoder(bytes);
+        decoding.readVarUint(decoder);
+        result.provider.messageHandlers[MESSAGE_CUSTOM](
+            encoding.createEncoder(),
+            decoder,
+            result.provider,
+            false,
+            MESSAGE_CUSTOM,
+        );
+        expect(result.role).toBe("editor");
+        result.ytext.insert(0, "accepted edit");
+        expect(transport._updateHandler).toHaveBeenCalledOnce();
+    });
+
     it("preserves y-websocket awareness queries", async () => {
         const { provider } = await createYjsProvider("doc-123");
+        const encoder = encoding.createEncoder();
         provider.messageHandlers[MESSAGE_CUSTOM](
-            encoding.createEncoder(),
+            encoder,
             decoding.createDecoder(new Uint8Array()),
             provider,
             false,
             MESSAGE_CUSTOM,
         );
-        expect(testProvider(provider)._awarenessQueryHandler).toHaveBeenCalledOnce();
+        const decoder = decoding.createDecoder(encoding.toUint8Array(encoder));
+        expect(decoding.readVarUint(decoder)).toBe(1);
+        const presence = decoding.createDecoder(decoding.readVarUint8Array(decoder));
+        expect(decoding.readVarUint(presence)).toBe(1);
+        expect(decoding.readVarUint(presence)).toBe(provider.awareness.clientID);
         expect(get(ownerLeftSignal)).toBe(0);
     });
+
+    it("forwards only local presence and never echoes another participant", async () => {
+        const { provider, awareness } = await createYjsProvider("doc-123");
+        const socket = provider.ws as unknown as { send: MockFunction };
+        const remote = new Y.Doc();
+        const remoteAwareness = new Awareness(remote);
+        try {
+            remoteAwareness.setLocalState({ user: { name: "Other writer" } });
+            applyAwarenessUpdate(
+                awareness,
+                encodeAwarenessUpdate(remoteAwareness, [remoteAwareness.clientID]),
+                provider,
+            );
+            expect(socket.send).not.toHaveBeenCalled();
+            awareness.setLocalStateField("user", { name: "Local writer" });
+            expect(socket.send).toHaveBeenCalledOnce();
+            const frame = decoding.createDecoder(socket.send.mock.calls[0][0]);
+            expect(decoding.readVarUint(frame)).toBe(1);
+            const presence = decoding.createDecoder(decoding.readVarUint8Array(frame));
+            expect(decoding.readVarUint(presence)).toBe(1);
+            expect(decoding.readVarUint(presence)).toBe(awareness.clientID);
+        } finally {
+            remoteAwareness.destroy();
+            remote.destroy();
+        }
+    });
+
+    it.each(["role", "epoch"])(
+        "ends an existing session when reconnect changes its %s",
+        async (change) => {
+            const { provider } = await createYjsProvider("doc-123");
+            const deliver = (role: "editor" | "viewer", roomEpoch: string): void => {
+                const decoder = decoding.createDecoder(
+                    encodeCustomMessage({ subtype: CUSTOM_ACCESS, payload: { role, roomEpoch } }),
+                );
+                decoding.readVarUint(decoder);
+                provider.messageHandlers[MESSAGE_CUSTOM](
+                    encoding.createEncoder(),
+                    decoder,
+                    provider,
+                    false,
+                    MESSAGE_CUSTOM,
+                );
+            };
+            deliver("editor", "123e4567-e89b-12d3-a456-426614174000");
+            expect(get(accessChangedSignal)).toBe(0);
+            deliver(
+                change === "role" ? "viewer" : "editor",
+                change === "epoch"
+                    ? "123e4567-e89b-12d3-a456-426614174001"
+                    : "123e4567-e89b-12d3-a456-426614174000",
+            );
+            expect(get(accessChangedSignal)).toBe(1);
+            expect(testProvider(provider).destroy).toHaveBeenCalledOnce();
+            expect(get(collabState)).toBe("disconnected");
+        },
+    );
 
     it("handles relay owner-left once, before the close event", async () => {
         const { provider } = await createYjsProvider("doc-123");
@@ -325,7 +421,7 @@ describe("yjsProvider", () => {
         }
 
         // disconnect() is called via setTimeout to avoid stack overflow
-        vi.runAllTimers();
+        vi.advanceTimersByTime(0);
 
         expect(testProvider(provider).disconnect).toHaveBeenCalled();
         vi.useRealTimers();

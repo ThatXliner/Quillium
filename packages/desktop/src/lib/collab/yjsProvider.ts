@@ -26,13 +26,22 @@ import { PUBLIC_RELAY_URL } from "$env/static/public";
 import { logAppEvent } from "$lib/appLog";
 import { getSession } from "$lib/auth/auth.svelte";
 import {
+    ACCESS_CHANGED_CODE,
+    CUSTOM_ACCESS,
+    CUSTOM_COMMENT_RESULT,
     CUSTOM_OWNER_LEFT,
+    type CommentCommand,
     LEGACY_OWNER_LEFT_REASON,
+    type LiveRole,
     MESSAGE_CUSTOM,
     decodeCustomMessage,
+    encodeCommentCommand,
 } from "@quillium/share/collab-contract";
 import * as decoding from "lib0/decoding";
-import type { Awareness } from "y-protocols/awareness";
+import * as encoding from "lib0/encoding";
+import { writable } from "svelte/store";
+import { type Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
+import * as syncProtocol from "y-protocols/sync";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
@@ -56,6 +65,53 @@ if (!relayConfigured) {
 let currentProvider: WebsocketProvider | null = null;
 let currentYdoc: Y.Doc | null = null;
 let currentDocId: string | null = null;
+export const accessChangedSignal = writable(0);
+export type InvitationAccess = { token: string; role: LiveRole };
+export type CommentInput =
+    | Omit<Extract<CommentCommand, { kind: "createComment" }>, "requestId" | "roomEpoch">
+    | Omit<Extract<CommentCommand, { kind: "replyToComment" }>, "requestId" | "roomEpoch">;
+let currentRoomEpoch: string | null = null;
+let currentRole: LiveRole = "viewer";
+const pendingComments = new Map<
+    string,
+    { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+>();
+
+export function getCollabRole(): LiveRole {
+    return currentRole;
+}
+
+export type CommentOperation = () => Promise<void>;
+
+export function prepareCommentOperation(input: CommentInput): CommentOperation {
+    const provider = currentProvider;
+    const epoch = currentRoomEpoch;
+    if (!provider || !epoch || currentRole === "viewer")
+        throw new Error("Comment access is unavailable");
+    const requestId = crypto.randomUUID();
+    const encoded = encodeCommentCommand({ ...input, requestId, roomEpoch: epoch });
+    return async (): Promise<void> => {
+        if (currentProvider !== provider || currentRoomEpoch !== epoch || currentRole === "viewer")
+            throw new Error("This Live Room session has ended");
+        if (!provider.ws || provider.ws.readyState !== WebSocket.OPEN)
+            throw new Error("Comment access is unavailable");
+        if (pendingComments.has(requestId)) throw new Error("This comment is still being sent");
+        await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                pendingComments.delete(requestId);
+                reject(new Error("The comment could not be confirmed. Try again."));
+            }, 10000);
+            pendingComments.set(requestId, { resolve, reject, timer });
+            try {
+                provider.ws?.send(encoded);
+            } catch (error) {
+                clearTimeout(timer);
+                pendingComments.delete(requestId);
+                reject(error);
+            }
+        });
+    };
+}
 
 // ── Reconnection tracking ───────────────────────────────────────────────────
 
@@ -71,6 +127,7 @@ export interface YjsProviderResult {
     ytext: Y.Text;
     ymap: Y.Map<YjsAnnotationNode>;
     yVersionGroups: Y.Map<YjsVersionGroup>;
+    readonly role: LiveRole;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -82,7 +139,10 @@ export interface YjsProviderResult {
  * @returns Provider, awareness, ydoc, and ytext instances
  * @throws If not authenticated or relay not configured
  */
-export async function createYjsProvider(docId: string): Promise<YjsProviderResult> {
+export async function createYjsProvider(
+    docId: string,
+    access?: InvitationAccess,
+): Promise<YjsProviderResult> {
     // Cleanup existing connection if any
     if (currentProvider) {
         disconnectYjsProvider();
@@ -111,18 +171,93 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     const provider = new WebsocketProvider(relayUrl, docId, ydoc, {
         params: {
             auth: session.access_token,
+            ...(access ? { invitation: access.token } : {}),
         },
         connect: true,
+        disableBc: true,
         maxBackoffTime: 5000, // 5 seconds max between retries (default is 2.5s)
     });
 
-    const awarenessQueryHandler = provider.messageHandlers[MESSAGE_CUSTOM];
+    provider.awareness.off("update", provider._awarenessUpdateHandler);
+    provider._awarenessUpdateHandler = (
+        changes: { added: number[]; updated: number[]; removed: number[] },
+        origin: unknown,
+    ): void => {
+        const ownId = provider.awareness.clientID;
+        if (
+            origin === provider ||
+            ![...changes.added, ...changes.updated, ...changes.removed].includes(ownId) ||
+            provider.ws?.readyState !== 1
+        )
+            return;
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, 1);
+        encoding.writeVarUint8Array(encoder, encodeAwarenessUpdate(provider.awareness, [ownId]));
+        provider.ws.send(encoding.toUint8Array(encoder));
+    };
+    provider.awareness.on("update", provider._awarenessUpdateHandler);
+    currentRole = access?.role ?? "editor";
+    let admittedAccess: { role: LiveRole; epoch: string } | null = null;
+    const syncHandler = provider.messageHandlers[0];
+    provider.messageHandlers[0] = (encoder, decoder, instance, emitSynced, messageType) => {
+        if (currentRole === "editor") {
+            syncHandler(encoder, decoder, instance, emitSynced, messageType);
+            return;
+        }
+        const subtype = decoding.readVarUint(decoder);
+        if (subtype === syncProtocol.messageYjsSyncStep1) return;
+        if (
+            subtype !== syncProtocol.messageYjsSyncStep2 &&
+            subtype !== syncProtocol.messageYjsUpdate
+        )
+            return;
+        syncProtocol.readSyncStep2(decoder, instance.doc, instance);
+        if (emitSynced && subtype === syncProtocol.messageYjsSyncStep2) instance.synced = true;
+    };
+    let rawUpdatesEnabled = currentRole === "editor";
+    if (!rawUpdatesEnabled) ydoc.off("update", provider._updateHandler);
     provider.messageHandlers[MESSAGE_CUSTOM] = (encoder, decoder, ...args) => {
         if (!decoding.hasContent(decoder)) {
-            awarenessQueryHandler(encoder, decoder, ...args);
+            encoding.writeVarUint(encoder, 1);
+            encoding.writeVarUint8Array(
+                encoder,
+                encodeAwarenessUpdate(provider.awareness, [provider.awareness.clientID]),
+            );
             return;
         }
         const message = decodeCustomMessage(decoder);
+        if (message?.subtype === CUSTOM_ACCESS && currentProvider === provider) {
+            if (
+                admittedAccess &&
+                (admittedAccess.role !== message.payload.role ||
+                    admittedAccess.epoch !== message.payload.roomEpoch)
+            ) {
+                accessChangedSignal.update((value) => value + 1);
+                disconnectYjsProvider();
+                return;
+            }
+            admittedAccess = { role: message.payload.role, epoch: message.payload.roomEpoch };
+            currentRole = message.payload.role;
+            const allowRawUpdates = currentRole === "editor";
+            if (allowRawUpdates !== rawUpdatesEnabled) {
+                if (allowRawUpdates) ydoc.on("update", provider._updateHandler);
+                else ydoc.off("update", provider._updateHandler);
+                rawUpdatesEnabled = allowRawUpdates;
+            }
+            currentRoomEpoch = message.payload.roomEpoch;
+        }
+        if (message?.subtype === CUSTOM_COMMENT_RESULT && currentProvider === provider) {
+            const pending = pendingComments.get(message.payload.requestId);
+            if (pending) {
+                clearTimeout(pending.timer);
+                pendingComments.delete(message.payload.requestId);
+                if (message.payload.ok) pending.resolve();
+                else
+                    pending.reject(
+                        new Error(message.payload.error ?? "The comment was not accepted"),
+                    );
+            }
+        }
         if (message?.subtype === CUSTOM_OWNER_LEFT && currentProvider === provider) {
             handleOwnerLeft();
         }
@@ -176,6 +311,11 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         on(event: "connection-close", handler: (event: CloseEvent | null) => void): void;
     };
     providerWithConnectionClose.on("connection-close", (event) => {
+        if (event?.code === ACCESS_CHANGED_CODE && currentProvider === provider) {
+            accessChangedSignal.update((value) => value + 1);
+            disconnectYjsProvider();
+            return;
+        }
         // Older relays may only close the socket. Keep their established signal.
         if (event?.reason === LEGACY_OWNER_LEFT_REASON && currentProvider === provider) {
             handleOwnerLeft();
@@ -217,6 +357,9 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         ytext,
         ymap,
         yVersionGroups,
+        get role() {
+            return currentRole;
+        },
     };
 }
 
@@ -224,6 +367,13 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
  * Disconnect from Yjs relay and cleanup.
  */
 export function disconnectYjsProvider(): void {
+    for (const pending of pendingComments.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error("The Live Room connection ended"));
+    }
+    pendingComments.clear();
+    currentRoomEpoch = null;
+    currentRole = "viewer";
     if (currentProvider) {
         void logAppEvent("info", "collab", "provider disconnected", { docId: currentDocId });
         currentProvider.destroy();

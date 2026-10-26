@@ -30,6 +30,21 @@
       "endpoints": [
         "https://github.com/ThatXliner/quillium-releases/releases/latest/download/latest.json"
       ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "quillium"
+        ]
+      },
+      "mobile": [
+        {
+          "scheme": [
+            "quillium"
+          ],
+          "appLink": false
+        }
+      ]
     }
   },
   "bundle": {

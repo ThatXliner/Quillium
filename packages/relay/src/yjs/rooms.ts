@@ -51,10 +51,12 @@ export async function getOrCreateYjsRoom(documentId: string): Promise<YjsRoom> {
                             `Migrated room ${documentId.slice(0, 8)}... to Yjs schema v${migration.currentVersion}`,
                         );
                     }
+                    const awareness = new Awareness(ydoc);
+                    awareness.setLocalState(null);
                     const room: YjsRoom = {
                         documentId,
                         ydoc,
-                        awareness: new Awareness(ydoc),
+                        awareness,
                         clients: new Set(),
                         cleanupTimer: null,
                         isOwnerConnected: false,

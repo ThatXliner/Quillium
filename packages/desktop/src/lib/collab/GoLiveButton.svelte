@@ -16,10 +16,14 @@
       - ShareModalPreviewTab / ShareModalCollabTab render the two tabs.
 -->
 <script lang="ts">
-import { getUser, isAuthenticated } from "$lib/auth/auth.svelte";
+import { getUser, isAuthenticated, isLoading } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
 import { collabState, ownerLeftSignal, reconnectAttempt, relayConfigured } from "$lib/collab";
 import ShareModalCollabTab from "$lib/collab/ShareModalCollabTab.svelte";
+import JoinRoomDialog from "./invitations/JoinRoomDialog.svelte";
+import { pendingInvitation } from "./invitations/deepLink";
+import { accessChangedSignal } from "./yjsProvider";
+import { roleLabel } from "./invitations/repository";
 import ShareModalPreviewTab from "$lib/collab/ShareModalPreviewTab.svelte";
 import { LiveSessionController } from "$lib/collab/liveSession.svelte";
 import { serializeLoadedShareState } from "$lib/collab/loadedShareState";
@@ -51,6 +55,7 @@ import {
     documentContent,
     editorView,
     versionGroups,
+    tutorialActive,
 } from "$lib/stores";
 import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import {
@@ -70,6 +75,11 @@ const session = new LiveSessionController();
 const publisher = new ReadonlySharePublisher();
 
 let modalOpen = $state(false);
+let joinInvitation = $state<string | null>(null);
+let lastInvitation = $state<string | null>(null);
+let authInvitation = $state<string | null>(null);
+let handledOwnerLeftSignal = 0;
+let handledAccessChangedSignal = 0;
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let activeTab = $state<ShareTab>("preview");
 let tabTrackEl = $state<HTMLElement | undefined>(undefined);
@@ -145,6 +155,21 @@ const draftAnnotationCount = $derived(
         ? serializeAnnotations($documentContent, $annotations, $versionGroups ?? {}).length
         : 0,
 );
+
+$effect(() => {
+    if ($pendingInvitation && !isLoading() && $editorView) {
+        openInvitation($pendingInvitation);
+        pendingInvitation.set(null);
+    }
+});
+
+function openInvitation(invitation: string): void {
+    closeModal();
+    tutorialActive.set(false);
+    lastInvitation = invitation;
+    authInvitation = null;
+    joinInvitation = invitation;
+}
 
 $effect(() => {
     if (modalOpen && dialogEl && !dialogEl.open) {
@@ -248,9 +273,17 @@ $effect(() => {
 
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
 $effect(() => {
-    if ($ownerLeftSignal > 0 && session.isLive) {
-        session.handleOwnerLeft();
-    }
+    const signal = $ownerLeftSignal;
+    if (signal === handledOwnerLeftSignal) return;
+    handledOwnerLeftSignal = signal;
+    if (session.isLive) session.handleOwnerLeft();
+});
+
+$effect(() => {
+    const signal = $accessChangedSignal;
+    if (signal === handledAccessChangedSignal) return;
+    handledAccessChangedSignal = signal;
+    if (session.isLive) session.handleAccessChanged();
 });
 
 // React to reconnection state changes
@@ -302,7 +335,12 @@ async function buildPublishPayload(scope: ReadonlyShareScope = shareScope) {
                 tab.id === $currentTabId && draft.id === $currentDraftId && view
                     ? serializeShareState(view.state)
                     : serializeLoadedShareState(await loadDocumentState(shareId, draft.id));
-            return { id: tab.id, label: tab.label, draftId: draft.id, state };
+            return {
+                id: tab.id,
+                label: tab.label,
+                draftId: draft.id,
+                state,
+            };
         }),
     );
     const activeTabId = publishedTabs.some((tab) => tab?.id === $currentTabId)
@@ -338,7 +376,9 @@ function setReadonlyShareAutoUpdate(enabled: boolean) {
 
 function handleAutoUpdateDebounceInput(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
-    updateSettings({ readonlyShareAutoUpdateDebounceMs: Number(input.value) * 1000 });
+    updateSettings({
+        readonlyShareAutoUpdateDebounceMs: Number(input.value) * 1000,
+    });
 }
 
 function resetAutoUpdateDebounce() {
@@ -396,18 +436,26 @@ let restoreSize = $state<(() => void) | undefined>();
                 onclick={() => (modalOpen = true)}
                 class="relative inline-flex rounded-full text-xs font-semibold shadow-md transition-colors"
                 aria-haspopup="dialog"
-                aria-label={shareNeedsUpdate
-                    ? "Share, public link has unpublished changes"
-                    : "Share"}
+                aria-label={[
+                    "Share",
+                    session.isLive && $collabSession && !$collabSession.isOwner
+                        ? `Live · ${roleLabel[$collabSession.role ?? "viewer"]}`
+                        : "",
+                    shareNeedsUpdate ? "Public link has unpublished changes" : "",
+                ]
+                    .filter(Boolean)
+                    .join(". ")}
             >
                 <span
                     class="inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2
                         {session.isLive
-                            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                            : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
+                        ? 'bg-emerald-700 text-white hover:bg-emerald-800'
+                        : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
                 >
                     <Share2 size={14} />
-                    Share
+                    {session.isLive && $collabSession && !$collabSession.isOwner
+                        ? `Live · ${roleLabel[$collabSession.role ?? "viewer"]}`
+                        : "Share"}
                 </span>
             </button>
 
@@ -422,6 +470,35 @@ let restoreSize = $state<(() => void) | undefined>();
             {/if}
         </div>
 
+        {#if !joinInvitation && !session.isLive && session.lastJoinError?.code === "access_changed"}
+            <div
+                class="fixed bottom-24 left-4 right-4 z-[60] mx-auto w-[min(384px,calc(100vw-32px))] rounded-xl border border-black/10 bg-white p-3 text-xs text-black/75 shadow-lg sm:bottom-6"
+            >
+                <p role="status">{session.lastJoinError.message}</p>
+                <div class="mt-2 flex gap-3">
+                    {#if lastInvitation}<button
+                            type="button"
+                            onclick={() => {
+                                if (lastInvitation) openInvitation(lastInvitation);
+                            }}
+                            class="min-h-8 font-semibold text-blue-700">Rejoin</button
+                        >{/if}<button
+                        type="button"
+                        onclick={() => (session.lastJoinError = null)}
+                        class="min-h-8">Dismiss</button
+                    >
+                </div>
+            </div>
+        {:else if authInvitation && !joinInvitation && !session.isLive}
+            <button
+                type="button"
+                onclick={() => {
+                    if (authInvitation) openInvitation(authInvitation);
+                }}
+                class="min-h-9 rounded-full bg-white px-4 text-xs font-semibold text-black/75 shadow-sm"
+                >Continue invitation</button
+            >
+        {/if}
         {#if shareNeedsUpdate}
             <button
                 type="button"
@@ -449,12 +526,21 @@ let restoreSize = $state<(() => void) | undefined>();
             class="m-0 flex h-screen max-h-screen w-screen max-w-screen items-center justify-center border-none bg-transparent p-0 [&::backdrop]:bg-black/20 [&::backdrop]:backdrop-blur-[5px]"
             onclick={handleBackdropClick}
         >
-            <div class="flex flex-col w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
-                <header class="shrink-0 flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
+            <div
+                class="flex flex-col w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]"
+            >
+                <header
+                    class="shrink-0 flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]"
+                >
                     <div>
                         <div class="flex items-center gap-2.5">
-                            <h2 class="m-0 text-2xl/[1.1] font-[650] text-black/80">Share your document</h2>
-                            <span class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-amber-600">Beta</span>
+                            <h2 class="m-0 text-2xl/[1.1] font-[650] text-black/80">
+                                Share your document
+                            </h2>
+                            <span
+                                class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-amber-600"
+                                >Beta</span
+                            >
                         </div>
                     </div>
                     <div class="flex items-center gap-1 shrink-0">
@@ -491,7 +577,7 @@ let restoreSize = $state<(() => void) | undefined>();
                         onclick={() => (activeTab = "collaborate")}
                         class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "collaborate" ? "text-black/70" : "text-black/40 hover:text-black/60"}`}
                     >
-                        Omni
+                        Live Room
                     </button>
                     <button
                         role="tab"
@@ -503,7 +589,9 @@ let restoreSize = $state<(() => void) | undefined>();
                     </button>
                 </div>
 
-                <section class="min-h-0 overflow-y-auto m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
+                <section
+                    class="min-h-0 overflow-y-auto m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]"
+                >
                     {#if activeTab === "preview"}
                         <ShareModalPreviewTab
                             {authenticated}
@@ -532,6 +620,8 @@ let restoreSize = $state<(() => void) | undefined>();
                             {session}
                             {currentId}
                             onopenauth={openAuth}
+                            onjoin={openInvitation}
+                            onpreview={() => (activeTab = "preview")}
                         />
                     {/if}
                 </section>
@@ -539,4 +629,18 @@ let restoreSize = $state<(() => void) | undefined>();
             </div>
         </dialog>
     {/if}
+{/if}
+
+{#if joinInvitation !== null}
+    {#key joinInvitation}
+        <JoinRoomDialog
+            invitation={joinInvitation}
+            {session}
+            onclose={() => (joinInvitation = null)}
+            onopenauth={() => {
+                authInvitation = lastInvitation;
+                openAuth();
+            }}
+        />
+    {/key}
 {/if}

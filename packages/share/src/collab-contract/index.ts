@@ -2,6 +2,7 @@
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import { z } from "zod";
+import { CUSTOM_ACCESS, CUSTOM_COMMENT_RESULT, LiveRoleSchema } from "./access.js";
 
 export const HandshakeAuthSchema = z.object({
     token: z.string().trim().min(1, "Token is required"),
@@ -16,6 +17,18 @@ export const CUSTOM_CLIENT_LEFT = 2;
 export const LEGACY_OWNER_LEFT_REASON = "Owner left";
 
 export const CustomMessageSchema = z.discriminatedUnion("subtype", [
+    z.object({
+        subtype: z.literal(CUSTOM_ACCESS),
+        payload: z.object({ role: LiveRoleSchema, roomEpoch: z.string().uuid() }),
+    }),
+    z.object({
+        subtype: z.literal(CUSTOM_COMMENT_RESULT),
+        payload: z.object({
+            requestId: z.string().uuid(),
+            ok: z.boolean(),
+            error: z.string().optional(),
+        }),
+    }),
     z.object({ subtype: z.literal(CUSTOM_OWNER_LEFT), payload: z.object({}) }),
     z.object({
         subtype: z.literal(CUSTOM_CLIENT_LEFT),
@@ -45,3 +58,5 @@ export function decodeCustomMessage(decoder: decoding.Decoder): CustomMessage | 
         return null;
     }
 }
+
+export * from "./access.js";

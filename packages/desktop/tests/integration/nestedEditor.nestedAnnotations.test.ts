@@ -1171,3 +1171,21 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
         expect(Object.keys(anns).length).toBe(2);
     });
 });
+
+it("does not flush stale nested annotations after the parent is restored", () => {
+    const revisionId = addRevision(view, 0, 4, "Text");
+    const revision = view.state.field(annotationField)[revisionId];
+    if (!revision || !isAnnotationOfType(revision, "revision")) throw new Error("No revision");
+    const priorVersion = activeVersion(revision);
+    const controller = mountNestedController(view, revisionId);
+    if (!controller.editor) throw new Error("Missing nested editor");
+    addComment(controller.editor, 0, 2);
+    expect(Object.keys(getVersionAnnotationField(view, revisionId))).toHaveLength(1);
+    view.dispatch(
+        updateRevisionVersionState(view.state, revisionId, priorVersion.id, priorVersion),
+    );
+    expect(Object.keys(getVersionAnnotationField(view, revisionId))).toHaveLength(0);
+    controller.controller.destroy();
+    controller.destroy();
+    expect(Object.keys(getVersionAnnotationField(view, revisionId))).toHaveLength(0);
+});

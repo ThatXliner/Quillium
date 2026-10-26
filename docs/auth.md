@@ -48,9 +48,11 @@ offline UI can therefore still offer sign-out.
 `schemas.ts`. Production signup links to the waitlist. Development builds show
 the signup tab unless the debug waitlist mode is enabled.
 
-The auth API also supports `signInAnonymously(displayName)`. A stored anonymous
-session can join a Live Room, but the desktop has no dedicated anonymous
-name-entry modal.
+Opening a Live Room invitation while signed out prompts for a display name.
+The desktop calls `signInAnonymously(displayName)` before resolving a link
+invitation. Email invitations require a permanent account with a confirmed
+matching email. Invalid, expired, revoked, wrong-account, and owner-offline
+results remain distinct in the join dialog.
 
 Display names come from user metadata, with email and `"User"` fallbacks. They
 are presentation data, not authorization data. Access checks use verified user
@@ -63,7 +65,8 @@ ID. Sign-out resets that identity. Event conventions live in the
 
 ## Consumers and verification
 
-The share dialog requires a session to publish or enter rooms. `yjsProvider.ts`
+The share dialog requires a session to publish or enter rooms. Anonymous sessions
+can enter link invitations; only permanent document owners manage grants. `yjsProvider.ts`
 sends its access token to the relay, which verifies it before checking room
 access. `share.ts` supplies auth and author-name information to
 `shareRepository.ts`. See [collaboration](collaboration.md) for those boundaries.

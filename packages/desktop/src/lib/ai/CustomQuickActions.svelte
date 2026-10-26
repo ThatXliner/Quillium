@@ -1,4 +1,5 @@
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { settingsOpen } from "$lib/stores";
 import { ChevronDownIcon, ChevronRightIcon, SlidersHorizontalIcon } from "lucide-svelte";
 
@@ -73,7 +74,7 @@ function openQuickActionSettings() {
             <button
                 type="button"
                 onclick={() => (expanded = !expanded)}
-                {disabled}
+                disabled={disabled || !$collabCapabilities.canEdit}
                 aria-expanded={expanded}
                 class="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm transition-colors
                     disabled:opacity-45 disabled:cursor-not-allowed {palette.toggle} {palette.text}
@@ -103,7 +104,7 @@ function openQuickActionSettings() {
                         <button
                             type="button"
                             onclick={() => choose(prompt)}
-                            {disabled}
+                            disabled={disabled || !$collabCapabilities.canEdit}
                             class="group flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-all
                                 disabled:opacity-50 disabled:cursor-not-allowed {palette.hover}
                                 focus:outline-none focus:ring-2 {palette.ring}"
@@ -136,7 +137,7 @@ function openQuickActionSettings() {
                     <button
                         type="button"
                         onclick={() => choose(prompt)}
-                        {disabled}
+                        disabled={disabled || !$collabCapabilities.canEdit}
                         class="group inline-flex max-w-full items-center gap-1.5 rounded-full border bg-white/75 px-2.5 py-1.5 text-left text-xs shadow-sm transition-all
                             disabled:opacity-50 disabled:cursor-not-allowed {palette.hover} {palette.border}
                             focus:outline-none focus:ring-2 {palette.ring}"

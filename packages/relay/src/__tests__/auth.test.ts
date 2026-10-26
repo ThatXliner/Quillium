@@ -20,6 +20,7 @@ vi.mock("../yjs/rooms.js", () => ({
     getYjsRoom: vi.fn(),
 }));
 
+import { LiveRoomAccessService } from "../access/index.js";
 import { authenticateWebSocket } from "../auth/middleware.js";
 import { supabase } from "../auth/supabase.js";
 import { getYjsRoom } from "../yjs/rooms.js";
@@ -51,6 +52,7 @@ function mockDocumentLookup(data: { owner_id: string } | null, error: unknown = 
 
 describe("authenticateWebSocket", () => {
     beforeEach(() => {
+        vi.restoreAllMocks();
         vi.clearAllMocks();
         vi.mocked(getYjsRoom).mockReturnValue(undefined);
     });
@@ -110,7 +112,7 @@ describe("authenticateWebSocket", () => {
         expect(result).toEqual({ success: false, error: "Permission denied" });
     });
 
-    it("rejects authenticated non-owners when the owner is not live", async () => {
+    it("requires an invitation for authenticated non-owners", async () => {
         mockedSupabase().auth.getUser.mockResolvedValue({
             data: { user: { id: "user-456", is_anonymous: false } },
             error: null,
@@ -122,10 +124,10 @@ describe("authenticateWebSocket", () => {
             "123e4567-e89b-12d3-a456-426614174000",
         );
 
-        expect(result).toEqual({ success: false, error: "Permission denied" });
+        expect(result).toEqual({ success: false, error: "Invitation required" });
     });
 
-    it("accepts authenticated non-owners while the owner is live", async () => {
+    it("rejects a bare document UUID even while the owner is live", async () => {
         mockedSupabase().auth.getUser.mockResolvedValue({
             data: { user: { id: "user-456", is_anonymous: false } },
             error: null,
@@ -141,15 +143,38 @@ describe("authenticateWebSocket", () => {
             "123e4567-e89b-12d3-a456-426614174000",
         );
 
-        expect(result).toEqual({
-            success: true,
-            data: {
-                userId: "user-456",
+        expect(result).toEqual({ success: false, error: "Invitation required" });
+    });
+
+    it("takes the role only from the validated grant", async () => {
+        const resolve = vi
+            .spyOn(LiveRoomAccessService.prototype, "resolve")
+            .mockResolvedValue({
                 documentId: "123e4567-e89b-12d3-a456-426614174000",
-                isOwner: false,
-                isAnonymous: false,
-            },
+                grantId: "grant",
+                role: "viewer",
+                expiresAt: "2099-01-01T00:00:00Z",
+            });
+        mockedSupabase().auth.getUser.mockResolvedValue({
+            data: { user: { id: "guest", is_anonymous: true, user_metadata: { role: "owner" } } },
+            error: null,
         });
+        mockDocumentLookup({ owner_id: "owner" });
+        vi.mocked(getYjsRoom).mockReturnValue({
+            isOwnerConnected: true,
+            ownerId: "owner",
+        } as YjsRoom);
+        const result = await authenticateWebSocket(
+            "jwt",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "invitation",
+        );
+        expect(resolve).toHaveBeenCalledWith(
+            "invitation",
+            expect.objectContaining({ id: "guest" }),
+            "123e4567-e89b-12d3-a456-426614174000",
+        );
+        expect(result.data).toMatchObject({ role: "viewer", grantId: "grant", isOwner: false });
     });
 
     it("accepts document owners", async () => {
@@ -171,6 +196,7 @@ describe("authenticateWebSocket", () => {
                 documentId: "123e4567-e89b-12d3-a456-426614174000",
                 isOwner: true,
                 isAnonymous: false,
+                role: "editor",
             },
         });
     });

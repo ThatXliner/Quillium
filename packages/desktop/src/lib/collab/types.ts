@@ -1,3 +1,4 @@
+import type { LiveRole } from "@quillium/share/collab-contract";
 import type { Awareness } from "y-protocols/awareness";
 import type { WebsocketProvider } from "y-websocket";
 /**
@@ -28,6 +29,7 @@ export type CollabSession = {
     displayName: string;
     cursorColor: string;
     isOwner: boolean;
+    role: LiveRole;
     ydoc: Y.Doc;
     provider: WebsocketProvider;
     awareness: Awareness;

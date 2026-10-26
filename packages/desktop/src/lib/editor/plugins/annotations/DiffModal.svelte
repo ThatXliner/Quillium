@@ -1,4 +1,5 @@
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import posthog from "$lib/posthog";
 import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
 import type { EditorView } from "@codemirror/view";
@@ -176,6 +177,7 @@ let restoreSize = $state<(() => void) | undefined>();
 {/snippet}
 
 {#snippet suggestionHeaderActions()}
+    {#if $collabCapabilities.canEdit}
     <button
         class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-green-50/80 transition-colors"
         onclick={deleteSuggestion}
@@ -184,6 +186,7 @@ let restoreSize = $state<(() => void) | undefined>();
     >
         <Trash2 size={16} />
     </button>
+    {/if}
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -242,7 +245,7 @@ let restoreSize = $state<(() => void) | undefined>();
                 messages={suggestion.thread}
                 onSelectionChange={(index) => (selectedIndex = index)}
                 {threadContent}
-                {actions}
+                actions={$collabCapabilities.canEdit ? actions : undefined}
             />
         {/if}
     </AnnotationModalFrame>

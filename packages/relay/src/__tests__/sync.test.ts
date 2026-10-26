@@ -91,6 +91,7 @@ function makeClient(userId: string, isOwner = false): YjsClientData {
         userId,
         documentId: "test-doc",
         isOwner,
+        role: "editor",
         isAnonymous: false,
     };
 }

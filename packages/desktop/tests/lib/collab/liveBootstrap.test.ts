@@ -1,6 +1,6 @@
 import { collabCompartment, disableCollab, enableCollab } from "$lib/collab";
 import { codeMirrorToYjsAnnotation } from "$lib/collab/annotationSchema";
-import { collabSession } from "$lib/collab/store";
+import { collabSession, collabState } from "$lib/collab/store";
 import type { YjsAnnotationNode, YjsVersionGroup } from "$lib/collab/types";
 import { historyCompartment } from "$lib/editor/extensions";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
@@ -18,10 +18,14 @@ import * as Y from "yjs";
 
 const fixture = vi.hoisted(() => ({ result: undefined as unknown }));
 vi.mock("$lib/collab/yjsProvider", () => ({
-    createYjsProvider: async () => fixture.result,
+    createYjsProvider: async () => {
+        collabState.set("connected");
+        return fixture.result;
+    },
     disconnectYjsProvider: vi.fn(),
     getCurrentDocId: () => "same-document",
-    getYjsProvider: vi.fn(),
+    getYjsProvider: () => (fixture.result as { provider: unknown } | undefined)?.provider,
+    prepareCommentOperation: vi.fn(),
     relayConfigured: true,
 }));
 vi.mock("$lib/auth/auth.svelte", () => ({
@@ -59,7 +63,7 @@ it.each(["Draft B prose", "", "with revisions"])(
             ymap,
             yVersionGroups,
             awareness,
-            provider: { synced: true },
+            provider: { synced: true, on: vi.fn(), off: vi.fn() },
         };
         const view = new EditorView({
             state: EditorState.create({

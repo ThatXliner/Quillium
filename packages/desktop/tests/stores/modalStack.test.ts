@@ -1,4 +1,4 @@
-import { modalStack } from "$lib/stores";
+import { modalAnnotationStores, modalStack } from "$lib/stores";
 import type { ModalEntry } from "$lib/stores";
 import type { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
@@ -176,5 +176,27 @@ describe("modalStack.clear", () => {
     it("is idempotent on an already-empty stack", () => {
         expect(() => modalStack.clear()).not.toThrow();
         expect(get(modalStack)).toHaveLength(0);
+    });
+});
+
+describe("modalStack.removeComment", () => {
+    it("removes the accepted pending composer without closing another editor's same ID", () => {
+        const other = {} as EditorView;
+        modalStack.push(commentEntry(1));
+        modalStack.push(commentEntry(1, other));
+        modalStack.push(commentEntry(2));
+        modalStack.removeComment(fakeView, 1);
+        expect(get(modalStack)).toEqual([commentEntry(1, other), commentEntry(2)]);
+    });
+
+    it("preserves ancestor annotation stores and shifts later modal stores", () => {
+        modalStack.push(revisionEntry(1));
+        modalStack.push(commentEntry(2));
+        modalStack.push(commentEntry(3));
+        modalAnnotationStores.set(0, {});
+        modalAnnotationStores.set(2, {});
+        modalStack.removeComment(fakeView, 2);
+        expect(Object.keys(get(modalAnnotationStores))).toEqual(["0", "1"]);
+        expect(get(modalStack)).toEqual([revisionEntry(1), commentEntry(3)]);
     });
 });

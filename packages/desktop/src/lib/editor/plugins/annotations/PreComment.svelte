@@ -1,4 +1,6 @@
 <script lang="ts">
+import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
+import { roleContext } from "$lib/collab/roleContext";
 import { getCurrentUserName } from "$lib/auth";
 import { avatarColor, initials } from "$lib/auth/avatarUtils";
 import posthog from "$lib/posthog";
@@ -25,9 +27,9 @@ import posthog from "$lib/posthog";
  */
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
-import { removeAnnotation, updateThread } from "./annotationField";
+import { annotationField, removeAnnotation, updateThread } from "./annotationField";
 import { captureCommentEditorPosition, restoreCommentEditorPosition } from "./commentFocus";
-import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
+import { clearDraft, getCommentDraftScope, getDraft, setDraft } from "./drafts.svelte";
 import { type Annotations, type GenericAnnotation, isAnnotationOfType } from "./models";
 import { canCreateNewComment } from "./utils";
 
@@ -44,6 +46,7 @@ const {
 } = $props();
 
 let textarea = $state<HTMLTextAreaElement | undefined>();
+let sendButton = $state<HTMLButtonElement | undefined>();
 let focusedPendingId = $state<number | undefined>(undefined);
 let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
@@ -68,10 +71,26 @@ function resolvePendingComment() {
 
 const pendingComment = $derived(resolvePendingComment());
 
-// Draft text lives in the shared drafts store (keyed by annotation id) so
-// it survives this component unmounting — e.g. when a window resize swaps
-// the floating card layout for the comment modal (#247).
-const commentText = $derived(pendingComment ? getDraft(pendingComment.id) : "");
+const commentText = $derived(pendingComment ? getDraft(view, pendingComment.id) : "");
+const submission = $derived(pendingComment ? getCommentSubmission(view, pendingComment.id) : undefined);
+
+const composerAccess = $derived.by(() => {
+    getCommentDraftScope(view);
+    const role = view.state.facet(roleContext)?.role;
+    return {
+        canEdit: role ? role === "editor" : !view.state.readOnly,
+        canComment: role ? role !== "viewer" : !view.state.readOnly,
+    };
+});
+const submissionError = $derived.by(() => {
+    const error = submission?.error;
+    if (!error) return "";
+    if (/not found|Invalid comment (scope|thread)|selection.*available/.test(error))
+        return "This text or comment has changed. Copy your draft, close this comment, and select the text again.";
+    if (/access|permission|session.*ended|connection ended/i.test(error))
+        return "This Live Room can't accept your comment right now. Copy this draft, then reopen your invitation.";
+    return "Your comment wasn't confirmed. Your draft is still here. Check your connection and try again.";
+});
 
 // Auto-focus the textarea when a pending (unsaved) comment exists
 $effect(() => {
@@ -104,8 +123,26 @@ const selectedText = $derived(
  * After saving, restore the editor selection to cover the
  * commented text (Google Docs behaviour).
  */
-function addComment() {
-    if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
+async function addComment(): Promise<void> {
+    if (!composerAccess.canComment || !pendingComment || !isAnnotationOfType(pendingComment, "comment") || submission?.pending) return;
+    const submitted = commentText;
+    const submittedScope = getCommentDraftScope(view);
+    const submittedId = pendingComment.id;
+    if (submission) {
+        const restoreFocus = document.activeElement === textarea || document.activeElement === sendButton;
+        const accepted = await submission.send(submitted.trim());
+        if (accepted) {
+            if (
+                getCommentDraftScope(view) === submittedScope &&
+                getDraft(view, submittedId) === submitted
+            ) clearDraft(view, submittedId);
+        } else if (restoreFocus && getCommentDraftScope(view) === submittedScope) {
+            await tick();
+            if (textarea?.isConnected &&
+                (document.activeElement === document.body || document.activeElement === sendButton || document.activeElement === textarea)) textarea.focus();
+        }
+        return;
+    }
     posthog.capture("comment_created", {
         has_selection: !!selectedText,
         comment_length: commentText.length,
@@ -115,6 +152,7 @@ function addComment() {
     // everything needed after dispatch before making that state transition.
     const annotationId = pendingComment.id;
     const { from, to } = pendingComment.selection.main;
+    const expectedLength = pendingComment.thread.length + 1;
     view.dispatch(
         view.state.update({
             effects: [
@@ -135,7 +173,9 @@ function addComment() {
             selection: { anchor: from, head: to },
         }),
     );
-    clearDraft(annotationId);
+    const accepted = view.state.field(annotationField, false)?.[annotationId]?.thread;
+    if (getCommentDraftScope(view) === submittedScope && accepted?.length === expectedLength &&
+        accepted.at(-1)?.message === submitted.trim()) clearDraft(view, annotationId);
 }
 
 function dismissComposer() {
@@ -155,10 +195,11 @@ function cancelComment() {
             effects: [removeAnnotation.of(pendingComment)],
         }),
     );
-    clearDraft(annotationId);
+    clearDraft(view, annotationId);
 }
 </script>
 
+{#if composerAccess.canComment}
 <div class="backdrop-blur-md bg-gray-200/80 border border-white/50 shadow-xl rounded-[14px] overflow-hidden">
     {#if selectedText}
         <div class="px-3 pt-3">
@@ -178,16 +219,16 @@ function cancelComment() {
         </div>
         <textarea
             tabindex="0"
+            disabled={submission?.pending}
             bind:this={textarea}
             bind:value={
                 () => commentText,
-                (v) => pendingComment && setDraft(pendingComment.id, v)
+                (v) => pendingComment && setDraft(view, pendingComment.id, v)
             }
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
-                    addComment();
-                    // @ts-ignore
-                    e.target.blur();
+                    e.preventDefault();
+                    void addComment();
                 } else if (e.key === "Escape") {
                     e.preventDefault();
                     e.stopPropagation();
@@ -201,19 +242,23 @@ function cancelComment() {
         ></textarea>
     </div>
 
+    {#if submissionError}<p role="alert" class="px-3 pb-2 text-xs text-red-700">{submissionError}</p>{/if}
     <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-black/10 pt-2">
         <button
             onclick={cancelComment}
+            disabled={submission?.pending}
             class="text-xs text-black/40 hover:text-black/60 transition-colors"
         >
             Cancel
         </button>
         <button
-            disabled={!commentText}
+            bind:this={sendButton}
+            disabled={!commentText.trim() || submission?.pending}
             onclick={addComment}
             class="px-3 py-1 bg-blue-500/80 text-white text-xs font-medium rounded-full hover:bg-blue-600/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-            Comment
+            {submission?.pending ? "Sending" : "Comment"}
         </button>
     </div>
 </div>
+{/if}

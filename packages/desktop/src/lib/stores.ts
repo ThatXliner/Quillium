@@ -379,6 +379,26 @@ export const modalStack = {
             trimModalAnnotationStores(s.length - 1);
             return s.slice(0, -1);
         }),
+    removeComment: (parentView: EditorView, commentId: number) =>
+        _modalStack.update((stack) => {
+            const index = stack.findIndex(
+                (entry) =>
+                    entry.type === "comment" &&
+                    entry.parentView === parentView &&
+                    entry.commentId === commentId,
+            );
+            if (index < 0) return stack;
+            _modalAnnotationStores.update((levels) => {
+                const shifted: Record<number, Annotations> = {};
+                for (const [key, annotations] of Object.entries(levels)) {
+                    const level = Number(key);
+                    if (level < index) shifted[level] = annotations;
+                    else if (level > index) shifted[level - 1] = annotations;
+                }
+                return shifted;
+            });
+            return [...stack.slice(0, index), ...stack.slice(index + 1)];
+        }),
     popTo: (index: number) =>
         _modalStack.update((s) => {
             trimModalAnnotationStores(index + 1, s.length);

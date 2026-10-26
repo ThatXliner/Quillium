@@ -30,7 +30,7 @@ import {
     getYjsRoom,
     scheduleRoomCleanup,
 } from "../yjs/rooms.js";
-import { MESSAGE_SYNC } from "../yjs/sync.js";
+import { MESSAGE_SYNC, revokeGrantConnections } from "../yjs/sync.js";
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     let resolve = (_value: T): void => {};
@@ -43,7 +43,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 const documentId = "123e4567-e89b-12d3-a456-426614174000";
 const authenticated = {
     success: true,
-    data: { userId: "writer", documentId, isOwner: false, isAnonymous: false },
+    data: { userId: "writer", documentId, isOwner: false, role: "editor", isAnonymous: false },
 };
 
 describe("relay connection lifecycle", () => {
@@ -89,6 +89,61 @@ describe("relay connection lifecycle", () => {
         };
     }
 
+    it.each([false, true])(
+        "rejects delayed admission after revocation, owner reconnect=%s",
+        async (reconnectOwner) => {
+            const ownerAuth = {
+                success: true,
+                data: {
+                    userId: "owner",
+                    documentId,
+                    isOwner: true,
+                    isAnonymous: false,
+                    role: "editor" as const,
+                },
+            };
+            vi.mocked(authenticateWebSocket).mockResolvedValue(ownerAuth);
+            const { connect } = await start();
+            const owner = connect();
+            await once(owner, "message");
+            await vi.waitFor(() => expect(getYjsRoom(documentId)?.clients.size).toBe(1));
+            const delayed = deferred<Awaited<ReturnType<typeof authenticateWebSocket>>>();
+            const guestAuth = {
+                success: true,
+                data: {
+                    userId: "guest",
+                    documentId,
+                    isOwner: false,
+                    isAnonymous: false,
+                    role: "editor" as const,
+                    grantId: "grant",
+                },
+            };
+            vi.mocked(authenticateWebSocket)
+                .mockResolvedValueOnce(guestAuth)
+                .mockReturnValueOnce(delayed.promise);
+            const pending = connect();
+            await once(pending, "open");
+            await vi.waitFor(() => expect(authenticateWebSocket).toHaveBeenCalledTimes(4));
+            revokeGrantConnections(documentId, "grant");
+            if (reconnectOwner) {
+                owner.close();
+                await once(owner, "close");
+                await vi.waitFor(() =>
+                    expect(getYjsRoom(documentId)?.isOwnerConnected).toBe(false),
+                );
+                const replacement = connect();
+                await once(replacement, "message");
+                await vi.waitFor(() => expect(getYjsRoom(documentId)?.isOwnerConnected).toBe(true));
+            }
+            const closed = once(pending, "close");
+            delayed.resolve(guestAuth);
+            const [code] = await closed;
+            expect(code).toBe(4003);
+            expect(getYjsRoom(documentId)?.clients.size).toBe(1);
+        },
+    );
+
     it("closes the WebSocket when room initialization fails and permits a retry", async () => {
         vi.mocked(loadYjsState).mockRejectedValueOnce(new Error("load failed"));
         const { connect } = await start();
@@ -130,7 +185,7 @@ describe("relay connection lifecycle", () => {
 
         expect(loadYjsState).not.toHaveBeenCalled();
         expect(server.wss.clients.size).toBe(0);
-        expect(client.readyState).toBe(WebSocket.CLOSED);
+        await vi.waitFor(() => expect(client.readyState).toBe(WebSocket.CLOSED));
     });
 
     it("waits for initialization without registering a client during shutdown", async () => {
