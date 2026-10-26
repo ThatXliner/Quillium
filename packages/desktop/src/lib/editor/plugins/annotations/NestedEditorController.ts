@@ -41,7 +41,7 @@ import {
 import { getActiveAnnotation } from "./utils";
 
 /** Transaction annotation marking a sync from the parent document. */
-const parentSyncEdit = Annotation.define<true>();
+export const parentSyncEdit = Annotation.define<true>();
 
 export type NestedEditorCallbacks = {
     /** Called after every nested editor transaction with updated annotation state. */

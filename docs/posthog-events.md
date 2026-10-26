@@ -251,3 +251,12 @@ Preview either hero with `/omni?omni-hero=original` or
 `/omni?omni-hero=manuscript`. These links never enroll visitors in the experiment.
 An unavailable or unrecognized flag value uses the manuscript fallback. Changing
 remote experiment settings does not replace a hero already assigned for the visit.
+
+## Invitation privacy
+
+The landing `/join` handoff reads an invitation token from the URL fragment.
+It does not resolve invitations or initialize analytics on a direct visit.
+The landing analytics initializer drops events on `/join` and events containing
+an invitation URL, including after navigation from another page. The handoff
+content blocks autocapture and keeps the token out of referrers. Invitation
+creation and join flows do not emit token, email, or display-name properties.

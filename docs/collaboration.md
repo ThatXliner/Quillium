@@ -78,7 +78,12 @@ Presence and cursor positions use Yjs awareness. Annotations are recursive
 owns conversion between CodeMirror annotations and Yjs nodes.
 [`@quillium/share/collab-contract/annotations`](../packages/share/src/collab-contract/annotations.ts)
 validates nodes before the desktop projects them into CodeMirror. Invalid nodes
-are skipped individually. The relay treats updates as opaque Yjs data.
+are skipped individually. Owners and editors send opaque Yjs updates. The relay rejects every raw Yjs
+mutation from viewers and commenters before application. Commenters instead send
+validated create-comment and reply commands. The relay resolves root or nested
+revision scopes and anchors, then creates the Yjs mutation itself. Viewer
+permissions include reading, presence, and follow mode. Commenters cannot change
+text, suggestions, revisions, existing messages, or comment status.
 
 The relay records its schema version in `__quillium.schemaVersion`. Its v2
 migration converts numeric revision-version keys and `activeVersionIndex` to
@@ -107,7 +112,8 @@ the `"init"` origin, so initial room contents do not become an undo step.
 owns handshake validation and custom frame encoding. The relay validates the
 token and UUID before contacting Supabase, verifies the token, and checks room
 access. A non-owner may join only while the registered owner is connected to
-that relay process. There is no per-invite permission list.
+that relay process. Non-owners must also present a valid Live Room invitation. A document UUID
+alone no longer grants access.
 
 Custom frames use varuint type `3`, a varuint subtype, and a JSON string.
 Subtype `1` signals owner departure with `{}`. Subtype `2` carries a departing
@@ -133,6 +139,60 @@ an error if flushing fails or shutdown exceeds 10 seconds.
 These guarantees require one relay process. Retained failed batches exist only
 in memory and can be lost on a forced exit. Deployment and configuration live
 in the [relay README](../packages/relay/README.md).
+
+## Live Room grants
+
+`packages/relay/src/access/` owns invitation authorization and delivery. Grants
+record the document, creator, role, invited email when present, creation and
+update times, expiry, and revocation. The database stores only a SHA-256 hash of
+each 32-byte random token. Web Preview `shares` rows remain separate.
+
+Verified owners create, list, change, revoke, or replace invitations through the
+relay's `/access/documents/:documentId/grants` endpoints. Direct authenticated
+database writes are denied. Link replacement returns a new token and invalidates
+the previous token. Existing hashes cannot recover a link, so the UI copies a
+newly created link or offers **Replace link** for an older invitation.
+
+`POST /access/invitations/resolve` accepts the token in its JSON body and requires
+a Supabase session. Link grants accept anonymous sessions. Email grants require
+a permanent account with a confirmed matching email. The endpoint reports invalid,
+expired, revoked, wrong-account, and owner-offline states before the desktop
+opens a WebSocket. Invitations expire after seven days by default, with an
+upper limit of 90 days.
+
+The relay rechecks access after room loading and rejects stale authorization
+results using a room epoch and grant change counter. Role changes and revocation
+mark affected connections inactive and remove them from outgoing broadcasts
+before the HTTP response. They must join again with a fresh Y.Doc. Expiry is
+checked on incoming messages and before sending updates, including when a timer
+has not fired yet. These guarantees require the single relay process described
+above. Changes through administrative database credentials outside this API are
+not a supported live management path.
+
+Comment commands carry a room epoch and request ID. Repeating the same command
+within that room session applies it once. Reusing an ID with a different command,
+using anchors in another text scope, or replying to a suggestion or revision is
+rejected. Presence IDs belong to their sending connection and never authorize
+access. Editors retain unrestricted document editing, so stored comment authorship
+is not tamper-proof against editors.
+
+### Local verification and activation prerequisites
+
+Run `supabase start` with a disposable local project, then
+`bun packages/relay/scripts/testAccessLocal.ts`. Set
+`QUILLIUM_TEST_SUPABASE_WORKDIR` when the local project's configuration lives
+outside the repository. The runner reads local credentials without printing them
+and requires the grant and actual relay tests to run. It also runs the existing
+relay convergence suite using invitation grants. The `Live Room access` PR
+workflow runs these checks with local auth and database services.
+
+Apply the appended grant migration and enable anonymous sign-ins when activating
+this feature in an environment. Local `supabase/config.toml` enables anonymous
+sign-ins for tests. No production provider setting is changed by repository
+configuration. Email delivery requires `INVITATION_RESEND_API_KEY` and
+`INVITATION_EMAIL_FROM` in the relay environment and a verified sender. Missing
+transport or failed delivery reports failure and does not leave an active email
+invitation. Tests use an in-memory email sink and simulated transport responses.
 
 ## Web Preview publication
 
@@ -166,6 +226,6 @@ button remains available with Supabase configured even when the relay URL is
 empty. See [auth](auth.md) and the [environment examples](monorepo.md#environment-files).
 
 Live Rooms have no durable joiner workspace, host migration, or offline queue.
-Joiners paste a room ID manually. Web Preview publishes one selected draft per
+Joiners open or paste an invitation link. Web Preview publishes one selected draft per
 included tab, rather than every draft and run. For connected-service checks,
 use the [cross-package E2E guide](../packages/e2e/README.md).

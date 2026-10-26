@@ -1,4 +1,5 @@
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog, { capture, showFeedbackSurvey } from "$lib/posthog";
@@ -782,6 +783,7 @@ function selectRevisionVersion(version: RevisionVersionView) {
 
 {#snippet actions()}
     <div class="px-3 pb-3 flex gap-1.5">
+        {#if $collabCapabilities.canEdit}
         <button
             class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
@@ -792,6 +794,7 @@ function selectRevisionVersion(version: RevisionVersionView) {
             <span>New Version</span>
             <span class="ml-0.5 opacity-50"><Kbd keys={["Cmd", "↵"]} /></span>
         </button>
+        {/if}
         {#if appSettings.showNestedEditor}
             <button
                 data-tutorial-action="toggle-nested-editor"
@@ -813,7 +816,7 @@ function selectRevisionVersion(version: RevisionVersionView) {
 {/snippet}
 
 {#snippet editorContent()}
-    {#if showBoundaryHint}
+    {#if showBoundaryHint && $collabCapabilities.canEdit}
         {#if appSettings.showNestedEditor}
             <button
                 class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
@@ -889,12 +892,12 @@ function selectRevisionVersion(version: RevisionVersionView) {
     onEditingLabelInput={(value) => (labelInputValue = value)}
     onCommitRename={commitLabelEdit}
     onCancelRename={cancelLabelEdit}
-    onRenameVersion={(version) => startLabelEdit(version.index)}
-    onSelectVersion={selectRevisionVersion}
+    onRenameVersion={$collabCapabilities.canEdit ? (version) => startLabelEdit(version.index) : undefined}
+    onSelectVersion={$collabCapabilities.canEdit ? selectRevisionVersion : undefined}
     onOpen={openRevisionModal}
-    onDelete={collapseEntireRevision}
-    {versionControls}
-    {versionMenu}
+    onDelete={$collabCapabilities.canEdit ? collapseEntireRevision : undefined}
+    versionControls={$collabCapabilities.canEdit ? versionControls : undefined}
+    versionMenu={$collabCapabilities.canEdit ? versionMenu : undefined}
     {afterVersions}
     {actions}
     editor={editorContent}

@@ -1,3 +1,4 @@
+import { roleContext } from "$lib/collab/roleContext";
 /**
  * editorialAction.ts - One guarded gateway for AI-created editor annotations.
  *
@@ -389,7 +390,11 @@ export function applyEditorialAction({
     let payload = requestedPayload;
     const view = resolveEditorialTargetView(rootView, target);
     if (!view) return { ok: false, reason: "branch-changed" };
-    if (view.state.readOnly) return { ok: false, reason: "read-only" };
+    if (
+        view.state.readOnly ||
+        (view.state.facet(roleContext) && view.state.facet(roleContext)?.role !== "editor")
+    )
+        return { ok: false, reason: "read-only" };
 
     const selectedTextRange = resolveEditorialTargetRange(view, target);
     const documentText = view.state.doc.toString();

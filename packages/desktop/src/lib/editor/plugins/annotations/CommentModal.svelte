@@ -1,6 +1,7 @@
 <script lang="ts">
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { getCurrentUserName } from "$lib/auth";
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
@@ -224,6 +225,7 @@ let restoreSize = $state<(() => void) | undefined>();
 {/snippet}
 
 {#snippet commentHeaderActions()}
+    {#if $collabCapabilities.canEdit}
     <button
         class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
         onclick={deleteComment}
@@ -232,6 +234,7 @@ let restoreSize = $state<(() => void) | undefined>();
     >
         <Trash2 size={16} />
     </button>
+    {/if}
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -260,6 +263,7 @@ let restoreSize = $state<(() => void) | undefined>();
                     {#if comment}
                         <Thread
                             thread={comment.thread}
+                            commentThread
                             updateThread={handleUpdateThread}
                             annotationId={commentId}
                             view={parentView}
@@ -273,7 +277,7 @@ let restoreSize = $state<(() => void) | undefined>();
                 </div>
 
                 <!-- Reply box anchored at bottom -->
-                {#if comment}
+                {#if comment && $collabCapabilities.canComment}
                     <div class="px-6 pb-5 pt-2 shrink-0">
                         <div class="rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
                             ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
@@ -300,7 +304,7 @@ let restoreSize = $state<(() => void) | undefined>();
                             ></textarea>
                             <div class="flex items-center justify-between px-2 pb-1.5">
                                 <div class="flex items-center gap-1">
-                                    {#if appSettings.aiEnabled}
+                                    {#if appSettings.aiEnabled && $collabCapabilities.canEdit}
                                     <button
                                         aria-label={hasApiKey()
                                             ? "Get AI suggestion"

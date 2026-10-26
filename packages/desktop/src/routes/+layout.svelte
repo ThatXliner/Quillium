@@ -15,6 +15,8 @@ import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/err
 import { novelNovemberEnabled, startFeatureFlagSync } from "$lib/featureFlags.svelte";
 import posthog from "$lib/posthog";
 import { editorView, errorBanner } from "$lib/stores";
+import { listenForInvitations } from "$lib/collab/invitations/deepLink";
+import { goToEditor } from "$lib/navigation";
 import AppLogsModal from "$lib/ui/AppLogsModal.svelte";
 import {
     setWritingReminderFeatureEnabled,
@@ -33,6 +35,17 @@ const { children } = $props();
 let appLogsOpen = $state(false);
 
 $effect(() => setWritingReminderFeatureEnabled($novelNovemberEnabled));
+
+onMount(() => {
+    let destroyed = false;
+    /** @type {(() => void) | undefined} */
+    let stop;
+    listenForInvitations(() => { void goToEditor(); }).then((unsubscribe) => {
+        if (destroyed) unsubscribe();
+        else stop = unsubscribe;
+    }).catch(() => { console.error("[collab] Invitation links could not be registered"); });
+    return () => { destroyed = true; stop?.(); };
+});
 
 onMount(() => {
     let destroyed = false;

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
@@ -131,13 +132,14 @@ function selectCommentText() {
 {#snippet threadContent()}
         <Thread
             {thread}
+            commentThread
             {updateThread}
             {view}
             annotationId={comment.id}
             previewOnly={!isActive}
             originPosition={replyOrigin}
             onRestoreOrigin={() => (replyOrigin = undefined)}
-            onAiSuggest={isActive && appSettings.aiEnabled ? aiSuggestion : undefined}
+            onAiSuggest={isActive && appSettings.aiEnabled && $collabCapabilities.canEdit ? aiSuggestion : undefined}
             aiSuggestDisabled={!hasApiKey()}
             onDisabledAiSuggest={() => appEventBus.emit({ type: "ai-open-settings" })}
             accentClass="text-blue-600/80 hover:text-blue-700"
@@ -150,6 +152,6 @@ function selectCommentText() {
     {selectedText}
     onSelectText={selectCommentText}
     onOpen={openComment}
-    onDelete={deleteComment}
+    onDelete={$collabCapabilities.canEdit ? deleteComment : undefined}
     thread={threadContent}
 />

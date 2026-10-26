@@ -1,8 +1,13 @@
 import {
+    ACCESS_CHANGED_CODE,
+    CUSTOM_ACCESS,
     CUSTOM_CLIENT_LEFT,
+    CUSTOM_COMMENT_RESULT,
     CUSTOM_OWNER_LEFT,
     type CustomMessage,
     LEGACY_OWNER_LEFT_REASON,
+    MESSAGE_COMMENT,
+    decodeCommentCommand,
     encodeCustomMessage,
 } from "@quillium/share/collab-contract";
 export {
@@ -30,11 +35,68 @@ import * as Y from "yjs";
 
 // Use ws package WebSocket type
 type WebSocket = WsWebSocket;
+import { randomUUID } from "node:crypto";
 import { createLogger } from "../logger.js";
-import { clearRoomState } from "./rooms.js";
+import { applyCommentCommand } from "./comments.js";
+import { clearRoomState, getYjsRoom } from "./rooms.js";
 import type { YjsClientData, YjsRoom } from "./types.js";
 
 const logger = createLogger("yjs");
+
+type Connection = {
+    active: boolean;
+    data: YjsClientData;
+    awarenessId?: number;
+    expiry?: ReturnType<typeof setTimeout>;
+};
+type RoomAccess = {
+    epoch: string;
+    generation: number;
+    requests: Map<string, string>;
+    connections: Map<WebSocket, Connection>;
+};
+const accessStates = new WeakMap<YjsRoom, RoomAccess>();
+
+function roomAccess(room: YjsRoom): RoomAccess {
+    let state = accessStates.get(room);
+    if (!state) {
+        state = { epoch: randomUUID(), generation: 0, requests: new Map(), connections: new Map() };
+        accessStates.set(room, state);
+    }
+    return state;
+}
+
+function disconnectAccess(room: YjsRoom, ws: WebSocket, connection: Connection): void {
+    connection.active = false;
+    clearTimeout(connection.expiry);
+    room.clients.delete(ws);
+    ws.close(ACCESS_CHANGED_CODE, "Access changed. Open your invitation again.");
+}
+
+function canReceive(room: YjsRoom, ws: WebSocket): boolean {
+    const connection = roomAccess(room).connections.get(ws);
+    if (!connection?.active || ws.readyState !== 1) return false;
+    if (connection.data.expiresAt && Date.parse(connection.data.expiresAt) <= Date.now()) {
+        disconnectAccess(room, ws, connection);
+        return false;
+    }
+    return true;
+}
+
+export function getAccessGeneration(room: YjsRoom): string {
+    const state = roomAccess(room);
+    return `${state.epoch}/${state.generation}`;
+}
+
+export function revokeGrantConnections(documentId: string, grantId: string): void {
+    const room = getYjsRoom(documentId);
+    if (!room) return;
+    const state = roomAccess(room);
+    state.generation++;
+    for (const [ws, connection] of state.connections) {
+        if (connection.data.grantId === grantId) disconnectAccess(room, ws, connection);
+    }
+}
 
 // Message type constants
 export const MESSAGE_SYNC = 0;
@@ -57,8 +119,30 @@ export function setupYjsConnection(
 ): void {
     const { ydoc, awareness, clients } = room;
 
-    // Add client to room
+    const access = roomAccess(room);
+    const connection: Connection = { active: true, data: clientData };
+    access.connections.set(ws, connection);
+    if (clientData.expiresAt) {
+        const remaining = Date.parse(clientData.expiresAt) - Date.now();
+        if (remaining <= 0) {
+            disconnectAccess(room, ws, connection);
+            access.connections.delete(ws);
+            return;
+        }
+        const expire = (): void => {
+            const delay = Date.parse(clientData.expiresAt ?? "") - Date.now();
+            if (delay <= 0) disconnectAccess(room, ws, connection);
+            else connection.expiry = setTimeout(expire, Math.min(delay, 2_147_483_647));
+        };
+        expire();
+    }
     clients.add(ws);
+    ws.send(
+        encodeCustomMessage({
+            subtype: CUSTOM_ACCESS,
+            payload: { role: clientData.role, roomEpoch: access.epoch },
+        }),
+    );
 
     // Track owner connection for D-57
     if (clientData.isOwner) {
@@ -76,7 +160,7 @@ export function setupYjsConnection(
     syncProtocol.writeSyncStep1(syncEncoder, ydoc);
     const syncMsg = encoding.toUint8Array(syncEncoder);
     logger.debug(`Sending sync step 1 to client, ${syncMsg.length} bytes`);
-    ws.send(syncMsg);
+    if (clientData.isOwner || clientData.role === "editor") ws.send(syncMsg);
 
     // Also send sync step 2 (full doc state) immediately
     // This ensures the client receives the complete document state
@@ -108,13 +192,14 @@ export function setupYjsConnection(
     // only the handler for the ORIGIN client does the broadcast (otherwise
     // we'd echo the sender and skip the real recipients, or broadcast N
     // times instead of once).
+    const commandOrigin = {};
     const updateHandler = (update: Uint8Array, origin: unknown) => {
         // Only the handler owned by the originating ws should broadcast.
         // Updates from other origins (e.g. server-initiated) still broadcast
         // via the first-registered handler; since all handlers share the
         // same room.clients set, pick the one whose ws matches origin, or
         // fall through for non-ws origins using only the first handler.
-        if (origin !== ws) return;
+        if (origin !== ws && origin !== commandOrigin) return;
 
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, MESSAGE_SYNC);
@@ -123,7 +208,7 @@ export function setupYjsConnection(
 
         // Broadcast to all OTHER clients (everyone except the sender)
         for (const client of clients) {
-            if (client !== ws && client.readyState === 1) {
+            if ((client !== ws || origin === commandOrigin) && canReceive(room, client)) {
                 client.send(message);
             }
         }
@@ -153,7 +238,7 @@ export function setupYjsConnection(
 
         // Broadcast to all clients
         for (const client of clients) {
-            if (client.readyState === 1) {
+            if (canReceive(room, client)) {
                 client.send(message);
             }
         }
@@ -163,33 +248,33 @@ export function setupYjsConnection(
     // Handle incoming messages
     ws.on("message", (data: ArrayBuffer) => {
         try {
-            handleMessage(ws, room, clientData, new Uint8Array(data));
+            if (!connection.active || !clients.has(ws)) return;
+            if (clientData.expiresAt && Date.parse(clientData.expiresAt) <= Date.now()) {
+                disconnectAccess(room, ws, connection);
+                return;
+            }
+            handleMessage(ws, room, clientData, new Uint8Array(data), commandOrigin);
         } catch (e) {
             logger.error("Message handling error:", e);
         }
     });
 
-    // Track this client's awareness ID so we can clean it up on disconnect.
-    // The awareness ID is set when the client sends their first awareness update.
-    let clientAwarenessId: number | null = null;
-    const trackAwarenessId = ({ added }: { added: number[] }) => {
-        // Capture the first awareness ID this client broadcasts
-        if (clientAwarenessId === null && added.length > 0) {
-            clientAwarenessId = added[0];
-        }
-    };
-    awareness.on("update", trackAwarenessId);
-
     // Handle disconnect
     ws.on("close", () => {
+        connection.active = false;
+        clearTimeout(connection.expiry);
+        access.connections.delete(ws);
         clients.delete(ws);
         ydoc.off("update", updateHandler);
         awareness.off("update", awarenessHandler);
-        awareness.off("update", trackAwarenessId);
 
         // Remove client's awareness state (fixes ghost cursor bug)
-        if (clientAwarenessId !== null) {
-            awarenessProtocol.removeAwarenessStates(awareness, [clientAwarenessId], "disconnect");
+        if (connection.awarenessId !== undefined) {
+            awarenessProtocol.removeAwarenessStates(
+                awareness,
+                [connection.awarenessId],
+                "disconnect",
+            );
         }
 
         // Broadcast client left
@@ -214,8 +299,14 @@ export function setupYjsConnection(
 
             // Close all client connections
             for (const client of clients) {
+                const peer = access.connections.get(client);
+                if (peer) peer.active = false;
                 client.close(1000, LEGACY_OWNER_LEFT_REASON);
             }
+            clients.clear();
+            access.epoch = randomUUID();
+            access.generation++;
+            access.requests.clear();
 
             // Per D-55/D-57: Live Room mode — owner's local SQLite is source of truth.
             // Clear Y.Doc and awareness so reconnecting owner gets fresh state.
@@ -231,8 +322,9 @@ export function setupYjsConnection(
 function handleMessage(
     ws: WebSocket,
     room: YjsRoom,
-    _clientData: YjsClientData,
+    clientData: YjsClientData,
     data: Uint8Array,
+    commandOrigin: object,
 ): void {
     const { ydoc, awareness } = room;
     const decoder = decoding.createDecoder(data);
@@ -246,7 +338,23 @@ function handleMessage(
             // Read sync message and write response
             // Wrap in try-catch per T-07.5-07: malformed data mitigation
             try {
-                const messageType = syncProtocol.readSyncMessage(decoder, encoder, ydoc, ws);
+                const subtype = decoding.readVarUint(decoder);
+                if (subtype === syncProtocol.messageYjsSyncStep1) {
+                    syncProtocol.readSyncStep1(decoder, encoder, ydoc);
+                } else if (
+                    subtype === syncProtocol.messageYjsSyncStep2 ||
+                    subtype === syncProtocol.messageYjsUpdate
+                ) {
+                    if (!clientData.isOwner && clientData.role !== "editor") {
+                        const connection = roomAccess(room).connections.get(ws);
+                        if (connection) disconnectAccess(room, ws, connection);
+                        return;
+                    }
+                    syncProtocol.readSyncStep2(decoder, ydoc, ws);
+                } else {
+                    throw new Error("Unknown sync subtype");
+                }
+                const messageType = subtype;
                 logger.debug(
                     `Received sync message type ${messageType}, response length: ${encoding.length(encoder)}`,
                 );
@@ -264,12 +372,96 @@ function handleMessage(
             break;
         }
 
+        case MESSAGE_COMMENT: {
+            if (data.byteLength > 65536) {
+                ws.close(1009, "Comment command too large");
+                return;
+            }
+            let requestId: string | undefined;
+            try {
+                const command = decodeCommentCommand(decoder);
+                requestId = command.requestId;
+                if (!clientData.isOwner && clientData.role === "viewer")
+                    throw new Error("Comment permission required");
+                const access = roomAccess(room);
+                if (command.roomEpoch !== access.epoch)
+                    throw new Error("This Live Room session has ended");
+                const key = `${clientData.userId}/${command.requestId}`;
+                const serialized = JSON.stringify(command);
+                const previous = access.requests.get(key);
+                if (previous !== undefined && previous !== serialized)
+                    throw new Error("Request ID already used");
+                if (previous === undefined) {
+                    if (access.requests.size >= 10000)
+                        throw new Error("Comment limit reached for this session");
+                    applyCommentCommand(ydoc, command, clientData.userId, commandOrigin);
+                    access.requests.set(key, serialized);
+                }
+                ws.send(
+                    encodeCustomMessage({
+                        subtype: CUSTOM_COMMENT_RESULT,
+                        payload: { requestId, ok: true },
+                    }),
+                );
+            } catch (error) {
+                if (requestId) {
+                    ws.send(
+                        encodeCustomMessage({
+                            subtype: CUSTOM_COMMENT_RESULT,
+                            payload: {
+                                requestId,
+                                ok: false,
+                                error: error instanceof Error ? error.message : "Invalid comment",
+                            },
+                        }),
+                    );
+                } else {
+                    ws.close(1003, "Invalid comment command");
+                }
+            }
+            break;
+        }
+
         case MESSAGE_AWARENESS: {
             // Wrap in try-catch per T-07.5-07: malformed data mitigation
             try {
+                const payload = decoding.readVarUint8Array(decoder);
+                const presence = decoding.createDecoder(payload);
+                if (decoding.readVarUint(presence) !== 1)
+                    throw new Error("Expected one presence identity");
+                const id = decoding.readVarUint(presence);
+                const clock = decoding.readVarUint(presence);
+                const value: unknown = JSON.parse(decoding.readVarString(presence));
+                if (decoding.hasContent(presence)) throw new Error("Trailing presence data");
+                const access = roomAccess(room);
+                const connection = access.connections.get(ws);
+                if (!connection) return;
+                if (connection.awarenessId !== undefined && connection.awarenessId !== id)
+                    throw new Error("Presence identity changed");
+                for (const [other, peer] of access.connections) {
+                    if (other !== ws && peer.awarenessId === id)
+                        throw new Error("Presence identity already belongs to another connection");
+                }
+                if (value !== null && (typeof value !== "object" || Array.isArray(value)))
+                    throw new Error("Invalid presence");
+                connection.awarenessId = id;
+                const sanitized =
+                    value === null
+                        ? null
+                        : {
+                              ...value,
+                              userId: clientData.userId,
+                              role: clientData.role,
+                              isOwner: clientData.isOwner,
+                          };
+                const encoded = encoding.createEncoder();
+                encoding.writeVarUint(encoded, 1);
+                encoding.writeVarUint(encoded, id);
+                encoding.writeVarUint(encoded, clock);
+                encoding.writeVarString(encoded, JSON.stringify(sanitized));
                 awarenessProtocol.applyAwarenessUpdate(
                     awareness,
-                    decoding.readVarUint8Array(decoder),
+                    encoding.toUint8Array(encoded),
                     ws,
                 );
             } catch (e) {

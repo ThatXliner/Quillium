@@ -97,6 +97,33 @@ async function createIdentity(
     };
 }
 
+async function createEditorInvitation(
+    port: number,
+    documentId: string,
+    owner: TestIdentity,
+): Promise<string> {
+    const response = await fetch(`http://127.0.0.1:${port}/access/documents/${documentId}/grants`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${owner.accessToken}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ role: "editor" }),
+    });
+    expect(response.status).toBe(201);
+    const payload: unknown = await response.json();
+    if (
+        !payload ||
+        typeof payload !== "object" ||
+        !("token" in payload) ||
+        typeof payload.token !== "string"
+    ) {
+        throw new Error("Missing editor invitation token");
+    }
+    expect(payload.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    return payload.token;
+}
+
 function asUint8Array(data: RawData): Uint8Array {
     if (data instanceof ArrayBuffer) return new Uint8Array(data);
     if (Array.isArray(data)) return new Uint8Array(Buffer.concat(data));
@@ -422,8 +449,9 @@ describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
                 `${relayUrl}?auth=${encodeURIComponent(owner.accessToken)}`,
             );
             await clientA.connect();
+            const invitation = await createEditorInvitation(port, documentId, owner);
             clientB = new HeadlessYjsClient(
-                `${relayUrl}?auth=${encodeURIComponent(collaborator.accessToken)}`,
+                `${relayUrl}?auth=${encodeURIComponent(collaborator.accessToken)}&invitation=${encodeURIComponent(invitation)}`,
             );
             await clientB.connect();
 
@@ -563,8 +591,13 @@ describe.skipIf(!environment.enabled)("Omni real-relay convergence", () => {
                             `${relayUrl}?auth=${encodeURIComponent(fuzzOwner.accessToken)}`,
                         );
                         await clientA.connect();
+                        const invitation = await createEditorInvitation(
+                            port,
+                            documentId,
+                            fuzzOwner,
+                        );
                         clientB = new HeadlessYjsClient(
-                            `${relayUrl}?auth=${encodeURIComponent(fuzzCollaborator.accessToken)}`,
+                            `${relayUrl}?auth=${encodeURIComponent(fuzzCollaborator.accessToken)}&invitation=${encodeURIComponent(invitation)}`,
                         );
                         await clientB.connect();
 

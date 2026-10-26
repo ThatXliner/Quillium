@@ -29,10 +29,13 @@ import posthog, { captureException } from "$lib/posthog";
 import { currentDocumentId, currentDraftId, editorView } from "$lib/stores";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
+import { parseInvitationToken } from "./invitations/deepLink";
+import { InvitationError, invitationRepository } from "./invitations/repository";
 
 export class LiveSessionController {
     isLive = $state(false);
     connecting = $state(false);
+    lastJoinError = $state<{ code: string; message: string } | null>(null);
 
     // Plain fields — only read/written inside trackCollabState, never rendered.
     #prevCollabState = "disconnected";
@@ -92,84 +95,90 @@ export class LiveSessionController {
         this.#prevCollabState = state;
     }
 
-    async join(rawId: string) {
-        const id = rawId.trim();
-        if (!id) return false;
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-            toast.error("Invalid room ID");
+    async join(rawInvitation: string): Promise<boolean> {
+        const token = parseInvitationToken(rawInvitation);
+        this.lastJoinError = null;
+        if (!token) {
+            this.lastJoinError = {
+                code: "invalid_invitation",
+                message:
+                    "Check that you copied the whole invitation link, or ask the owner for a new one.",
+            };
             return false;
         }
-
         this.connecting = true;
+        let enteredRoom = false;
         try {
+            const invitation = await invitationRepository.resolve(token);
             const view = get(editorView);
             const user = getUser();
-            const session = getSession();
-            if (!view || !user || !session) {
-                throw new Error("Missing required state");
+            if (!view || !user || !getSession())
+                throw new InvitationError(
+                    "unavailable",
+                    "Open a draft and sign in before joining.",
+                );
+            try {
+                await flushPersistQueue();
+            } catch {
+                throw new InvitationError(
+                    "save_failed",
+                    "Quillium couldn't save your current draft. Try again after it saves.",
+                );
             }
-
-            // Disconnect current session if live
+            if (get(editorView) !== view)
+                throw new InvitationError("unavailable", "Your draft changed. Try joining again.");
             if (this.isLive) {
                 disableCollab(view);
                 this.isLive = false;
             }
-
-            // D-100: Capture prior view state BEFORE joining
             const priorDraftId = get(currentDraftId);
             joinerPriorView.set({
                 draftId: priorDraftId,
-                viewType: "editor", // We're in the editor if this button is visible
+                viewType: "editor",
                 editorStateJson: view.state.toJSON(savedFields),
             });
-
-            // D-100: Clear local draft ID -- joiner is NOT editing a local doc.
-            // The collab view is ephemeral and backed entirely by the room's Y.Doc.
-            // Setting to null ensures persistence listeners skip this session.
-            // Note: We still pass `id` to enableCollab for room identification.
             currentDraftId.set(null);
-
-            // Mark this client as an ephemeral joiner BEFORE connecting so the
-            // persistence listener skips Yjs-driven document updates. Joiners in
-            // Live Room mode don't own the document -- the owner's local store is
-            // authoritative, so we don't write the shared ID to our event log.
             isCollabJoiner.set(true);
-
-            // Connect as joiner -- relay's content becomes source of truth
-            await enableCollab(view, id, user.id, false);
-
-            this.isLive = true;
-            toast.success("Joined shared document");
-            posthog.capture("collab_room_joined");
-            return true;
-        } catch (err) {
-            console.error("[collab] Failed to join:", err);
-            void logAppEvent("error", "collab", "failed to join room", {
-                error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+            enteredRoom = true;
+            await enableCollab(view, invitation.documentId, user.id, false, {
+                token,
+                role: invitation.role,
             });
-            captureException(err);
-            posthog.capture("collab_join_failed");
-            const view = get(editorView);
-            if (view) {
-                disableCollab(view);
+            this.isLive = true;
+            toast.success("Joined Live Room");
+            return true;
+        } catch (error) {
+            if (enteredRoom) {
+                const view = get(editorView);
+                if (view) disableCollab(view);
+                else restoreJoinerPriorView();
             }
-            // Reset joiner state on failure
-            const prior = get(joinerPriorView);
-            joinerPriorView.set(null);
-            isCollabJoiner.set(false);
-            // Restore draft ID on failure
-            if (prior?.draftId) {
-                currentDraftId.set(prior.draftId);
-            }
-            const message =
-                err instanceof Error && err.message.includes("relay")
-                    ? "Couldn't connect to relay server"
-                    : "Failed to join document";
-            toast.error(message);
+            this.lastJoinError =
+                error instanceof InvitationError
+                    ? { code: error.code, message: error.message }
+                    : {
+                          code: "unavailable",
+                          message:
+                              "Couldn't connect to the Live Room. Ask the owner to keep it open, then try again.",
+                      };
             return false;
         } finally {
             this.connecting = false;
         }
+    }
+
+    handleAccessChanged(): void {
+        if (!this.isLive) return;
+        const view = get(editorView);
+        if (view) disableCollab(view);
+        else restoreJoinerPriorView();
+        this.isLive = false;
+        this.lastJoinError = {
+            code: "access_changed",
+            message:
+                "The owner changed your access. Quillium restored your previous draft. Open your invitation again to rejoin.",
+        };
+        toast.error("Your Live Room access changed");
     }
 
     /** Toggle: end the current session, or go live on the current draft. */
@@ -209,28 +218,21 @@ export class LiveSessionController {
                     draftId,
                     stateJson,
                     "Before going live (auto)",
-                    () =>
-                        get(editorView) === view &&
-                        get(currentDraftId) === draftId &&
-                        get(currentDocumentId) === documentId,
+                    () => get(editorView) === view && get(currentDraftId) === draftId && get(currentDocumentId) === documentId,
                 );
                 if (snapshotId === null) return;
 
+                // Register document with relay's sync_documents table (auto-creates if missing)
                 await registerDocumentForCollab(documentId, user.id, "Untitled");
                 await flushPersistQueue();
-                if (
-                    get(editorView) !== view ||
-                    get(currentDraftId) !== draftId ||
-                    get(currentDocumentId) !== documentId
-                )
-                    return;
+                if (get(editorView) !== view || get(currentDraftId) !== draftId || get(currentDocumentId) !== documentId) return;
 
                 // Per D-50: clientID is user.id for per-user undo
                 // Version comes from relay's initial state
                 await enableCollab(view, documentId, user.id);
 
                 this.isLive = true;
-                toast.success("You're live!");
+                toast.success("Live Room is open");
                 posthog.capture("collab_went_live");
             } catch (err) {
                 console.error("[collab] Failed to go live:", err);

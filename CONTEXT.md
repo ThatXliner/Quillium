@@ -151,6 +151,12 @@ _Avoid_: Live Room
 A temporary real-time editing session led by the document owner.
 _Avoid_: Web Preview, shared document
 
+**Live Room grant**:
+An owner-managed invitation that gives its holders viewer, commenter, or editor
+access while the owner keeps the Live Room open. Link grants allow anonymous
+Joiners. Email grants require the confirmed invited account. Grants expire and
+can be changed or revoked. They are separate from Web Preview publication.
+
 **Owner**:
 The participant whose local draft starts and governs a Live Room.
 _Avoid_: Host

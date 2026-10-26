@@ -1,5 +1,6 @@
 <script lang="ts">
 import "./layout.css";
+import { page } from "$app/state";
 import favicon from "$lib/assets/favicon.svg";
 import CookieConsent from "$lib/components/CookieConsent.svelte";
 
@@ -42,4 +43,4 @@ let { children } = $props();
 </svelte:head>
 
 {@render children()}
-<CookieConsent />
+{#if page.url.pathname !== "/join"}<CookieConsent />{/if}

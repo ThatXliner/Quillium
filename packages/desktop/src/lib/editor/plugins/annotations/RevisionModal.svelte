@@ -1,5 +1,6 @@
 <script lang="ts">
 import { registerMcpModalView } from "$lib/ai/mcpContext";
+import { collabCapabilities } from "$lib/collab/capabilities";
 /**
  * RevisionModal.svelte — Full-screen modal that hosts a nested
  * CodeMirror editor for a single revision version.
@@ -337,7 +338,8 @@ let unregisterMcpModal: (() => void) | undefined;
 function createEditor(version: VersionState, versionIndex?: number) {
     if (!editorHost || controller.editor) return;
     controller.create(editorHost, version, versionIndex ?? 0);
-    if (controller.editor) unregisterMcpModal = registerMcpModalView(view, revisionId, controller.editor);
+    if (controller.editor)
+        unregisterMcpModal = registerMcpModalView(view, revisionId, controller.editor);
 }
 
 function moveCursorToEnd(activeEditor: EditorView) {
@@ -721,6 +723,7 @@ let restoreSize = $state<(() => void) | undefined>();
       Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
     </span>
   {/if}
+  {#if $collabCapabilities.canEdit}
   <button
     class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
         bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
@@ -739,6 +742,7 @@ let restoreSize = $state<(() => void) | undefined>();
   >
     <Trash2 size={16} />
   </button>
+  {/if}
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->

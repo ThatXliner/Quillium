@@ -1,5 +1,6 @@
 <!-- Chat.svelte — One assistant with explicit document-tool permissions. -->
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { tick, untrack } from "svelte";
 import { readable } from "svelte/store";
 import { type UIMessage, generateId, isToolUIPart } from "ai";
@@ -309,7 +310,7 @@ async function handleSubmit(event: SubmitEvent) {
                         <p class="mb-2 leading-relaxed text-black/65">The assistant chooses which enabled tools your request needs.</p>
                         {#each toolOptions as tool (tool.action)}
                             <label class="flex cursor-pointer items-start gap-2 border-t border-black/10 py-3">
-                                <input type="checkbox" checked={options.requestedActions.includes(tool.action)} disabled={isBusy} onchange={(event) => toggleTool(tool.action, event.currentTarget.checked)} class="mt-0.5" />
+                                <input type="checkbox" checked={options.requestedActions.includes(tool.action)} disabled={isBusy || !$collabCapabilities.canEdit} onchange={(event) => toggleTool(tool.action, event.currentTarget.checked)} class="mt-0.5" />
                                 <span>{tool.label}<span class="mt-1 block leading-relaxed text-black/65">{tool.detail}</span></span>
                             </label>
                         {/each}

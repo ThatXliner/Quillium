@@ -16,10 +16,14 @@
       - ShareModalPreviewTab / ShareModalCollabTab render the two tabs.
 -->
 <script lang="ts">
-import { getUser, isAuthenticated } from "$lib/auth/auth.svelte";
+import { getUser, isAuthenticated, isLoading } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
 import { collabState, ownerLeftSignal, reconnectAttempt, relayConfigured } from "$lib/collab";
 import ShareModalCollabTab from "$lib/collab/ShareModalCollabTab.svelte";
+import JoinRoomDialog from "./invitations/JoinRoomDialog.svelte";
+import { pendingInvitation } from "./invitations/deepLink";
+import { accessChangedSignal } from "./yjsProvider";
+import { roleLabel } from "./invitations/repository";
 import ShareModalPreviewTab from "$lib/collab/ShareModalPreviewTab.svelte";
 import { LiveSessionController } from "$lib/collab/liveSession.svelte";
 import { serializeLoadedShareState } from "$lib/collab/loadedShareState";
@@ -70,6 +74,9 @@ const session = new LiveSessionController();
 const publisher = new ReadonlySharePublisher();
 
 let modalOpen = $state(false);
+let joinInvitation = $state<string | null>(null);
+let handledOwnerLeftSignal = 0;
+let handledAccessChangedSignal = 0;
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let activeTab = $state<ShareTab>("preview");
 let tabTrackEl = $state<HTMLElement | undefined>(undefined);
@@ -145,6 +152,19 @@ const draftAnnotationCount = $derived(
         ? serializeAnnotations($documentContent, $annotations, $versionGroups ?? {}).length
         : 0,
 );
+
+$effect(() => {
+    if ($pendingInvitation && !isLoading() && $editorView) {
+        joinInvitation = $pendingInvitation;
+        pendingInvitation.set(null);
+        closeModal();
+    }
+});
+
+function openInvitation(invitation: string): void {
+    closeModal();
+    joinInvitation = invitation;
+}
 
 $effect(() => {
     if (modalOpen && dialogEl && !dialogEl.open) {
@@ -248,9 +268,17 @@ $effect(() => {
 
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
 $effect(() => {
-    if ($ownerLeftSignal > 0 && session.isLive) {
-        session.handleOwnerLeft();
-    }
+    const signal = $ownerLeftSignal;
+    if (signal === handledOwnerLeftSignal) return;
+    handledOwnerLeftSignal = signal;
+    if (session.isLive) session.handleOwnerLeft();
+});
+
+$effect(() => {
+    const signal = $accessChangedSignal;
+    if (signal === handledAccessChangedSignal) return;
+    handledAccessChangedSignal = signal;
+    if (session.isLive) session.handleAccessChanged();
 });
 
 // React to reconnection state changes
@@ -407,7 +435,7 @@ let restoreSize = $state<(() => void) | undefined>();
                             : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
                 >
                     <Share2 size={14} />
-                    Share
+                    {session.isLive && $collabSession && !$collabSession.isOwner ? `Live · ${roleLabel[$collabSession.role ?? "viewer"]}` : "Share"}
                 </span>
             </button>
 
@@ -491,7 +519,7 @@ let restoreSize = $state<(() => void) | undefined>();
                         onclick={() => (activeTab = "collaborate")}
                         class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "collaborate" ? "text-black/70" : "text-black/40 hover:text-black/60"}`}
                     >
-                        Omni
+                        Live Room
                     </button>
                     <button
                         role="tab"
@@ -532,6 +560,8 @@ let restoreSize = $state<(() => void) | undefined>();
                             {session}
                             {currentId}
                             onopenauth={openAuth}
+                            onjoin={openInvitation}
+                            onpreview={() => (activeTab = "preview")}
                         />
                     {/if}
                 </section>
@@ -539,4 +569,8 @@ let restoreSize = $state<(() => void) | undefined>();
             </div>
         </dialog>
     {/if}
+{/if}
+
+{#if joinInvitation !== null}
+    <JoinRoomDialog invitation={joinInvitation} {session} onclose={() => (joinInvitation = null)} onopenauth={openAuth} />
 {/if}

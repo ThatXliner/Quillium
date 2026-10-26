@@ -1,3 +1,4 @@
+import type { LiveRole } from "@quillium/share/collab-contract";
 import type { WebSocket } from "ws";
 import type { Awareness } from "y-protocols/awareness";
 /**
@@ -22,4 +23,7 @@ export interface YjsClientData {
     documentId: string;
     isOwner: boolean;
     isAnonymous: boolean;
+    role: LiveRole;
+    grantId?: string;
+    expiresAt?: string;
 }

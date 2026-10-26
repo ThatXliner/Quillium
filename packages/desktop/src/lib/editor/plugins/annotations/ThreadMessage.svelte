@@ -1,8 +1,9 @@
 <script lang="ts">
-import { parsePassageLink, serializePassageLink } from "@quillium/share";
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { appEventBus } from "$lib/events/appEventBus";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 import { readersSettings } from "$lib/readers/settings.svelte";
+import { parsePassageLink, serializePassageLink } from "@quillium/share";
 import { ThreadMessage as ThreadMessageView } from "@quillium/share";
 /**
  * ThreadMessage.svelte — Renders a single message within an
@@ -67,7 +68,7 @@ function saveEdit(editMessage: string) {
               border: mediumTint(persona.color),
           }
         : undefined}
-    onEdit={saveEdit}
+    onEdit={$collabCapabilities.canEdit ? saveEdit : undefined}
 />
 {#if passage.link}
     <button title={passage.link.quote} class="ml-9 mt-1 text-xs text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600" onclick={() => { if (passage.link) appEventBus.emit({ type: "open-passage", passage: passage.link }); }}>

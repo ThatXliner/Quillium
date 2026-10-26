@@ -1,5 +1,6 @@
 import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
 import {
+    CUSTOM_ACCESS,
     CUSTOM_CLIENT_LEFT,
     CUSTOM_OWNER_LEFT,
     MESSAGE_CUSTOM,
@@ -33,6 +34,7 @@ interface MockWebsocketProviderOptions {
 }
 
 interface TestWebsocketProvider {
+    _updateHandler: MockFunction;
     _awarenessQueryHandler: MockFunction;
     _opts?: MockWebsocketProviderOptions;
     destroy: MockFunction;
@@ -54,6 +56,7 @@ vi.mock("y-websocket", () => {
             off: vi.fn(),
             destroy: vi.fn(),
         };
+        _updateHandler = vi.fn();
         _awarenessQueryHandler = vi.fn();
         messageHandlers = [vi.fn(), vi.fn(), vi.fn(), this._awarenessQueryHandler];
         handlers: Map<string, Set<MockHandler>> = new Map();
@@ -63,7 +66,8 @@ vi.mock("y-websocket", () => {
         url: string;
         roomname: string;
 
-        constructor(url: string, room: string, _doc: unknown, opts?: MockWebsocketProviderOptions) {
+        constructor(url: string, room: string, doc: { on(event: string, handler: MockFunction): void }, opts?: MockWebsocketProviderOptions) {
+            doc.on("update", this._updateHandler);
             this.url = url;
             this.roomname = room;
             this._opts = opts;
@@ -115,6 +119,20 @@ describe("yjsProvider", () => {
 
     afterEach(() => {
         disconnectYjsProvider();
+    });
+
+    it("uses the relay role when it changes after invitation preflight", async () => {
+        const result = await createYjsProvider("doc-123", { token: "invitation", role: "viewer" });
+        result.ytext.insert(0, "local draft");
+        const transport = testProvider(result.provider);
+        expect(transport._updateHandler).not.toHaveBeenCalled();
+        const bytes = encodeCustomMessage({ subtype: CUSTOM_ACCESS, payload: { role: "editor", roomEpoch: "123e4567-e89b-12d3-a456-426614174000" } });
+        const decoder = decoding.createDecoder(bytes);
+        decoding.readVarUint(decoder);
+        result.provider.messageHandlers[MESSAGE_CUSTOM](encoding.createEncoder(), decoder, result.provider, false, MESSAGE_CUSTOM);
+        expect(result.role).toBe("editor");
+        result.ytext.insert(0, "accepted edit");
+        expect(transport._updateHandler).toHaveBeenCalledOnce();
     });
 
     it("preserves y-websocket awareness queries", async () => {

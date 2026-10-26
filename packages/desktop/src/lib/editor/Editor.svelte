@@ -1,4 +1,5 @@
 <script lang="ts">
+import { collabCapabilities } from "$lib/collab/capabilities";
 import { logAppEvent } from "$lib/appLog";
 import { connectMcpEditor } from "$lib/ai/mcpConnection";
 import { researchFingerprint } from "$lib/college/researchModel";
@@ -156,7 +157,7 @@ function openFallbackContextMenu(x: number, y: number): void {
 }
 
 async function showNativeContextMenu(): Promise<boolean> {
-    if (!isTauri()) return false;
+    if (!isTauri() || !$collabCapabilities.canEdit) return false;
     try {
         nativeContextMenu ??= await Menu.new({
             items: [
@@ -716,6 +717,7 @@ onMount(() => {
                 role="menuitem"
                 class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
                 onpointerdown={(event) => event.preventDefault()}
+                disabled={!$collabCapabilities.canEdit}
                 onclick={() => void runContextMenuEditCommand("cut")}
             >
                 <ScissorsIcon size={15} class="text-black/40" />
@@ -738,6 +740,7 @@ onMount(() => {
                 role="menuitem"
                 class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
                 onpointerdown={(event) => event.preventDefault()}
+                disabled={!$collabCapabilities.canEdit}
                 onclick={() => void runContextMenuEditCommand("paste")}
             >
                 <ClipboardPasteIcon size={15} class="text-black/40" />
@@ -762,6 +765,7 @@ onMount(() => {
                 role="menuitem"
                 class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
                 onpointerdown={(event) => event.preventDefault()}
+                disabled={!$collabCapabilities.canComment}
                 onclick={addCommentFromContextMenu}
             >
                 <MessageSquareIcon size={15} class="text-amber-500" />
@@ -773,6 +777,7 @@ onMount(() => {
                 role="menuitem"
                 class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
                 onpointerdown={(event) => event.preventDefault()}
+                disabled={!$collabCapabilities.canEdit}
                 onclick={addRevisionFromContextMenu}
             >
                 <GitBranchIcon size={15} class="text-violet-500" />

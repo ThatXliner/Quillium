@@ -12,24 +12,63 @@
 import { type Server as HttpServer, type IncomingMessage, createServer } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
+import {
+    type InvitationEmailSender,
+    LiveRoomAccessService,
+    createAccessHttpHandler,
+    createResendInvitationSender,
+} from "./access/index.js";
 import { authenticateWebSocket } from "./auth/middleware.js";
+import { supabase } from "./auth/supabase.js";
 import { createLogger } from "./logger.js";
 import { isOriginAllowed } from "./origins.js";
 import { flushAllDocumentUpdates, queueYjsUpdate } from "./persistence/debouncedUpdates.js";
-import { getOrCreateYjsRoom, getRoomCount, scheduleRoomCleanup } from "./yjs/rooms.js";
-import { setupYjsConnection } from "./yjs/sync.js";
+import { getOrCreateYjsRoom, getRoomCount, getYjsRoom, scheduleRoomCleanup } from "./yjs/rooms.js";
+import { getAccessGeneration, revokeGrantConnections, setupYjsConnection } from "./yjs/sync.js";
 
 const logger = createLogger("server");
 
 /**
  * Create and configure the Yjs relay server.
  */
-export function createRelayServer(): {
+export function createRelayServer(options: { email?: InvitationEmailSender } = {}): {
     wss: WebSocketServer;
     httpServer: HttpServer;
     close: () => Promise<void>;
 } {
+    const email =
+        options.email ??
+        (process.env.INVITATION_RESEND_API_KEY && process.env.INVITATION_EMAIL_FROM
+            ? createResendInvitationSender({
+                  apiKey: process.env.INVITATION_RESEND_API_KEY,
+                  from: process.env.INVITATION_EMAIL_FROM,
+              })
+            : undefined);
+    const accessHandler = supabase
+        ? createAccessHttpHandler({
+              supabase,
+              isRoomOpen: (documentId) => getYjsRoom(documentId)?.isOwnerConnected === true,
+              service: new LiveRoomAccessService({
+                  supabase,
+                  onGrantChanged: revokeGrantConnections,
+                  email,
+              }),
+          })
+        : undefined;
     const httpServer = createServer((req, res) => {
+        if (req.url?.startsWith("/access/")) {
+            if (!accessHandler) {
+                res.writeHead(503);
+                res.end("Access unavailable");
+                return;
+            }
+            void accessHandler(req, res).catch((error: unknown) => {
+                logger.error("Access request failed", error);
+                if (!res.headersSent) res.writeHead(503);
+                res.end();
+            });
+            return;
+        }
         // Health check endpoint
         if (req.url === "/health") {
             res.writeHead(200, { "Content-Type": "application/json" });
@@ -47,7 +86,7 @@ export function createRelayServer(): {
         res.end("Not found");
     });
 
-    const wss = new WebSocketServer({ noServer: true });
+    const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
     const upgradingSockets = new Set<Duplex>();
     const initializingConnections = new Set<Promise<void>>();
     let accepting = true;
@@ -87,7 +126,11 @@ export function createRelayServer(): {
             }
 
             // Authenticate
-            const authResult = await authenticateWebSocket(token, documentId);
+            const authResult = await authenticateWebSocket(
+                token,
+                documentId,
+                url.searchParams.get("invitation"),
+            );
             if (!accepting || socket.destroyed) {
                 socket.destroy();
                 return;
@@ -99,7 +142,6 @@ export function createRelayServer(): {
                 socket.destroy();
                 return;
             }
-            const clientData = authResult.data;
 
             // Upgrade to WebSocket
             wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
@@ -111,7 +153,24 @@ export function createRelayServer(): {
                             if (room.clients.size === 0) scheduleRoomCleanup(room);
                             return;
                         }
-                        setupYjsConnection(ws, room, clientData, (update) => {
+                        const generation = getAccessGeneration(room);
+                        const refreshed = await authenticateWebSocket(
+                            token,
+                            documentId,
+                            url.searchParams.get("invitation"),
+                        );
+                        if (
+                            !accepting ||
+                            ws.readyState !== WebSocket.OPEN ||
+                            !refreshed.success ||
+                            !refreshed.data ||
+                            generation !== getAccessGeneration(room)
+                        ) {
+                            ws.close(4003, "Access changed. Open your invitation again.");
+                            if (room.clients.size === 0) scheduleRoomCleanup(room);
+                            return;
+                        }
+                        setupYjsConnection(ws, room, refreshed.data, (update) => {
                             queueYjsUpdate(documentId, update);
                         });
                         ws.on("close", () => {
