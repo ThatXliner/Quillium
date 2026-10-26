@@ -1,52 +1,30 @@
 import {
-    type DictEntry,
-    type Meaning,
-    collectAntonyms,
-    collectSynonyms,
+    type StructuredDictionaryData,
+    structuredDictionaryDataSchema,
+} from "$lib/ai/clientStreams";
+import {
+    DICTIONARY_MALFORMED_MESSAGE,
+    DICTIONARY_MISSING_KEY_MESSAGE,
+    dictionaryErrorMessage,
+    dictionaryUnavailableMessage,
     extractDictionaryWord,
-    getPhonetic,
+    normalizeDictionaryData,
 } from "$lib/editor/dictionaryUtils";
-/**
- * Unit tests for dictionary/thesaurus helpers.
- *
- * Covers:
- *   - extractDictionaryWord: selection validation & whitespace trimming
- *   - getPhonetic: phonetic extraction from DictEntry
- *   - collectSynonyms / collectAntonyms: deduplication, limits, nested collection
- */
+import { APICallError, LoadAPIKeyError, NoObjectGeneratedError } from "ai";
 import { describe, expect, it } from "vitest";
 
-// ── Helpers ─────────────────────────────────────────────────────
-
-function makeMeaning(
-    partOfSpeech: string,
-    opts: {
-        synonyms?: string[];
-        antonyms?: string[];
-        defSynonyms?: string[];
-        defAntonyms?: string[];
-    } = {},
-): Meaning {
+function makeData(overrides: Partial<StructuredDictionaryData> = {}): StructuredDictionaryData {
     return {
-        partOfSpeech,
-        synonyms: opts.synonyms ?? [],
-        antonyms: opts.antonyms ?? [],
-        definitions: [
+        phonetic: "/ˈhɛlp.fəl/",
+        meanings: [
             {
-                definition: "test",
-                synonyms: opts.defSynonyms ?? [],
-                antonyms: opts.defAntonyms ?? [],
+                partOfSpeech: "adjective",
+                definitions: [{ definition: "Giving aid; useful.", example: "a helpful note" }],
             },
         ],
-    };
-}
-
-function makeEntry(word: string, meanings: Meaning[], phonetic?: string): DictEntry {
-    return {
-        word,
-        phonetic,
-        phonetics: [],
-        meanings,
+        synonyms: ["useful"],
+        antonyms: ["unhelpful"],
+        ...overrides,
     };
 }
 
@@ -106,144 +84,170 @@ describe("extractDictionaryWord", () => {
     });
 });
 
-// ── getPhonetic ────────────────────────────────────────────────
-
-describe("getPhonetic", () => {
-    it("returns top-level phonetic when present", () => {
-        const entry: DictEntry = {
-            word: "test",
-            phonetic: "/tɛst/",
-            phonetics: [{ text: "/other/" }],
-            meanings: [],
-        };
-        expect(getPhonetic(entry)).toBe("/tɛst/");
+describe("structuredDictionaryDataSchema", () => {
+    it("accepts a complete entry", () => {
+        expect(structuredDictionaryDataSchema.safeParse(makeData()).success).toBe(true);
     });
 
-    it("falls back to first phonetics entry with text", () => {
-        const entry: DictEntry = {
-            word: "test",
-            phonetics: [{}, { text: "/tɛst/" }, { text: "/other/" }],
-            meanings: [],
-        };
-        expect(getPhonetic(entry)).toBe("/tɛst/");
+    it("rejects output missing a required field", () => {
+        const { antonyms: _antonyms, ...partial } = makeData();
+        expect(structuredDictionaryDataSchema.safeParse(partial).success).toBe(false);
     });
 
-    it("returns empty string when no phonetic data", () => {
-        const entry: DictEntry = {
-            word: "test",
-            phonetics: [{}, {}],
-            meanings: [],
+    it("rejects a null example instead of an empty string", () => {
+        const data = {
+            ...makeData(),
+            meanings: [{ partOfSpeech: "noun", definitions: [{ definition: "x", example: null }] }],
         };
-        expect(getPhonetic(entry)).toBe("");
-    });
-
-    it("returns empty string when phonetics array is empty", () => {
-        const entry: DictEntry = {
-            word: "test",
-            phonetics: [],
-            meanings: [],
-        };
-        expect(getPhonetic(entry)).toBe("");
+        expect(structuredDictionaryDataSchema.safeParse(data).success).toBe(false);
     });
 });
 
-// ── collectSynonyms ────────────────────────────────────────────
+describe("normalizeDictionaryData", () => {
+    it("maps model output into a display entry", () => {
+        expect(normalizeDictionaryData("helpful", makeData())).toEqual({
+            word: "helpful",
+            phonetic: "/ˈhɛlp.fəl/",
+            meanings: [
+                {
+                    partOfSpeech: "adjective",
+                    definitions: [{ definition: "Giving aid; useful.", example: "a helpful note" }],
+                },
+            ],
+            synonyms: ["useful"],
+            antonyms: ["unhelpful"],
+        });
+    });
 
-describe("collectSynonyms", () => {
-    it("collects meaning-level synonyms", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { synonyms: ["glad", "joyful"] }),
+    it("drops empty examples, definitions, and meanings", () => {
+        const entry = normalizeDictionaryData(
+            "bright",
+            makeData({
+                meanings: [
+                    { partOfSpeech: "verb", definitions: [{ definition: "  ", example: "" }] },
+                    {
+                        partOfSpeech: " adjective ",
+                        definitions: [{ definition: " Giving light. ", example: "  " }],
+                    },
+                ],
+            }),
+        );
+        expect(entry?.meanings).toEqual([
+            { partOfSpeech: "adjective", definitions: [{ definition: "Giving light." }] },
         ]);
-        expect(collectSynonyms([entry])).toEqual(["glad", "joyful"]);
     });
 
-    it("collects definition-level synonyms", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { defSynonyms: ["cheerful", "content"] }),
-        ]);
-        expect(collectSynonyms([entry])).toEqual(["cheerful", "content"]);
+    it("caps meanings and definitions at two each", () => {
+        const definitions = ["a", "b", "c"].map((definition) => ({ definition, example: "" }));
+        const entry = normalizeDictionaryData(
+            "set",
+            makeData({
+                meanings: ["noun", "verb", "adjective"].map((partOfSpeech) => ({
+                    partOfSpeech,
+                    definitions,
+                })),
+            }),
+        );
+        expect(entry?.meanings.map((meaning) => meaning.partOfSpeech)).toEqual(["noun", "verb"]);
+        expect(entry?.meanings[0].definitions).toHaveLength(2);
     });
 
-    it("merges synonyms from both levels", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { synonyms: ["glad"], defSynonyms: ["cheerful"] }),
-        ]);
-        const result = collectSynonyms([entry]);
-        expect(result).toContain("glad");
-        expect(result).toContain("cheerful");
+    it("deduplicates terms case-insensitively and omits the looked-up word", () => {
+        const entry = normalizeDictionaryData(
+            "happy",
+            makeData({
+                synonyms: ["Glad", "glad", " joyful ", "", "Happy"],
+                antonyms: ["sad", "SAD"],
+            }),
+        );
+        expect(entry?.synonyms).toEqual(["Glad", "joyful"]);
+        expect(entry?.antonyms).toEqual(["sad"]);
     });
 
-    it("deduplicates synonyms", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { synonyms: ["glad"], defSynonyms: ["glad"] }),
-        ]);
-        expect(collectSynonyms([entry])).toEqual(["glad"]);
+    it("limits synonyms to 10 and antonyms to 6", () => {
+        const entry = normalizeDictionaryData(
+            "test",
+            makeData({
+                synonyms: Array.from({ length: 15 }, (_, i) => `syn${i}`),
+                antonyms: Array.from({ length: 10 }, (_, i) => `ant${i}`),
+            }),
+        );
+        expect(entry?.synonyms).toHaveLength(10);
+        expect(entry?.antonyms).toHaveLength(6);
     });
 
-    it("collects across multiple entries", () => {
-        const entries = [
-            makeEntry("happy", [makeMeaning("adjective", { synonyms: ["glad"] })]),
-            makeEntry("happy", [makeMeaning("adjective", { synonyms: ["joyful"] })]),
-        ];
-        const result = collectSynonyms(entries);
-        expect(result).toContain("glad");
-        expect(result).toContain("joyful");
+    it("keeps a thesaurus-only entry", () => {
+        const entry = normalizeDictionaryData("okay", makeData({ meanings: [], antonyms: [] }));
+        expect(entry?.synonyms).toEqual(["useful"]);
+        expect(entry?.meanings).toEqual([]);
     });
 
-    it("limits to 10 synonyms", () => {
-        const syns = Array.from({ length: 15 }, (_, i) => `syn${i}`);
-        const entry = makeEntry("test", [makeMeaning("noun", { synonyms: syns })]);
-        expect(collectSynonyms([entry])).toHaveLength(10);
-    });
-
-    it("returns empty for entries with no synonyms", () => {
-        const entry = makeEntry("test", [makeMeaning("noun")]);
-        expect(collectSynonyms([entry])).toEqual([]);
+    it("returns null when the model found nothing", () => {
+        expect(
+            normalizeDictionaryData(
+                "xyzzy",
+                makeData({ phonetic: "", meanings: [], synonyms: [], antonyms: [] }),
+            ),
+        ).toBeNull();
     });
 });
 
-// ── collectAntonyms ────────────────────────────────────────────
+// ── Error messages ──────────────────────────────────────────────
 
-describe("collectAntonyms", () => {
-    it("collects meaning-level antonyms", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { antonyms: ["sad", "unhappy"] }),
-        ]);
-        expect(collectAntonyms([entry])).toEqual(["sad", "unhappy"]);
+describe("dictionaryUnavailableMessage", () => {
+    it("asks the writer to enable AI first", () => {
+        expect(dictionaryUnavailableMessage(false, true)).toBe(
+            "Enable AI in Settings to look up words.",
+        );
     });
 
-    it("collects definition-level antonyms", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { defAntonyms: ["miserable", "gloomy"] }),
-        ]);
-        expect(collectAntonyms([entry])).toEqual(["miserable", "gloomy"]);
+    it("asks the writer to connect a provider", () => {
+        expect(dictionaryUnavailableMessage(true, false)).toBe(
+            "Connect an AI provider in AI Settings to look up words.",
+        );
     });
 
-    it("deduplicates antonyms", () => {
-        const entry = makeEntry("happy", [
-            makeMeaning("adjective", { antonyms: ["sad"], defAntonyms: ["sad"] }),
-        ]);
-        expect(collectAntonyms([entry])).toEqual(["sad"]);
+    it("returns null when AI is ready", () => {
+        expect(dictionaryUnavailableMessage(true, true)).toBeNull();
+    });
+});
+
+describe("dictionaryErrorMessage", () => {
+    it("reports malformed structured output", () => {
+        const error = new NoObjectGeneratedError({
+            message: "No object generated: response did not match schema.",
+            text: '{"phonetic":1}',
+            response: { id: "r", timestamp: new Date(0), modelId: "m" },
+            usage: {
+                inputTokens: 1,
+                outputTokens: 1,
+                totalTokens: 2,
+                inputTokenDetails: {
+                    noCacheTokens: 1,
+                    cacheReadTokens: 0,
+                    cacheWriteTokens: 0,
+                },
+                outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
+            },
+            finishReason: "stop",
+        });
+        expect(dictionaryErrorMessage(error, "openai")).toBe(DICTIONARY_MALFORMED_MESSAGE);
     });
 
-    it("limits to 6 antonyms", () => {
-        const ants = Array.from({ length: 10 }, (_, i) => `ant${i}`);
-        const entry = makeEntry("test", [makeMeaning("noun", { antonyms: ants })]);
-        expect(collectAntonyms([entry])).toHaveLength(6);
+    it("reports a credential that failed to load", () => {
+        const error = new LoadAPIKeyError({ message: "OpenAI API key is missing." });
+        expect(dictionaryErrorMessage(error, "openai")).toBe(DICTIONARY_MISSING_KEY_MESSAGE);
     });
 
-    it("returns empty for entries with no antonyms", () => {
-        const entry = makeEntry("test", [makeMeaning("noun")]);
-        expect(collectAntonyms([entry])).toEqual([]);
-    });
-
-    it("collects across multiple meanings", () => {
-        const entry = makeEntry("test", [
-            makeMeaning("noun", { antonyms: ["a"] }),
-            makeMeaning("verb", { defAntonyms: ["b"] }),
-        ]);
-        const result = collectAntonyms([entry]);
-        expect(result).toContain("a");
-        expect(result).toContain("b");
+    it("uses the shared provider messages for API failures", () => {
+        const error = new APICallError({
+            message: "Too Many Requests",
+            url: "https://api.openai.com/v1/responses",
+            requestBodyValues: {},
+            statusCode: 429,
+        });
+        expect(dictionaryErrorMessage(error, "openai")).toBe(
+            "The AI provider is rate limiting requests. Wait a moment and try again.",
+        );
     });
 });
