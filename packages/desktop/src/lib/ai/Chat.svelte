@@ -145,7 +145,7 @@ async function send(text: string, requestedTurn?: EditorialTurn): Promise<boolea
         requestedActions: [...options.requestedActions],
         responseLength: options.responseLength,
     };
-    const event = turn?.task === "global-review" ? "ai_feedback_requested"
+    const event = turn?.task === "global-review" || turn?.task === "passage-review" ? "ai_feedback_requested"
         : turn?.task === "local-rewrite" || turn?.task === "exact-compression" ? "ai_revise_requested"
         : "ai_chat_message_sent";
     posthog.capture(event, { has_selection: hasSelection, message_length: text.length, trigger: "unified_chat" });
@@ -156,7 +156,7 @@ async function send(text: string, requestedTurn?: EditorialTurn): Promise<boolea
     const submittedInput = text.trim() === input.trim() ? input : "";
     if (submittedInput) input = "";
     void showLatest();
-    const personas = options.readers ? [...getEnabledPersonas()] : [];
+    const personas = options.readers && turn.task !== "passage-review" ? [...getEnabledPersonas()] : [];
     let primarySucceeded = false;
     const readerMessages: UIMessage[] = [...chat.messages, { id: generateId(), role: "user", parts: [{ type: "text", text }] }];
     try {
@@ -191,7 +191,7 @@ function messageTaskLabel(message: UIMessage): string {
     if (message.role !== "user" || !metadata || typeof metadata !== "object" || !("editorialTurn" in metadata)) return "";
     const turn = metadata.editorialTurn;
     if (!turn || typeof turn !== "object" || !("task" in turn)) return "";
-    if (turn.task === "global-review") return "Feedback";
+    if (turn.task === "global-review" || turn.task === "passage-review") return "Feedback";
     if (turn.task === "local-rewrite" || turn.task === "exact-compression") return "Revisions";
     return "";
 }

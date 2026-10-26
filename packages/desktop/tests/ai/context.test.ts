@@ -279,6 +279,37 @@ describe("getContextAwareActions", () => {
         );
     });
 
+    it.each([
+        ["a full draft", undefined, "Review this draft passage by passage"],
+        ["a selection", { from: 0, to: 7 }, "Review this selected passage piece by piece"],
+    ])("leads Feedback with a passage review for %s", (_scope, selectedTextRange, prompt) => {
+        const documentContent = "A full draft.";
+        const packet = buildAiContextPacket({
+            mode: "feedback",
+            documentContent,
+            selectedText: selectedTextRange ? documentContent.slice(0, 7) : "",
+            selectedTextRange,
+            annotationContext: [
+                {
+                    id: 1,
+                    type: "comment",
+                    targetText: "A full draft.",
+                    messages: [{ message: "Clarify the main claim." }],
+                },
+            ],
+        });
+
+        const actions = getContextAwareActions("feedback", packet);
+        expect(actions[0]).toMatchObject({
+            id: "feedback-passage-review",
+            label: "Passage review",
+            turn: { task: "passage-review" },
+        });
+        expect(actions[0].prompt).toContain(prompt);
+        expect(actions.slice(1).map((action) => action.id)).toHaveLength(3);
+        expect(actions[1].id).toBe("feedback-annotations");
+    });
+
     it("offers annotation-aware actions when notes are open", () => {
         const packet = buildAiContextPacket({
             mode: "chat",

@@ -28,6 +28,11 @@ import {
     parseEditorialTurnOptions,
     resolveEditorialTask,
 } from "./editorialPolicy";
+import {
+    PASSAGE_REVIEW_TOOL_NAME,
+    parsePassageReviewResult,
+    passageReviewHistoryText,
+} from "./passageReview";
 
 export type PersistentConversationMode = "chat" | "feedback" | "revise";
 
@@ -173,7 +178,19 @@ export function sanitizeOutboundMessages(messages: UIMessage[]): UIMessage[] {
     return clone(messages)
         .map((message) => ({
             ...message,
-            parts: message.parts.filter((part) => !isToolPart(part)),
+            parts: message.parts.flatMap((part): UIMessage["parts"] => {
+                if (!isToolPart(part)) return [part];
+                const review =
+                    part.type === `tool-${PASSAGE_REVIEW_TOOL_NAME}` &&
+                    "state" in part &&
+                    part.state === "output-available" &&
+                    "output" in part
+                        ? parsePassageReviewResult(part.output)
+                        : null;
+                return review?.status === "complete"
+                    ? [{ type: "text", text: passageReviewHistoryText(review.review) }]
+                    : [];
+            }),
         }))
         .filter((message) => message.parts.length > 0);
 }

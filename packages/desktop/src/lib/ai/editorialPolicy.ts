@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { PASSAGE_REVIEW_TOOL_NAME, passageReviewCategoryPrompt } from "./passageReview";
 
 export const editorialActionsSchema = z.array(z.enum(["comment", "suggestion", "revision"]));
 export const responseLengthSchema = z.enum(["brief", "balanced", "detailed"]);
@@ -18,6 +19,7 @@ export type EditorialTask =
     | "reverse-outline"
     | "branch-comparison"
     | "global-review"
+    | "passage-review"
     | "local-rewrite"
     | "exact-compression"
     | "thread-reply"
@@ -73,6 +75,7 @@ export const DEFAULT_EDITORIAL_PREFERENCES: EditorialPreferences = {
 export type EditorialPolicy = {
     systemPrompt: string;
     allowedActions: readonly EditorialAction[];
+    responseTool?: typeof PASSAGE_REVIEW_TOOL_NAME;
 };
 
 type CompileEditorialPolicyOptions = {
@@ -114,6 +117,7 @@ const TASK_ACTION_LIMITS: Record<EditorialTask, readonly EditorialAction[]> = {
     "reverse-outline": [],
     "branch-comparison": [],
     "global-review": ["comment"],
+    "passage-review": [],
     "local-rewrite": ["comment", "suggestion", "revision"],
     "exact-compression": ["revision"],
     "thread-reply": [],
@@ -128,10 +132,11 @@ const PANEL_TASKS: Record<EditorialPanelMode, readonly EditorialTask[]> = {
         "reverse-outline",
         "branch-comparison",
         "global-review",
+        "passage-review",
         "local-rewrite",
         "exact-compression",
     ],
-    feedback: ["global-review"],
+    feedback: ["global-review", "passage-review"],
     revise: ["local-rewrite", "exact-compression"],
     dictionary: ["dictionary"],
 };
@@ -199,6 +204,15 @@ ${annotationOnly ? "" : "Start with a compact overall read. "}Surface only passa
                     ? " The writer selected a passage, so make it the focus while considering its role in the larger draft."
                     : " Review the whole included draft."
             }`;
+        case "passage-review":
+            return `Task: review the draft passage by passage and sort each reviewed passage into exactly one category:
+${passageReviewCategoryPrompt()}
+
+Call ${PASSAGE_REVIEW_TOOL_NAME} once with the whole review. Each passage runs from one sentence to one paragraph, copied verbatim. List passages in draft order without overlaps. Cover the passages that matter for the configured feedback density rather than every sentence, and mark core content as Keep so the writer knows what to protect. A category may go unused. Each reason names the textual evidence and its effect on a reader in one or two sentences. Diagnose only: never put replacement words, sentences, or sample rewrites in a reason or the summary.${
+                hasSelection
+                    ? " The writer selected a passage, so review only passages inside the selection while considering its role in the larger draft."
+                    : " Review the whole included draft."
+            }`;
         case "local-rewrite":
             return `Task: help revise the writer's requested passage while preserving its intent and voice.
 
@@ -241,6 +255,8 @@ export function resolveEditorialTask(
     return isEditorialTaskAllowed(mode, requestedTask) ? requestedTask : "conversation";
 }
 
+const PASSAGE_REVIEW_CAPABILITY = `Action permission: no document action is allowed for this turn. Return the review only through the ${PASSAGE_REVIEW_TOOL_NAME} tool. Quillium shows it in the conversation and does not change the draft. Do not add conversational text outside that tool.`;
+
 function capabilityPrompt(actions: readonly EditorialAction[], annotationOnly = false): string {
     if (actions.length === 0 && !annotationOnly) {
         return "Action permission: respond with text only. No document action is allowed for this turn.";
@@ -282,11 +298,14 @@ export function compileEditorialPolicy({
             task === "global-review" ||
             task === "local-rewrite" ||
             task === "exact-compression");
+    const responseTool = task === "passage-review" ? PASSAGE_REVIEW_TOOL_NAME : undefined;
 
     return {
         systemPrompt: [
             EDITORIAL_CONSTITUTION,
-            capabilityPrompt(allowedActions, usesAnnotationOnlyOutput),
+            responseTool
+                ? PASSAGE_REVIEW_CAPABILITY
+                : capabilityPrompt(allowedActions, usesAnnotationOnlyOutput),
             ...(allowedActions.some((action) => action === "revision" || action === "suggestion")
                 ? [FOCUSED_EDIT_POLICY]
                 : []),
@@ -299,5 +318,6 @@ export function compileEditorialPolicy({
                 : []),
         ].join("\n\n"),
         allowedActions,
+        ...(responseTool ? { responseTool } : {}),
     };
 }

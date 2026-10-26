@@ -77,7 +77,7 @@ async function sendFeedback(text: string, trigger: string, turn: NonNullable<Con
         persona_count: personas.length,
     });
     try {
-        if (personas.length === 0 || turn.task === "exact-compression") {
+        if (personas.length === 0 || turn.task === "exact-compression" || turn.task === "passage-review") {
             await sendMessage(text, turn);
             if (conversations?.error && !input) input = text;
             return;

@@ -302,6 +302,20 @@ const ACTION_EXAMPLES: Record<string, ActionExample> = {
         guidance:
             "Use this when a passage or draft has already been reviewed and you want feedback that builds on the notes you have.",
     },
+    "Passage review": {
+        scenario: SCENE,
+        examples: [
+            {
+                label: "A possible passage review",
+                response:
+                    "Keep: “A voice upstairs said her name.” The turn gives the scene its tension.\nCondense: “She took a key from her pocket and unlocked the door.” The key matters; the motion takes a full sentence.\nRevise: “Mara reached the abandoned house at dusk.” We don't yet know why she came, so the arrival carries no stakes.",
+                explanation:
+                    "Each passage gets one category and a reason. The review stays in the conversation; your draft doesn't change, and the review doesn't add annotations.",
+            },
+        ],
+        guidance:
+            "Use this when you're deciding what to protect and what to trim before a revision pass. **Structure scan** adds anchored comments about order and emphasis instead.",
+    },
     "Structure scan": {
         scenario:
             "An essay gives three examples, introduces its main claim near the end, then returns to background information.",
