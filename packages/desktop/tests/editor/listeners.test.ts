@@ -2,6 +2,7 @@ import { isCollabJoiner } from "$lib/collab/store";
 import {
     flushPersistQueue,
     flushPersistence,
+    flushPersistenceForClose,
     listeners,
     persistNamedVersion,
     seedPersistenceBookkeeping,
@@ -82,6 +83,200 @@ afterEach(async () => {
 });
 
 describe("listeners integration", () => {
+    it("queues the idle snapshot behind a pending append", async () => {
+        vi.useFakeTimers();
+        const snapshots: Array<{ upToEventId: number }> = [];
+        let release!: (value: { eventId: number; needsSnapshot: boolean }) => void;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") {
+                return new Promise<{ eventId: number; needsSnapshot: boolean }>((resolve) => {
+                    release = resolve;
+                });
+            }
+            if (cmd === "cmd_create_snapshot") snapshots.push(args as (typeof snapshots)[number]);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(snapshots).toHaveLength(0);
+        release({ eventId: 11, needsSnapshot: false });
+        await flushPersistQueue();
+        expect(snapshots).toEqual([expect.objectContaining({ upToEventId: 11 })]);
+    });
+
+    it("cancels the previous draft's idle timer when seeding another draft", async () => {
+        vi.useFakeTimers();
+        const snapshots: unknown[] = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: 11, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") snapshots.push(args);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await flushPersistence();
+        currentDraftId.set("draft-2");
+        seedPersistenceBookkeeping(20);
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(snapshots).toHaveLength(1);
+    });
+
+    it("includes edits accepted during a slow native close flush", async () => {
+        const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];
+        let release!: () => void;
+        let eventId = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: ++eventId, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") {
+                snapshots.push(args as (typeof snapshots)[number]);
+                if (snapshots.length === 1)
+                    return new Promise<void>((resolve) => {
+                        release = resolve;
+                    });
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        const closing = flushPersistenceForClose();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        view.dispatch({ changes: { from: 12, insert: " Last edit." } });
+        release();
+        await closing;
+        expect(snapshots).toHaveLength(2);
+        expect(JSON.parse(snapshots[1].stateJson).doc).toBe("Hello world! Last edit.");
+        expect(snapshots[1].upToEventId).toBe(2);
+    });
+
+    it("drains overlapping close requests together and includes edits accepted while waiting", async () => {
+        const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];
+        let release!: () => void;
+        let eventId = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: ++eventId, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") {
+                snapshots.push(args as (typeof snapshots)[number]);
+                if (snapshots.length === 1)
+                    return new Promise<void>((resolve) => {
+                        release = resolve;
+                    });
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        const firstClose = flushPersistenceForClose();
+        const secondClose = flushPersistenceForClose();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        view.dispatch({ changes: { from: 12, insert: " Last edit." } });
+        release();
+        await Promise.all([firstClose, secondClose]);
+        expect(snapshots).toHaveLength(2);
+        expect(JSON.parse(snapshots[1].stateJson).doc).toBe("Hello world! Last edit.");
+        expect(snapshots[1].upToEventId).toBe(2);
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " Another edit." } });
+        await flushPersistenceForClose();
+        expect(snapshots).toHaveLength(3);
+        expect(snapshots[2].upToEventId).toBe(3);
+    });
+
+    it("allows another close flush after a shared checkpoint failure", async () => {
+        let attempts = 0;
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot" && ++attempts === 1) throw new Error("disk full");
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        const results = await Promise.allSettled([
+            flushPersistenceForClose(),
+            flushPersistenceForClose(),
+        ]);
+        expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
+        expect(attempts).toBe(1);
+        await flushPersistenceForClose();
+        expect(attempts).toBe(2);
+    });
+
+    it("checkpoints after 30 seconds of idle and resets the break on the next edit", async () => {
+        vi.useFakeTimers();
+        const snapshots: Array<{ stateJson: string; upToEventId: number }> = [];
+        let eventId = 0;
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_append_event") return { eventId: ++eventId, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot") snapshots.push(args as (typeof snapshots)[number]);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await flushPersistQueue();
+        await vi.advanceTimersByTimeAsync(29_000);
+        expect(snapshots).toHaveLength(0);
+        view.dispatch({ changes: { from: 12, insert: " Again." } });
+        await flushPersistQueue();
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(snapshots).toHaveLength(0);
+        await vi.advanceTimersByTimeAsync(1);
+        await flushPersistQueue();
+        expect(snapshots).toHaveLength(1);
+        expect(snapshots[0].upToEventId).toBe(2);
+        expect(JSON.parse(snapshots[0].stateJson).doc).toBe("Hello world! Again.");
+        await flushPersistence();
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(snapshots).toHaveLength(1);
+    });
+
+    it("does not checkpoint unchanged selection-only activity", async () => {
+        vi.useFakeTimers();
+        const snapshots: unknown[] = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_create_snapshot") snapshots.push(args);
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ selection: { anchor: 4 } });
+        await vi.advanceTimersByTimeAsync(30_000);
+        await flushPersistence();
+        expect(snapshots).toHaveLength(0);
+    });
+
+    it("retries a failed idle checkpoint on the next flush", async () => {
+        vi.useFakeTimers();
+        let attempts = 0;
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 4, needsSnapshot: false };
+            if (cmd === "cmd_create_snapshot" && ++attempts === 1) {
+                throw new Error("database busy");
+            }
+            return null;
+        });
+        view = makeView();
+        view.dispatch({ changes: { from: 11, insert: "!" } });
+        await flushPersistQueue();
+        await vi.advanceTimersByTimeAsync(30_000);
+        await flushPersistQueue();
+        expect(attempts).toBe(1);
+        await flushPersistence();
+        expect(attempts).toBe(2);
+    });
+
+    it("seeds a recovered draft checkpoint without duplicating later flushes", async () => {
+        const snapshots: Array<{ draftId: string; upToEventId: number }> = [];
+        mockIPC((cmd, args) => {
+            if (cmd === "cmd_create_snapshot") snapshots.push(args as (typeof snapshots)[number]);
+            return null;
+        });
+        const state = EditorState.create({ doc: "recovered" });
+        seedPersistenceBookkeeping(9, { draftId: "draft-1", eventId: 9, state });
+        await flushPersistence();
+        await flushPersistence();
+        expect(snapshots).toEqual([
+            expect.objectContaining({ draftId: "draft-1", upToEventId: 9 }),
+        ]);
+    });
+
     it("checkpoints the latest edit before leaving below the automatic snapshot threshold", async () => {
         const snapshots: Array<{ draftId: string; stateJson: string; upToEventId: number }> = [];
         mockIPC((cmd, args) => {

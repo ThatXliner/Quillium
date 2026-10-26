@@ -11,6 +11,7 @@ import "../app.css";
 import { onNavigate } from "$app/navigation";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 import { logAppEvent } from "$lib/appLog";
+import { startPersistenceLifecycle } from "$lib/editor/persistenceLifecycle";
 import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
 import { novelNovemberEnabled, startFeatureFlagSync } from "$lib/featureFlags.svelte";
 import posthog from "$lib/posthog";
@@ -54,9 +55,11 @@ onMount(() => {
 });
 
 onMount(() => {
+    const stopPersistence = startPersistenceLifecycle();
     const stopReminders = startWritingReminderService();
     const stopFlags = startFeatureFlagSync();
     return () => {
+        stopPersistence();
         stopFlags();
         stopReminders();
     };

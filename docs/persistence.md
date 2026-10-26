@@ -102,10 +102,14 @@ Snapshot triggers include:
 
 - At least 50 events since the last snapshot
 - At least 120 seconds since the last snapshot, checked on the next event append
+- About 30 seconds without a persisted editor change
 - Leaving the editor or switching drafts with edits not yet captured by a snapshot
+- Backgrounding the app, hiding the webview, or closing its native window
+- Opening a draft with a successfully replayed event tail from the previous session
 
-`flushPersistence()` queues this last checkpoint behind pending event writes and awaits
-it before flushing metadata. The checkpoint retains the immutable state and draft/event
+`flushPersistence()` queues a checkpoint behind pending event writes and awaits
+it before flushing metadata. Idle checkpoints use the same ordered queue. The checkpoint
+retains the immutable state and draft/event
 IDs from the successful append; repeated flushes do not duplicate it. A failed checkpoint
 blocks the transition and can be retried. An event append failure remains attached to
 that loaded draft. Both flush APIs reject, navigation stays in the editor, and later
@@ -127,12 +131,21 @@ request semantic indexing. They may propose an automatic title, which SQLite app
 only while the stored title is still `Untitled`. Renaming and tagging preserve content
 and its search index.
 
+Native window close waits for persistence and remains open if saving fails. Focus loss
+and visibility changes start a best-effort flush because the OS does not wait before
+backgrounding. Force quit, process termination, and the native app Quit menu do not
+provide this awaitable window-close barrier; successfully appended events remain the
+recovery source. Repeated lifecycle notifications do not duplicate an unchanged snapshot.
+
 ## Load flow
 
 [load.rs](../packages/desktop/src-tauri/src/db/load.rs) loads the latest snapshot
 and all events after its `up_to_event_id`. The frontend restores the snapshot,
 then replays the tail through
-[replay.ts](../packages/desktop/src/lib/editor/replay.ts).
+[replay.ts](../packages/desktop/src/lib/editor/replay.ts). On a complete reconstruction,
+the loader queues a checkpoint when that tail is nonempty. Invalid snapshots and
+failed event replay do not become automatic session-start checkpoints. A failed
+recovery checkpoint stays pending for a later flush.
 
 New event payloads carry a versioned `transactionReplay` trace. It preserves each accepted
 CodeMirror transaction boundary, `ChangeSet`, start/final selection, tagged annotation/version-group

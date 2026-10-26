@@ -119,6 +119,76 @@ afterEach(() => {
 });
 
 describe("DocumentLoader", () => {
+    it("checkpoints a completely recovered event tail on session open", async () => {
+        const loaded = saved("hello", 7);
+        loaded.eventsSince = [
+            {
+                id: 8,
+                eventType: "doc_change",
+                payload: JSON.stringify({
+                    type: "doc_change",
+                    changes: [{ from: 5, insert: " world" }],
+                    selection: { ranges: [{ anchor: 11, head: 11 }], main: 0 },
+                }),
+                createdAt: 1,
+            },
+        ];
+        db.loadDocumentState.mockResolvedValue(loaded);
+        const result = await loader.load({ documentId: "doc-1" });
+        expect(result?.state.doc.toString()).toBe("hello world");
+        expect(result?.recoveredChanges).toBe(true);
+        expect(persistence.flushPersistence).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not checkpoint a partial reconstruction over a failed tail event", async () => {
+        const loaded = saved("hello", 7);
+        loaded.eventsSince = [{ id: 8, eventType: "doc_change", payload: "broken", createdAt: 1 }];
+        db.loadDocumentState.mockResolvedValue(loaded);
+        const result = await loader.load({ documentId: "doc-1" });
+        expect(result?.state.doc.toString()).toBe("hello");
+        expect(result?.recoveredChanges).toBe(false);
+        expect(persistence.flushPersistence).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not checkpoint a tail with a silently skipped legacy annotation", async () => {
+        const loaded = saved("hello", 7);
+        loaded.eventsSince = [
+            {
+                id: 8,
+                eventType: "annotation_add",
+                payload: JSON.stringify({ type: "annotation_add", annotation: { id: 7 } }),
+                createdAt: 1,
+            },
+        ];
+        db.loadDocumentState.mockResolvedValue(loaded);
+        const result = await loader.load({ documentId: "doc-1" });
+        expect(result?.state.doc.toString()).toBe("hello");
+        expect(result?.recoveredChanges).toBe(false);
+        expect(persistence.flushPersistence).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not checkpoint an event tail over a corrupt snapshot", async () => {
+        db.loadDocumentState.mockResolvedValue({
+            snapshotStateJson: "broken",
+            snapshotEventId: 7,
+            eventsSince: [
+                {
+                    id: 8,
+                    eventType: "doc_change",
+                    payload: JSON.stringify({
+                        type: "doc_change",
+                        changes: [{ from: 0, insert: "tail" }],
+                        selection: { ranges: [{ anchor: 4, head: 4 }], main: 0 },
+                    }),
+                    createdAt: 1,
+                },
+            ],
+        });
+        const result = await loader.load({ documentId: "doc-1" });
+        expect(result?.recoveredChanges).toBe(false);
+        expect(persistence.flushPersistence).toHaveBeenCalledTimes(1);
+    });
+
     it("withholds live context until a load commits and while switching targets", async () => {
         expect(loader.isReady()).toBe(false);
         await loader.load({ documentId: "doc-1" });
