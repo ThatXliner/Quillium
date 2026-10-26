@@ -632,10 +632,22 @@ keeps any text that streamed before cancellation rather than adding an error.
 
 ### Dictionary and thesaurus
 
-`Mod-D` opens the dictionary popover for a single selected word. Definitions,
-synonyms, and antonyms come from the Free Dictionary API. Its AI mode uses
-`streamDictionary()` for nuanced lookup and word-finding; it intentionally sends
-the selected word or phrase without draft text.
+`Mod-D` opens the dictionary popover for a single selected word. The configured
+AI model supplies definitions, phonetics, synonyms, and antonyms through
+`generateDictionaryEntry()`, which calls `generateObject()` with
+`structuredDictionaryDataSchema`. The request sends only the selected word, not
+draft text. `dictionaryUtils.ts` trims, deduplicates, and caps the result; an
+entry without senses, synonyms, or antonyms is shown as no results.
+
+Lookups start only when AI is enabled and `hasApiKey()` reports a ready
+connection, including ChatGPT sign-in and local endpoints. Otherwise the popover
+explains what to configure and sends nothing. Malformed structured output, a
+missing stored key, and provider failures each get a specific message with a
+retry control; provider errors are written to App Logs first. The main lookup and
+each stacked chip lookup have their own abort controller, linked to the global
+stop signal. Dismissing, retriggering, or unmounting the popover cancels them,
+and closing one stacked card cancels only its request. Describe → find word uses
+`streamDictionary()` through the same readiness check and stops on dismiss.
 
 ### Writing characterizer
 
