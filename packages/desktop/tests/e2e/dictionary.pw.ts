@@ -1,8 +1,9 @@
 /**
  * E2E tests for the dictionary/thesaurus popover (⌘D).
  *
- * The Free Dictionary API is mocked via Playwright's route interception
- * so tests are hermetic and don't depend on network availability.
+ * Lookups use the configured AI model. The OpenAI Responses endpoint is
+ * mocked via Playwright's route interception so tests are hermetic and
+ * don't depend on credentials or network availability.
  */
 
 import { type Page, expect, test } from "@playwright/test";
@@ -10,43 +11,61 @@ import { QuilliumPage } from "./QuilliumPage";
 
 // ── Mock data ────────────────────────────────────────────────────────────────
 
-const MOCK_DICT_RESPONSE = [
-    {
-        word: "helpful",
-        phonetic: "/ˈhɛlp.fəl/",
-        phonetics: [{ text: "/ˈhɛlp.fəl/" }],
-        meanings: [
-            {
-                partOfSpeech: "adjective",
-                definitions: [
+const MOCK_ENTRY = {
+    phonetic: "/ˈhɛlp.fəl/",
+    meanings: [
+        {
+            partOfSpeech: "adjective",
+            definitions: [
+                {
+                    definition: "Furnishing help; giving aid; useful.",
+                    example: "a helpful assistant",
+                },
+            ],
+        },
+    ],
+    synonyms: ["useful", "beneficial", "supportive"],
+    antonyms: ["unhelpful"],
+};
+
+const EMPTY_ENTRY = { phonetic: "", meanings: [], synonyms: [], antonyms: [] };
+
+async function mockDictionaryModel(page: Page, entry: object = MOCK_ENTRY) {
+    await page.route("https://api.openai.com/**", (route) =>
+        route.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+                id: "resp_dictionary",
+                object: "response",
+                created_at: 1,
+                model: "gpt-5.6-sol",
+                status: "completed",
+                output: [
                     {
-                        definition: "Furnishing help; giving aid; useful.",
-                        example: "a helpful assistant",
-                        synonyms: ["useful", "beneficial", "supportive"],
-                        antonyms: ["unhelpful"],
+                        id: "msg_dictionary",
+                        type: "message",
+                        role: "assistant",
+                        status: "completed",
+                        content: [
+                            { type: "output_text", text: JSON.stringify(entry), annotations: [] },
+                        ],
                     },
                 ],
-                synonyms: ["useful", "beneficial"],
-                antonyms: ["unhelpful"],
-            },
-        ],
-    },
-];
-
-async function mockDictionaryApi(page: Page) {
-    await page.route("**/api.dictionaryapi.dev/**", (route) =>
-        route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify(MOCK_DICT_RESPONSE),
+                usage: {
+                    input_tokens: 50,
+                    output_tokens: 50,
+                    total_tokens: 100,
+                    input_tokens_details: { cached_tokens: 0 },
+                    output_tokens_details: { reasoning_tokens: 0 },
+                },
+            }),
         }),
     );
 }
 
-async function mockDictionaryApiNotFound(page: Page) {
-    await page.route("**/api.dictionaryapi.dev/**", (route) =>
-        route.fulfill({ status: 404, body: "[]" }),
-    );
+/** A Quillium page with a connected OpenAI API key. */
+function connectedPage(page: Page): QuilliumPage {
+    return new QuilliumPage(page, { apiKey: "test-key" });
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -75,9 +94,64 @@ async function expectPopoverHidden(page: Page) {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe("dictionary popover", () => {
+    test("keeps a delayed result inside a short viewport", async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 520 });
+        await mockDictionaryModel(page);
+        let releaseResponse = (): void => {};
+        const responseReady = new Promise<void>((resolve) => {
+            releaseResponse = resolve;
+        });
+        await page.route("https://api.openai.com/**", async (route) => {
+            await responseReady;
+            await route.fallback();
+        });
+        const q = connectedPage(page);
+        await q.init();
+        await q.typeInEditor(`${"A line of writing.\n".repeat(20)}helpful`);
+        for (let index = 0; index < 7; index += 1) await page.keyboard.press("Shift+ArrowLeft");
+        await page.keyboard.press("Control+d");
+        const popover = page.locator(".dictionary-popover").first();
+        await expect(popover).toContainText("Looking up...");
+        releaseResponse();
+        await expect(popover).toContainText("Furnishing help");
+        await expect
+            .poll(async () => {
+                const bounds = await popover.boundingBox();
+                return bounds !== null && bounds.y >= 8 && bounds.y + bounds.height <= 512;
+            })
+            .toBe(true);
+        await expect(popover.getByRole("textbox", { name: "Describe the idea" })).toBeVisible();
+    });
+
+    test("explains AI disabled and offers settings without sending a request", async ({ page }) => {
+        const requests: string[] = [];
+        page.on("request", (request) => {
+            if (request.url().includes("api.openai.com")) requests.push(request.url());
+        });
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { aiEnabled: false, grammarCheckEnabled: false },
+        });
+        await q.init();
+        await openDictionaryOn(q, "helpful");
+        const popover = page.locator(".dictionary-popover").first();
+        await expect(popover).toContainText("Enable AI in Settings to look up words.");
+        await expect(
+            popover.getByRole("button", { name: "Open Settings", exact: true }),
+        ).toBeVisible();
+        await expect(popover.getByRole("button", { name: "Find", exact: true })).toHaveCount(0);
+        expect(requests).toEqual([]);
+    });
+
     test("opens on ⌘D with a word selected and shows definition", async ({ page }) => {
-        await mockDictionaryApi(page);
-        const q = new QuilliumPage(page);
+        const freeDictionaryRequests: string[] = [];
+        page.on("request", (request) => {
+            if (request.url().includes("dictionaryapi.dev")) {
+                freeDictionaryRequests.push(request.url());
+            }
+        });
+        await mockDictionaryModel(page);
+        const q = connectedPage(page);
         await q.init();
 
         await openDictionaryOn(q, "helpful");
@@ -87,11 +161,12 @@ test.describe("dictionary popover", () => {
         await expect(popover).toContainText("helpful");
         await expect(popover).toContainText("/ˈhɛlp.fəl/");
         await expect(popover).toContainText("Furnishing help");
+        expect(freeDictionaryRequests).toEqual([]);
     });
 
     test("shows synonyms and antonyms", async ({ page }) => {
-        await mockDictionaryApi(page);
-        const q = new QuilliumPage(page);
+        await mockDictionaryModel(page);
+        const q = connectedPage(page);
         await q.init();
 
         await openDictionaryOn(q, "helpful");
@@ -102,19 +177,21 @@ test.describe("dictionary popover", () => {
     });
 
     test("shows no results message for unknown word", async ({ page }) => {
-        await mockDictionaryApiNotFound(page);
-        const q = new QuilliumPage(page);
+        await mockDictionaryModel(page, EMPTY_ENTRY);
+        const q = connectedPage(page);
         await q.init();
 
         await openDictionaryOn(q, "xyzzy");
 
         await expectPopoverVisible(page);
-        await expect(page.locator(".dictionary-popover")).toContainText("No results");
+        await expect(page.locator(".dictionary-popover")).toContainText(
+            'No definition found for "xyzzy".',
+        );
     });
 
     test("dismisses on Escape", async ({ page }) => {
-        await mockDictionaryApi(page);
-        const q = new QuilliumPage(page);
+        await mockDictionaryModel(page);
+        const q = connectedPage(page);
         await q.init();
 
         await openDictionaryOn(q, "helpful");
@@ -125,8 +202,8 @@ test.describe("dictionary popover", () => {
     });
 
     test("dismisses on backdrop click", async ({ page }) => {
-        await mockDictionaryApi(page);
-        const q = new QuilliumPage(page);
+        await mockDictionaryModel(page);
+        const q = connectedPage(page);
         await q.init();
 
         await openDictionaryOn(q, "helpful");
@@ -138,8 +215,8 @@ test.describe("dictionary popover", () => {
     });
 
     test("synonym click opens a stacked lookup whose Replace swaps the word", async ({ page }) => {
-        await mockDictionaryApi(page);
-        const q = new QuilliumPage(page);
+        await mockDictionaryModel(page);
+        const q = connectedPage(page);
         await q.init();
 
         await openDictionaryOn(q, "helpful");
@@ -155,8 +232,13 @@ test.describe("dictionary popover", () => {
         await q.expectEditorText("useful");
     });
 
-    test("open in chat disabled without API key", async ({ page }) => {
-        await mockDictionaryApi(page);
+    test("lookup and open in chat need an AI connection", async ({ page }) => {
+        const modelRequests: string[] = [];
+        page.on("request", (request) => {
+            if (request.url().startsWith("https://api.openai.com/")) {
+                modelRequests.push(request.url());
+            }
+        });
         const q = new QuilliumPage(page, {
             settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
         }); // no apiKey
@@ -165,12 +247,18 @@ test.describe("dictionary popover", () => {
         await openDictionaryOn(q, "helpful");
         await expectPopoverVisible(page);
 
-        const openInChatBtn = page.locator(".dictionary-popover button[title='Needs API key']");
+        await expect(page.locator(".dictionary-popover")).toContainText(
+            "Connect an AI provider in AI Settings to look up words.",
+        );
+        const openInChatBtn = page.locator(
+            ".dictionary-popover button[title='Needs an AI connection']",
+        );
         await expect(openInChatBtn).toBeDisabled();
+        expect(modelRequests).toEqual([]);
     });
 
     test("open in chat opens AI sidebar with API key", async ({ page }) => {
-        await mockDictionaryApi(page);
+        await mockDictionaryModel(page);
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
             settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
@@ -193,8 +281,8 @@ test.describe("dictionary popover", () => {
     });
 
     test("does not open on multiword selection", async ({ page }) => {
-        await mockDictionaryApi(page);
-        const q = new QuilliumPage(page);
+        await mockDictionaryModel(page);
+        const q = connectedPage(page);
         await q.init();
 
         await q.typeInEditor("two words");
