@@ -31,7 +31,7 @@ const streaming = $derived(active && (part.state === "input-streaming" || part.s
             <h3 class="text-xs font-semibold text-black/70">Passage review</h3>
             <span class="text-xs tabular-nums text-black/65">{review.passages.length} {review.passages.length === 1 ? "passage" : "passages"}</span>
         </div>
-        <p class="mt-1 text-xs text-black/65">Based on the {result.scope} when requested. Notes only; your draft is unchanged.</p>
+        <p class="mt-1 text-xs text-black/65">Based on the {result.scope} when requested. This review doesn't edit your draft.</p>
         {#if review.summary}<p class="mt-2 leading-relaxed text-black/80">{review.summary}</p>{/if}
         <ul class="mt-3 grid gap-1.5" aria-label="Legend">
             {#each legend as entry (entry.category.id)}
@@ -40,7 +40,7 @@ const streaming = $derived(active && (part.state === "input-streaming" || part.s
                     <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs {tone.chip}">
                         <tone.icon size={12} aria-hidden="true" />
                         <span class="font-medium">{entry.category.label}</span>
-                        <span class="tabular-nums">{entry.count}</span>
+                        <span class="tabular-nums">{entry.count}<span class="sr-only"> {entry.count === 1 ? "passage" : "passages"}</span></span>
                     </span>
                     <span class="text-black/70">{entry.category.meaning}</span>
                 </li>
@@ -56,7 +56,7 @@ const streaming = $derived(active && (part.state === "input-streaming" || part.s
                     </span>
                     <blockquote class="mt-1 whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere] text-black/85">“{item.passage}”</blockquote>
                     <details class="mt-1.5">
-                        <summary class="w-fit cursor-pointer rounded text-xs font-medium text-black/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700">Why {category?.label}?</summary>
+                        <summary aria-label={`Why ${category?.label} for passage ${index + 1}?`} class="w-fit cursor-pointer rounded text-xs font-medium text-black/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700">Why {category?.label}?</summary>
                         <p class="mt-1.5 whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere] text-black/75">{item.reason}</p>
                     </details>
                 </li>
@@ -69,6 +69,6 @@ const streaming = $derived(active && (part.state === "input-streaming" || part.s
     </p>
 {:else}
     <p role="status" class="my-1 flex items-center gap-2 py-1.5 text-xs text-black/70" data-passage-review={part.toolCallId}>
-        <CircleAlert size={14} aria-hidden="true" />{result?.status === "invalid" && result.reason === "source-mismatch" ? "Some review passages didn't match the captured writing. Try again." : part.state === "output-error" || part.state === "output-available" ? "Quillium couldn't read this passage review. Try again." : "Passage review interrupted"}
+        <CircleAlert size={14} aria-hidden="true" />{result?.status === "invalid" && result.reason === "source-mismatch" ? "The review couldn't match the quoted passages in order. Try again." : part.state === "output-error" || part.state === "output-available" ? "Quillium couldn't read this passage review. Try again." : "Passage review interrupted"}
     </p>
 {/if}

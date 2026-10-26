@@ -43,7 +43,10 @@ describe("PassageReviewCard", () => {
         expect(screen.container.querySelectorAll("[data-passage-category]")).toHaveLength(2);
         const reason = screen.getByText(hostile);
         expect(reason).not.toBeVisible();
-        await fireEvent.click(screen.getByText("Why Keep?"));
+        const explanation = screen.getByText("Why Keep?");
+        expect(explanation).toHaveAccessibleName("Why Keep for passage 1?");
+        expect(within(legend).getAllByRole("listitem")[0]).toHaveTextContent(/Keep\s*1\s*passage/);
+        await fireEvent.click(explanation);
         expect(reason).toBeVisible();
         expect(screen.container.querySelector("img")).toBeNull();
         expect(screen.getByText("“A quiet opening.”")).toBeVisible();
@@ -54,7 +57,9 @@ describe("PassageReviewCard", () => {
         const screen = render(PassageReviewCard, {
             part: part({ status: "invalid", reason: "source-mismatch" }),
         });
-        expect(screen.getByRole("status")).toHaveTextContent("didn't match the captured writing");
+        expect(screen.getByRole("status")).toHaveTextContent(
+            "couldn't match the quoted passages in order",
+        );
         expect(screen.container.querySelector("[data-passage-category]")).toBeNull();
     });
 

@@ -146,7 +146,7 @@ label, so none depends on color.
 |----------|---------|-----|------|
 | Keep | Core content | `green-600` stripe, `green-50` chip | Check |
 | Condense | Useful idea, too many words | `yellow-500` stripe, `yellow-50` chip | Fold |
-| Cut | Redundant | `rose-500` stripe, `rose-50` chip | Scissors |
+| Cut | Redundant or lower-value evidence | `rose-500` stripe, `rose-50` chip | Scissors |
 | Revise | Wording or logic needs work | `blue-500` stripe, `blue-50` chip | Pen |
 
 Cut uses rose rather than a primary red so it stays warm and desaturated.

@@ -81,6 +81,7 @@ test("Feedback passage review requests a typed review and leaves the draft uncha
     ]);
     await expect(card.locator("[data-passage-category]")).toHaveCount(3);
     const explanation = card.getByText("Why Keep?", { exact: true });
+    await expect(explanation).toHaveAccessibleName("Why Keep for passage 3?");
     await explanation.focus();
     await page.keyboard.press("Enter");
     await expect(card.getByText(HOSTILE_REASON)).toBeVisible();
@@ -89,7 +90,7 @@ test("Feedback passage review requests a typed review and leaves the draft uncha
     await expect(card.locator("img")).toHaveCount(0);
     expect(await page.evaluate(() => "__reviewXss" in window)).toBe(false);
     await expect(card).toContainText(
-        "Based on the draft when requested. Notes only; your draft is unchanged.",
+        "Based on the draft when requested. This review doesn't edit your draft.",
     );
 
     await expect(q.annotationCards).toHaveCount(0);
@@ -137,5 +138,103 @@ test("Feedback passage review requests a typed review and leaves the draft uncha
     await reopened.expectEditorText("The writing has changed since this review.");
     reopened.expectNoPageErrors();
     await reopenedPage.close();
+    q.expectNoPageErrors();
+});
+
+test("saved reviews show all four categories in an expanded discussion", async ({ page }) => {
+    const passages = [
+        {
+            passage: "A voice upstairs said her name.",
+            category: "keep",
+            reason: "The voice creates a question that carries the scene forward.",
+        },
+        {
+            passage: "She unlocked the door with the key she had brought.",
+            category: "condense",
+            reason: "The key matters, but unlocking the door already implies she brought it.",
+        },
+        {
+            passage: "The key was in her pocket.",
+            category: "cut",
+            reason: "This repeats information the action already gives the reader.",
+        },
+        {
+            passage: "That was when everything changed.",
+            category: "revise",
+            reason: "The reader needs to see what changed for her.",
+        },
+    ];
+    const currentWriting = "The writer has moved on to a different opening.";
+    const q = new QuilliumPage(page, {
+        apiKey: "fixture-key",
+        initialDoc: currentWriting,
+        settings: { aiSidebarLayout: "combined" },
+        conversations: [
+            {
+                id: "saved-passage-review",
+                documentId: "doc-test-1",
+                draftId: "draft-test-1",
+                draftLabel: "Main",
+                mode: "feedback",
+                title: "A shorter opening",
+                createdAt: 1,
+                updatedAt: 1,
+                archived: false,
+                sourceConversationId: null,
+                sourceMessageId: null,
+                messagesJson: JSON.stringify([
+                    {
+                        id: "review-message",
+                        role: "assistant",
+                        parts: [
+                            {
+                                type: "tool-reviewPassages",
+                                toolCallId: "saved-review",
+                                state: "output-available",
+                                input: { passages },
+                                output: {
+                                    status: "complete",
+                                    scope: "draft",
+                                    review: { passages },
+                                },
+                            },
+                        ],
+                    },
+                ]),
+            },
+        ],
+    });
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await q.init();
+    await q.openConversation("A shorter opening");
+    await q.chatPanel.getByRole("button", { name: "Expand discussion", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "A shorter opening", exact: true });
+    const heightHandle = dialog.getByRole("button", { name: "Resize modal height", exact: true });
+    await heightHandle.focus();
+    for (let i = 0; i < 18; i++) await heightHandle.press("ArrowDown");
+    const card = page.locator('[data-passage-review="saved-review"]');
+    expect(
+        await card
+            .locator("[data-passage-category]")
+            .evaluateAll((items) =>
+                items.map((item) => item.getAttribute("data-passage-category")),
+            ),
+    ).toEqual(["keep", "condense", "cut", "revise"]);
+    await expect(card.getByRole("list", { name: "Legend" }).getByRole("listitem")).toHaveText([
+        /Keep\s*1\s*passage/,
+        /Condense\s*1\s*passage/,
+        /Cut\s*1\s*passage/,
+        /Revise\s*1\s*passage/,
+    ]);
+    await expect(card).toContainText("This review doesn't edit your draft.");
+    const reason = card.getByText("Why Condense?", { exact: true });
+    await expect(reason).toHaveAccessibleName("Why Condense for passage 2?");
+    await reason.focus();
+    await page.keyboard.press("Enter");
+    await expect(card.getByText(passages[1].reason)).toBeVisible();
+    await card.getByRole("heading").scrollIntoViewIfNeeded();
+    await card.screenshot({ path: "/tmp/quillium-449/passage-review-full.png" });
+    await q.expectEditorText(currentWriting);
+    await expect(q.annotationCards).toHaveCount(0);
     q.expectNoPageErrors();
 });

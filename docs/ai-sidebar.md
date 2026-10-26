@@ -262,7 +262,7 @@ with an explicit word target. All use the same conversation and target guards.
 Passage review is the first Feedback starting point, and unified Chat offers it
 in Starting points. It sorts passages from the draft or selection into the fixed
 categories in `passageReview.ts`: Keep (core content), Condense (useful idea,
-too many words), Cut (redundant), and Revise (wording or logic). Each passage
+too many words), Cut (redundant or lower-value evidence), and Revise (wording or logic). Each passage
 has one reason. The model must answer with one `reviewPassages` call. The
 conversation renders that call as a card with a legend of the categories it
 uses, in registry order. Each category has its own icon and text label, so it
