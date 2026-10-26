@@ -394,7 +394,12 @@ function handleMessage(
                 if (previous === undefined) {
                     if (access.requests.size >= 10000)
                         throw new Error("Comment limit reached for this session");
-                    applyCommentCommand(ydoc, command, clientData.userId, commandOrigin);
+                    applyCommentCommand(
+                        ydoc,
+                        command,
+                        clientData.displayName ?? clientData.userId,
+                        commandOrigin,
+                    );
                     access.requests.set(key, serialized);
                 }
                 ws.send(

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { getCurrentUserName } from "$lib/auth";
+import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
 import { collabCapabilities } from "$lib/collab/capabilities";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { editorView } from "$lib/stores";
@@ -88,7 +89,8 @@ let isFocused = $state(false);
 let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 const hasText = $derived(!!newMessage.trim());
-const sendActive = $derived(hasText);
+const submission = $derived(getCommentSubmission(view ?? $editorView, annotationId));
+const sendActive = $derived(hasText && !submission?.pending);
 function blurToEditor() {
     textareaEl?.blur();
     const owningView = view ?? $editorView;
@@ -112,11 +114,18 @@ $effect(() => {
     });
 });
 
-function send() {
-    if (!newMessage.trim()) return;
+async function send(): Promise<void> {
+    if (!newMessage.trim() || submission?.pending) return;
+    const submitted = newMessage;
+    if (submission) {
+        if (await submission.send(submitted.trim())) {
+            if (getDraft(annotationId) === submitted) clearDraft(annotationId);
+        }
+        return;
+    }
     updateThread([
         ...thread,
-        { message: newMessage.trim(), author: currentUserName, time: Date.now() },
+        { message: submitted.trim(), author: currentUserName, time: Date.now() },
     ]);
     clearDraft(annotationId);
 }
@@ -161,6 +170,7 @@ function send() {
                 }
             }}
         ></textarea>
+        {#if submission?.error}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submission.error}</p>{/if}
         <div class="flex items-center justify-between px-2 pb-1.5">
             <div class="flex items-center gap-1">
                 {#if onAiSuggest && $collabCapabilities.canEdit}
@@ -186,10 +196,11 @@ function send() {
             <div class="flex items-center gap-1.5">
                 <button
                     onclick={sendActive ? send : undefined}
+                    disabled={!sendActive}
                     class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
                         {sendActive ? `${sendPillClass} shadow-sm` : 'bg-black/5 text-black/30'}"
                 >
-                    {isFocused ? "Send" : "Reply"}
+                    {submission?.pending ? "Sending" : isFocused ? "Send" : "Reply"}
                     <span class="flex items-center gap-0.5">
                         <Kbd keys={isFocused ? ["⌘", "↵"] : ["⌘", "/"]}
                             variant={sendActive ? "fullWhite" : isFocused ? "whiteGhost" : "default"} />

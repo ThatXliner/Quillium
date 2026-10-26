@@ -1,4 +1,5 @@
 <script lang="ts">
+import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
 import { getCurrentUserName } from "$lib/auth";
 import { avatarColor, initials } from "$lib/auth/avatarUtils";
 import posthog from "$lib/posthog";
@@ -72,6 +73,7 @@ const pendingComment = $derived(resolvePendingComment());
 // it survives this component unmounting — e.g. when a window resize swaps
 // the floating card layout for the comment modal (#247).
 const commentText = $derived(pendingComment ? getDraft(pendingComment.id) : "");
+const submission = $derived(pendingComment ? getCommentSubmission(view, pendingComment.id) : undefined);
 
 // Auto-focus the textarea when a pending (unsaved) comment exists
 $effect(() => {
@@ -104,8 +106,16 @@ const selectedText = $derived(
  * After saving, restore the editor selection to cover the
  * commented text (Google Docs behaviour).
  */
-function addComment() {
-    if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
+async function addComment(): Promise<void> {
+    if (!pendingComment || !isAnnotationOfType(pendingComment, "comment") || submission?.pending) return;
+    const submitted = commentText;
+    const submittedId = pendingComment.id;
+    if (submission) {
+        if (await submission.send(submitted.trim())) {
+            if (getDraft(submittedId) === submitted) clearDraft(submittedId);
+        }
+        return;
+    }
     posthog.capture("comment_created", {
         has_selection: !!selectedText,
         comment_length: commentText.length,
@@ -178,6 +188,7 @@ function cancelComment() {
         </div>
         <textarea
             tabindex="0"
+            disabled={submission?.pending}
             bind:this={textarea}
             bind:value={
                 () => commentText,
@@ -185,9 +196,8 @@ function cancelComment() {
             }
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
-                    addComment();
-                    // @ts-ignore
-                    e.target.blur();
+                    e.preventDefault();
+                    void addComment();
                 } else if (e.key === "Escape") {
                     e.preventDefault();
                     e.stopPropagation();
@@ -201,19 +211,21 @@ function cancelComment() {
         ></textarea>
     </div>
 
+    {#if submission?.error}<p role="alert" class="px-3 pb-2 text-xs text-red-700">{submission.error}</p>{/if}
     <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-black/10 pt-2">
         <button
             onclick={cancelComment}
+            disabled={submission?.pending}
             class="text-xs text-black/40 hover:text-black/60 transition-colors"
         >
             Cancel
         </button>
         <button
-            disabled={!commentText}
+            disabled={!commentText.trim() || submission?.pending}
             onclick={addComment}
             class="px-3 py-1 bg-blue-500/80 text-white text-xs font-medium rounded-full hover:bg-blue-600/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-            Comment
+            {submission?.pending ? "Sending" : "Comment"}
         </button>
     </div>
 </div>

@@ -8,50 +8,63 @@ import {
 } from "$lib/editor/plugins/annotations/annotationField";
 import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
+import { modalStack } from "$lib/stores";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
-import { toast } from "svelte-sonner";
 import * as Y from "yjs";
+import { getCommentSubmission, registerCommentSubmissions } from "./commentSubmission.svelte";
 import { type RoleContext, roleContext } from "./roleContext";
 import { yjsAnnotationSync } from "./yjsAnnotations";
 import { yjsAnnotation } from "./yjsBinding";
-import type { CommentInput } from "./yjsProvider";
 import { yjsVersionGroupSync } from "./yjsVersionGroups";
 
 export function createRolePermissions(context: RoleContext): Extension {
     let view: EditorView | undefined;
     const pending = new Set<number>();
-    const submitting = new Set<string>();
-    const submit = (command: CommentInput, pendingId?: number): void => {
-        const key =
-            pendingId === undefined && command.kind === "replyToComment"
-                ? command.annotationId
-                : String(pendingId);
-        if (submitting.has(key)) return;
-        submitting.add(key);
-        queueMicrotask(() => {
-            void context
-                .send(command)
-                .then(() => {
-                    if (pendingId === undefined || !view) return;
-                    const annotation = view.state.field(annotationField)[pendingId];
-                    if (annotation && pending.has(pendingId)) {
-                        pending.delete(pendingId);
-                        const pendingKey = context.ids.getYjsId(pendingId);
-                        if (pendingKey) context.ids.remove(pendingKey);
-                        view.dispatch({
-                            effects: removeAnnotation.of(annotation),
-                            annotations: yjsAnnotationSync.of(true),
-                        });
-                    }
-                })
-                .finally(() => submitting.delete(key))
-                .catch((error: unknown) =>
-                    toast.error(
-                        error instanceof Error ? error.message : "The comment was not accepted",
+    const submit = async (annotationId: number, message: string): Promise<void> => {
+        if (!view) throw new Error("The comment editor has closed");
+        const annotation = view.state.field(annotationField)[annotationId];
+        if (!annotation || !isAnnotationOfType(annotation, "comment"))
+            throw new Error("Comment not found");
+        if (pending.has(annotationId)) {
+            const range = annotation.selection.main;
+            await context.send({
+                kind: "createComment",
+                scope: context.scope,
+                start: Array.from(
+                    Y.encodeRelativePosition(
+                        Y.createRelativePositionFromTypeIndex(context.text, range.from),
                     ),
-                );
-        });
+                ),
+                end: Array.from(
+                    Y.encodeRelativePosition(
+                        Y.createRelativePositionFromTypeIndex(context.text, range.to),
+                    ),
+                ),
+                message,
+            });
+            if (!view) return;
+            const current = view.state.field(annotationField)[annotationId];
+            if (current && pending.has(annotationId)) {
+                pending.delete(annotationId);
+                const pendingKey = context.ids.getYjsId(annotationId);
+                if (pendingKey) context.ids.remove(pendingKey);
+                modalStack.removeComment(view, annotationId);
+                view.dispatch({
+                    effects: removeAnnotation.of(current),
+                    annotations: yjsAnnotationSync.of(true),
+                });
+            }
+        } else {
+            const id = context.ids.getYjsId(annotationId);
+            if (!id) throw new Error("Comment not found");
+            await context.send({
+                kind: "replyToComment",
+                scope: context.scope,
+                annotationId: id,
+                message,
+            });
+        }
     };
     return [
         roleContext.of(context),
@@ -60,6 +73,7 @@ export function createRolePermissions(context: RoleContext): Extension {
             : [
                   EditorState.readOnly.of(context.role === "viewer"),
                   EditorView.editable.of(false),
+                  EditorView.contentAttributes.of({ tabindex: "0", "aria-readonly": "true" }),
                   EditorState.transactionFilter.of((transaction) => {
                       if (
                           transaction.annotation(yjsAnnotation) ||
@@ -117,42 +131,10 @@ export function createRolePermissions(context: RoleContext): Extension {
                                   return [];
                               const message = thread.at(-1)?.message;
                               if (!message?.trim()) return [];
-                              if (pending.has(annotation.id)) {
-                                  const range = annotation.selection.main;
-                                  submit(
-                                      {
-                                          kind: "createComment",
-                                          scope: context.scope,
-                                          start: Array.from(
-                                              Y.encodeRelativePosition(
-                                                  Y.createRelativePositionFromTypeIndex(
-                                                      context.text,
-                                                      range.from,
-                                                  ),
-                                              ),
-                                          ),
-                                          end: Array.from(
-                                              Y.encodeRelativePosition(
-                                                  Y.createRelativePositionFromTypeIndex(
-                                                      context.text,
-                                                      range.to,
-                                                  ),
-                                              ),
-                                          ),
-                                          message,
-                                      },
-                                      annotation.id,
-                                  );
-                              } else {
-                                  const annotationId = context.ids.getYjsId(annotation.id);
-                                  if (!annotationId) return [];
-                                  submit({
-                                      kind: "replyToComment",
-                                      scope: context.scope,
-                                      annotationId,
-                                      message,
-                                  });
-                              }
+                              const id = annotation.id;
+                              queueMicrotask(() => {
+                                  if (view) void getCommentSubmission(view, id)?.send(message);
+                              });
                               allowLocal = false;
                           }
                       }
@@ -182,10 +164,14 @@ export function createRolePermissions(context: RoleContext): Extension {
               ]),
         ViewPlugin.fromClass(
             class {
+                private unregister: (() => void) | undefined;
                 constructor(editor: EditorView) {
                     view = editor;
+                    if (context.role === "commenter")
+                        this.unregister = registerCommentSubmissions(editor, submit);
                 }
                 destroy(): void {
+                    this.unregister?.();
                     view = undefined;
                 }
             },

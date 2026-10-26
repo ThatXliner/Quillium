@@ -38,8 +38,9 @@ import {
     encodeCommentCommand,
 } from "@quillium/share/collab-contract";
 import * as decoding from "lib0/decoding";
+import * as encoding from "lib0/encoding";
 import { writable } from "svelte/store";
-import type { Awareness } from "y-protocols/awareness";
+import { type Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
@@ -166,7 +167,26 @@ export async function createYjsProvider(
         maxBackoffTime: 5000, // 5 seconds max between retries (default is 2.5s)
     });
 
+    provider.awareness.off("update", provider._awarenessUpdateHandler);
+    provider._awarenessUpdateHandler = (
+        changes: { added: number[]; updated: number[]; removed: number[] },
+        origin: unknown,
+    ): void => {
+        const ownId = provider.awareness.clientID;
+        if (
+            origin === provider ||
+            ![...changes.added, ...changes.updated, ...changes.removed].includes(ownId) ||
+            provider.ws?.readyState !== 1
+        )
+            return;
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, 1);
+        encoding.writeVarUint8Array(encoder, encodeAwarenessUpdate(provider.awareness, [ownId]));
+        provider.ws.send(encoding.toUint8Array(encoder));
+    };
+    provider.awareness.on("update", provider._awarenessUpdateHandler);
     currentRole = access?.role ?? "editor";
+    let admittedAccess: { role: LiveRole; epoch: string } | null = null;
     const syncHandler = provider.messageHandlers[0];
     provider.messageHandlers[0] = (encoder, decoder, instance, emitSynced, messageType) => {
         if (currentRole === "editor") {
@@ -185,14 +205,27 @@ export async function createYjsProvider(
     };
     let rawUpdatesEnabled = currentRole === "editor";
     if (!rawUpdatesEnabled) ydoc.off("update", provider._updateHandler);
-    const awarenessQueryHandler = provider.messageHandlers[MESSAGE_CUSTOM];
     provider.messageHandlers[MESSAGE_CUSTOM] = (encoder, decoder, ...args) => {
         if (!decoding.hasContent(decoder)) {
-            awarenessQueryHandler(encoder, decoder, ...args);
+            encoding.writeVarUint(encoder, 1);
+            encoding.writeVarUint8Array(
+                encoder,
+                encodeAwarenessUpdate(provider.awareness, [provider.awareness.clientID]),
+            );
             return;
         }
         const message = decodeCustomMessage(decoder);
         if (message?.subtype === CUSTOM_ACCESS && currentProvider === provider) {
+            if (
+                admittedAccess &&
+                (admittedAccess.role !== message.payload.role ||
+                    admittedAccess.epoch !== message.payload.roomEpoch)
+            ) {
+                accessChangedSignal.update((value) => value + 1);
+                disconnectYjsProvider();
+                return;
+            }
+            admittedAccess = { role: message.payload.role, epoch: message.payload.roomEpoch };
             currentRole = message.payload.role;
             const allowRawUpdates = currentRole === "editor";
             if (allowRawUpdates !== rawUpdatesEnabled) {

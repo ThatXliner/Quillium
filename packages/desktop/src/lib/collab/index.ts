@@ -61,7 +61,7 @@ import {
 
 // Navigation (D-103: restore joiner to prior view)
 import { goToEditor, goToLibrary } from "$lib/navigation";
-import { currentDraftId } from "$lib/stores";
+import { currentDraftId, modalStack } from "$lib/stores";
 
 // Types
 export type { CollabSession, CollabState } from "./types";
@@ -393,6 +393,7 @@ export function disableCollab(view: EditorView): void {
     const prior = wasJoiner ? get(joinerPriorView) : null;
 
     disconnectYjsProvider();
+    if (wasJoiner) modalStack.clear();
     currentUndoManager = null;
     collabSession.set(null);
     collabPresenceUsers.set([]);

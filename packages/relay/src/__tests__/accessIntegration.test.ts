@@ -391,7 +391,7 @@ describe.skipIf(!configured)("production relay invitation boundary on real local
         const thread = node.get("thread");
         if (!(thread instanceof Y.Array)) throw new Error("Missing server thread");
         expect(thread.toArray()).toEqual([
-            expect.objectContaining({ author: anonymous.user.id, message: "Nested note" }),
+            expect.objectContaining({ author: "Local joiner", message: "Nested note" }),
         ]);
         peer.ws.send(encodeCommentCommand(create));
         const reply: CommentCommand = {

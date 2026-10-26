@@ -1,11 +1,12 @@
 <script lang="ts">
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { getCurrentUserName } from "$lib/auth";
+import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
 import { collabCapabilities } from "$lib/collab/capabilities";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
+import { annotations as annotationsStore, editorView as rootEditorView, modalAnnotationStores, modalStack } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
 import {
@@ -67,12 +68,9 @@ const isTop = $derived(stackIndex === $modalStack.length - 1);
 
 let dialogEl = $state<HTMLDialogElement>();
 
-// Read comment from the correct annotation source:
-// - stackIndex 0 → main editor's global annotations store
-// - stackIndex N → parent modal's nested annotation store (index N-1)
 const comment = $derived.by((): Annotation<"comment"> | undefined => {
     const annotation =
-        (stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
+        (parentView === $rootEditorView || stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
             commentId
         ] ?? parentView.state.field(annotationField)[commentId];
     return annotation && isAnnotationOfType(annotation, "comment") ? annotation : undefined;
@@ -115,13 +113,21 @@ const newMessage = $derived(getDraft(commentId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const currentUserName = $derived(getCurrentUserName());
-const sendActive = $derived(!!newMessage.trim());
+const submission = $derived(getCommentSubmission(parentView, commentId));
+const sendActive = $derived(!!newMessage.trim() && !submission?.pending);
 
-function send() {
-    if (!newMessage.trim() || !comment) return;
+async function send(): Promise<void> {
+    if (!newMessage.trim() || !comment || submission?.pending) return;
+    const submitted = newMessage;
+    if (submission) {
+        if (await submission.send(submitted.trim())) {
+            if (getDraft(commentId) === submitted) clearDraft(commentId);
+        }
+        return;
+    }
     handleUpdateThread([
         ...comment.thread,
-        { message: newMessage.trim(), author: currentUserName, time: Date.now() },
+        { message: submitted.trim(), author: currentUserName, time: Date.now() },
     ]);
     clearDraft(commentId);
 }
@@ -302,6 +308,7 @@ let restoreSize = $state<(() => void) | undefined>();
                                     }
                                 }}
                             ></textarea>
+        {#if submission?.error}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submission.error}</p>{/if}
                             <div class="flex items-center justify-between px-2 pb-1.5">
                                 <div class="flex items-center gap-1">
                                     {#if appSettings.aiEnabled && $collabCapabilities.canEdit}
@@ -329,10 +336,11 @@ let restoreSize = $state<(() => void) | undefined>();
                                 <div class="flex items-center gap-1.5">
                                     <button
                                         onclick={sendActive ? send : undefined}
+                    disabled={!sendActive}
                                         class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
                                             {sendActive ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' : 'bg-black/5 text-black/30'}"
                                     >
-                                        {isFocused ? "Send" : "Reply"}
+                                        {submission?.pending ? "Sending" : isFocused ? "Send" : "Reply"}
                                         <span class="flex items-center gap-0.5">
                                             <Kbd keys={isFocused ? ["⌘", "↵"] : ["⌘", "/"]}
                                                 variant={sendActive ? "fullWhite" : isFocused ? "whiteGhost" : "default"} />

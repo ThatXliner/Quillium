@@ -91,6 +91,9 @@ export async function authenticateWebSocket(
 
         const isOwner = doc?.owner_id === user.id;
         const isAnonymous = user.is_anonymous ?? false;
+        const name = user.user_metadata?.display_name;
+        const displayName =
+            typeof name === "string" && name.trim() ? name.trim().slice(0, 80) : undefined;
 
         let grant:
             | { grantId: string; role: "viewer" | "commenter" | "editor"; expiresAt: string }
@@ -117,6 +120,7 @@ export async function authenticateWebSocket(
                 documentId,
                 isOwner,
                 isAnonymous,
+                ...(displayName ? { displayName } : {}),
                 role: grant?.role ?? "editor",
                 ...(grant ? { grantId: grant.grantId, expiresAt: grant.expiresAt } : {}),
             },

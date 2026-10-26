@@ -53,8 +53,9 @@ After the provider synchronizes, the owner seeds the shared text, annotations,
 and version groups from local state. The editor replaces CodeMirror history
 with the Yjs extensions and a `Y.UndoManager`.
 
-A joiner supplies the room ID. The controller captures the prior draft and
-editor state, clears `currentDraftId`, and sets `isCollabJoiner` before connecting.
+A joiner opens or pastes an invitation. After resolving the token and draining
+pending local persistence, the controller captures the prior draft and editor
+state, clears `currentDraftId`, and sets `isCollabJoiner` before connecting.
 This prevents shared changes from entering the joiner's local event log. The
 joiner's editor then loads the relay state.
 
@@ -163,7 +164,9 @@ upper limit of 90 days.
 The relay rechecks access after room loading and rejects stale authorization
 results using a room epoch and grant change counter. Role changes and revocation
 mark affected connections inactive and remove them from outgoing broadcasts
-before the HTTP response. They must join again with a fresh Y.Doc. Expiry is
+before the HTTP response. They must join again with a fresh Y.Doc. If a reconnect observes a different
+role or room epoch, the desktop ends its old session and restores its prior
+local draft rather than retaining stale editing controls. Expiry is
 checked on incoming messages and before sending updates, including when a timer
 has not fired yet. These guarantees require the single relay process described
 above. Changes through administrative database credentials outside this API are
@@ -173,7 +176,9 @@ Comment commands carry a room epoch and request ID. Repeating the same command
 within that room session applies it once. Reusing an ID with a different command,
 using anchors in another text scope, or replying to a suggestion or revision is
 rejected. Presence IDs belong to their sending connection and never authorize
-access. Editors retain unrestricted document editing, so stored comment authorship
+access. The desktop forwards only its own awareness ID and never echoes
+remote presence. Comment labels use the authenticated user's display name when
+available; display names remain presentation data, while grants use user IDs. Editors retain unrestricted document editing, so stored comment authorship
 is not tamper-proof against editors.
 
 ### Local verification and activation prerequisites

@@ -24,6 +24,7 @@ export interface YjsClientData {
     isOwner: boolean;
     isAnonymous: boolean;
     role: LiveRole;
+    displayName?: string;
     grantId?: string;
     expiresAt?: string;
 }

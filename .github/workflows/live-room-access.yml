@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      QUILLIUM_ALLOW_MISSING_SUPABASE_ENV: "1"
       PUBLIC_SUPABASE_URL: ""
       PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
       PUBLIC_RELAY_URL: ""
@@ -29,10 +30,11 @@ jobs:
       PUBLIC_POSTHOG_HOST: ""
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "22.23.4"
+      - name: Install verified Bun runtime
+        run: node scripts/install-secure-bun.mjs /tmp/quillium-access-bun
       - uses: supabase/setup-cli@v1
         with:
           version: 2.121.0

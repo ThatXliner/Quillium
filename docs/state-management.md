@@ -85,6 +85,17 @@ Nested modal editors publish their own annotations and active selection. Read
 from the relevant editor level instead of always using the root annotation map.
 See [nested editors](nested-editors.md) for parent/child ownership and ID scope.
 
+Live Room commenters keep pending composers outside the shared Yjs document.
+`commentSubmission.svelte.ts` shares pending and error state between inline and
+modal composers; it clears a matching draft only after the relay acknowledges
+the command. Accepted comments arrive through the normal CodeMirror projection.
+Removing the pending composer also removes its modal by parent view and local
+annotation ID, preserving ancestor modal stores. Root comment dialogs read the
+root annotation mirror even when another root dialog precedes them in the stack.
+Ending a joiner session clears collaboration overlays before restoring the prior
+local editor state. See [collaboration](collaboration.md) for the trusted write
+boundary.
+
 ## Effects and transaction annotations
 
 A Quillium annotation is a comment, suggestion, or revision attached to prose.
