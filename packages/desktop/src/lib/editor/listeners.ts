@@ -133,11 +133,13 @@ type PersistenceBookkeeping = {
     lastEventId: number;
     pendingCheckpoint: PendingCheckpoint | null;
     failure: PersistenceError | null;
+    idleTimer: ReturnType<typeof setTimeout> | null;
 };
 let persistence: PersistenceBookkeeping = {
     lastEventId: -1,
     pendingCheckpoint: null,
     failure: null,
+    idleTimer: null,
 };
 
 function serializeSelection(sel: EditorSelection): SelectionJSON {
@@ -591,6 +593,7 @@ function persistTransaction(update: ViewUpdate): void {
     const enqueueDraftId = get(currentDraftId);
     const enqueueTitle = get(currentDocumentTitle);
     const bookkeeping = persistence;
+    scheduleIdleCheckpoint(bookkeeping);
     persistQueue = persistQueue
         .then(() =>
             doAppend(
@@ -919,9 +922,27 @@ async function persistPendingCheckpoint(bookkeeping: PersistenceBookkeeping): Pr
     }
 }
 
+function scheduleIdleCheckpoint(bookkeeping: PersistenceBookkeeping): void {
+    if (bookkeeping.idleTimer !== null) clearTimeout(bookkeeping.idleTimer);
+    bookkeeping.idleTimer = setTimeout(() => {
+        bookkeeping.idleTimer = null;
+        const checkpoint = persistQueue.then(() => persistPendingCheckpoint(bookkeeping));
+        persistQueue = checkpoint.catch(() => {});
+    }, 30_000);
+}
+
 /** Call after draining persistence and loading a draft's snapshot and events. */
-export function seedPersistenceBookkeeping(eventId = -1): void {
-    persistence = { lastEventId: eventId, pendingCheckpoint: null, failure: null };
+export function seedPersistenceBookkeeping(
+    eventId = -1,
+    recoveredCheckpoint: PendingCheckpoint | null = null,
+): void {
+    if (persistence.idleTimer !== null) clearTimeout(persistence.idleTimer);
+    persistence = {
+        lastEventId: eventId,
+        pendingCheckpoint: recoveredCheckpoint,
+        failure: null,
+        idleTimer: null,
+    };
     clearSavingIndicator();
     lastPersistedEventId.set(eventId);
     lastSavedAt.set(null);
@@ -1065,6 +1086,8 @@ export async function flushMetaDebounces(): Promise<void> {
 /** Checkpoint pending edits before leaving; appends can also schedule metadata debounces. */
 export async function flushPersistence(): Promise<void> {
     const bookkeeping = persistence;
+    if (bookkeeping.idleTimer !== null) clearTimeout(bookkeeping.idleTimer);
+    bookkeeping.idleTimer = null;
     const checkpoint = persistQueue.then(() => persistPendingCheckpoint(bookkeeping));
     // Queue synchronously so later edits and concurrent flushes retain their order.
     persistQueue = checkpoint.catch(() => {});
@@ -1073,6 +1096,16 @@ export async function flushPersistence(): Promise<void> {
     } finally {
         await flushMetaDebounces();
     }
+}
+
+/** Closing a native window must include edits accepted while earlier writes were pending. */
+export async function flushPersistenceForClose(): Promise<void> {
+    let barrier: Promise<void>;
+    do {
+        const flush = flushPersistence();
+        barrier = persistQueue;
+        await flush;
+    } while (persistQueue !== barrier);
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────

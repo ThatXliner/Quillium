@@ -30,7 +30,7 @@ import {
     persistNamedVersion,
     seedPersistenceBookkeeping,
 } from "./listeners";
-import { reconstructState } from "./replay";
+import { reconstructStateWithStatus } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
 import { TabDraftController } from "./tabDrafts.svelte";
 
@@ -42,6 +42,7 @@ export type LoadedDocument = {
     draftId: string | null;
     state: EditorState;
     latestEventId: number;
+    recoveredChanges: boolean;
 };
 
 export class DocumentLoader {
@@ -144,8 +145,12 @@ export class DocumentLoader {
         );
     }
 
-    #buildState(loaded: LoadResult, readOnly: boolean, persistHistory: boolean): EditorState {
-        return reconstructState(loaded.snapshotStateJson, loaded.eventsSince, [
+    #buildState(
+        loaded: LoadResult,
+        readOnly: boolean,
+        persistHistory: boolean,
+    ): ReturnType<typeof reconstructStateWithStatus> {
+        return reconstructStateWithStatus(loaded.snapshotStateJson, loaded.eventsSince, [
             getExtensions({ ...this.#options, persistHistory }),
             this.#draftLock.of(EditorState.readOnly.of(readOnly)),
         ]);
@@ -158,9 +163,19 @@ export class DocumentLoader {
         annotationEventBus.clearPendingSelections();
         if (updateTitle) currentDocumentTitle.set(loaded.title);
         currentDraftId.set(loaded.draftId);
-        seedPersistenceBookkeeping(loaded.latestEventId);
+        seedPersistenceBookkeeping(
+            loaded.latestEventId,
+            loaded.recoveredChanges && loaded.draftId
+                ? { draftId: loaded.draftId, eventId: loaded.latestEventId, state: loaded.state }
+                : null,
+        );
         // setState does not emit an update. The view owner also seeds its Svelte mirrors.
         this.#commitState(loaded);
+        if (loaded.recoveredChanges) {
+            void flushPersistence().catch((error) => {
+                console.error("[documentLoader] recovery checkpoint failed", error);
+            });
+        }
     }
 
     /** All visible loads share cancellation, reconstruction, and persistence seeding. */
@@ -213,15 +228,17 @@ export class DocumentLoader {
             ? await loadDocumentState(documentId, resolved.draftId)
             : { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
         if (!this.#isCurrent(generation, documentId, target?.tabId)) return;
+        const reconstructed = this.#buildState(
+            loaded,
+            this.drafts.lockedOf(resolved?.draftId ?? null),
+            document?.persistHistory ?? true,
+        );
         const result: LoadedDocument = {
             documentId,
             title: document?.title ?? "Untitled",
             draftId: resolved?.draftId ?? null,
-            state: this.#buildState(
-                loaded,
-                this.drafts.lockedOf(resolved?.draftId ?? null),
-                document?.persistHistory ?? true,
-            ),
+            state: reconstructed.state,
+            recoveredChanges: reconstructed.complete && loaded.eventsSince.length > 0,
             latestEventId: loaded.eventsSince.at(-1)?.id ?? Math.max(-1, loaded.snapshotEventId),
         };
 
@@ -322,7 +339,9 @@ export class DocumentLoader {
             documentId ? getDocumentMeta(documentId) : Promise.resolve(null),
         ]);
         return JSON.stringify(
-            this.#buildState(loaded, false, document?.persistHistory ?? true).toJSON(savedFields),
+            this.#buildState(loaded, false, document?.persistHistory ?? true).state.toJSON(
+                savedFields,
+            ),
         );
     }
 }

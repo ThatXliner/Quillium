@@ -555,7 +555,10 @@ function applyEventPayload(
  * @param events     Events to apply, ordered by ascending id.
  * @returns          Updated EditorState with all events applied.
  */
-function replayEventsWithStatus(state: EditorState, events: EventRecord[]): ReplayResult {
+function replayEventsWithStatus(
+    state: EditorState,
+    events: EventRecord[],
+): ReplayResult & { complete: boolean } {
     let current = state;
     let historyTrusted = true;
     let failures = 0;
@@ -588,7 +591,7 @@ function replayEventsWithStatus(state: EditorState, events: EventRecord[]): Repl
             failed_events: failures,
         });
     }
-    return { state: current, historyTrusted };
+    return { state: current, historyTrusted, complete: failures === 0 };
 }
 
 export function replayEvents(state: EditorState, events: EventRecord[]): EditorState {
@@ -627,13 +630,14 @@ function withSnapshotSelection(value: unknown): unknown {
  * @param fields             StateFields to rehydrate from the snapshot JSON
  *                           (defaults to savedFields, matching what saves write).
  */
-export function reconstructState(
+export function reconstructStateWithStatus(
     snapshotStateJson: string | null,
     eventsSince: EventRecord[],
     extensions: Extension,
     fields: Parameters<typeof EditorState.fromJSON>[2] = savedFields,
-): EditorState {
+): { state: EditorState; complete: boolean } {
     let state: EditorState;
+    let complete = true;
     if (snapshotStateJson && snapshotStateJson !== "{}") {
         try {
             state = EditorState.fromJSON(
@@ -643,6 +647,7 @@ export function reconstructState(
             );
         } catch (error) {
             console.error("[replay] Could not restore persisted editor snapshot", error);
+            complete = false;
             state = EditorState.create({ extensions });
         }
     } else {
@@ -651,6 +656,7 @@ export function reconstructState(
     if (eventsSince.length > 0) {
         const replayed = replayEventsWithStatus(state, eventsSince);
         state = replayed.state;
+        complete &&= replayed.complete;
         if (!replayed.historyTrusted) {
             // Rebuild through the caller's extension set while deliberately
             // omitting only the history field. This is the public-API-safe way
@@ -665,12 +671,24 @@ export function reconstructState(
             state = EditorState.fromJSON(semanticState, { extensions }, fields);
         }
     }
-    if (!state.facet(persistHistoryFacet)) return state;
+    if (!state.facet(persistHistoryFacet)) return { state, complete };
 
     // Keep original timing while rebuilding the event tail, then force the
     // next live edit into a new undo group. A fast restart must not merge two
     // separate app sessions into one undo step.
-    return state.update({
-        annotations: [isolateHistory.of("before"), Transaction.addToHistory.of(false)],
-    }).state;
+    return {
+        state: state.update({
+            annotations: [isolateHistory.of("before"), Transaction.addToHistory.of(false)],
+        }).state,
+        complete,
+    };
+}
+
+export function reconstructState(
+    snapshotStateJson: string | null,
+    eventsSince: EventRecord[],
+    extensions: Extension,
+    fields: Parameters<typeof EditorState.fromJSON>[2] = savedFields,
+): EditorState {
+    return reconstructStateWithStatus(snapshotStateJson, eventsSince, extensions, fields).state;
 }
