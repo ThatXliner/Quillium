@@ -30,7 +30,7 @@ export function createRolePermissions(context: RoleContext): Extension {
             throw new Error("Comment not found");
         if (pending.has(annotationId)) {
             const range = annotation.selection.main;
-            const operation = context.prepareComment({
+            return context.prepareComment({
                 kind: "createComment",
                 scope: context.scope,
                 start: Array.from(
@@ -45,21 +45,6 @@ export function createRolePermissions(context: RoleContext): Extension {
                 ),
                 message,
             });
-            return async (): Promise<void> => {
-                await operation();
-                if (!view) return;
-                const current = view.state.field(annotationField)[annotationId];
-                if (current && pending.has(annotationId)) {
-                    pending.delete(annotationId);
-                    const pendingKey = context.ids.getYjsId(annotationId);
-                    if (pendingKey) context.ids.remove(pendingKey);
-                    modalStack.removeComment(view, annotationId);
-                    view.dispatch({
-                        effects: removeAnnotation.of(current),
-                        annotations: yjsAnnotationSync.of(true),
-                    });
-                }
-            };
         }
         const id = context.ids.getYjsId(annotationId);
         if (!id) throw new Error("Comment not found");
@@ -68,6 +53,18 @@ export function createRolePermissions(context: RoleContext): Extension {
             scope: context.scope,
             annotationId: id,
             message,
+        });
+    };
+    const accepted = (annotationId: number, target: string): void => {
+        if (!view || context.ids.getYjsId(annotationId) !== target) return;
+        const current = view.state.field(annotationField)[annotationId];
+        if (!current || !pending.has(annotationId)) return;
+        pending.delete(annotationId);
+        context.ids.remove(target);
+        modalStack.removeComment(view, annotationId);
+        view.dispatch({
+            effects: removeAnnotation.of(current),
+            annotations: yjsAnnotationSync.of(true),
         });
     };
     return [
@@ -173,7 +170,11 @@ export function createRolePermissions(context: RoleContext): Extension {
                 constructor(editor: EditorView) {
                     view = editor;
                     if (context.role === "commenter")
-                        this.unregister = registerCommentSubmissions(editor, prepare);
+                        this.unregister = registerCommentSubmissions(editor, prepare, {
+                            scope: context.annotations,
+                            keyForAnnotationId: (id) => context.ids.getYjsId(id),
+                            onAccepted: accepted,
+                        });
                 }
                 destroy(): void {
                     this.unregister?.();

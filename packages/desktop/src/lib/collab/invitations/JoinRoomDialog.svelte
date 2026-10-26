@@ -1,9 +1,18 @@
 <script lang="ts">
-import { getSession, getUser, signInAnonymously } from "$lib/auth/auth.svelte";
+import { getUser, signInAnonymously } from "$lib/auth/auth.svelte";
 import type { LiveSessionController } from "$lib/collab/liveSession.svelte";
 import { ModalResizeHandles, RestoreSizeButton } from "@quillium/share";
 import { Loader2, Radio, X } from "lucide-svelte";
 import { onMount } from "svelte";
+import { get } from "svelte/store";
+import { collabSession } from "../store";
+import { parseInvitationToken } from "./deepLink";
+import {
+    InvitationError,
+    invitationRepository,
+    roleLabel,
+    type ResolvedInvitation,
+} from "./repository";
 
 const {
     invitation,
@@ -20,17 +29,18 @@ let dialog = $state<HTMLDialogElement>();
 let heading = $state<HTMLHeadingElement>();
 let nameInput = $state<HTMLInputElement>();
 let displayName = $state("");
-let stage = $state<"name" | "checking" | "error">("checking");
+let stage = $state<"name" | "checking" | "ready" | "ownRoom" | "error">("checking");
+let prepared = $state<ResolvedInvitation | null>(null);
 let anonymousBusy = $state(false);
 let anonymousError = $state("");
-let suspended = $state(false);
-let suspendedToken = $state<string | undefined>();
 let restoreSize = $state<(() => void) | undefined>();
-const busy = $derived(session.connecting || anonymousBusy);
+const busy = $derived(session.connecting || anonymousBusy || stage === "checking");
 const error = $derived(anonymousError || session.lastJoinError?.message || "");
 const title = $derived.by(() => {
-    if (stage === "name") return "Join a Live Room";
-    if (stage === "checking") return "Joining the Live Room";
+    if (stage === "name" || stage === "ready") return "Join a Live Room";
+    if (stage === "ownRoom") return "This is your Live Room";
+    if (stage === "checking")
+        return session.connecting ? "Joining the Live Room" : "Checking your invitation";
     switch (session.lastJoinError?.code) {
         case "expired_invitation":
             return "This invitation has expired";
@@ -50,19 +60,44 @@ const title = $derived.by(() => {
 });
 
 $effect(() => {
-    if (dialog && !suspended && !dialog.open) dialog.showModal();
+    if (dialog && !dialog.open) dialog.showModal();
 });
 $effect(() => {
     stage;
     if (stage === "name") nameInput?.focus();
     else heading?.focus();
 });
-$effect(() => {
-    if (suspended && getSession()?.access_token && getSession()?.access_token !== suspendedToken) {
-        suspended = false;
-        void join();
+async function prepare(): Promise<void> {
+    const token = parseInvitationToken(invitation);
+    if (!token) {
+        session.lastJoinError = {
+            code: "invalid_invitation",
+            message:
+                "Check that you copied the whole invitation link, or ask the owner for a new one.",
+        };
+        stage = "error";
+        return;
     }
-});
+    stage = "checking";
+    anonymousError = "";
+    try {
+        prepared = await invitationRepository.resolve(token);
+        const current = get(collabSession);
+        stage =
+            session.isLive && current?.isOwner && current.docId === prepared.documentId
+                ? "ownRoom"
+                : "ready";
+    } catch (error) {
+        session.lastJoinError =
+            error instanceof InvitationError
+                ? { code: error.code, message: error.message }
+                : {
+                      code: "unavailable",
+                      message: "Couldn't check this invitation. Try again.",
+                  };
+        stage = "error";
+    }
+}
 
 async function join(): Promise<void> {
     stage = "checking";
@@ -77,7 +112,8 @@ async function joinWithName(): Promise<void> {
     anonymousError = "";
     try {
         await signInAnonymously(displayName.trim());
-        await join();
+        await prepare();
+        if (stage === "ready") await join();
     } catch {
         anonymousError =
             "Couldn't create a temporary session. Try again, or sign in with a Quillium account.";
@@ -88,14 +124,12 @@ async function joinWithName(): Promise<void> {
 }
 
 function signIn(): void {
-    suspendedToken = getSession()?.access_token;
-    suspended = true;
-    dialog?.close();
+    onclose();
     onopenauth();
 }
 
 onMount(() => {
-    if (getUser()) void join();
+    if (getUser()) void prepare();
     else stage = "name";
 });
 </script>
@@ -128,13 +162,13 @@ onMount(() => {
                     onclick={onclose}
                     disabled={busy}
                     aria-label="Close invitation"
-                    class="rounded-full p-1.5 text-black/40 hover:bg-black/5 disabled:opacity-40"
+                    class="rounded-full p-1.5 text-black/60 hover:bg-black/5 disabled:opacity-40"
                     ><X size={16} /></button
                 >
             </div>
         </header>
         {#if stage === "name"}
-            <p class="mb-4 text-sm text-black/55">
+            <p class="mb-4 text-sm text-black/65">
                 Others in the room see this name. You don't need a Quillium account.
             </p>
             <form
@@ -165,20 +199,65 @@ onMount(() => {
                 type="button"
                 onclick={signIn}
                 disabled={busy}
-                class="mt-3 min-h-9 text-xs font-semibold text-black/55 hover:text-black/80"
+                class="mt-3 min-h-9 text-xs font-semibold text-black/65 hover:text-black/80"
                 >Sign in instead</button
+            >
+        {:else if stage === "ready"}
+            <p class="text-sm leading-relaxed text-black/65">
+                You'll join with {prepared ? roleLabel[prepared.role] : "invitation"} access.
+            </p>
+            {#if session.isLive}
+                <p
+                    role="note"
+                    class="mt-3 rounded-xl bg-amber-50 p-3 text-sm leading-relaxed text-black/75"
+                >
+                    {get(collabSession)?.isOwner
+                        ? "Your current Live Room will end and everyone in it will leave."
+                        : "You'll leave your current Live Room."} Join this invitation instead?
+                </p>
+            {/if}
+            <div class="mt-5 flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    onclick={() => void join()}
+                    class="min-h-10 rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+                    >{session.isLive
+                        ? get(collabSession)?.isOwner
+                            ? "End room and join"
+                            : "Leave room and join"
+                        : "Join"}</button
+                >
+                <button
+                    type="button"
+                    onclick={onclose}
+                    class="min-h-10 rounded-[10px] bg-black/5 px-4 text-sm font-semibold text-black/65"
+                    >Cancel</button
+                >
+            </div>
+        {:else if stage === "ownRoom"}
+            <p class="text-sm leading-relaxed text-black/65">
+                You're already the owner of this room. It stays open, and everyone can keep writing.
+            </p>
+            <button
+                type="button"
+                onclick={onclose}
+                class="mt-5 min-h-10 rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+                >Keep room open</button
             >
         {:else if stage === "checking"}
             <p
                 role="status"
                 aria-live="polite"
-                class="flex items-center gap-2 text-sm text-black/55"
+                class="flex items-center gap-2 text-sm text-black/65"
             >
-                <Loader2 size={16} class="motion-safe:animate-spin" />Checking your invitation and
-                saving your current draft.
+                <Loader2 size={16} class="motion-safe:animate-spin" />{session.connecting
+                    ? "Saving your current draft and joining the room."
+                    : "Checking your invitation."}
             </p>
         {:else}
-            <p role="alert" class="text-sm leading-relaxed text-black/60">{error}</p>
+            <p role="alert" class="text-sm leading-relaxed text-black/60">
+                {error}
+            </p>
             <div class="mt-5 flex flex-wrap gap-2">
                 {#if session.lastJoinError?.code === "insufficient_permission" || session.lastJoinError?.code === "authentication_required"}
                     <button
@@ -191,7 +270,7 @@ onMount(() => {
                     <button
                         type="button"
                         onclick={() => {
-                            if (getUser()) void join();
+                            if (getUser()) void prepare();
                             else stage = "name";
                         }}
                         class="min-h-9 rounded-[10px] bg-blue-600 px-4 text-xs font-semibold text-white"

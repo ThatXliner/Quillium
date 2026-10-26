@@ -292,6 +292,7 @@ export async function enableCollab(
     // Yjs transactions and rebases them over remote changes.
     const permissions = createRolePermissions({
         role,
+        isOwner: asOwner,
         text: ytext,
         annotations: ymap,
         ids: mainIdMap,

@@ -1,8 +1,9 @@
+import { enableCollab } from "$lib/collab";
 import { invitationRepository } from "$lib/collab/invitations/repository";
 import { LiveSessionController } from "$lib/collab/liveSession.svelte";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { flushPersistQueue } from "$lib/editor/listeners";
-import { currentDraftId, editorView } from "$lib/stores";
+import { currentDraftId, editorView, modalStack } from "$lib/stores";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
@@ -52,6 +53,7 @@ beforeEach(() => {
 });
 afterEach(() => {
     view.destroy();
+    modalStack.clear();
     vi.clearAllMocks();
 });
 
@@ -74,4 +76,13 @@ describe("invitation join persistence boundary", () => {
         expect(get(currentDraftId)).toBe("local-draft");
         expect(view.state.doc.toString()).toBe("My local writing");
     });
+});
+
+it("closes local annotation dialogs before joining a different room", async () => {
+    modalStack.push({ type: "comment", commentId: 0, parentView: view, label: "Local comment" });
+    vi.mocked(enableCollab).mockImplementationOnce(async () => {
+        expect(get(modalStack)).toEqual([]);
+    });
+    expect(await new LiveSessionController().join(token)).toBe(true);
+    expect(get(modalStack)).toEqual([]);
 });

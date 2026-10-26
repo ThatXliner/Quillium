@@ -95,7 +95,7 @@ export class LiveRoomAccessService {
     }> {
         const parsed = CreateGrantSchema.safeParse(input);
         if (!parsed.success) throw new AccessError("invalid_request");
-        await this.requireOwner(user, documentId);
+        const documentTitle = await this.requireOwner(user, documentId);
         const expiresAt =
             parsed.data.expiresAt ?? new Date(this.now() + 7 * 86_400_000).toISOString();
         const expires = Date.parse(expiresAt);
@@ -122,11 +122,19 @@ export class LiveRoomAccessService {
         let grant = parseGrant(data);
         if (parsed.data.email && this.options.email) {
             try {
+                const inviter = z
+                    .string()
+                    .trim()
+                    .min(1)
+                    .max(80)
+                    .safeParse(user.user_metadata.display_name);
                 await this.options.email.send({
                     to: parsed.data.email,
                     joinUrl,
                     role: parsed.data.role,
                     expiresAt,
+                    documentTitle,
+                    inviter: inviter.success ? inviter.data : (user.email ?? "A Quillium writer"),
                 });
                 grant = await this.update(documentId, grant.id, { delivery_status: "sent" });
             } catch {
@@ -242,18 +250,19 @@ export class LiveRoomAccessService {
         };
     }
 
-    private async requireOwner(user: User, documentId: string): Promise<void> {
+    private async requireOwner(user: User, documentId: string): Promise<string> {
         if (!uuid.safeParse(documentId).success) throw new AccessError("invalid_request");
         if (user.is_anonymous) throw new AccessError("insufficient_permission");
         const { data, error } = await this.options.supabase
             .from("sync_documents")
-            .select("owner_id")
+            .select("owner_id, title")
             .eq("id", documentId)
             .maybeSingle();
         if (error) throw new AccessError("service_unavailable");
-        const owner = z.object({ owner_id: uuid }).safeParse(data);
+        const owner = z.object({ owner_id: uuid, title: z.string().nullable() }).safeParse(data);
         if (!owner.success || owner.data.owner_id !== user.id)
             throw new AccessError("insufficient_permission");
+        return owner.data.title || "Untitled document";
     }
 
     private async update(

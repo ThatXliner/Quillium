@@ -6,6 +6,7 @@ import type { CommentInput, CommentOperation } from "./yjsProvider";
 
 export type RoleContext = {
     role: LiveRole;
+    isOwner?: boolean;
     text: Y.Text;
     annotations: Y.Map<Y.Map<unknown>>;
     ids: AnnotationIdMap;

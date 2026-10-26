@@ -94,8 +94,10 @@ bridge updates mounted composers when a view joins or leaves a room. Inline and
 modal editors of the same passage share drafts. An acknowledgment clears a draft
 only when its scope and text still match the submitted draft.
 
-Retries reuse the prepared command, including its request ID, epoch, and encoded
-anchors. Accepted comments arrive through the normal CodeMirror projection.
+Retry state belongs to the shared annotation map and stable annotation ID, so
+closing a nested editor preserves an unconfirmed operation and cancelling a
+pending comment cannot reuse its anchors for a new comment. Retries reuse the
+prepared command, including its request ID, epoch, and encoded anchors. Accepted comments arrive through the normal CodeMirror projection.
 Removing the pending composer also removes its modal by parent view and local
 annotation ID, preserving ancestor modal stores. Root comment dialogs read the
 root annotation mirror even when another root dialog precedes them in the stack.

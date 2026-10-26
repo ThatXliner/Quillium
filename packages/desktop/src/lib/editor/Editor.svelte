@@ -126,7 +126,7 @@ let viewportWidth = $state(typeof window === "undefined" ? 1280 : window.innerWi
 let resizingDraftPanel = $state(false);
 let draftPanelDragStartWidth = 0;
 let contextMenu = $state<{ x: number; y: number } | null>(null);
-let contextMenuItem = $state<HTMLButtonElement>();
+let contextMenuElement = $state<HTMLDivElement>();
 let nativeContextMenu: Menu | undefined;
 
 const CONTEXT_MENU_WIDTH = 208;
@@ -153,7 +153,7 @@ function openFallbackContextMenu(x: number, y: number): void {
         x: Math.min(Math.max(x, CONTEXT_MENU_MARGIN), maxX),
         y: Math.min(Math.max(y, CONTEXT_MENU_MARGIN), maxY),
     };
-    tick().then(() => contextMenuItem?.focus());
+    tick().then(() => contextMenuElement?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus());
 }
 
 async function showNativeContextMenu(): Promise<boolean> {
@@ -196,7 +196,7 @@ async function showNativeContextMenu(): Promise<boolean> {
 
 async function handleEditorContextMenu(event: MouseEvent): Promise<void> {
     const view = $editorView;
-    if (!view || view.state.readOnly) return;
+    if (!view) return;
 
     const selection = view.state.selection.main;
     if (selection.empty) return;
@@ -223,7 +223,27 @@ function editorContextMenu(node: HTMLElement): { destroy: () => void } {
 }
 
 function handleContextMenuKeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape" && contextMenu) {
+    if (!contextMenu) {
+        const view = $editorView;
+        if (view?.hasFocus && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
+            event.preventDefault();
+            const position = view.coordsAtPos(view.state.selection.main.head);
+            if (position) void showNativeContextMenu().then(shown => {
+                if (!shown) openFallbackContextMenu(position.left, position.bottom);
+            });
+        }
+        return;
+    }
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        const items = Array.from(contextMenuElement?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
+        if (!items.length) return;
+        event.preventDefault();
+        const current = items.findIndex(item => item === document.activeElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 :
+            (current + (event.key === "ArrowUp" ? -1 : 1) + items.length) % items.length;
+        items[next].focus();
+    }
+    if (event.key === "Escape") {
         event.preventDefault();
         closeContextMenu();
         $editorView?.focus();
@@ -565,6 +585,7 @@ onMount(() => {
         </div>
     </div>
 
+    <div class="collaboration-controls-space" aria-hidden="true"></div>
     <div class="focus-chrome" class:focus-chrome-visible={focusControlsVisible}>
         <DocumentTabs
             tabs={drafts.tabs}
@@ -580,7 +601,7 @@ onMount(() => {
     <!-- Drafts and outline share a column without replacing each other. -->
     {#if drafts.tabDrafts.length > 0 || showOutline}
         <div
-            class="focus-chrome sticky top-36 z-30 h-0 pointer-events-none min-[1281px]:top-24"
+            class="focus-chrome sticky top-36 max-[1100px]:top-48 z-30 h-0 pointer-events-none min-[1281px]:top-24"
             class:focus-chrome-visible={focusControlsVisible}
         >
             <div
@@ -706,16 +727,16 @@ onMount(() => {
             onclick={closeContextMenu}
         ></button>
         <div
+            bind:this={contextMenuElement}
             role="menu"
             aria-label="Editor actions"
             class="fixed z-[90] min-w-52 rounded-xl shadow-xl border border-white/40 bg-white/90 p-1 backdrop-blur-md"
             style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
         >
             <button
-                bind:this={contextMenuItem}
                 type="button"
                 role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors enabled:hover:bg-yellow-50 enabled:hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 onpointerdown={(event) => event.preventDefault()}
                 disabled={!$collabCapabilities.canEdit}
                 onclick={() => void runContextMenuEditCommand("cut")}
@@ -727,7 +748,7 @@ onMount(() => {
             <button
                 type="button"
                 role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors enabled:hover:bg-yellow-50 enabled:hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 onpointerdown={(event) => event.preventDefault()}
                 onclick={() => void runContextMenuEditCommand("copy")}
             >
@@ -738,7 +759,7 @@ onMount(() => {
             <button
                 type="button"
                 role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors enabled:hover:bg-yellow-50 enabled:hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 onpointerdown={(event) => event.preventDefault()}
                 disabled={!$collabCapabilities.canEdit}
                 onclick={() => void runContextMenuEditCommand("paste")}
@@ -751,7 +772,7 @@ onMount(() => {
             <button
                 type="button"
                 role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors enabled:hover:bg-yellow-50 enabled:hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 onpointerdown={(event) => event.preventDefault()}
                 onclick={() => void runContextMenuEditCommand("selectAll")}
             >
@@ -763,7 +784,7 @@ onMount(() => {
             <button
                 type="button"
                 role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors enabled:hover:bg-yellow-50 enabled:hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 onpointerdown={(event) => event.preventDefault()}
                 disabled={!$collabCapabilities.canComment}
                 onclick={addCommentFromContextMenu}
@@ -775,7 +796,7 @@ onMount(() => {
             <button
                 type="button"
                 role="menuitem"
-                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors hover:bg-yellow-50 hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-black/70 transition-colors enabled:hover:bg-yellow-50 enabled:hover:text-black focus-visible:bg-yellow-50 focus-visible:text-black focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 onpointerdown={(event) => event.preventDefault()}
                 disabled={!$collabCapabilities.canEdit}
                 onclick={addRevisionFromContextMenu}
@@ -794,6 +815,10 @@ onMount(() => {
 </div>
 
 <style>
+    .collaboration-controls-space { display: none; }
+    @media (max-width: 1100px) {
+        .collaboration-controls-space { display: block; height: 4rem; }
+    }
     .outline-panel { right: calc(50% + 408px + 1rem); }
     @media (max-width: 1280px) {
         .outline-panel { left: 4.75rem; right: auto; max-width: calc(100vw - 5.5rem); }

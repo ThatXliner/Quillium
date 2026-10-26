@@ -1,5 +1,5 @@
 import { AnnotationIdMap } from "$lib/collab/annotationSchema";
-import { roleContext } from "$lib/collab/roleContext";
+import { type RoleContext, roleContext } from "$lib/collab/roleContext";
 import Thread from "$lib/editor/plugins/annotations/Thread.svelte";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -42,10 +42,14 @@ function editor(scope: object = {}, extra: Extension = []): EditorView {
     return view;
 }
 
-function roomContext(doc = new Y.Doc(), mapName = "annotations") {
+function roomContext(
+    doc = new Y.Doc(),
+    mapName = "annotations",
+    participant: Pick<RoleContext, "role" | "isOwner"> = { role: "commenter" },
+) {
     if (!documents.includes(doc)) documents.push(doc);
     return roleContext.of({
-        role: "commenter",
+        ...participant,
         text: doc.getText("document"),
         annotations: doc.getMap<Y.Map<unknown>>(mapName),
         ids: new AnnotationIdMap(),
@@ -91,6 +95,67 @@ describe("composer draft ownership", () => {
         setDraft(inline, 0, "Resize-safe reply");
         expect(getDraft(modal, 0)).toBe("Resize-safe reply");
         expect(getDraft(otherVersion, 0)).toBe("");
+    });
+
+    it("keeps an owner's mounted composer draft through starting and ending a room", async () => {
+        const session = new Compartment();
+        const view = editor({}, session.of([]));
+        const component = render(Thread, {
+            props: {
+                thread: [],
+                updateThread: vi.fn(),
+                annotationId: 0,
+                view,
+                commentThread: true,
+            },
+        });
+        const input = component.getByPlaceholderText("Reply…") as HTMLTextAreaElement;
+        await fireEvent.input(input, { target: { value: "Owner local reply" } });
+        view.dispatch({
+            effects: session.reconfigure(
+                roomContext(new Y.Doc(), "annotations", { role: "editor", isOwner: true }),
+            ),
+        });
+        await vi.waitFor(() => expect(input.value).toBe("Owner local reply"));
+        await fireEvent.input(input, { target: { value: "Owner reply edited while live" } });
+        view.dispatch({ effects: session.reconfigure([]) });
+        await vi.waitFor(() => expect(input.value).toBe("Owner reply edited while live"));
+    });
+
+    it("keeps owner nested version scopes stable without sharing root drafts", () => {
+        const session = new Compartment();
+        const root = editor({}, session.of([]));
+        const localNested = editor(getNestedCommentDraftScope(root, 10, "version-a"));
+        setDraft(root, 0, "Owner root reply");
+        setDraft(localNested, 0, "Owner nested reply");
+        const live = roomContext(new Y.Doc(), "annotations", { role: "editor", isOwner: true });
+        root.dispatch({ effects: session.reconfigure(live) });
+        const liveInline = editor(getNestedCommentDraftScope(root, 10, "version-a"), live);
+        const liveModal = editor(getNestedCommentDraftScope(root, 10, "version-a"), live);
+        expect(getDraft(root, 0)).toBe("Owner root reply");
+        expect(getDraft(liveInline, 0)).toBe("Owner nested reply");
+        setDraft(liveModal, 0, "Nested reply edited while live");
+        expect(getDraft(liveInline, 0)).toBe("Nested reply edited while live");
+        root.dispatch({ effects: session.reconfigure([]) });
+        expect(getDraft(editor(getNestedCommentDraftScope(root, 10, "version-a")), 0)).toBe(
+            "Nested reply edited while live",
+        );
+        expect(getDraft(root, 0)).toBe("Owner root reply");
+    });
+
+    it("isolates a joining editor's draft from their local draft", () => {
+        const session = new Compartment();
+        const view = editor({}, session.of([]));
+        setDraft(view, 0, "Private editor local reply");
+        view.dispatch({
+            effects: session.reconfigure(
+                roomContext(new Y.Doc(), "annotations", { role: "editor", isOwner: false }),
+            ),
+        });
+        expect(getDraft(view, 0)).toBe("");
+        setDraft(view, 0, "Editor room reply");
+        view.dispatch({ effects: session.reconfigure([]) });
+        expect(getDraft(view, 0)).toBe("Private editor local reply");
     });
 
     it("updates a mounted composer across same-view join, leave and a different room", async () => {

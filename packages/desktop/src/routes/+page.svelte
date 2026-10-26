@@ -33,6 +33,8 @@ import {
 } from "$lib/auth";
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
+import { pendingInvitation } from "$lib/collab/invitations/deepLink";
+import { collabSession } from "$lib/collab/store";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
 import { APP_STORE_URL, LATEST_DESKTOP_RELEASE_URL } from "$lib/constants";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
@@ -181,6 +183,7 @@ const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
 /** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
+    if ($pendingInvitation || $collabSession) return;
     if (showSample) {
         $tutorialActive = true;
     } else if (!betaAccepted()) {
@@ -710,7 +713,7 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
-{#if $tutorialActive}
+{#if $tutorialActive && !$pendingInvitation && !$collabSession}
     <Tutorial onComplete={handleTutorialComplete} />
 {/if}
 
@@ -767,7 +770,7 @@ if (import.meta.env.DEV) {
 <!-- Top-right collab + account entry points -->
 <div
     data-annotation-occluder
-    class="focus-chrome fixed top-8 right-8 z-40 flex items-center gap-3"
+    class="collaboration-controls focus-chrome fixed top-8 right-8 z-40 flex items-center gap-3"
     class:focus-chrome-hidden={focusMode && !focusControlsVisible}
 >
     {#if authLoading && authConnectionState === "connecting" && authReconnecting}
@@ -845,6 +848,12 @@ if (import.meta.env.DEV) {
 </div>
 
 <style>
+    @media (max-width: 1100px) {
+        .collaboration-controls {
+            top: 8.5rem;
+            right: 1rem;
+        }
+    }
     .app-shell {
         min-height: 100vh;
     }

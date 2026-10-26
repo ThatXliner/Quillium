@@ -39,9 +39,35 @@ describe("invitation input and transport", () => {
             joinUrl: "quillium://join/test",
             role: "viewer" as const,
             expiresAt: "2026-12-01T00:00:00Z",
+            inviter: "A writer",
+            documentTitle: "An example draft",
         };
         await sink.send(invitation);
         expect(sink.invitations).toEqual([invitation]);
+    });
+
+    it("explains the invitation with sender, document, access and readable expiry", async () => {
+        const request = vi
+            .fn<typeof fetch>()
+            .mockResolvedValue(new Response("{}", { status: 200 }));
+        await createResendInvitationSender({
+            apiKey: "test",
+            from: "test@example.com",
+            fetch: request,
+        }).send({
+            to: "writer@example.com",
+            joinUrl: "quillium://join/test",
+            role: "commenter",
+            expiresAt: "2026-12-01T00:00:00Z",
+            inviter: "A writer",
+            documentTitle: "An example draft",
+        });
+        const body = JSON.parse(String(request.mock.calls[0][1]?.body));
+        expect(body.text).toContain("A writer invited you");
+        expect(body.text).toContain("An example draft");
+        expect(body.text).toContain("You can comment on this document");
+        expect(body.text).toContain("December 1, 2026");
+        expect(body.text).toContain("UTC");
     });
 
     it("reports transport failures instead of claiming delivery", async () => {
@@ -57,6 +83,8 @@ describe("invitation input and transport", () => {
                 joinUrl: "quillium://join/test",
                 role: "viewer",
                 expiresAt: "2026-12-01T00:00:00Z",
+                inviter: "A writer",
+                documentTitle: "An example draft",
             }),
         ).rejects.toThrow("delivery failed");
         expect(request).toHaveBeenCalledTimes(1);

@@ -16,7 +16,7 @@ class ViewScope {
     }
 }
 
-// A subscriber also tracks stores first created inside a composer’s derived expression.
+// Explicit notifications keep lazily created draft maps reactive.
 class ScopeDrafts {
     readonly values = new Map<number, string>();
     changed = () => {};
@@ -34,7 +34,9 @@ const scopeDrafts = new WeakMap<object, ScopeDrafts>();
 const nestedScopes = new WeakMap<object, Map<number, Map<string, object>>>();
 
 function resolveScope(view: EditorView): object {
-    const scope = view.state.facet(roleContext)?.annotations ?? view.state.facet(commentDraftScope);
+    const context = view.state.facet(roleContext);
+    const liveScope = context?.isOwner ? undefined : context?.annotations;
+    const scope = liveScope ?? view.state.facet(commentDraftScope);
     if (scope) return scope;
     let fallback = fallbackScopes.get(view);
     if (!fallback) {

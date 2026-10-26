@@ -26,7 +26,7 @@ import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
 import { flushPersistQueue, persistNamedVersion } from "$lib/editor/listeners";
 import posthog, { captureException } from "$lib/posthog";
-import { currentDocumentId, currentDraftId, editorView } from "$lib/stores";
+import { currentDocumentId, currentDraftId, editorView, modalStack } from "$lib/stores";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { parseInvitationToken } from "./invitations/deepLink";
@@ -131,6 +131,7 @@ export class LiveSessionController {
                 disableCollab(view);
                 this.isLive = false;
             }
+            modalStack.clear();
             const priorDraftId = get(currentDraftId);
             joinerPriorView.set({
                 draftId: priorDraftId,
@@ -178,7 +179,7 @@ export class LiveSessionController {
             message:
                 "The owner changed your access. Quillium restored your previous draft. Open your invitation again to rejoin.",
         };
-        toast.error("Your Live Room access changed");
+        toast.error(this.lastJoinError.message);
     }
 
     /** Toggle: end the current session, or go live on the current draft. */
@@ -218,14 +219,22 @@ export class LiveSessionController {
                     draftId,
                     stateJson,
                     "Before going live (auto)",
-                    () => get(editorView) === view && get(currentDraftId) === draftId && get(currentDocumentId) === documentId,
+                    () =>
+                        get(editorView) === view &&
+                        get(currentDraftId) === draftId &&
+                        get(currentDocumentId) === documentId,
                 );
                 if (snapshotId === null) return;
 
                 // Register document with relay's sync_documents table (auto-creates if missing)
                 await registerDocumentForCollab(documentId, user.id, "Untitled");
                 await flushPersistQueue();
-                if (get(editorView) !== view || get(currentDraftId) !== draftId || get(currentDocumentId) !== documentId) return;
+                if (
+                    get(editorView) !== view ||
+                    get(currentDraftId) !== draftId ||
+                    get(currentDocumentId) !== documentId
+                )
+                    return;
 
                 // Per D-50: clientID is user.id for per-user undo
                 // Version comes from relay's initial state

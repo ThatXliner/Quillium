@@ -81,13 +81,14 @@ onNavigate((navigation) => {
         to: navigation.to?.url.pathname,
         type: navigation.type,
     });
-    if (!document.startViewTransition) return;
+    if (!document.startViewTransition || document.visibilityState === "hidden") return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     return new Promise((resolve) => {
         const transition = document.startViewTransition(async () => {
             resolve();
             await navigation.complete;
         });
+        transition.ready.catch(() => {});
         transition.finished.catch(() => {});
     });
 });

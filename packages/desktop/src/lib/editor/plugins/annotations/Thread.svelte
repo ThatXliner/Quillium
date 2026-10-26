@@ -1,7 +1,7 @@
 <script lang="ts">
 import { getCurrentUserName } from "$lib/auth";
 import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
-import { collabCapabilities } from "$lib/collab/capabilities";
+import { roleContext } from "$lib/collab/roleContext";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
@@ -27,10 +27,12 @@ import { ThreadList, type ThreadMessageView } from "@quillium/share";
  * Children: ThreadMessage.svelte (one per message)
  */
 import { SparklesIcon } from "lucide-svelte";
+import { tick } from "svelte";
 import { cubicOut } from "svelte/easing";
 import { slide } from "svelte/transition";
 import type { Thread as ThreadType } from ".";
 import ThreadMessage from "./ThreadMessage.svelte";
+import { annotationField } from "./annotationField";
 import {
     type CommentEditorPosition,
     captureCommentEditorPosition,
@@ -81,11 +83,30 @@ let {
 
 const newMessage = $derived(getDraft(view, annotationId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
+let sendButton = $state<HTMLButtonElement | undefined>();
 let isFocused = $state(false);
 let originSelection = $state<ReturnType<typeof captureCommentEditorPosition> | undefined>();
 const currentUserName = $derived(getCurrentUserName());
 const hasText = $derived(!!newMessage.trim());
 const submission = $derived(getCommentSubmission(view, annotationId));
+
+const composerAccess = $derived.by(() => {
+    getCommentDraftScope(view);
+    const role = view.state.facet(roleContext)?.role;
+    return {
+        canEdit: role ? role === "editor" : !view.state.readOnly,
+        canComment: role ? role !== "viewer" : !view.state.readOnly,
+    };
+});
+const submissionError = $derived.by(() => {
+    const error = submission?.error;
+    if (!error) return "";
+    if (/not found|Invalid comment (scope|thread)|selection.*available/.test(error))
+        return "This text or comment has changed. Copy your draft, close this comment, and select the text again.";
+    if (/access|permission|session.*ended|connection ended/i.test(error))
+        return "This Live Room can't accept your comment right now. Copy this draft, then reopen your invitation.";
+    return "Your comment wasn't confirmed. Your draft is still here. Check your connection and try again.";
+});
 const sendActive = $derived(hasText && !submission?.pending);
 function blurToEditor() {
     textareaEl?.blur();
@@ -108,23 +129,29 @@ $effect(() => {
 });
 
 async function send(): Promise<void> {
-    if (!newMessage.trim() || submission?.pending) return;
+    if (!composerAccess.canComment || (!composerAccess.canEdit && !commentThread) || !newMessage.trim() || submission?.pending) return;
     const submitted = newMessage;
     const submittedScope = getCommentDraftScope(view);
     if (submission) {
-        if (await submission.send(submitted.trim())) {
+        const restoreFocus = document.activeElement === textareaEl || document.activeElement === sendButton;
+        const accepted = await submission.send(submitted.trim());
+        if (accepted) {
             if (
                 getCommentDraftScope(view) === submittedScope &&
                 getDraft(view, annotationId) === submitted
             ) clearDraft(view, annotationId);
+        } else if (restoreFocus && getCommentDraftScope(view) === submittedScope) {
+            await tick();
+            if (textareaEl?.isConnected &&
+                (document.activeElement === document.body || document.activeElement === sendButton || document.activeElement === textareaEl)) textareaEl.focus();
         }
         return;
     }
-    updateThread([
-        ...thread,
-        { message: submitted.trim(), author: currentUserName, time: Date.now() },
-    ]);
-    clearDraft(view, annotationId);
+    const next = [...thread, { message: submitted.trim(), author: currentUserName, time: Date.now() }];
+    updateThread(next);
+    const accepted = view.state.field(annotationField, false)?.[annotationId]?.thread;
+    if (getCommentDraftScope(view) === submittedScope && accepted?.length === next.length &&
+        accepted.at(-1)?.message === submitted.trim()) clearDraft(view, annotationId);
 }
 </script>
 
@@ -140,7 +167,7 @@ async function send(): Promise<void> {
 />
 
 <!-- Reply input — hidden in previewOnly or hideReply mode -->
-{#if !previewOnly && !hideReply && $collabCapabilities.canComment && ($collabCapabilities.canEdit || commentThread)}
+{#if !previewOnly && !hideReply && composerAccess.canComment && (composerAccess.canEdit || commentThread)}
     <div transition:slide={{ duration: 200, easing: cubicOut }}
         class="mt-3 rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
         ring-1 ring-black/5 focus-within:ring-2 {focusRingClass} transition-shadow">
@@ -167,10 +194,10 @@ async function send(): Promise<void> {
                 }
             }}
         ></textarea>
-        {#if submission?.error}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submission.error}</p>{/if}
+        {#if submissionError}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submissionError}</p>{/if}
         <div class="flex items-center justify-between px-2 pb-1.5">
             <div class="flex items-center gap-1">
-                {#if onAiSuggest && $collabCapabilities.canEdit}
+                {#if onAiSuggest && composerAccess.canEdit}
                     <button
                         aria-label={aiSuggestDisabled
                             ? "Get AI suggestion — add an API key in AI settings"
@@ -192,6 +219,7 @@ async function send(): Promise<void> {
             </div>
             <div class="flex items-center gap-1.5">
                 <button
+                    bind:this={sendButton}
                     onclick={sendActive ? send : undefined}
                     disabled={!sendActive}
                     class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150

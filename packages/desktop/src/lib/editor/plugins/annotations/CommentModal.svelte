@@ -2,7 +2,7 @@
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { getCurrentUserName } from "$lib/auth";
 import { getCommentSubmission } from "$lib/collab/commentSubmission.svelte";
-import { collabCapabilities } from "$lib/collab/capabilities";
+import { roleContext } from "$lib/collab/roleContext";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
@@ -108,29 +108,54 @@ const contextLayers = $derived(docContext ? [docContext] : []);
 // ── Reply box state ──────────────────────────────────────────
 const newMessage = $derived(getDraft(parentView, commentId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
+let sendButton = $state<HTMLButtonElement | undefined>();
 let isFocused = $state(false);
 const currentUserName = $derived(getCurrentUserName());
 const submission = $derived(getCommentSubmission(parentView, commentId));
+
+const composerAccess = $derived.by(() => {
+    getCommentDraftScope(parentView);
+    const role = parentView.state.facet(roleContext)?.role;
+    return {
+        canEdit: role ? role === "editor" : !parentView.state.readOnly,
+        canComment: role ? role !== "viewer" : !parentView.state.readOnly,
+    };
+});
+const submissionError = $derived.by(() => {
+    const error = submission?.error;
+    if (!error) return "";
+    if (/not found|Invalid comment (scope|thread)|selection.*available/.test(error))
+        return "This text or comment has changed. Copy your draft, close this comment, and select the text again.";
+    if (/access|permission|session.*ended|connection ended/i.test(error))
+        return "This Live Room can't accept your comment right now. Copy this draft, then reopen your invitation.";
+    return "Your comment wasn't confirmed. Your draft is still here. Check your connection and try again.";
+});
 const sendActive = $derived(!!newMessage.trim() && !submission?.pending);
 
 async function send(): Promise<void> {
-    if (!newMessage.trim() || !comment || submission?.pending) return;
+    if (!composerAccess.canComment || !newMessage.trim() || !comment || submission?.pending) return;
     const submitted = newMessage;
     const submittedScope = getCommentDraftScope(parentView);
     if (submission) {
-        if (await submission.send(submitted.trim())) {
+        const restoreFocus = document.activeElement === textareaEl || document.activeElement === sendButton;
+        const accepted = await submission.send(submitted.trim());
+        if (accepted) {
             if (
                 getCommentDraftScope(parentView) === submittedScope &&
                 getDraft(parentView, commentId) === submitted
             ) clearDraft(parentView, commentId);
+        } else if (restoreFocus && getCommentDraftScope(parentView) === submittedScope) {
+            await tick();
+            if (textareaEl?.isConnected &&
+                (document.activeElement === document.body || document.activeElement === sendButton || document.activeElement === textareaEl)) textareaEl.focus();
         }
         return;
     }
-    handleUpdateThread([
-        ...comment.thread,
-        { message: submitted.trim(), author: currentUserName, time: Date.now() },
-    ]);
-    clearDraft(parentView, commentId);
+    const next = [...comment.thread, { message: submitted.trim(), author: currentUserName, time: Date.now() }];
+    handleUpdateThread(next);
+    const accepted = parentView.state.field(annotationField, false)?.[commentId]?.thread;
+    if (getCommentDraftScope(parentView) === submittedScope && accepted?.length === next.length &&
+        accepted.at(-1)?.message === submitted.trim()) clearDraft(parentView, commentId);
 }
 
 function autoResize(el: HTMLTextAreaElement) {
@@ -232,7 +257,7 @@ let restoreSize = $state<(() => void) | undefined>();
 {/snippet}
 
 {#snippet commentHeaderActions()}
-    {#if $collabCapabilities.canEdit}
+    {#if composerAccess.canEdit}
     <button
         class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
         onclick={deleteComment}
@@ -284,7 +309,7 @@ let restoreSize = $state<(() => void) | undefined>();
                 </div>
 
                 <!-- Reply box anchored at bottom -->
-                {#if comment && $collabCapabilities.canComment}
+                {#if comment && composerAccess.canComment}
                     <div class="px-6 pb-5 pt-2 shrink-0">
                         <div class="rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
                             ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
@@ -310,10 +335,10 @@ let restoreSize = $state<(() => void) | undefined>();
                                     }
                                 }}
                             ></textarea>
-        {#if submission?.error}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submission.error}</p>{/if}
+        {#if submissionError}<p role="alert" class="px-3 pb-1 text-xs text-red-700">{submissionError}</p>{/if}
                             <div class="flex items-center justify-between px-2 pb-1.5">
                                 <div class="flex items-center gap-1">
-                                    {#if appSettings.aiEnabled && $collabCapabilities.canEdit}
+                                    {#if appSettings.aiEnabled && composerAccess.canEdit}
                                     <button
                                         aria-label={hasApiKey()
                                             ? "Get AI suggestion"
@@ -337,6 +362,7 @@ let restoreSize = $state<(() => void) | undefined>();
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <button
+                                        bind:this={sendButton}
                                         onclick={sendActive ? send : undefined}
                     disabled={!sendActive}
                                         class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
